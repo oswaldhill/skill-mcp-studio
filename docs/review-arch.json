@@ -1,0 +1,48 @@
+{
+  "angle": "架构与代码组织",
+  "findings": [
+    {
+      "id": "ARCH-1",
+      "severity": "high",
+      "title": "set_unified_dir 直接改写版本受控的 config.yaml，违反“主干零个人拓扑”约定，三处写目标分裂",
+      "evidence": "config_store.py:56 `path = config_path or _default_config_path()` 指向 config.yaml；config_store.py:63-68 用正则就地改写 `unified_skills_dir:` 行；config.yaml:230 现值 `unified_skills_dir: ~/.skills-manager/skills`。`git ls-files config.yaml` 确认该文件被版本控制追踪。对照 endpoint_store.py:26-43 写入 profile_sources 覆盖文件（仓库外）、config_store.add_discovered_client 落 data/discovered_tools.yaml（.gitignore:2 `data/` 已忽略）——这两路刻意把个人拓扑留在主干之外，唯独 set_unified_dir 把机器本地路径直接写进受控主干。",
+      "fix": "统一写目标：为 unified_skills_dir 引入与 profile_sources 同构的本地覆盖文件（如 data/local_overrides.yaml，加入 .gitignore），set_unified_dir 改写该覆盖文件；load_config 在 apply_profile_sources 后合并该覆盖文件的 unified_skills_dir 键。这样主干 config.yaml 只保留默认值，个人路径永不入库。"
+    },
+    {
+      "id": "ARCH-2",
+      "severity": "medium",
+      "title": "run_cli 透传任意 argv 无白名单，且把裸 stdout/stderr 回传前端，构成越权写与信息泄露的纵深缺口",
+      "evidence": "src-tauri/src/lib.rs:84 `fn run_cli(args: Vec<String>)`，第85行 `spawn(&args)` 直接把前端传入的任意参数交给 `skill-mcp-studio` 子进程，无子命令/参数白名单。scan.py 的写命令（--set-unified-dir/--add-endpoint/--attach-endpoints/--add-client）均经此通道可达；尤其 `--config <任意路径>` 可把整个引擎重定向到任意 YAML 读写。第87-92行返回 `{code, stdout, stderr}`，stderr 可能携带 Python traceback 的绝对路径、stdout 携带客户端名/配置路径/MCP URL/auth_token_env 名，前端零脱敏。",
+      "fix": "在 Tauri 边界引入命令白名单：run_cli 只接受只读子命令（--list-endpoints/--list-mcp-inventory/--management 等）与已显式登记的写子命令，对 `--config`/`--profile` 等重定向类参数拒绝或固定为主干路径；对返回的 stdout/stderr 做路径裁剪与敏感键过滤，仅回传 {code, sanitized_message}。"
+    },
+    {
+      "id": "ARCH-3",
+      "severity": "medium",
+      "title": "_agent_entry 把 mcp_tools 与 tools 两个异构注册表合并去重，丢失类型信息导致 tools 条目的 mcp_attach 被误报为“挂全量端点”",
+      "evidence": "management_snapshot.py:105 `for tool in (config.get(\"mcp_tools\", []) or []) + (config.get(\"tools\", []) or [])` 把两类条目合并喂给 _agent_entry。实测 config.yaml：mcp_tools[0] 含 config_path/format/mcp_key_path/hooks_config_path/aliases/fix_supported，tools[0] 仅含 backup_suffix/name/skills_paths/type，无任何 MCP 配置字段。_agent_entry:74 `\"mcp_attach\": resolve_client_attach(tool, config)` 对 tools 条目落到 endpoint_library.py:49 `return _all_endpoints(config)`——即“全部端点”，于是无 MCP 配置的纯 Skills 客户端被报为应挂所有端点；_agent_entry:75 `fix_supported` 对 tools 条目默认 True（tool.get 缺省），但该类客户端根本无 mcp fix 能力。同时 mcp_clients 循环（management_snapshot.py:135）只遍历 mcp_tools，agents 面板与 mcp 面板对“谁是 MCP 客户端”口径不一致。",
+      "fix": "为 _agent_entry 增加 registry 来源标记（如 `source: \"mcp_tools\"|\"tools\"`），tools 条目不下发 mcp_attach 字段（或显式置 null/\"n/a\"）并置 fix_supported=False；GUI 据 source 决定是否渲染端点挂载列与修复按钮。"
+    },
+    {
+      "id": "ARCH-4",
+      "severity": "medium",
+      "title": "apply_profile_sources 在 load_config 期改写共享 config 的 mcp_attach，写覆盖对全部只读路径可见且无前置校验，存在并行且未启用的 overlay 读取实现",
+      "evidence": "profile_loader.py:96-109：`attach_overlay = data.get(\"client_mcp_attach\")` 后对每个匹配的 mcp_tools 条目执行 `matched[\"mcp_attach\"] = list(endpoints)`（第109行），不校验 endpoints 是否引用已存在端点键。scanner.py:96-98 load_config 统一调用 apply_profile_sources——即 check_agents/management_snapshot/mcp_inventory 等所有只读路径拿到的 config 都已被该写覆盖污染。校验只发生在特定入口（management_snapshot.py:95 `validate_attachment(config)`、scan.py:224），任何忘记调用 validate_attachment 的新只读路径会静默使用畸形 overlay。此外该 mutation 对共享 dict 不可逆，无法回查 overlay 前/后态；endpoint_store.py:181 `get_client_attach_overlay` 另起一套 overlay 读取实现却全局无调用方（grep 仅命中定义），与实际生效的 apply_profile_sources 形成两条分叉路径。",
+      "fix": "把 overlay 应用改为“返回新 dict/副本”而非原地改写 config，或在 apply_profile_sources 内对 overlay 引用的端点键做 validate 校验后再写回；删除未启用的 get_client_attach_overlay 或将其作为唯一 overlay 读源、让 apply_profile_sources 复用之，消除双实现分叉。"
+    },
+    {
+      "id": "ARCH-5",
+      "severity": "low",
+      "title": "三处死代码/重复实现：_endpoint_entry 未被调用、_all_endpoints 与 list_endpoints 同体、get_client_attach_overlay 无调用方",
+      "evidence": "management_snapshot.py:80-84 `def _endpoint_entry(...)` 全仓 grep 仅命中定义（与 .pyc）；endpoint_library.py:26 `def list_endpoints` 与 31 `def _all_endpoints` 函数体完全一致（均 `return list_profiles(config)`），_all_endpoints 仅被 resolve_client_attach:49 调用，纯属私有冗余包装；endpoint_store.py:181 `def get_client_attach_overlay` 全仓无调用方，与 apply_profile_sources 的 overlay 应用逻辑重复。",
+      "fix": "删除 _endpoint_entry；_all_endpoints 内联回并调用方直接用 list_profiles 或保留单一 list_endpoints；移除未启用的 get_client_attach_overlay（若需 overlay 自省，按 ARCH-4 改为唯一读源）。"
+    },
+    {
+      "id": "ARCH-6",
+      "severity": "low",
+      "title": "check_agents 的 endpoint_key 过滤由 config 级谓词 has_explicit_attach 门控，缺省 all 的语义与按调用过滤预期存在隐性错配",
+      "evidence": "combined_checker.py:182 `if endpoint_key and has_explicit_attach(config):`——过滤是否生效取决于“配置中是否至少一个客户端声明了 mcp_attach”，而非本次调用是否传了 endpoint_key。当无任何显式声明时，调用方传 endpoint_key 也静默退回全量矩阵（所有客户端对照该端点）。endpoint_library.py:49 对未声明 mcp_attach 的客户端 `return _all_endpoints(config)`，即默认挂所有端点，故即便进入过滤分支，无显式声明的客户端仍因“挂全部端点”而被纳入每个 endpoint_key 的结果，与“仅查显式挂该端点的客户端”的直觉不符。",
+      "fix": "在 check_agents 文档/返回结构中显式标注本次是否触发了过滤（如 `attach_filter_applied: bool`），并在 has_explicit_attach 为假而调用方传了 endpoint_key 时于 summary 记一条提示，让“看起来在过滤实则全量”的行为对调用方可见。"
+    }
+  ],
+  "summary": "阶段五管理台的核心边界划分是合理的：endpoint_library=声明式期望挂载、mcp_inventory=观测式实际清单、management_snapshot=只读编排器，三者 producer/consumer 关系清晰。但写侧落盘目标三处分裂（ARCH-1 把个人路径写进受控主干）、_agent_entry 跨异构注册表合并丢类型信息（ARCH-3）、apply_profile_sources 的 overlay 写覆盖在 load_config 期对全路径可见且无前置校验（ARCH-4）是真实的一致性缺陷；run_cli 无白名单透传（ARCH-2）是纵深安全缺口，需补边界校验。死代码与 filter 语义不透明为轻微项。"
+}

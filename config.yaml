@@ -1,0 +1,224 @@
+auto_discover:
+  enabled: true
+  exclude_paths:
+  - ~/.skills-manager/skills
+  - ~/.adal/skills
+  - ~/.aider-desk/skills
+  - ~/.augment/skills
+  - ~/.bob/skills
+  - ~/.cherrystudio/skills
+  - ~/.clawdbot/skills
+  - ~/.codeartsdoer/skills
+  - ~/.codemaker/skills
+  - ~/.codestudio/skills
+  - ~/.commandcode/skills
+  - ~/.config/crush/skills
+  - ~/.config/devin/skills
+  - ~/.config/goose/skills
+  - ~/.factory/skills
+  - ~/.forge/skills
+  - ~/.iflow/skills
+  - ~/.junie/skills
+  - ~/.kilocode/skills
+  - ~/.kimi/skills
+  - ~/.kode/skills
+  - ~/.mcpjam/skills
+  - ~/.mux/skills
+  - ~/.neovate/skills
+  - ~/.openclaw/skills
+  - ~/.openhands/skills
+  - ~/.pochi/skills
+  - ~/.qwen/skills
+  - ~/.qwenworkcn/skills
+  - ~/.roo/skills
+  - ~/.rovodev/skills
+  - ~/.trae-cn/builtin/*/skills
+  - ~/.understand-anything-plugin/skills
+  - ~/.vibe/skills
+  - ~/.zencoder/skills
+  - ~/.codebuddy/skills
+  - ~/.gemini/skills
+  - ~/.trae/skills
+  - ~/.ghcp-appmod/skills
+  - ~/.qoder/skills
+  - ~/.continue/skills
+  - ~/.kiro/skills
+  - ~/.cline/skills
+  - ~/.Trash/skills
+  - ~/skills
+  - ~/.qwencode/skills
+  - ~/.qclaw/skills
+  - ~/.hermes/skills
+  - ~/.lingma/skills
+  - ~/.dsh/skills
+  scan_paths:
+  - ~/.config/*/skills
+  - ~/.*/skills
+  - ~/.config/*/agent/skills
+schema_version: 1
+active_profile: generic-http
+
+profile_sources:
+- ~/.skills-manager/profiles.local.yaml
+- data/local_overrides.yaml
+
+profiles:
+  generic-http:
+    name: my-mcp
+    url: https://example.internal/mcp
+    transport: streamable-http
+    url_policy: strict
+    required_capabilities: {}
+mcp_tools:
+- name: Claude Code
+  aliases: [claude, claude-code]
+  install:
+    app_bundles: [/Applications/Claude.app]
+    commands: [claude]
+    config_paths: [~/.claude.json, ~/.claude/settings.json]
+  config_path: ~/.claude.json
+  format: json
+  mcp_key_path: [mcpServers]
+  fix_supported: true
+  hooks_config_path: ~/.claude/settings.json
+- name: Cursor
+  aliases: [cursor]
+  install:
+    app_bundles: [/Applications/Cursor.app]
+    commands: [cursor]
+    config_paths: [~/.cursor/mcp.json]
+  config_path: ~/.cursor/mcp.json
+  format: json
+  mcp_key_path: [mcpServers]
+  fix_supported: true
+  hooks_config_path: ~/.cursor/hooks.json
+- name: WorkBuddy
+  aliases: [workbuddy, codebuddy]
+  install:
+    app_bundles: [/Applications/WorkBuddy.app]
+    commands: [workbuddy]
+    config_paths: [~/.workbuddy/mcp.json]
+  config_path: ~/.workbuddy/mcp.json
+  format: json
+  mcp_key_path: [mcpServers]
+  fix_supported: true
+  hooks_config_path: ~/.workbuddy/settings.json
+- name: Codex
+  aliases: [codex]
+  install:
+    # 新版 Codex 已并入 OpenAI ChatGPT 桌面应用（无独立 Codex.app，CLI 内嵌在
+    # ChatGPT.app/Contents/Resources/codex）；同时保留旧独立安装形态的探测。
+    app_bundles: [/Applications/Codex.app, /Applications/ChatGPT.app]
+    commands: [codex, /Applications/ChatGPT.app/Contents/Resources/codex]
+    config_paths: [~/.codex/config.toml]
+  config_path: ~/.codex/config.toml
+  format: toml
+  mcp_key_path: [mcp_servers]
+  fix_supported: true
+  hooks_config_path: ~/.codex/hooks.json
+- name: Reasonix
+  aliases: [reasonix]
+  install:
+    app_bundles: [/Applications/Reasonix.app]
+    commands: [reasonix]
+    config_paths: [~/.reasonix/config.toml]
+  config_path: ~/.reasonix/config.toml
+  format: reasonix_toml
+  mcp_key_path: [plugins]
+  fix_supported: true
+- name: OpenCode
+  aliases: [opencode]
+  install:
+    commands: [opencode]
+    config_paths: [~/.config/opencode/opencode.jsonc]
+  config_path: ~/.config/opencode/opencode.jsonc
+  format: jsonc
+  mcp_key_path: [mcp]
+  # OpenCode 已有本地 hermes stdio 桥（指向 NAS 网关），统一端点用独立 key 写入，避免覆盖本地桥
+  unified_name: hermes-unified
+  # 本地 stdio 桥条目名为 "hermes"（hermes-bridge.py 指向 NAS 网关），与统一端点
+  # hermes-unified 并存属待收口遗留：声明为按工具 legacy 名，审计可见，
+  # --remove-legacy-mcp（活体验证安全门）清理。该名与其它客户端的正典名冲突，
+  # 故只能声明在工具级，不进 profile 的 legacy_names。
+  legacy_names: [hermes]
+  fix_supported: true
+  hooks_config_path: ~/.config/opencode/opencode.jsonc
+- name: DeepSeek Harness
+  type: AI Agent
+  aliases: [dsh, DSH, deepseek-dsh, dsh-web, deepseek-harness, deepseek]
+  install:
+    # 桌面 app 为 /Applications/DeepSeek AI Assistant.app（bundle id com.deepseek.dsh-desktop，
+    # 可执行文件 DSHApp）；dsh CLI 未进 PATH，故以 app bundle 作为安装主证据。
+    app_bundles: [/Applications/DeepSeek AI Assistant.app]
+    commands: [dsh]
+    config_paths: [~/.dsh/settings.yaml, ~/.dsh/profiles/web/cordis.patch.yml, ~/.dsh/mcp.json]
+  config_path: ~/.dsh/profiles/web/cordis.patch.yml
+  format: cordis_yaml
+  mcp_key_path: [hermes]
+  # 多路径回退：本机实际统一端点写在 ~/.dsh/mcp.json（标准 json mcpServers），
+  # 而远端 cordis 机器写在 cordis.patch.yml（cordis_yaml）。任一命中即判 configured，
+  # 主路径仍是 cordis.patch.yml（--fix-mcp 写入目标不变）。
+  config_candidates:
+    - path: ~/.dsh/mcp.json
+      format: json
+      key_path: [mcpServers]
+  fix_supported: true
+# 已知非技能消费客户端：其 skills 链接存在（同步脚本批量建立），但客户端本身
+# 不按技能消费，审计不应报 UNMANAGED 判不合规。与 auto_discover.exclude_paths
+# 的区别：豁免名单保留扫描可见性（L2 仍可报链接状态），仅不计入未纳管。
+# - CC Switch：Claude Code/Codex 提供方切换器（CC Switch.app），非 AI Agent
+# - ima.copilot：已注册于下方 tools 段（腾讯 ima，~/.copilot 目录，L2 管理其链接）
+unmanaged_exempt:
+- CC Switch
+tools:
+- backup_suffix: .bak
+  name: OpenCode
+  skills_paths:
+  - ~/.config/opencode/skills
+  type: AI Coding Assistant
+- backup_suffix: .bak
+  name: Cursor
+  skills_paths:
+  - ~/.cursor/skills
+  type: AI IDE
+- backup_suffix: .bak
+  name: Claude Code
+  skills_paths:
+  - ~/.claude/skills
+  type: AI Coding Assistant
+- backup_suffix: .bak
+  name: WorkBuddy
+  skills_paths:
+  - ~/.workbuddy/skills
+  type: AI Assistant
+- backup_suffix: .bak
+  name: TRAE
+  skills_paths:
+  - ~/.trae-cn/skills
+  type: AI IDE
+- backup_suffix: .bak
+  name: DeepSeek Harness
+  aliases: [dsh, DSH, deepseek-harness]
+  skills_paths:
+  - ~/.dsh/skills
+  type: AI Agent
+- backup_suffix: .bak
+  name: Codex
+  skills_paths:
+  - ~/.codex/skills
+  type: AI Coding Assistant
+- backup_suffix: .bak
+  name: Reasonix
+  skills_paths:
+  - ~/.reasonix/skills
+  type: AI Coding Assistant
+- backup_suffix: .bak
+  name: ima.copilot
+  aliases: [copilot, .copilot, ima-copilot, github-copilot]
+  install:
+    app_bundles: [/Applications/ima.copilot.app]
+    config_paths: [~/.copilot/config.json]
+  skills_paths:
+  - ~/.copilot/skills
+  type: AI Assistant
+unified_skills_dir: ~/.skills-manager/skills

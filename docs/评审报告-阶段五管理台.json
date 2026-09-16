@@ -1,0 +1,218 @@
+{
+  "angles": [
+    {
+      "name": "架构与代码组织",
+      "findings": [
+        {
+          "id": "ARCH-1",
+          "severity": "blocker",
+          "title": "写目标分裂：unified_dir 个人拓扑被正则写入版本控制的 config.yaml，违背自身隔离原则",
+          "evidence": "config_store.set_unified_dir（config_store.py:63-68）用正则原地替换 config.yaml 的 unified_skills_dir 行；而 endpoint_store.add_endpoint（endpoint_store.py:108-115）写 profile_sources（gitignored）、config_store.add_discovered_client（config_store.py:120-137）写 data/discovered_tools.yaml（gitignored）。endpoint_store 模块 docstring 自称“trunk config.yaml stays free of personal topology”，但 unified_skills_dir 这条本地路径恰恰是个人拓扑，却写进了主干 config.yaml，与另两处写目标的设计原则自相矛盾。",
+          "fix": "set_unified_dir 不再写 config.yaml，改为写入 profile_sources 叠加层（或新增专门的 gitignored overlay 文件，如 data/topology.yaml），由 apply_profile_sources 合并 unified_skills_dir；与 endpoint/discovered 写目标统一为“个人拓扑一律落 gitignored overlay”。"
+        },
+        {
+          "id": "ARCH-2",
+          "severity": "high",
+          "title": "run_cli(args:Vec<String>) 无子命令白名单的通用透传，前端可构造任意破坏性 argv",
+          "evidence": "src-tauri/src/lib.rs:84-93 run_cli 把任意 args 透传给 skill-mcp-studio 子进程并注册在 invoke_handler（lib.rs:98）。前端 dashboard.html 构造的 argv 含 --add-client/--add-endpoint/--set-unified-dir/--remove-endpoint/--fix-skills，其中 --fix-skills（不带 --dry-run）与 --set-unified-dir 均为真写。Rust 侧无允许子命令集合、无参数形状校验，XSS 或注入脚本即可触发破坏性写。",
+          "fix": "在 Rust 侧维护允许子命令白名单（--management/--add-client/--add-endpoint/--remove-endpoint/--set-unified-dir/--fix-skills）并按子命令做参数形状校验，未知子命令或越界参数直接返回 Err；写类子命令额外要求显式确认 token。"
+        },
+        {
+          "id": "ARCH-3",
+          "severity": "high",
+          "title": "apply_profile_sources 在只读加载路径上对 config['mcp_tools'][i] 做 in-place 变更式合并",
+          "evidence": "profile_loader.apply_profile_sources（profile_loader.py:87-109）读取 profile_sources 中的 client_mcp_attach 后，直接 `matched['mcp_attach'] = list(endpoints)` 写入 trunk 工具字典。副作用：①trunk 工具 dict 被覆盖写入；②has_explicit_attach 因此返回 True 翻转 check_agents 过滤模式（combined_checker.py:182）；③GUI 无法区分某 client 的 mcp_attach 来自 trunk 声明还是 overlay 合并（无 provenance）。",
+          "fix": "合并结果写到独立结构（如 config['_resolved_attach'] 或每个 tool 上的 _attach_source: trunk|overlay）而非污染 tool dict；或在 overlay 合并前快照各 client 的 has_explicit_attach 供 UI 消费。"
+        },
+        {
+          "id": "ARCH-4",
+          "severity": "medium",
+          "title": "skills 合规判定逻辑双份实现且 management_snapshot 未复用 combined_checker 的 L5 字段",
+          "evidence": "management_snapshot._client_skill_stats（management_snapshot.py:46）`compliant = bool(rows) and all(s=='correct')` 与 combined_checker._skills_compliant（combined_checker.py:16-22）是同一判定的两份独立实现，易漂移；且 management_snapshot 未调用 combined_checker._skill_state_fields / read_skill_states，导致管理 payload 缺少 per-skill enable 矩阵数据（L5）。",
+          "fix": "抽公共 skills-stats helper，management_snapshot 复用 combined_checker 的记录字段（含 skill_states/skill_link_form）而非重算，保证 CLI 与 GUI 数据契约一致。"
+        },
+        {
+          "id": "ARCH-5",
+          "severity": "medium",
+          "title": "管理快照串行探活且 spawn 无超时无取消，--management 调用长时间挂起",
+          "evidence": "build_management_snapshot（management_snapshot.py:157-171）对每个 profile 串行调用 check_agents(live_probe=True)（默认 live_probe=True，行 91），每端点探活可达 8s；lib.rs spawn 用 Command::output() 无超时；GUI loadManagement 的 Promise 长时间挂起，前端无取消能力。",
+          "fix": "端点探活改并发（线程池）或对 --management 默认 live_probe=False 快照、另设“探活”按钮触发；spawn 加超时并在 Rust 侧支持取消。"
+        },
+        {
+          "id": "ARCH-6",
+          "severity": "low",
+          "title": "_agent_entry 合并 mcp_tools+tools 去重后丢弃 MCP 配置定位字段",
+          "evidence": "_agent_entry（management_snapshot.py:65-77）返回的 dict 仅含 name/type/installed/install_evidence/aliases/mcp_attach/fix_supported + skill_stats，未透传 config_path/format/mcp_key_path/config_candidates/unified_name/legacy_names/hooks_config_path。mcp_tools+tools 去重（行 105-112）只保留首现 entry 的子集字段，GUI 无法据此定位或展示客户端原始 MCP 配置文件。",
+          "fix": "_agent_entry 显式透传 config_path/format/mcp_key_path/config_candidates（至少只读），供 UI 展示配置原文与未来编辑入口。"
+        }
+      ],
+      "summary": "三模块（endpoint_library/mcp_inventory/management_snapshot）职责边界清晰、读路径只读复用做得不错；但写目标分裂（unified_dir 写版本控制 config.yaml 违背隔离原则）、run_cli 无子命令白名单、apply_profile_sources 在只读路径 in-place 变更式合并是三处需优先收敛的架构隐患。"
+    },
+    {
+      "name": "UI/UX 交互视觉",
+      "findings": [
+        {
+          "id": "UI-1",
+          "severity": "high",
+          "title": "挂载端点被 nowrap+ellipsis 截断（截图 generic-http, h…）",
+          "evidence": "dashboard.html:81 `.row .v{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}`；renderAgents（dashboard.html:213）`<span class='v mono'>${escapeHtml(attach||'—')}</span>`，attach=多个端点 key join(', ')，长列表被省略号截断。",
+          "fix": "挂载端点改用已存在的 .pill-list+.skill-pill 多标签换行布局（dashboard.html:106-107）替换单 .v span；或至少给 .v 加 title 属性展示完整文本。"
+        },
+        {
+          "id": "UI-2",
+          "severity": "blocker",
+          "title": "未安装客户端仍渲染 Skills 合规判定（✓合规 root）",
+          "evidence": "renderAgents（dashboard.html:212）`${a.skills_compliant?'✓合规':'✗不合规'}` 三元无 a.installed 守卫；数据层 _client_skill_stats（management_snapshot.py:46）compliant 与 installed 解耦，未安装客户端因残留 root 软链被判定 compliant=True、link_form='root'，UI 误报“✓ 合规 root”（截图实锤）。",
+          "fix": "UI 改为 `${!a.installed?'<span class=ok-na>— 未安装</span>':(a.skills_compliant?'✓合规':'✗不合规')}`；对未安装卡片 .card 加灰显样式；数据层同步见 DATA-1。"
+        },
+        {
+          "id": "UI-3",
+          "severity": "high",
+          "title": "type 字段多数显示“—”",
+          "evidence": "renderAgents（dashboard.html:209）`${escapeHtml(a.type||'—')}`，_agent_entry 返回 `tool.get('type','')`（management_snapshot.py:70）；注册表多数 mcp_tools entry 未声明 type，而 scanner.infer_tool_type（scanner.py:46-68）仅用于自动发现、未回填注册表。",
+          "fix": "_agent_entry 调用 scanner.infer_tool_type(name) 兜底 type（import scanner 或下沉到 tool_registry）；或注册表补全 type 字段。"
+        },
+        {
+          "id": "UI-4",
+          "severity": "high",
+          "title": "卡片无点击展开/编辑/查看详情入口",
+          "evidence": "dashboard.html:207-215 .card 无 click handler、无编辑按钮，仅工具栏“+添加客户端”（行 137）；无任何卡片级详情/修改入口，无法满足用户“手动添加或修改配置”诉求。",
+          "fix": "卡片加 <button class='ghost btn-edit-agent' data-name>，点击展开右侧抽屉，含 config_path/mcp_attach/skills_paths 修改表单，调用 --update-client（需 CLI 补该子命令）。"
+        },
+        {
+          "id": "UI-5",
+          "severity": "medium",
+          "title": "tab 切换/加载期间无 spinner、按钮未禁用",
+          "evidence": "loadInternal（dashboard.html:341-347）await runCli 期间无 loading 指示，rescan 按钮未置 disabled（CSS button:disabled 存在但未触发）；--management 串行探活耗时长，用户无感知。",
+          "fix": "加载前置 showLoading() + 禁用按钮，完成或失败后清除；rescan 按钮加 spinner；可选骨架屏。"
+        },
+        {
+          "id": "UI-6",
+          "severity": "medium",
+          "title": "MCP/Skills 面板同样截断且无编辑入口",
+          "evidence": "renderMcp（dashboard.html:281-290）inventory 单元格受 td{white-space:nowrap}（行 90）+ .mono 约束，长 inventory 被截断；端点表仅“删除”按钮（行 273）无“编辑”。Skills 技能清单仅 pill（行 247），无编辑/启用入口。",
+          "fix": "MCP inventory 单元格改 pill-list+flex-wrap；端点表加“编辑”按钮调 --update-endpoint；技能 pill 加点击查看详情抽屉。"
+        },
+        {
+          "id": "UI-7",
+          "severity": "low",
+          "title": "次要文本/未探测态对比度偏低",
+          "evidence": "dashboard.html:103 .ok-na(#475569) on --panel(#131a2e)，“— 未探测”等次要文本偏暗；install_evidence .tag 用 --muted(#94a3b8) on --panel-2，对比度临界。",
+          "fix": "ok-na 提至 #64748b，tag 文字提亮一档（如 #cbd5e1），保证次要信息可读。"
+        }
+      ],
+      "summary": "信息截断（挂载端点 nowrap+ellipsis）、未安装误报合规、type 显示—、卡片无编辑入口是四项最影响可用性的 UI 问题；深色色阶整体尚可但次要态对比度偏低。需把“截断改换行 pill + 卡片可展开详情抽屉”作为本轮重点改造。"
+    },
+    {
+      "name": "数据契约与一致性",
+      "findings": [
+        {
+          "id": "DATA-1",
+          "severity": "blocker",
+          "title": "agents[].skills_compliant 语义 BUG：与 installed 解耦，未安装客户端误报合规",
+          "evidence": "_client_skill_stats（management_snapshot.py:39-62）`compliant = bool(rows) and all(s=='correct')`，与 installed 完全解耦；run_scan（scanner.py:254 check_all）对配置内但未安装的客户端仍产出 scan row（残留 root 软链→status 'correct'、expanded_path=软链），于是未安装客户端 compliant=True、link_form='root'。combined_checker._skills_compliant（combined_checker.py:16-22）有同一 BUG 模式（但 result_ok 行 262 以 installed gate 兜底，不波及退出码）。UI 三元无守卫（UI-2）放大为可见错误。",
+          "fix": "_agent_entry（management_snapshot.py:65-77）收到 install 后覆盖 skill_stats['skills_compliant'] = install['installed'] and skill_stats['skills_compliant']（或引入 tri-state 'n/a'）；UI 同步 gate（见 UI-2）；combined_checker._skills_compliant 同步按 installed 收敛。"
+        },
+        {
+          "id": "DATA-2",
+          "severity": "high",
+          "title": "_agent_entry payload 丢失 MCP 配置定位字段（config_path/format/mcp_key_path）",
+          "evidence": "_agent_entry 返回 dict（management_snapshot.py:68-77）未透传 config_path/format/mcp_key_path/config_candidates/unified_name/legacy_names/hooks_config_path。GUI 无法“查看客户端 MCP 配置原文”或定位配置文件。",
+          "fix": "_agent_entry 显式加入 config_path/format/mcp_key_path（只读），供 UI 展示与未来编辑入口。"
+        },
+        {
+          "id": "DATA-3",
+          "severity": "high",
+          "title": "mcp_attach 缺省=all 对 UI 不友好且无 provenance 标志",
+          "evidence": "resolve_client_attach（endpoint_library.py:35-49）无显式声明时返回全部端点；payload 中 mcp_attach=['a','b','c'] 与显式声明 ['a','b','c'] 无法区分。叠加 apply_profile_sources 的 in-place 合并后每个 client 看起来都“显式”。has_explicit_attach（endpoint_library.py:52-59）存在但仅 config 级、未 per-client 进 payload。",
+          "fix": "_agent_entry 增加 has_explicit_attach（在 overlay 合并前快照 tool.get('mcp_attach') 是否非空）+ attach_source，UI 据此标注“自动全部 vs 手动指定”。"
+        },
+        {
+          "id": "DATA-4",
+          "severity": "medium",
+          "title": "endpoint_status.probe 结构在未探测/异常时形状分裂",
+          "evidence": "check_agents 未探活时 probe={initialize_ok:False,tools_list_ok:False,tool_names:[],error:'not probed'}（combined_checker.py:172-174）；异常分支（management_snapshot.py:171）probe={error:str(exc)} 缺 initialize_ok/tools_list_ok。renderMcp（dashboard.html:263-266）靠 st.probe && st.probe.initialize_ok && st.probe.tools_list_ok 判定，异常分支落到“— 未探测”误导。",
+          "fix": "endpoint_status 统一 probe schema（始终含 initialize_ok/tools_list_ok/error/tool_names），异常分支也填齐字段（initialize_ok=False,tools_list_ok=False）。"
+        },
+        {
+          "id": "DATA-5",
+          "severity": "medium",
+          "title": "install_evidence 只携带粗粒度类别，无法满足“告诉用户检测到的是哪个安装的”",
+          "evidence": "detect_installation（tool_registry.py:19-26）evidence 仅 append 'app'/'cli'/'config' 字符串，不含实际 app bundle 路径/命令名/config 路径；_agent_entry 透传 install['evidence']（management_snapshot.py:72）。GUI 渲染 tag 仅显示类别（dashboard.html:211），未安装客户端 evidence=[] 无 tag。无法满足需求 2“无论是否已安装，都要告诉用户检测到的是哪个安装的”。",
+          "fix": "evidence 改为对象列表 [{kind:'app',path:'/Applications/Cursor.app'},...] 或并行返回 evidence_paths；_agent_entry 透传，UI 渲染具体路径。"
+        },
+        {
+          "id": "DATA-6",
+          "severity": "low",
+          "title": "skills 面板缺 per-skill enable 矩阵数据",
+          "evidence": "management_snapshot 仅调 _client_skill_stats（link form + compliant），未调 combined_checker._skill_state_fields / read_skill_states；payload 无每技能×每客户端 enabled/disabled 状态，GUI 无法画矩阵（需求 2a）。",
+          "fix": "skills_panel 增加 clients_skills:[{client,states:{skill:enabled|disabled}}]，复用 skill_state.read_skill_states。"
+        }
+      ],
+      "summary": "最严重的是 skills_compliant 语义 BUG（与 installed 解耦，根因横跨 _client_skill_stats + renderAgents 三元，直接产出截图误报）。其次 _agent_entry 丢失 config_path/format/mcp_key_path、mcp_attach 无 provenance、probe 结构分裂，共同导致 GUI 既看不全也无法编辑。"
+    },
+    {
+      "name": "功能覆盖与需求契合",
+      "findings": [
+        {
+          "id": "FEAT-1",
+          "severity": "blocker",
+          "title": "“一键合并到通用目录”仅 dry-run 未实写（需求 2d 未落地）",
+          "evidence": "dashboard.html:406-408 btn-merge-all 硬编码 runCli(['--fix-skills','--dry-run'])，banner 提示“写操作需在 CLI 执行 --fix-skills”。GUI 内无法完成实际合并。",
+          "fix": "确认后调用 --fix-skills（不带 --dry-run）走 endpoint_store/mcp_fixer 安全链，或弹窗内提供“预览→确认实写”两步流程。"
+        },
+        {
+          "id": "FEAT-2",
+          "severity": "blocker",
+          "title": "未安装客户端误报合规且未明示检测到哪些已安装（违背需求 2）",
+          "evidence": "需求 2“无论是否已安装，你都要告诉用户检测到的是哪个安装的”。现状：未安装客户端 Skills 路径误报“✓ 合规 root”（DATA-1/UI-2）；install_evidence 仅粗粒度类别（DATA-5），未明示具体检测到的安装证据；未安装客户端无“未检测到安装证据”明示。",
+          "fix": "数据层按 installed 收敛 compliant + evidence 细化到具体路径（DATA-1/DATA-5）；UI 未安装卡片灰显合规判定、明示“未检测到安装证据”。"
+        },
+        {
+          "id": "FEAT-3",
+          "severity": "high",
+          "title": "--add-client 只写 skills-only discovered，不能加带 MCP 的客户端（需求 1b 不完整）",
+          "evidence": "config_store.add_discovered_client（config_store.py:127-135）仅写 name/type/skills_paths，无 config_path/mcp_key_path/format/mcp_attach；GUI“添加客户端”弹窗（dashboard.html:355-359）也只有 name/path/type 三字段。无法手动添加带 MCP 的客户端。",
+          "fix": "弹窗增加 MCP 配置段（config_path/format/mcp_key_path/mcp_attach 多选），add_discovered_client 透传这些字段写入 discovered_tools.yaml。"
+        },
+        {
+          "id": "FEAT-4",
+          "severity": "high",
+          "title": "MCP 端点库无“编辑端点”按钮只有删除（需求 3c 不完整）",
+          "evidence": "renderMcp（dashboard.html:273）端点表只有“删除”按钮，无编辑 url/name 入口；endpoint_store.update_endpoint（endpoint_store.py:132-151）已提供但 GUI 未接、CLI 未暴露。",
+          "fix": "端点表加“编辑”按钮，弹窗改 url/name，调用 --update-endpoint（需 CLI 暴露 update_endpoint）。"
+        },
+        {
+          "id": "FEAT-5",
+          "severity": "high",
+          "title": "自动发现结果 GUI 不可见（需求 1b 半残）",
+          "evidence": "run_scan 产出 new_tools/new_tools_count（scanner.py:241-246,271），但 management_snapshot 不透传；agents 面板源自 config.mcp_tools+tools（management_snapshot.py:105），不含 discovered_tools.yaml 合并项；skills 面板 clients 也用 SNAP.agents。自动发现的客户端/技能在 UI 无体现。",
+          "fix": "skills_panel 或 agents_panel 增加 discovered:[...] + new_tools_count，UI 标 🆕 展示，并提供“纳入注册表”入口。"
+        },
+        {
+          "id": "FEAT-6",
+          "severity": "medium",
+          "title": "MCP 栏无“某客户端是否配置某端点”明确判定矩阵（需求 3b）",
+          "evidence": "renderMcp clients 表（dashboard.html:281-290）展示 inventory 分类 tag（attached/legacy/unmanaged），但无“端点 X × 客户端 Y = ✓已配置/✗未配置”矩阵或明确判定文本。",
+          "fix": "增加端点×客户端矩阵表，单元格用 resolve_client_attach + inventory_client 判定 ✓/✗，并支持配置多个 MCP（需求 3c 多端点已在端点库支持，需在矩阵可视化）。"
+        },
+        {
+          "id": "FEAT-7",
+          "severity": "medium",
+          "title": "Skills 技能清单无“每技能哪些客户端启用”矩阵（需求 2a）",
+          "evidence": "renderSkills（dashboard.html:247）仅 pill 列技能名，无 per-client 启用状态；payload 也缺该数据（DATA-6）。",
+          "fix": "增加 skills×clients 矩阵，复用 read_skill_states 数据，单元格 enabled/disabled 着色，支持点击切换（调 write_skill_state）。"
+        },
+        {
+          "id": "FEAT-8",
+          "severity": "low",
+          "title": "无刷新单个 tab 能力、无查看客户端 MCP 配置原文入口",
+          "evidence": "rescan 仅在 agents 工具栏（dashboard.html:136），skills/mcp 无独立刷新；卡片无“查看配置原文”按钮（payload 也缺 config_path，DATA-2）。",
+          "fix": "每个 panel 加刷新按钮（仅重载该 tab 数据）；卡片加“查看配置”按钮在抽屉展示 config_path 原文（需 CLI 提供 --cat-client-config 或前端读文件）。"
+        }
+      ],
+      "summary": "需求契合度：需求 2d（一键合并）与需求 2（明示检测到的安装）有两条 blocker 未落地/误报；需求 1b（手动配置/自动检查）与需求 3b/3c（端点×客户端判定、编辑端点）半残；需求 2a（技能启用矩阵）仅有 pill 名单。整体功能覆盖约 50%，核心写操作与判定矩阵需补齐。"
+    }
+  ],
+  "overall_summary": "阶段五管理台三栏骨架与读侧数据流（endpoint_library/mcp_inventory/management_snapshot）抽象清晰、安全链（备份→原子写→re-parse→回滚）到位，但存在三处阻断项：①skills_compliant 语义 BUG（数据层与 installed 解耦 + UI 无守卫）直接产出截图“未安装却✓合规”的硬伤；②“一键合并”仅 dry-run 未实写，需求 2d 未落地；③unified_dir 个人拓扑被写进版本控制 config.yaml，违背自身隔离原则。建议优先修 DATA-1/UI-2、FEAT-1、ARCH-1 三项，再补卡片编辑入口与端点×客户端判定矩阵。"
+}

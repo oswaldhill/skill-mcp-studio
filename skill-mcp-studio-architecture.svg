@@ -1,0 +1,140 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1020 900" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace">
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+    </pattern>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/>
+    </marker>
+    <marker id="arrowR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#fb7185"/>
+    </marker>
+  </defs>
+
+  <rect width="1020" height="900" fill="#020617"/>
+  <rect width="1020" height="900" fill="url(#grid)"/>
+
+  <text x="30" y="32" font-size="20" font-weight="700" fill="#f1f5f9">Skill MCP Studio · 架构</text>
+  <text x="30" y="52" font-size="11" fill="#64748b">v0.19.0 (build 103) · 本地多客户端 Skill / MCP 合规审计与修复</text>
+
+  <!-- ============ L1 桌面壳 + GUI (frontend cyan) ============ -->
+  <g>
+    <rect x="30" y="70" width="960" height="150" fill="rgba(8,51,68,0.30)" stroke="#22d3ee" stroke-width="1.5" rx="8"/>
+    <rect x="30" y="70" width="960" height="150" fill="#0f172a" rx="8"/>
+    <rect x="30" y="70" width="960" height="150" fill="rgba(8,51,68,0.30)" stroke="#22d3ee" stroke-width="1.5" rx="8"/>
+    <text x="46" y="94" font-size="12" font-weight="700" fill="#22d3ee">① 桌面壳 · Tauri v2（frontendDist = ../gui）</text>
+
+    <rect x="46" y="106" width="300" height="98" fill="rgba(8,51,68,0.40)" stroke="#22d3ee" stroke-width="1.5" rx="6"/>
+    <text x="58" y="128" font-size="12" font-weight="600" fill="#e2e8f0">skill-mcp-studio.app</text>
+    <text x="58" y="148" font-size="10" fill="#7dd3fc">macOS 桌面应用</text>
+    <text x="58" y="164" font-size="10" fill="#7dd3fc">webview 直接装载 dashboard.html</text>
+    <text x="58" y="180" font-size="10" fill="#475569">无构建步骤 · 单文件静态页</text>
+
+    <rect x="362" y="106" width="436" height="98" fill="rgba(8,51,68,0.40)" stroke="#22d3ee" stroke-width="1.5" rx="6"/>
+    <text x="374" y="128" font-size="12" font-weight="600" fill="#e2e8f0">gui/dashboard.html · 五页管理台</text>
+    <text x="374" y="148" font-size="10" fill="#7dd3fc">概览 · IDE/Agent · Skills · MCP · 设置</text>
+    <text x="374" y="166" font-size="10" fill="#7dd3fc">通用配置（设置页）与业务动作（各页）分离</text>
+    <text x="374" y="190" font-size="10" fill="#475569">消费管快照 --management --format json</text>
+
+    <rect x="814" y="106" width="160" height="98" fill="rgba(8,51,68,0.40)" stroke="#22d3ee" stroke-width="1.5" rx="6"/>
+    <text x="826" y="128" font-size="12" font-weight="600" fill="#e2e8f0">桥接</text>
+    <text x="826" y="150" font-size="10" fill="#7dd3fc">run_audit</text>
+    <text x="826" y="166" font-size="10" fill="#475569">只读快照</text>
+    <text x="826" y="186" font-size="10" fill="#7dd3fc">run_cli</text>
+    <text x="826" y="202" font-size="10" fill="#475569">命令透传</text>
+  </g>
+
+  <!-- arrow L1 -> L2 -->
+  <line x1="510" y1="220" x2="510" y2="240" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- ============ L2 CLI (backend emerald) ============ -->
+  <g>
+    <rect x="30" y="248" width="960" height="74" fill="rgba(6,78,59,0.30)" stroke="#34d399" stroke-width="1.5" rx="8"/>
+    <rect x="30" y="248" width="960" height="74" fill="#0f172a" rx="8"/>
+    <rect x="30" y="248" width="960" height="74" fill="rgba(6,78,59,0.30)" stroke="#34d399" stroke-width="1.5" rx="8"/>
+    <text x="46" y="272" font-size="12" font-weight="700" fill="#34d399">② CLI 入口 · scan.py</text>
+    <text x="46" y="292" font-size="11" fill="#a7f3d0">多阶段主流程 + 各子命令早返回（--skills / --mcp / --hooks / --fix-skills / --fix-mcp / …）</text>
+    <text x="46" y="310" font-size="10" fill="#64748b">退出码 0 全绿 · 1 不合规 · 2 配置或写操作执行错误</text>
+  </g>
+
+  <!-- rose security note -->
+  <text x="30" y="338" font-size="10" fill="#fb7185">写操作安全链：备份 → 原子写 → 校验 → 回滚</text>
+
+  <line x1="510" y1="322" x2="510" y2="350" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- ============ L3 core 域 (backend emerald) ============ -->
+  <g>
+    <rect x="30" y="358" width="960" height="262" fill="rgba(6,78,59,0.26)" stroke="#34d399" stroke-width="1.5" rx="8"/>
+    <rect x="30" y="358" width="960" height="262" fill="#0f172a" rx="8"/>
+    <rect x="30" y="358" width="960" height="262" fill="rgba(6,78,59,0.26)" stroke="#34d399" stroke-width="1.5" rx="8"/>
+    <text x="46" y="382" font-size="12" font-weight="700" fill="#34d399">③ 核心域 core/ · 39 模块</text>
+
+    <!-- row 1 -->
+    <rect x="46" y="394" width="464" height="60" fill="rgba(6,78,59,0.35)" stroke="#34d399" stroke-width="1" rx="5"/>
+    <text x="58" y="414" font-size="11" font-weight="600" fill="#a7f3d0">Skills 链路</text>
+    <text x="58" y="434" font-size="9" fill="#6ee7b7">checker · fixer（symlink 对齐 + 修复）</text>
+
+    <rect x="526" y="394" width="464" height="60" fill="rgba(6,78,59,0.35)" stroke="#34d399" stroke-width="1" rx="5"/>
+    <text x="538" y="414" font-size="11" font-weight="600" fill="#a7f3d0">MCP 链路</text>
+    <text x="538" y="434" font-size="9" fill="#6ee7b7">mcp_checker · mcp_fixer · mcp_probe · mcp_inventory</text>
+
+    <!-- row 2 -->
+    <rect x="46" y="462" width="464" height="60" fill="rgba(6,78,59,0.35)" stroke="#34d399" stroke-width="1" rx="5"/>
+    <text x="58" y="482" font-size="11" font-weight="600" fill="#a7f3d0">综合审计</text>
+    <text x="58" y="502" font-size="9" fill="#6ee7b7">combined_checker · hooks_checker · change_tracker</text>
+
+    <rect x="526" y="462" width="464" height="60" fill="rgba(6,78,59,0.35)" stroke="#34d399" stroke-width="1" rx="5"/>
+    <text x="538" y="482" font-size="11" font-weight="600" fill="#a7f3d0">profile 与能力组</text>
+    <text x="538" y="502" font-size="9" fill="#6ee7b7">profile_loader · capability_templates · multi_profile_reporter</text>
+
+    <!-- row 3 -->
+    <rect x="46" y="530" width="464" height="60" fill="rgba(6,78,59,0.35)" stroke="#34d399" stroke-width="1" rx="5"/>
+    <text x="58" y="550" font-size="11" font-weight="600" fill="#a7f3d0">按需启停（L5）</text>
+    <text x="58" y="570" font-size="9" fill="#6ee7b7">skill_state · skill_toggle · skill_state_auditor · skill_link_migrator</text>
+
+    <rect x="526" y="530" width="464" height="60" fill="rgba(6,78,59,0.35)" stroke="#34d399" stroke-width="1" rx="5"/>
+    <text x="538" y="550" font-size="11" font-weight="600" fill="#a7f3d0">管理台与端点库</text>
+    <text x="538" y="570" font-size="9" fill="#6ee7b7">management_snapshot · endpoint_library · endpoint_store</text>
+
+    <text x="46" y="610" font-size="9" fill="#64748b">+ 支撑：scanner · reporter · tool_registry · mainstream_registry · git_sync · workspace_cleaner · change_tracker 等</text>
+  </g>
+
+  <line x1="510" y1="620" x2="510" y2="648" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- ============ L4 数据与配置 (database violet) ============ -->
+  <g>
+    <rect x="30" y="656" width="960" height="88" fill="rgba(76,29,149,0.30)" stroke="#a78bfa" stroke-width="1.5" rx="8"/>
+    <rect x="30" y="656" width="960" height="88" fill="#0f172a" rx="8"/>
+    <rect x="30" y="656" width="960" height="88" fill="rgba(76,29,149,0.30)" stroke="#a78bfa" stroke-width="1.5" rx="8"/>
+    <text x="46" y="680" font-size="12" font-weight="700" fill="#a78bfa">④ 数据与配置</text>
+    <text x="46" y="700" font-size="10" fill="#c4b5fd">config.yaml（主干注册表 · 入库） · data/discovered_tools.yaml + data/local_overrides.yaml（忽略） · version.json（X.Y.Z + build）</text>
+    <text x="46" y="724" font-size="9" fill="#64748b">三源客户端：声明（config.yaml）· 自动发现 · 手动添加（discovered_tools.yaml）；三态安装：installed / config_only / none</text>
+  </g>
+
+  <line x1="510" y1="744" x2="510" y2="772" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- ============ L5 外部资源 (external slate) ============ -->
+  <g>
+    <rect x="30" y="780" width="960" height="80" fill="rgba(30,41,59,0.50)" stroke="#94a3b8" stroke-width="1.5" rx="8"/>
+    <rect x="30" y="780" width="960" height="80" fill="#0f172a" rx="8"/>
+    <rect x="30" y="780" width="960" height="80" fill="rgba(30,41,59,0.50)" stroke="#94a3b8" stroke-width="1.5" rx="8"/>
+    <text x="46" y="804" font-size="12" font-weight="700" fill="#94a3b8">⑤ 外部资源</text>
+    <text x="46" y="824" font-size="10" fill="#cbd5e1">endpoint profiles（真实 MCP 端点 · profile_sources 仓库外）</text>
+    <text x="46" y="842" font-size="10" fill="#cbd5e1">共享 Skills 仓库 unified_dir（各客户端 symlink 统一目标） · 外部 MCP 端点（streamable-http / stdio）</text>
+  </g>
+
+  <!-- ============ legend ============ -->
+  <g>
+    <text x="30" y="886" font-size="10" font-weight="600" fill="#64748b">图例</text>
+    <rect x="76" y="874" width="12" height="12" fill="rgba(8,51,68,0.40)" stroke="#22d3ee" stroke-width="1"/>
+    <text x="94" y="885" font-size="10" fill="#94a3b8">前端 / 桌面壳</text>
+    <rect x="200" y="874" width="12" height="12" fill="rgba(6,78,59,0.40)" stroke="#34d399" stroke-width="1"/>
+    <text x="218" y="885" font-size="10" fill="#94a3b8">CLI / 核心域</text>
+    <rect x="306" y="874" width="12" height="12" fill="rgba(76,29,149,0.40)" stroke="#a78bfa" stroke-width="1"/>
+    <text x="324" y="885" font-size="10" fill="#94a3b8">数据与配置</text>
+    <rect x="402" y="874" width="12" height="12" fill="rgba(30,41,59,0.50)" stroke="#94a3b8" stroke-width="1"/>
+    <text x="420" y="885" font-size="10" fill="#94a3b8">外部资源</text>
+    <line x1="520" y1="880" x2="560" y2="880" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="4,4"/>
+    <text x="568" y="885" font-size="10" fill="#fb7185">安全链（写操作）</text>
+  </g>
+</svg>

@@ -1,0 +1,34 @@
+# Runtime state (local scan snapshots, discovered tools)
+data/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Packaging
+build/
+dist/
+*.egg-info/
+
+# macOS
+.DS_Store
+
+# Rust / Tauri build artifacts & local toolchain cache (CARGO_HOME redirect)
+.cargo-home/
+.rustup-home/
+.npm-cache/
+src-tauri/target/
+src-tauri/gen/
+
+# Tool-generated backups & reports
+*.bak-*
+scan-report.md
+
+# Personal topology will be moved out in phase-1 step 4; keep untracked until then
+profiles-hermes-home/

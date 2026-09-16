@@ -1,0 +1,62 @@
+{
+  "angle": "功能覆盖与需求契合",
+  "findings": [
+    {
+      "id": "FEAT-1",
+      "severity": "high",
+      "title": "--add-client 仅能录入 skills-only 客户端，无法添加带 MCP 配置的客户端（缺 config_path/format/mcp_key_path）",
+      "evidence": "需求1(b) 手动配置。scan.py L831-842 argparse 仅 --add-client/--client-skills-path/--client-type；_run_add_client(L273-282) 透传 add_discovered_client；config_store.py L107-151 写入 entry 仅含 name/type/backup_suffix/auto_discovered/skills_paths(L127-134)，无 config_path/format/mcp_key_path。dashboard.html L351-379「添加客户端」弹窗也只有 name/skills path/type 三项。结果：手动添加的客户端无法被 mcp_fixer 写入或 inventory_client 读取其 MCP 配置，需求1(b) 手动路径在 MCP 场景下不完整。",
+      "fix": "argparse 增 --client-config-path/--client-mcp-format(json|toml)/--client-mcp-key-path；add_discovered_client 写入这些字段；GUI 添加客户端弹窗补对应输入项，使手动添加的客户端可被 MCP 检查/修复链路识别。"
+    },
+    {
+      "id": "FEAT-2",
+      "severity": "blocker",
+      "title": "「一键合并到通用目录」按钮仅 dry-run 预览不实写，需求2(d) 未真正落地",
+      "evidence": "需求2(d)。dashboard.html L148 按钮「🧲 一键合并到通用目录」；L404-408 处理器 runCli(['--fix-skills','--dry-run'])，banner 文案「预览完成（写操作需在 CLI 执行 --fix-skills）」。--dry-run 被硬编码，永远不调用 fix_all 实写，GUI 内无法完成合并，按钮名与实际行为不符。",
+      "fix": "按钮拆两步：先 --fix-skills --dry-run 预览将变更的客户端/链接，确认后再以不带 --dry-run 的 --fix-skills 实写（复用 mcp_fixer 备份-原子-回滚），写后 loadInternal 复检并刷新 Skills 栏。"
+    },
+    {
+      "id": "FEAT-3",
+      "severity": "medium",
+      "title": "MCP 栏无「客户端×端点」判定矩阵，是否配置某 MCP 仅靠 inventory 标签隐含推断",
+      "evidence": "需求3(b) 检查 IDE/Agent 是否配置了该 MCP。dashboard.html L281-290 mcp-clients 表展示「挂载端点」(mcp_attach) 与「MCP 条目（分类 attached/legacy/unmanaged）」，但无显式「客户端×端点」✓/✗ 矩阵；用户需自行交叉比对 attach 与 inventory 才能判定某客户端是否配置了某端点，覆盖度判定不直观。",
+      "fix": "renderMcp 增矩阵视图：行=客户端、列=端点 key，单元格按 inventory 分类着色（已配置且指向受管端点=绿✓ / legacy=黄 / 未配置=灰✗），一眼判定每个端点在各客户端的覆盖度。"
+    },
+    {
+      "id": "FEAT-4",
+      "severity": "high",
+      "title": "自动发现(auto_discover)在 GUI 既不触发也不展示，需求1(b) 自动检查半残",
+      "evidence": "需求1(b) 自动检查。scan.py _run_management(L257-270) 仅当 auto_discover=args.discover(L264) 时才发现新工具；dashboard.html L319-332 loadManagement 与 L340-347 doRescan/loadInternal 均调用 runCli(['--management','--format','json'])，从不传 --discover；侧栏与按钮无「自动发现新客户端」入口，发现结果(discovered_tools.yaml 新条目)无评审/接受 UI。结果：GUI 内新装 IDE/Agent 不会自动出现，需求1(b) 自动检查在 GUI 侧失效。",
+      "fix": "「重新扫描」改为 runCli(['--management','--format','json','--discover']) 或新增「自动发现」按钮；management 快照输出 discovered_candidates 字段并在 IDE/Agent 栏以「待确认」卡片展示，提供接受/忽略操作写入 discovered_tools.yaml。"
+    },
+    {
+      "id": "FEAT-5",
+      "severity": "high",
+      "title": "Skills 技能清单仅为 pill 列表，缺「技能×客户端」安装/启用矩阵，需求2(a) 检查不完整",
+      "evidence": "需求2(a) 检查所有 Skill 安装。dashboard.html L244-248 skills-list 仅 list.map 渲染 skill-pill 名称标签；L229-242 skills-clients 表为「客户端×安装/合规/形态/路径」，无每技能维度。CLI 已有 --list-skill-states 输出 on/off/- 矩阵(scan.py L352-397) 但 GUI 未渲染。结果：用户看不到「某技能在哪些客户端启用/安装」的全貌，无法核对所有 Skill 的安装覆盖。",
+      "fix": "Skills 栏渲染技能×客户端矩阵（复用 --list-skill-states 数据或 management 快照内嵌 skill_states），单元格 on=绿/off=黄/-=灰，支持点击跳转启停；对未安装某技能的客户端高亮提示。"
+    },
+    {
+      "id": "FEAT-6",
+      "severity": "medium",
+      "title": "端点库表只有删除按钮缺「编辑端点」，多 MCP 管理不完整",
+      "evidence": "需求3(c) 支持配置多个 MCP。dashboard.html L260-275 endpoints-list 表「操作」列仅 btn-rm-endpoint 删除(L273)；CLI 已支持 --update-endpoint + --set-url/--set-name(scan.py L795-818, _run_update_endpoint L191-200)，endpoint_store.update_endpoint(L132-151) 可改 url/name，但 GUI 未暴露，改 URL 需删除重建丢失 mcp_attach 关联。另 _run_add_endpoint(L177) 硬编码 transport='streamable-http'，stdio 端点无法经 GUI 添加。",
+      "fix": "端点行增「编辑」按钮弹窗复用 --update-endpoint/--set-url/--set-name；添加端点弹窗补 transport 选择(streamable-http|stdio) 与 command/args 字段，并透传 --endpoint-required-yaml。"
+    },
+    {
+      "id": "FEAT-7",
+      "severity": "low",
+      "title": "无单 tab 刷新能力，刷新即重跑全量 --management 快照",
+      "evidence": "dashboard.html L349 btn-rescan→doRescan→loadInternal→runCli(['--management','--format','json'])→render→renderAll() 同时重绘 IDE/Skills/MCP 三栏(L293-297)；三个 section 内无独立刷新按钮。MCP 探活较重时整页刷新成本高，且无法仅重探某端点连通性。",
+      "fix": "每栏 toolbar 增「刷新本栏」按钮，后端支持按栏返回子快照(--management --panel mcp)或前端缓存 SNAP 仅重渲染对应栏；端点探活可独立触发不连带重扫客户端。"
+    },
+    {
+      "id": "FEAT-8",
+      "severity": "medium",
+      "title": "客户端卡片无「查看/编辑 MCP 配置文件原文」入口，配置正确性无法逐文件核验",
+      "evidence": "需求1(c) 检查是否配置正确 / 3(b)。dashboard.html L197-217 renderAgents 卡片仅展示 安装/Skills路径/挂载端点，无「查看 MCP 配置」按钮；GUI 无入口查看客户端 MCP 配置文件原文(如 ~/.cursor/mcp.json)。CLI inventory_client 给出分类但无原文查看。结果：用户无法在 GUI 内核验某客户端 MCP 配置文件的具体内容/正确性，配置正确性判定停留在汇总层。",
+      "fix": "客户端卡片增「查看 MCP 配置」按钮，弹窗展示该客户端 config_path 对应文件原文(只读高亮)与每条目分类标注，必要时提供「在编辑器打开」入口；复用 inventory_client 解析结果标注归属端点。"
+    }
+  ],
+  "summary": "需求契合度：1(a)✓；1(b) 部分（手动仅 skills-only 缺 MCP 字段 FEAT-1、自动发现 GUI 不触发 FEAT-4）；1(c) 部分（无配置文件原文核验 FEAT-8）；2(a) 部分（无技能×客户端矩阵 FEAT-5）；2(b)✓ 设置统一目录；2(c)✓ root/per_skill/mixed 形态判定；2(d) 未落地（FEAT-2 blocker，按钮名不副实）；3(a)✓ 手动加端点+自动 inventory 识别；3(b) 部分（无判定矩阵 FEAT-3）；3(c) 部分（无编辑端点、stdio 不可加 FEAT-6）。阻塞项 FEAT-2；高优 FEAT-1/4/5 三处需求半残；FEAT-3/6/8 管理完整性缺口；FEAT-7 体验项。建议优先级：FEAT-2 > FEAT-4/5/1 > FEAT-3/6/8 > FEAT-7。"
+}

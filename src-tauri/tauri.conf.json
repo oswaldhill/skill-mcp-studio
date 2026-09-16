@@ -1,0 +1,36 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "skill-mcp-studio",
+  "version": "0.19.0",
+  "identifier": "io.skillmcp.studio",
+  "build": {
+    "frontendDist": "../gui"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "Skill MCP Studio · 管理台",
+        "width": 1280,
+        "height": 860,
+        "minWidth": 900,
+        "minHeight": 600,
+        "url": "dashboard.html"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}

@@ -1,0 +1,27 @@
+[package]
+name = "skill-mcp-studio"
+version = "0.19.0"
+description = "Skill MCP Studio — read-only audit dashboard (Tauri shell)"
+authors = ["skill-mcp-studio"]
+edition = "2021"
+rust-version = "1.77"
+
+# Tauri 2 requires the crate-type list below for the mobile targets; keep it
+# even though phase 3 only ships macOS.
+[lib]
+name = "skill_mcp_studio_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[features]
+# This feature is required by the default `tauri` build for the custom
+# asset protocol; enable it to match the upstream v2 template.
+custom-protocol = ["tauri/custom-protocol"]
