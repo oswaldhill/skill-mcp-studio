@@ -370,9 +370,38 @@ Tauri 壳在 `src-tauri/`（`cargo tauri build` 产出 `.app`），构建步骤�
 # 单元测试
 python3 -m pytest tests/ -q
 
-# 桌面 App 构建（macOS）
+# 桌面 App 构建（macOS，本机架构）
 cargo tauri build --target aarch64-apple-darwin
+
+# 通用二进制（Intel + Apple Silicon 单 .app，Tauri 自动 lipo 合并）
+rustup target add x86_64-apple-darwin
+cargo tauri build --target universal-apple-darwin
 ```
+
+### CI / 发布（GitHub Actions）
+
+[`.github/workflows/build-macos.yml`](.github/workflows/build-macos.yml) 自动化构建与发布：
+
+| 触发 | 行为 |
+| --- | --- |
+| push / PR 到 `master` | 构建 universal `.app` + `.dmg`，上传为 workflow artifact |
+| 手动 `workflow_dispatch` | 同上 |
+| push `v*` tag（如 `v0.19.0`） | 构建并**自动创建 GitHub Release**，上传 `.dmg` 与 `.app.zip` |
+
+产物为**通用二进制（universal）**，原生运行于 Intel 与 Apple Silicon，无需 Rosetta。
+
+**签名与公证（可选）**：未配置证书时自动回退 ad-hoc 签名（本机可运行，未公证，
+分发他人需右键打开）。要启用正式签名 + 公证，在仓库 Settings → Secrets and
+variables → Actions 配置以下 secrets：
+
+| Secret | 说明 |
+| --- | --- |
+| `APPLE_CERTIFICATE` | `Developer ID Application` 证书导出 `.p12` 的 base64（`openssl base64 -A -in cert.p12`） |
+| `APPLE_CERTIFICATE_PASSWORD` | 上述 `.p12` 的密码 |
+| `APPLE_SIGNING_IDENTITY` | 签名身份（如 `Developer ID Application: Name (TEAMID)`） |
+| `APPLE_ID` | Apple ID 邮箱（公证用） |
+| `APPLE_PASSWORD` | App 专用密码（公证用，非 Apple ID 登录密码） |
+| `APPLE_TEAM_ID` | 团队 ID（公证用） |
 
 部署相关的 endpoint 细节（网络可达性、DNS、反代路由）属于各 profile 独立仓库
 （`profile_sources`），不属于本工具本体。
