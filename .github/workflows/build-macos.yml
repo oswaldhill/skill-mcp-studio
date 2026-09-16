@@ -16,6 +16,11 @@ jobs:
     name: Build universal macOS app (Intel + Apple Silicon)
     runs-on: macos-14
     timeout-minutes: 45
+    env:
+      # 将 secret 提升为 job 级环境变量，供步骤 if 条件判断。
+      # （GitHub Actions 的 secrets 上下文不可直接在 if 表达式中使用）
+      ACTIONS_APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      ACTIONS_APPLE_ID: ${{ secrets.APPLE_ID }}
 
     steps:
       - name: Checkout
@@ -43,7 +48,7 @@ jobs:
       # 仅当配置了 APPLE_CERTIFICATE（base64 .p12）时导入证书并启用正式签名 + 公证；
       # 未配置时跳过此步，Tauri 自动回退到 ad-hoc 签名（本机可运行，未公证）。
       - name: Import Apple signing certificate
-        if: ${{ secrets.APPLE_CERTIFICATE != '' }}
+        if: ${{ env.ACTIONS_APPLE_CERTIFICATE != '' }}
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -79,7 +84,7 @@ jobs:
         run: tauri build --target universal-apple-darwin
 
       - name: Verify signature (when signed)
-        if: ${{ secrets.APPLE_CERTIFICATE != '' }}
+        if: ${{ env.ACTIONS_APPLE_CERTIFICATE != '' }}
         run: |
           APP=$(find src-tauri/target -type d -name 'skill-mcp-studio.app' | head -1)
           if [ -n "$APP" ]; then
