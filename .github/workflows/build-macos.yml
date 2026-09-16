@@ -1,17 +1,21 @@
-name: Build macOS App
+name: Build & Release macOS App
 
 on:
   push:
     branches: [master]
+    tags: ['v*']
   pull_request:
     branches: [master]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-macos:
-    name: Build macOS (.app + .dmg, arm64)
+    name: Build universal macOS app (Intel + Apple Silicon)
     runs-on: macos-14
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
@@ -20,7 +24,8 @@ jobs:
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-darwin
+          # universal-apple-darwin 需要同时具备两个目标，Tauri 会自动 lipo 合并
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
 
       - name: Cache Cargo dependencies
         uses: swatinem/rust-cache@v2
@@ -35,31 +40,89 @@ jobs:
       - name: Install Tauri CLI
         run: npm install -g @tauri-apps/cli@2
 
-      # 本项目前端为纯静态单文件（gui/dashboard.html，frontendDist=../gui），无 npm
-      # 构建步骤，故直接 tauri build（runner 为 arm64，产物默认落 target/release/）。
-      # 无 Apple 证书时 Tauri 做 ad-hoc 签名（本机可运行，未公证）。
-      - name: Build Tauri app
-        working-directory: src-tauri
-        run: tauri build
-
-      - name: Build DMG
+      # 仅当配置了 APPLE_CERTIFICATE（base64 .p12）时导入证书并启用正式签名 + 公证；
+      # 未配置时跳过此步，Tauri 自动回退到 ad-hoc 签名（本机可运行，未公证）。
+      - name: Import Apple signing certificate
+        if: ${{ secrets.APPLE_CERTIFICATE != '' }}
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD || 'ci-temp-keychain-password' }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
-          APP="src-tauri/target/release/bundle/macos/skill-mcp-studio.app"
-          STAGE="dist/dmg"
-          mkdir -p "$STAGE"
-          cp -R "$APP" "$STAGE/"
-          ln -s /Applications "$STAGE/Applications"
+          echo "$APPLE_CERTIFICATE" | base64 --decode > certificate.p12
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -t 3600 -u build.keychain
+          security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+          security find-identity -v -p codesigning build.keychain
+          rm -f certificate.p12
+          # 将签名/公证凭据透传给后续构建步骤（值不会打印到日志）
+          {
+            echo "APPLE_SIGNING_IDENTITY=${APPLE_SIGNING_IDENTITY}"
+            echo "APPLE_ID=${APPLE_ID}"
+            echo "APPLE_PASSWORD=${APPLE_PASSWORD}"
+            echo "APPLE_TEAM_ID=${APPLE_TEAM_ID}"
+          } >> "$GITHUB_ENV"
+
+      # 项目前端为纯静态单文件（gui/dashboard.html，frontendDist=../gui），无 npm
+      # 构建步骤。universal-apple-darwin：Tauri 分别编译 arm64/x86_64 并 lipo 合并，
+      # 产出单一 .app，原生运行于 Intel 与 Apple Silicon。
+      - name: Build Tauri app (universal)
+        working-directory: src-tauri
+        run: tauri build --target universal-apple-darwin
+
+      - name: Verify signature (when signed)
+        if: ${{ secrets.APPLE_CERTIFICATE != '' }}
+        run: |
+          APP=$(find src-tauri/target -type d -name 'skill-mcp-studio.app' | head -1)
+          if [ -n "$APP" ]; then
+            codesign -dv --verbose=4 "$APP" 2>&1 || true
+          fi
+
+      - name: Package DMG + app.zip
+        run: |
+          set -euo pipefail
+          APP="src-tauri/target/universal-apple-darwin/release/bundle/macos/skill-mcp-studio.app"
+          [ -d "$APP" ] || APP=$(find src-tauri/target -type d -name 'skill-mcp-studio.app' | head -1)
+          echo "App bundle: $APP"
+          mkdir -p dist/dmg
+          cp -R "$APP" dist/dmg/
+          ln -s /Applications dist/dmg/Applications
           hdiutil create \
             -volname "Skill MCP Studio" \
-            -srcfolder "$STAGE" \
+            -srcfolder dist/dmg \
             -ov -format UDZO \
-            "dist/Skill-MCP-Studio.dmg"
+            "dist/Skill-MCP-Studio-universal.dmg"
+          # 将 .app 打包为 zip 供直接下载（保留 bundle 结构与符号链接）
+          ditto -c -k --keepParent "$APP" "dist/skill-mcp-studio-universal.app.zip"
+          ls -la dist/
 
-      - name: Upload artifacts
+      # 非 tag 触发（push/PR/manual）：仅上传构建产物作为 artifact 校验
+      - name: Upload artifacts (build validation)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         uses: actions/upload-artifact@v4
         with:
-          name: skill-mcp-studio-macos-arm64
+          name: skill-mcp-studio-macos-universal
+          if-no-files-found: error
           path: |
-            src-tauri/target/release/bundle/macos/*.app
-            dist/*.dmg
+            dist/Skill-MCP-Studio-universal.dmg
+            dist/skill-mcp-studio-universal.app.zip
+
+      # tag 触发（v*）：创建/更新 GitHub Release 并上传产物，自动生成 release notes
+      - name: Publish GitHub Release
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/Skill-MCP-Studio-universal.dmg
+            dist/skill-mcp-studio-universal.app.zip
+          generate_release_notes: true
+          draft: false
+          prerelease: false
