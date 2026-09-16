@@ -1,6 +1,11 @@
 # Skill MCP Studio
 
-> 版本 `v0.19.0`（build 103） · MIT · Python ≥ 3.11
+<p align="center">
+  <img src="https://img.shields.io/badge/version-v0.19.0-blue" alt="version">
+  <img src="https://img.shields.io/badge/build-103-lightgrey" alt="build">
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="license">
+  <img src="https://img.shields.io/badge/python-%3E%3D3.11-3776AB" alt="python">
+</p>
 
 **Skill MCP Studio** 是一套本地多客户端 **Skill / MCP 合规审计与修复工具**，由一个
 Python 审计 CLI、一个纯前端五页管理台（Tauri 桌面壳）和近 40 个领域模块组成。
@@ -56,6 +61,27 @@ scan.py                  CLI 入口（多阶段主流程 + 各子命令早返回
 无构建步骤前端 `gui/dashboard.html` 通过 `run_audit`（只读快照）与 `run_cli`（管理/写
 命令透传）两个桥接函数消费 CLI；通用配置（统一目录、端点库）与业务动作分离，通用层在
 「设置」页、业务层在对应管理页。写操作统一走「备份 → 原子写 → 校验 → 回滚」安全链。
+
+### 仓库结构
+
+```
+skill-mcp-studio/
+├── scan.py                    CLI 入口（多阶段主流程 + 各子命令早返回）
+├── core/                      Python 领域逻辑（39 模块）
+├── gui/                       五页管理台前端（单文件 dashboard.html）
+├── src-tauri/                 Tauri v2 桌面壳（cargo tauri build → .app）
+├── scripts/                   构建 / 校验 / 网关辅助脚本
+├── tests/                     单元测试（unittest，共 34 个文件）
+├── docs/                      产品 / 设计 / 决策 / 评审文档（分类归档）
+│   ├── product/               产品需求 · 定位 · 形态
+│   ├── design/                阶段一~五设计 · 跨平台矩阵
+│   ├── decisions/             决策记录 · 立项评估
+│   └── reviews/               评审报告
+├── config.yaml                主干注册表（tools / mcp_tools / profiles 占位）
+├── version.json               版本号与构建号
+├── README.md / LICENSE / CONTRIBUTING.md / CHANGELOG.md / SECURITY.md
+└── pyproject.toml / setup.py  打包配置（pipx install .）
+```
 
 ---
 
@@ -310,7 +336,8 @@ profiles:
 5. **设置**：通用配置（统一技能目录、MCP 端点库增删改、自动发现、关于）。
 
 通用 / 业务分离：通用配置在「设置」页、业务动作在对应管理页。产品需求单一权威见
-`PRD-产品需求文档.md`。写操作经 `run_cli` 转发 CLI，沿用备份 → 原子写 → 校验 → 回滚
+[`docs/product/PRD-产品需求文档.md`](docs/product/PRD-产品需求文档.md)。写操作经
+`run_cli` 转发 CLI，沿用备份 → 原子写 → 校验 → 回滚
 安全链；浏览器直开渲染内置示例（写按钮提示需桌面壳）。
 
 - 端点库管理：`--list-endpoints` / `--add-endpoint` / `--remove-endpoint` /
@@ -348,9 +375,29 @@ cargo tauri build --target aarch64-apple-darwin
 部署相关的 endpoint 细节（网络可达性、DNS、反代路由）属于各 profile 独立仓库
 （`profile_sources`），不属于本工具本体。
 
-### 文档索引
+### 文档
 
-- 产品需求：`PRD-产品需求文档.md`
-- 阶段设计：`详细设计文档-阶段一~五-*.md`
-- 决策记录：`决策记录-待决问题定案.md`
-- 跨平台路径：`跨平台路径矩阵-Windows-Linux.md`
+完整文档索引见 [`docs/README.md`](docs/README.md)，按层级分类：
+
+| 层级 | 路径 | 说明 |
+| --- | --- | --- |
+| 产品 | [`docs/product/`](docs/product/) | PRD、产品定位与路线图、产品形态与开发计划 |
+| 实现 | [`docs/design/`](docs/design/) | 阶段一~五设计文档、跨平台路径矩阵 |
+| 决策 | [`docs/decisions/`](docs/decisions/) | 待决问题定案（D1–D16）、阶段四立项评估 |
+| 评审 | [`docs/reviews/`](docs/reviews/) | 评审整改清单与评审报告 |
+
+---
+
+## 贡献
+
+欢迎提交 Issue 与 Pull Request。开发环境准备、测试与提交规范见
+[`CONTRIBUTING.md`](CONTRIBUTING.md)。安全漏洞请按 [`SECURITY.md`](SECURITY.md)
+的流程非公开上报。
+
+## 许可
+
+[MIT](LICENSE) © 2026 oswaldhill
+
+## 变更
+
+历史变更见 [`CHANGELOG.md`](CHANGELOG.md)。

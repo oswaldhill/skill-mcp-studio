@@ -45,7 +45,7 @@ skill-mcp-studio 是**跨平台**的本地桌面工具，同一份代码在三�
 
 ### 1.4 内置客户端清单（22 个）
 
-内置默认清单分两类，共 **22 个**（完整路径 + 确定度 + 来源 URL 见 `跨平台路径矩阵-Windows-Linux.md`）：
+内置默认清单分两类，共 **22 个**（完整路径 + 确定度 + 来源 URL 见 [`跨平台路径矩阵-Windows-Linux.md`](../design/跨平台路径矩阵-Windows-Linux.md)）：
 
 **国际 / 通用（15 个）**：Claude Code、Cursor、VS Code、Windsurf、Codex、Gemini CLI、OpenCode、Aider、Cline、Roo Code、JetBrains(IDEA/PyCharm/WebStorm)、Zed、TRAE、Goose、Cherry Studio。
 
@@ -62,7 +62,7 @@ skill-mcp-studio 是**跨平台**的本地桌面工具，同一份代码在三�
 - **best-effort**：仅基于 VS Code fork / Electron 惯例或社区来源推断（如 TRAE、Cherry Studio、豆包、部分 `%APPDATA%` 映射）。
 - 查无权威来源的字段**留空**并标注，扫描时不参与安装判定（如 Aider 的 skills、VS Code 的 skills 目录、JetBrains 的 MCP 文件、豆包的 skills/MCP）。
 
-完整矩阵（22 客户端 × Windows/Linux × 5 字段 + 来源 URL）见 `跨平台路径矩阵-Windows-Linux.md`。
+完整矩阵（22 客户端 × Windows/Linux × 5 字段 + 来源 URL）见 [`跨平台路径矩阵-Windows-Linux.md`](../design/跨平台路径矩阵-Windows-Linux.md)。
 
 ---
 
