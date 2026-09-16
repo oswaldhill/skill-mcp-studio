@@ -326,6 +326,8 @@ profiles:
 
 ## 管理台 GUI（阶段五）
 
+![Skill MCP Studio 管理台](docs/images/dashboard.png)
+
 `gui/dashboard.html` 是五页管理台（**概览 · IDE/Agent · Skills · MCP · 设置**），消费
 管理快照（`--management --format json`）：
 
