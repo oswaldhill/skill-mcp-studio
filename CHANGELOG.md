@@ -68,7 +68,7 @@ build 96。
 - 新增 `CONTRIBUTING.md` / `SECURITY.md` / `CHANGELOG.md` 与 `.github/` Issue/PR 模板；
 - README 增加 badges、仓库结构树与文档索引。
 
-[Unreleased]: https://github.com/OWNER/REPO/compare/v0.19.0...HEAD
-[v0.19.0]: https://github.com/OWNER/REPO/releases/tag/v0.19.0
-[v0.18.0]: https://github.com/OWNER/REPO/releases/tag/v0.18.0
-[v0.16.1]: https://github.com/OWNER/REPO/releases/tag/v0.16.1
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.19.0...HEAD
+[v0.19.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.19.0
+[v0.18.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.18.0
+[v0.16.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.16.1

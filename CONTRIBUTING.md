@@ -61,5 +61,5 @@ cargo tauri build              # 产出 target/release/bundle/macos/skill-mcp-st
 
 ## 上报问题
 
-- Bug / 功能请求 → 新建 [Issue](https://github.com/OWNER/REPO/issues)
+- Bug / 功能请求 → 新建 [Issue](https://github.com/oswaldhill/skill-mcp-studio/issues)
 - 安全漏洞 → 按 [`SECURITY.md`](SECURITY.md) 非公开上报
