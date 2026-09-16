@@ -5,6 +5,8 @@
   <img src="https://img.shields.io/badge/build-103-lightgrey" alt="build">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="license">
   <img src="https://img.shields.io/badge/python-%3E%3D3.11-3776AB" alt="python">
+  <img src="https://img.shields.io/github/actions/workflow/status/oswaldhill/skill-mcp-studio/build-macos.yml?branch=master&label=CI%20(macOS)" alt="CI">
+  <img src="https://img.shields.io/github/v/release/oswaldhill/skill-mcp-studio?label=release" alt="release">
 </p>
 
 **Skill MCP Studio** 是一套本地多客户端 **Skill / MCP 合规审计与修复工具**，由一个

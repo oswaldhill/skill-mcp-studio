@@ -64,9 +64,26 @@ build 96。
 
 ## [Unreleased]
 
-- 文档重构：根目录产品/设计/决策/评审文档归档至 `docs/` 分层目录；
+### 工程化 / 开源准备
+
+- **CI/CD（GitHub Actions）**：新增 `.github/workflows/build-macos.yml`，macOS
+  universal 二进制（`universal-apple-darwin`，Tauri 自动 `lipo` 合并 `x86_64` +
+  `arm64`），单一 `.app`/`.dmg` 原生覆盖 Intel 与 Apple Silicon；
+- **签名与公证（可选）**：配置 Apple 证书 secrets 时自动导入证书并启用正式签名 +
+  公证，未配置时回退 ad-hoc 签名（构建不中断）；
+- **自动发布**：push `v*` tag 时用 `softprops/action-gh-release` 自动创建 GitHub
+  Release（自动生成 release notes），上传 `.dmg` 与 `.app.zip`；
+- **双远端与分支保护**：`origin` 接管 codeup + github 双 pushurl（`git push origin
+  master` 一次推两处）；github `master` 设 PR-only 保护（需审批、禁 force push）；
+- **开源仓库**：公开仓库 `github.com/oswaldhill/skill-mcp-studio`，清理历史敏感信息
+  （真实端点域名/IP/密钥在 HEAD 中全部占位符化）。
+
+### 文档
+
+- 根目录产品/设计/决策/评审文档归档至 `docs/` 分层目录；
 - 新增 `CONTRIBUTING.md` / `SECURITY.md` / `CHANGELOG.md` 与 `.github/` Issue/PR 模板；
-- README 增加 badges、仓库结构树与文档索引。
+- README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
+- README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
 [Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.19.0...HEAD
 [v0.19.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.19.0
