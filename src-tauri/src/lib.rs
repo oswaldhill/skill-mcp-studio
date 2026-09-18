@@ -227,17 +227,26 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
     .map_err(|e| format!("CLI 任务失败: {e}"))?
 }
 
-/// Open an external http(s) URL in the system default browser (macOS `open`).
+/// Open an external http(s) URL in the system default browser.
 ///
-/// Whitelisted to http(s) only so the `open` passthrough cannot be co-opted to
-/// launch arbitrary schemes/files from a compromised page.
+/// Whitelisted to http(s) only so the passthrough cannot be co-opted to launch
+/// arbitrary schemes/files from a compromised page.  Platform dispatcher:
+/// macOS `open`, Windows `cmd /C start`, Linux `xdg-open`.
 #[tauri::command]
 fn open_url(url: String) -> Result<(), String> {
     if !(url.starts_with("https://") || url.starts_with("http://")) {
         return Err("open_url: 仅允许 http(s) 链接".to_string());
     }
-    std::process::Command::new("open")
-        .arg(&url)
+    // 命令名与参数都是普通字符串，所有平台均可编译，用 cfg! 运行时分支即可。
+    let (program, args): (&str, Vec<&str>) = if cfg!(target_os = "windows") {
+        ("cmd", vec!["/C", "start", "", url.as_str()])
+    } else if cfg!(target_os = "macos") {
+        ("open", vec![url.as_str()])
+    } else {
+        ("xdg-open", vec![url.as_str()])
+    };
+    std::process::Command::new(program)
+        .args(args)
         .spawn()
         .map_err(|e| format!("打开链接失败: {e}"))?;
     Ok(())
@@ -266,6 +275,9 @@ pub fn run() {
             EXITING.store(true, Ordering::SeqCst);
         }
         // 点 Dock 图标时重新显示被隐藏的窗口（macOS 常驻工具惯例）。
+        // `RunEvent::Reopen` 仅存在于 macOS target；Windows/Linux 上无此变体，
+        // 需条件编译，否则跨平台构建报 `no variant named Reopen`（E0599）。
+        #[cfg(target_os = "macos")]
         RunEvent::Reopen { .. } => {
             if let Some(window) = app_handle.get_webview_window("main") {
                 let _ = window.show();

@@ -42,9 +42,10 @@ jobs:
       # 前端为纯静态单文件（gui/dashboard.html，frontendDist=../gui），无 npm 构建。
       # 用 --bundles 覆盖 config 里 macOS 专属的 "app"，产出 Windows 安装包：
       #   nsis -> .exe 安装器；msi -> .msi（WiX）。
+      # 注意：逗号分隔值必须加引号，否则 PowerShell 把 'nsis,msi' 当成数组拆开。
       - name: Build Tauri app (NSIS + MSI)
         working-directory: src-tauri
-        run: tauri build --bundles nsis,msi
+        run: tauri build --bundles "nsis,msi"
 
       - name: Collect artifacts
         shell: pwsh
