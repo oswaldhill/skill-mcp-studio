@@ -56,7 +56,9 @@ jobs:
             Copy-Item -Destination dist -Force
           Get-ChildItem dist | Select-Object Name, Length
 
+      # 非 tag 触发（push/PR/manual）：仅上传构建产物作为 artifact 校验
       - name: Upload artifacts (build validation)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         uses: actions/upload-artifact@v4
         with:
           name: skill-mcp-studio-windows
@@ -64,3 +66,16 @@ jobs:
           path: |
             dist/*.exe
             dist/*.msi
+
+      # tag 触发（v*）：将 NSIS(.exe)/MSI(.msi) 追加到 GitHub Release
+      # （与 macOS/linux workflow 并存；action-gh-release 对已存在 release 做增量追加）
+      - name: Publish GitHub Release
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.exe
+            dist/*.msi
+          generate_release_notes: true
+          draft: false
+          prerelease: false

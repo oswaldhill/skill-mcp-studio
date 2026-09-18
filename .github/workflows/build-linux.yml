@@ -67,7 +67,9 @@ jobs:
             -exec cp {} dist/ \;
           ls -la dist/
 
+      # 非 tag 触发（push/PR/manual）：仅上传构建产物作为 artifact 校验
       - name: Upload artifacts (build validation)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         uses: actions/upload-artifact@v4
         with:
           name: skill-mcp-studio-linux
@@ -76,3 +78,17 @@ jobs:
             dist/*.deb
             dist/*.rpm
             dist/*.AppImage
+
+      # tag 触发（v*）：将 deb/rpm/AppImage 追加到 GitHub Release
+      # （与 macOS/windows workflow 并存；action-gh-release 对已存在 release 做增量追加）
+      - name: Publish GitHub Release
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.deb
+            dist/*.rpm
+            dist/*.AppImage
+          generate_release_notes: true
+          draft: false
+          prerelease: false
