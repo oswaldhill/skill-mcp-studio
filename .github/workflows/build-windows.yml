@@ -16,6 +16,11 @@ jobs:
     name: Build Windows app (NSIS + MSI)
     runs-on: windows-latest
     timeout-minutes: 60
+    env:
+      # 将 secret 提升为 job 级环境变量，供步骤 if 条件判断。
+      # （GitHub Actions 的 secrets 上下文不可直接在 if 表达式中使用）
+      WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
 
     steps:
       - name: Checkout
@@ -55,6 +60,34 @@ jobs:
           Get-ChildItem -Path $bundle -Recurse -Include *.exe,*.msi |
             Copy-Item -Destination dist -Force
           Get-ChildItem dist | Select-Object Name, Length
+
+      # 仅当配置了 WINDOWS_CERTIFICATE（base64 .pfx）时用 signtool 签名；
+      # 未配置时跳过，构建不中断（安装包仍可用，只是触发 SmartScreen 警告）。
+      # 证书到位后：在仓库 Settings → Secrets 添加
+      #   WINDOWS_CERTIFICATE_PASSWORD（.pfx 导出密码）
+      #   WINDOWS_CERTIFICATE（PowerShell: [Convert]::ToBase64String([IO.File]::ReadAllBytes('cert.pfx'))）
+      # 即可自动启用签名，无需改代码。时间戳服务器默认 DigiCert，可用
+      #   WINDOWS_TIMESTAMP_URL 覆盖（企业可能要求内网时间戳）。
+      - name: Sign binaries (when certificate configured)
+        if: ${{ env.WINDOWS_CERTIFICATE != '' }}
+        shell: pwsh
+        env:
+          WINDOWS_TIMESTAMP_URL: ${{ secrets.WINDOWS_TIMESTAMP_URL || 'http://timestamp.digicert.com' }}
+        run: |
+          Write-Host "导入 .pfx 证书用于代码签名"
+          $pfx = "$env:RUNNER_TEMP\codesign.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+          $timestamp = $env:WINDOWS_TIMESTAMP_URL
+          $files = Get-ChildItem -Path dist -Include *.exe,*.msi -Recurse
+          foreach ($f in $files) {
+            Write-Host "签名: $($f.FullName)"
+            & signtool sign /fd SHA256 /f $pfx /p $env:WINDOWS_CERTIFICATE_PASSWORD `
+              /tr $timestamp /td SHA256 $f.FullName
+            if ($LASTEXITCODE -ne 0) { Write-Error "signtool 签名失败"; exit $LASTEXITCODE }
+          }
+          Remove-Item $pfx -Force
+          Write-Host "签名完成，验证:"
+          foreach ($f in $files) { & signtool verify /pa /v $f.FullName }
 
       # 非 tag 触发（push/PR/manual）：仅上传构建产物作为 artifact 校验
       - name: Upload artifacts (build validation)
