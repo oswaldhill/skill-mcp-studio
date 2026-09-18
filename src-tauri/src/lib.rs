@@ -17,9 +17,10 @@
 //! Repairs are deliberately *not* re-implemented in Rust: every write still runs
 //! the CLI's backup -> atomic-write -> validate -> rollback safety chain.
 //!
-//! CLI resolution: Finder-launched apps inherit a minimal PATH
-//! (`/usr/bin:/bin:/usr/sbin:/sbin`), so a bare name lookup can miss user-local
-//! wrappers.  We try the PATH name first, then common absolute locations.
+//! CLI resolution: GUI-launched apps inherit a minimal PATH (`/usr/bin:/bin` on
+//! macOS, or the bare system PATH on Windows when launched from Explorer), so a
+//! bare name lookup can miss user-local wrappers.  We try the PATH name first,
+//! then common absolute locations per platform (see `cli_candidates`).
 
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -31,14 +32,67 @@ use tauri::{Manager, RunEvent, WindowEvent};
 static EXITING: AtomicBool = AtomicBool::new(false);
 
 /// Candidate CLI launch targets: PATH name first, then common install locations.
+///
+/// Cross-platform (three targets):
+///
+/// - macOS: ``skill-mcp-studio`` (PATH) + ``~/.local/bin`` + Homebrew/系统路径;
+/// - Linux: ``skill-mcp-studio`` (PATH) + ``~/.local/bin`` + ``/usr/local/bin``;
+/// - Windows: ``skill-mcp-studio``/``skill-mcp-studio.exe`` (PATH, pipx/pip
+///   ``%LOCALAPPDATA%\Programs\Python\*\Scripts`` 通常已加入用户 PATH) +
+///   ``%USERPROFILE%\.local\bin\skill-mcp-studio.exe`` + ``%APPDATA%\Python\Scripts``.
+///
+/// 统一策略：先裸名（依赖 PATH），再补用户级/系统级绝对路径。Windows 裸露的
+/// 裸名需同时试 ``.exe`` 后缀，因为 ``Command::new`` 不会自动补全扩展名。
 fn cli_candidates() -> Vec<String> {
-    let mut candidates = vec!["skill-mcp-studio".to_string()];
-    if let Some(home) = std::env::var_os("HOME") {
-        let home = std::path::PathBuf::from(home);
-        candidates.push(home.join(".local/bin/skill-mcp-studio").to_string_lossy().into_owned());
+    let name = "skill-mcp-studio";
+    let mut candidates: Vec<String> = Vec::new();
+
+    // 先裸名（依赖 PATH）：finde通过 PATH 定位已安装 CLI（pipx/pip 均会把
+    // scripts 目录加入用户 PATH）。
+    candidates.push(name.to_string());
+
+    #[cfg(target_os = "windows")]
+    {
+        // Windows 的 CreateProcess 不自动补扩展名：pipx 生成的是
+        // ``skill-mcp-studio.exe``，裸名不一定能被 Command::new 直接启动，
+        // 需同时试带 ``.exe`` 的形式。
+        let exe = format!("{name}.exe");
+        candidates.push(exe.clone());
+
+        // pipx 默认用户级安装点 %USERPROFILE%\.local\bin（回退 HOME）。
+        let home = std::env::var_os("USERPROFILE")
+            .or_else(|| std::env::var_os("HOME"))
+            .map(std::path::PathBuf::from);
+        if let Some(home) = home {
+            candidates.push(home.join(".local/bin").join(&exe).to_string_lossy().into_owned());
+        }
+        // pip install --user 的 Roaming scripts 目录。
+        if let Some(appdata) = std::env::var_os("APPDATA") {
+            candidates.push(
+                std::path::PathBuf::from(appdata)
+                    .join("Python/Scripts")
+                    .join(exe)
+                    .to_string_lossy()
+                    .into_owned(),
+            );
+        }
     }
-    candidates.push("/usr/local/bin/skill-mcp-studio".to_string());
-    candidates.push("/opt/homebrew/bin/skill-mcp-studio".to_string());
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        // Unix 系：pipx / pip --user 的用户级安装点 ``~/.local/bin`` 优先。
+        if let Some(home) = std::env::var_os("HOME") {
+            let home = std::path::PathBuf::from(home);
+            candidates.push(home.join(".local/bin").join(name).to_string_lossy().into_owned());
+        }
+        // 系统级常见路径。
+        candidates.push("/usr/local/bin/skill-mcp-studio".to_string());
+        #[cfg(target_os = "macos")]
+        candidates.push("/opt/homebrew/bin/skill-mcp-studio".to_string());
+        #[cfg(target_os = "linux")]
+        candidates.push("/usr/bin/skill-mcp-studio".to_string());
+    }
+
     candidates
 }
 

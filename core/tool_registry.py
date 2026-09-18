@@ -2,9 +2,44 @@
 
 import os
 import plistlib
+import re
 import shutil
 import subprocess
 from typing import Any, Callable, Dict, List
+
+
+def expand_path(path: str, environ: Dict[str, str] = None) -> str:
+    """Expand a registry path portably across platforms.
+
+    Handles, in order:
+
+    - Windows ``%VAR%`` references (``%APPDATA%``, ``%USERPROFILE%``,
+      ``%LOCALAPPDATA%``) via ``os.path.expandvars``, whose ``ntpath``
+      implementation understands ``%name%`` on Windows and leaves it intact
+      elsewhere — so we fall back to a literal ``%…%`` expander for non-Windows
+      hosts that still receive Windows-style paths (e.g. tests);
+    - POSIX ``~`` (and ``~user``) via ``os.path.expanduser``.
+
+    A path that references an unset variable keeps the literal ``%NAME%`` token
+    (matches ``os.path.expandvars`` semantics upstream), so detection simply
+    yields "not found" rather than crashing.
+    """
+    if not path:
+        return path
+    environ = dict(os.environ if environ is None else environ)
+    expanded = path
+
+    # os.path.expandvars: on nt it expands %NAME%; on posix it only expands
+    # ${NAME}/$NAME, leaving %NAME% untouched. Complement with a literal %NAME%
+    # pass so Windows-style registry paths also expand on non-Windows hosts.
+    expanded = os.path.expandvars(expanded)
+    if "%" in expanded:
+        def _repl(match: re.Match) -> str:
+            name = match.group(1)
+            return environ.get(name, match.group(0))
+        expanded = re.sub(r"%([^%]+)%", _repl, expanded)
+
+    return os.path.expanduser(expanded)
 
 
 def _abbreviate_home(path: str, home: str) -> str:
@@ -58,9 +93,23 @@ def detect_installation(
                 out.append(it)
         return out
 
+    def _expand(path: str) -> str:
+        """Resolve a registry path, honoring the injected ``expanduser`` for ``~``
+        while still expanding Windows ``%VAR%`` tokens via :func:`expand_path`.
+
+        - paths *without* ``%`` keep the legacy contract: they go through the
+          injected ``expanduser`` (identity in tests, ``os.path.expanduser`` in
+          production), so existing ``expanduser=...`` tests stay valid;
+        - paths *with* ``%VAR%`` (Windows registry entries) route through
+          ``expand_path`` for a full ``%VAR%`` + ``~`` expansion.
+        """
+        if "%" in path:
+            return expand_path(path)
+        return expanduser(path)
+
     app_paths = _dedupe([
-        _abbreviate_home(expanduser(path), home) for path in install.get("app_bundles", [])
-        if path_exists(expanduser(path))
+        _abbreviate_home(_expand(path), home) for path in install.get("app_bundles", [])
+        if path_exists(_expand(path))
     ])
     # shutil.which returns the resolved command path (or None); keep only hits.
     cli_paths = _dedupe([
@@ -69,8 +118,8 @@ def detect_installation(
         if resolved
     ])
     config_paths = _dedupe([
-        _abbreviate_home(expanduser(path), home) for path in install.get("config_paths", [])
-        if path_exists(expanduser(path))
+        _abbreviate_home(_expand(path), home) for path in install.get("config_paths", [])
+        if path_exists(_expand(path))
     ])
 
     has_app_or_cli = bool(app_paths or cli_paths)

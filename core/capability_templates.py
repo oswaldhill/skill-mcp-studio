@@ -32,6 +32,14 @@ class TemplateError(ValueError):
 
 
 def _default_user_dir() -> str:
+    """User-level template directory, platform-aware.
+
+    - Windows: ``%APPDATA%\\skill-mcp-studio\\templates`` (Roaming standard);
+    - POSIX (macOS / Linux): ``~/.config/skill-mcp-studio/templates`` (XDG).
+    """
+    if os.name == "nt":
+        base = os.environ.get("APPDATA") or os.path.expanduser("~")
+        return os.path.join(base, "skill-mcp-studio", "templates")
     return os.path.join(
         os.path.expanduser("~"), ".config", "skill-mcp-studio", "templates"
     )

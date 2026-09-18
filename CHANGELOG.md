@@ -64,6 +64,24 @@ build 96。
 
 ## [Unreleased]
 
+### 跨平台支持（Windows / Linux）
+
+- **CLI 路径矩阵**：`core/mainstream_registry.py` 引入 `by_os` + `sys.platform` 分派
+  （决策 A），为全部内置 IDE/Agent 补充 Windows（`%APPDATA%`/`%USERPROFILE%`/
+  `%LOCALAPPDATA%`）与 Linux（XDG `~/.config`）路径，依据
+  `docs/design/跨平台路径矩阵-Windows-Linux.md`；
+- **路径展开**：`core/tool_registry.py` 新增 `expand_path()`，统一展开 `%VAR%` 与
+  `~`，`detect_installation` 兼容注入的 `expanduser`（既有测试契约不变）；
+- **python3 解析**：`core/ai_memory_checker.py` 移除硬编码 `/usr/local/bin/python3`，
+  改为 `sys.executable` → `shutil.which("python3")` → `"python3"` 的跨平台解析；
+- **模板目录**：`capability_templates._default_user_dir()` 平台感知（Windows 走
+  `%APPDATA%\skill-mcp-studio`，POSIX 走 `~/.config/skill-mcp-studio`）；
+- **Rust 壳**：`lib.rs::cli_candidates()` 三平台适配（Windows 补 `.exe` 与
+  `%USERPROFILE%\.local\bin`、`%APPDATA%\Python\Scripts`；Linux 补 `/usr/bin`）；
+- **CI 构建**：新增 `.github/workflows/build-windows.yml`（NSIS + MSI）与
+  `build-linux.yml`（deb + rpm + AppImage），产物以 workflow artifact 形式产出，
+  暂不发布 GitHub Releases（遵循「仅 codeup」门禁）。
+
 ### 工程化 / 开源准备
 
 - **CI/CD（GitHub Actions）**：新增 `.github/workflows/build-macos.yml`，macOS

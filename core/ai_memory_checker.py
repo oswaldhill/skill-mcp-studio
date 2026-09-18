@@ -14,6 +14,8 @@ ai-memory hooks 识别依据：hooks 命令包含 "ai-memory" + "hook --event"�
 
 import json
 import os
+import shutil
+import sys
 from typing import Any, Dict, List, Optional
 
 from legacy_checker import (
@@ -24,6 +26,30 @@ from legacy_checker import (
     _load_json_file,
     _norm_tool_name,
 )
+
+
+def _python3_command() -> str:
+    """Resolve a portable ``python3`` interpreter path for writing MCP commands.
+
+    Cross-platform priority:
+
+    1. ``sys.executable`` — the running interpreter (Windows ``python.exe``,
+       venv/pipx path on all OSes), guaranteed to exist when the CLI runs;
+    2. ``shutil.which("python3")`` — a PATH ``python3`` on POSIX (also matches
+       ``python3.exe`` on Windows);
+    3. bare ``"python3"`` as a last resort, delegated to PATH resolution when the
+       target client later spawns the command.
+    """
+    exe = getattr(sys, "executable", "") or ""
+    if exe and os.path.exists(exe):
+        return exe
+    found = shutil.which("python3")
+    return found or "python3"
+
+
+def _bridge_path() -> str:
+    """Portable ai-memory bridge path (``~/.local/bin`` on all platforms)."""
+    return os.path.join(os.path.expanduser("~"), ".local", "bin", "ai-memory-bridge.py")
 
 
 # ai-memory 生命周期 hooks 的配置路径与事件签名
@@ -298,8 +324,8 @@ def build_ai_memory_fix_template() -> Dict[str, Any]:
     """
     return {
         "ai-memory": {
-            "command": "/usr/local/bin/python3",
-            "args": [os.path.expanduser("~/.local/bin/ai-memory-bridge.py")],
+            "command": _python3_command(),
+            "args": [_bridge_path()],
             "env": {
                 "AI_MEMORY_SERVER_URL": "http://127.0.0.1:49374/mcp",
                 "AI_MEMORY_AUTH_TOKEN": "<AI_MEMORY_TOKEN>",
@@ -390,8 +416,8 @@ def fix_ai_memory_config(
             if isinstance(entry, str) and entry.strip().startswith("ai-memory="):
                 result["message"] = "已存在 ai-memory 条目，跳过"
                 return result
-        bridge = os.path.expanduser("~/.local/bin/ai-memory-bridge.py")
-        entry = f"ai-memory=/usr/local/bin/python3 {bridge}"
+        bridge = _bridge_path()
+        entry = f"ai-memory={_python3_command()} {bridge}"
         if dry_run:
             result["message"] = f"[dry-run] 将追加 ai-memory 条目到 mcp 数组"
             return result
@@ -419,8 +445,8 @@ def fix_ai_memory_config(
         return result
 
     entry = {
-        "command": "/usr/local/bin/python3",
-        "args": [os.path.expanduser("~/.local/bin/ai-memory-bridge.py")],
+        "command": _python3_command(),
+        "args": [_bridge_path()],
         env_key: {
             "AI_MEMORY_SERVER_URL": server_url,
             "AI_MEMORY_AUTH_TOKEN": token or "<AI_MEMORY_TOKEN>",
