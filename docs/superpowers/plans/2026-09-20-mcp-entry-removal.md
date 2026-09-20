@@ -2029,3 +2029,26 @@ git commit -m "docs: 补 MCP 条目删除/清理命令说明并将设计文档�
 14. **Task 7 无法在 Task 7 内完成实弹验证**：`tauri.conf.json` 的 `frontendDist: "../gui"` 意味着
     dashboard.html 是**构建期**拷进 bundle 的，加上本次改了 Rust 白名单，必须重建 .app 才能在桌面端
     点按钮。计划的 Step 7 只做语法自检，这一点应在 Task 8 的验收步骤里写明。
+
+### Task 8 暴露
+
+15. **【阻断项】工作区外不可写，真实客户端配置的往返验收无法完成**：沙箱对 `~/.workbuddy`、`~/.codex`
+    一律 `Operation not permitted`（`os.access(dir, W_OK) → False`，`shutil.copy2 → PermissionError`），
+    子代理权限不可放宽。**这不是产品缺陷**——产品在该环境下正确失败并保持文件零改动
+    （`{"status":"error","message":"无法创建备份，未做改动"}`，前后 sha256 一致），且只读路径可达
+    （真实文件 dry-run 返回 `将移除：my-mcp`）。替代方案已跑通：对真实文件的可写副本走同一产品路径，
+    完成「删除 → 条目消失 → 备份内容 == 原文 → 还原 → sha256 回到基线」全往返。
+    **遗留**：真实 `~/.workbuddy/mcp.json` 上的实弹往返仍需有写权限的会话补跑。
+16. **D 段的验收方法本身有陷阱（计划未预料）**：「bundle 里有 dashboard.html」这个前提不成立——Tauri 2
+    把 `frontendDist` 资源 **brotli 压缩后 `include_bytes!`** 进二进制，bundle 内没有该文件，且
+    `strings` / `grep -a` 对**任何** HTML 文本（含既有字符串）都是假阴性。正确做法：解压
+    `out/tauri-codegen-assets/*.html`，验证其 sha256 与 `gui/dashboard.html` 相同、且这些压缩字节
+    逐字出现在 .app 二进制中（本次：273409 B 源文件 ≡ 解压结果，4 个新 action 名 ×2/×1 命中）。
+17. **BUILD.md §3 的 PATH 写法在本环境失效**：`PATH="$CARGO_HOME/bin:$PATH"` 中 `$CARGO_HOME` 含 `..`
+    会导致 `cargo: command not found`（直接绝对路径可用）。应改为归一化后的绝对路径。
+18. **计划 Task 8 未包含「重建 .app + 验证前端与白名单已进产物」**：因 `frontendDist: "../gui"` 是构建期
+    嵌入、且本次改了 Rust 白名单，不重建就无法在桌面端点按钮（Task 7 第 14 条）。Task 8 应显式包含
+    构建与产物内验证。
+19. **GUI 实弹点击仍未验证**：产物内验证只证明「前端已进 bundle、白名单已进二进制」，未点击过任何
+    新按钮；`run_cli` 的真实 argv 透传、`mcpResultToTask` 的运行时 JSON 解析、强确认弹窗的手输解锁
+    均未在运行时走通。这需要安装构建产物后人工或用 UI 自动化完成。
