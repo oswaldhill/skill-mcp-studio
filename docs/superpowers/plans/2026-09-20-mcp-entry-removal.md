@@ -2052,3 +2052,23 @@ git commit -m "docs: 补 MCP 条目删除/清理命令说明并将设计文档�
 19. **GUI 实弹点击仍未验证**：产物内验证只证明「前端已进 bundle、白名单已进二进制」，未点击过任何
     新按钮；`run_cli` 的真实 argv 透传、`mcpResultToTask` 的运行时 JSON 解析、强确认弹窗的手输解锁
     均未在运行时走通。这需要安装构建产物后人工或用 UI 自动化完成。
+
+### Task 8 收尾（本次会话补跑）
+
+以上第 15 条列为「阻断项」的真实往返验收，已在**有写权限**的会话中补跑完成，产品行为全链路正确：
+
+| 步骤 | 实测结果 |
+| --- | --- |
+| 基线 | `~/.workbuddy/mcp.json` sha256 `0d3c7609…`，既有备份 4 个 |
+| 真实删除 `my-mcp` | `status=updated`，exit 0，返回 `backup=…bak-20260920-183233-532370` |
+| 条目消失 | `[WorkBuddy]` 仅剩 `context7`(unmanaged) / `hermes`(attached) / `K8s-uat`(attached) |
+| 备份正确性 | 备份 sha256 == `0d3c7609…`（**等于删除前原文**）；删除后文件为 `06d5e310…` |
+| 安全门 | Codex `node_repl` → `status=refused` + 真实 `risk_reason`，exit 2；`~/.codex/config.toml` sha256 保持 `574232dd…` **未被触碰** |
+| 还原 | `status=updated`，且**还原前自动再备份**当前配置（`…bak-20260920-192435-839984`） |
+| 回滚验证 | `my-mcp` 回到列表，sha256 **精确回到基线** `0d3c7609…` |
+
+另：第 17 条（BUILD.md PATH）已修（提交 `5631c54`）——归一化写法实测可解析
+（`cargo 1.98.1`），原始含 `..` 写法稳定复现 `command not found`。
+
+**仍未验证**：GUI 实弹点击（需把新构建安装到 `/Applications`，属改动用户已装发行版，
+留待用户决定）。
