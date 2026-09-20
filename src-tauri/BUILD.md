@@ -38,7 +38,7 @@ which skill-mcp-studio || ls ~/.local/bin/skill-mcp-studio || pipx install skill
 #     -o .cargo-home/rustup-init && chmod +x .cargo-home/rustup-init
 #   RUSTUP_HOME="$PWD/.rustup-home" CARGO_HOME="$PWD/.cargo-home" \
 #     ./.cargo-home/rustup-init -y --default-toolchain stable --profile minimal --no-modify-path
-# 日常使用（在 src-tauri/ 下）：
+# 日常使用（在 src-tauri/ 下）—— 注意：下面写法含 `..`，见紧随其后的告警：
 export RUSTUP_HOME="$PWD/../.rustup-home"
 export CARGO_HOME="$PWD/../.cargo-home"
 export PATH="$CARGO_HOME/bin:$PATH"
@@ -46,6 +46,18 @@ rustc --version && cargo --version
 
 # macOS 桌面构建需要 Xcode Command Line Tools
 xcode-select -p    # 非空即已装；未装则 `xcode-select --install`
+```
+
+> ⚠️ **PATH 陷阱（2026-09-20 实测）**：上面 `export` 里的 `$CARGO_HOME` 含 `..`，会导致该 PATH
+> 项解析失败，表现为 `cargo: command not found`（受限沙箱会话下稳定复现；`command -v cargo`
+> 为空，改用绝对路径即可用）。构建失败时先用下面的归一化写法排除此因，再去怀疑工具链本身：
+
+```bash
+cd src-tauri
+export CARGO_HOME="$(cd .. && pwd)/.cargo-home"
+export RUSTUP_HOME="$(cd .. && pwd)/.rustup-home"
+export PATH="$CARGO_HOME/bin:$PATH"
+cargo --version    # 应能解析
 ```
 
 ## 2. 图标（已生成）
