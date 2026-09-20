@@ -184,6 +184,11 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
         "--mcp",
         "--remove-legacy-mcp",
         "--cleanup-config",
+        // 阶段五增量：MCP 条目删除 / 批量清理 / 配置备份列出与还原。
+        "--remove-mcp-entry",
+        "--remove-mcp-class",
+        "--list-config-backups",
+        "--restore-config-backup",
     ];
     // Reject redirection-class flags outright (they re-point the engine at an
     // arbitrary config/profile file, a privilege escalation vector).

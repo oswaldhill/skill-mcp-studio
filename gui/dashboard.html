@@ -454,7 +454,7 @@
     border: 1px solid var(--err-border);
   }
   .cfm-card .cfm-title { font-size: var(--fs-md); font-weight: 600; color: var(--text); margin: 0 0 6px; }
-  .cfm-card .cfm-msg { font-size: var(--fs-sm); color: var(--muted); margin: 0 0 24px; line-height: 1.55; }
+  .cfm-card .cfm-msg { font-size: var(--fs-sm); color: var(--muted); margin: 0 0 24px; line-height: 1.55; white-space: pre-line; }
   .cfm-card .actions { justify-content: center; gap: 12px; margin-top: 0; }
   .cfm-card .actions button {
     padding: 8px 22px; border-radius: 8px; font-size: var(--fs-sm); font-weight: 500;
@@ -471,6 +471,10 @@
   }
   .cfm-btn-danger:hover { background: #b91c1c; box-shadow: 0 4px 14px rgba(220,38,38,.40); }
   .cfm-btn-danger:active { transform: scale(.97); }
+  .cfm-btn-danger:disabled { cursor: not-allowed; box-shadow: none; }
+  /* 强确认（手输条目名）：输入框撑满卡片、等宽字体便于逐字对照 */
+  .cfm-typed { margin: 0 0 22px; }
+  .cfm-typed input { width: 100%; text-align: center; font-family: var(--mono); letter-spacing: .04em; }
 
   /* 进度 / 结果对话框 */
   .task-card { width: min(420px, 94vw) !important; }
@@ -1386,6 +1390,31 @@ function confirmModal(title, message, danger) {
     </div></div>`;
     $("cfm-no").onclick = () => { closeModal(); resolve(false); };
     $("cfm-yes").onclick = () => { closeModal(); resolve(true); };
+  });
+}
+
+/**
+ * 高风险条目强确认：必须逐字手输条目 key 才解锁删除按钮。
+ * 复用 confirmModal 的样式类与 mountModal 挂载方式，不新造视觉与挂载机制。
+ */
+function confirmTypedKeyModal(title, message, keyName) {
+  return new Promise((resolve) => {
+    mountModal(`<div class="modal-backdrop"><div class="modal cfm-card">
+      <div class="cfm-icon">!</div>
+      <div class="cfm-title">${escapeHtml(title)}</div>
+      <div class="cfm-msg">${escapeHtml(message)}</div>
+      <div class="cfm-typed"><input id="cfm-typed-input" type="text" autocomplete="off" spellcheck="false"
+        placeholder="输入 ${escapeHtml(keyName)} 以确认" aria-label="输入条目名以确认" /></div>
+      <div class="actions">
+        <button class="cfm-btn-cancel" id="cfm-no">取消</button>
+        <button class="cfm-btn-danger" id="cfm-yes" disabled>确认删除</button>
+      </div>
+    </div></div>`);
+    const input = $("cfm-typed-input");
+    const yes = $("cfm-yes");
+    input.oninput = () => { yes.disabled = input.value.trim() !== keyName; };
+    $("cfm-no").onclick = () => { closeModal(); resolve(false); };
+    yes.onclick = () => { if (yes.disabled) return; closeModal(); resolve(true); };
   });
 }
 
@@ -2632,7 +2661,9 @@ function renderMcpClients(mcp, endpoints) {
         const cls = e.classification || "unmanaged";
         const label = CLASS_TRANSLATE[cls] || cls;
         const color = CLASS_COLOR[cls] || "";
-        return `<span class="tag ${color}" title="${escapeHtml(e.url || e.command || "")}">${escapeHtml(e.key)} · ${escapeHtml(label)}</span>`;
+        const risk = e.high_risk ? " ⚠" : "";
+        const tip = e.high_risk ? (e.risk_reason || "疑似客户端自带") : (e.url || e.command || "");
+        return `<button type="button" class="tag tag-btn ${color}" data-action="show-mcp-class" data-name="${escapeHtml(c.name)}" data-class="${escapeHtml(cls)}" title="${escapeHtml(tip)}">${escapeHtml(e.key)} · ${escapeHtml(label)}${risk}</button>`;
       }).join(" ") || '<span class="ok-na">无</span>';
       return `<tr><td>${escapeHtml(c.name)}</td><td>${attach}</td><td class="mono">${inv}</td></tr>`;
     }).join("") + "</tbody></table></div>";
@@ -3280,10 +3311,13 @@ function showAgentDetail(name) {
     const color = CLASS_COLOR[cls] || "";
     const loc = e.url || e.command || "";
     const extra = (e.command && e.url) ? e.command : "";
-    const legBtn = cls === "legacy" && a.fix_supported
-      ? `<button class="ad-clean" type="button" data-action="clean-legacy" data-name="${escapeHtml(name)}">清理</button>`
+    const delBtn = a.fix_supported
+      ? `<button class="ad-clean" type="button" data-action="remove-mcp-entry"
+           data-name="${escapeHtml(name)}" data-key="${escapeHtml(e.key)}"
+           data-high="${e.high_risk ? "1" : "0"}"
+           data-reason="${escapeHtml(e.risk_reason || "")}">删除</button>`
       : "";
-    return `<div class="ad-entry"><span class="ad-e-key">${escapeHtml(e.key)}</span><span class="tag ${color}">${escapeHtml(label)}</span><span class="ad-e-loc" title="${escapeHtml(loc)}">${escapeHtml(loc)}</span>${legBtn}</div>`;
+    return `<div class="ad-entry"><span class="ad-e-key">${escapeHtml(e.key)}</span><span class="tag ${color}">${escapeHtml(label)}</span>${e.high_risk ? `<span class="tag warn" title="${escapeHtml(e.risk_reason || "")}">客户端自带?</span>` : ""}<span class="ad-e-loc" title="${escapeHtml(loc)}">${escapeHtml(loc)}</span>${delBtn}</div>`;
   }).join("") || '<div class="ad-none">无 MCP 条目</div>';
 
   mountModal(`<div class="modal-backdrop"><div class="modal ad-modal">
@@ -3310,7 +3344,7 @@ function showAgentDetail(name) {
         ${kv("配置路径", textVal(a.mcp_config_path))}
         ${kv("挂载端点", textVal(a.mcp_attach))}
         <div class="ad-kv"><span class="ad-k">条目</span><div class="ad-entries">${invRows}</div></div>
-        ${legacyCount > 0 || unmanagedCount > 0 ? `<div class="ad-cleanbar"><span class="ad-clean-note">${legacyCount > 0 ? `${legacyCount} 个旧通道` : ""}${legacyCount > 0 && unmanagedCount > 0 ? "，" : ""}${unmanagedCount > 0 ? `${unmanagedCount} 个未纳管` : ""}</span>${a.fix_supported && legacyCount > 0 ? `<button class="ad-clean-btn" type="button" data-action="clean-legacy" data-name="${escapeHtml(name)}">清理旧 MCP</button>` : ""}</div>` : ""}
+        ${a.fix_supported ? `<div class="ad-cleanbar">${legacyCount > 0 || unmanagedCount > 0 ? `<span class="ad-clean-note">${legacyCount > 0 ? `${legacyCount} 个旧通道` : ""}${legacyCount > 0 && unmanagedCount > 0 ? "，" : ""}${unmanagedCount > 0 ? `${unmanagedCount} 个未纳管` : ""}</span>` : ""}${legacyCount > 0 ? `<button class="ad-clean-btn" type="button" data-action="clean-legacy" data-name="${escapeHtml(name)}">清理旧 MCP</button>` : ""}${unmanagedCount > 0 ? `<button class="ad-clean-btn" type="button" data-action="remove-mcp-class" data-name="${escapeHtml(name)}" data-class="unmanaged">清理未纳管</button>` : ""}<button class="ad-clean-btn" type="button" data-action="show-config-backups" data-name="${escapeHtml(name)}">从备份恢复</button></div>` : ""}
       </div>
     </div>
     <div class="ad-foot">${isConfigOnly
@@ -3328,38 +3362,53 @@ function showAgentDetail(name) {
   }
 }
 
-// ---------------- MCP 条目分类详情（旧通道 / 未纳管） ----------------
+// ---------------- MCP 条目分类详情（旧通道 / 未纳管 / 已挂载） ----------------
 function showMcpClass(name, cls) {
   const mcpCl = (SNAP && SNAP.mcp && SNAP.mcp.clients || []).find((c) => c.name === name);
   const inv = (mcpCl && mcpCl.inventory) || [];
   const items = inv.filter((e) => (e.classification || "unmanaged") === cls);
-  const title = cls === "legacy" ? "旧通道（已失效）" : "未纳管条目";
+  const titleMap = { legacy: "旧通道（已失效）", unmanaged: "未纳管条目", attached: "已挂载端点" };
+  const title = titleMap[cls] || "MCP 条目";
   const a = (SNAP && SNAP.agents || []).find((x) => x.name === name);
   const fixable = !!(a && a.fix_supported);
+  const highCount = items.filter((e) => e.high_risk).length;
 
   const rows = items.map((e) => {
-    const loc = e.url || e.command || "";
     const locType = e.url ? "URL" : (e.command ? "命令" : "");
     const locDetail = e.url ? escapeHtml(e.url) : (e.command ? escapeHtml(e.command) : "");
-    let ops = "";
-    if (cls === "legacy") {
-      ops = fixable
-        ? `<button class="ad-clean" type="button" data-action="clean-legacy" data-name="${escapeHtml(name)}">清理全部旧通道</button>`
-        : `<span class="ad-none">不支持修复</span>`;
-    } else {
-      ops = "";
-    }
+    const risk = e.high_risk
+      ? `<span class="tag warn" title="${escapeHtml(e.risk_reason || "")}">疑似客户端自带</span>` : "";
+    const del = fixable
+      ? `<button class="ad-clean" type="button" data-action="remove-mcp-entry"
+           data-name="${escapeHtml(name)}" data-key="${escapeHtml(e.key)}"
+           data-high="${e.high_risk ? "1" : "0"}"
+           data-reason="${escapeHtml(e.risk_reason || "")}">删除</button>`
+      : "";
     return `<div class="ad-entry mcp-entry">
       <span class="ad-e-key">${escapeHtml(e.key)}</span>
-      <span class="tag ${cls === "legacy" ? "warn" : ""}">${cls === "legacy" ? "旧通道" : "未纳管"}</span>
+      <span class="tag ${cls === "legacy" ? "warn" : ""}">${escapeHtml(CLASS_TRANSLATE[cls] || title)}</span>
+      ${risk}
       <span class="ad-e-loc" title="${locDetail}">${locType ? `<span class="mcp-loc-type">${locType}</span> ${locDetail}` : `<span class="ad-none">无地址</span>`}</span>
-      ${ops}
+      ${del}
     </div>`;
   }).join("");
 
-  const footNote = cls === "legacy"
-    ? "清理前会先做统一端点活体探测，验证通过才备份并移除旧通道。"
-    : "未纳管条目仅展示，不提供删除；这些通常是客户端自有或你另行配置的 MCP 服务。";
+  // 批量清理：默认跳过高风险条目，勾选后才纳入（checkbox 只在确有条目可勾时出现）
+  const bulk = (fixable && items.length)
+    ? `<div class="ad-cleanbar">
+         <span class="ad-clean-note">共 ${items.length} 条${highCount ? `，其中 ${highCount} 条疑似客户端自带` : ""}</span>
+         ${highCount ? `<label class="note" style="display:inline-flex;align-items:center;gap:6px">
+           <input type="checkbox" id="mcpcls-include-high" />
+           包含疑似客户端自带（${highCount}）
+         </label>` : ""}
+         <button class="ad-clean-btn" type="button" data-action="remove-mcp-class"
+           data-name="${escapeHtml(name)}" data-class="${escapeHtml(cls)}">清理全部${escapeHtml(title)}</button>
+       </div>`
+    : "";
+
+  const footNote = fixable
+    ? "删除前会自动备份到 <配置文件名>.bak-<时间戳>；需要时可用「从备份恢复」还原（还原为整文件覆盖）。"
+    : "该客户端不支持配置写入（fix_supported=false），因此不提供删除。";
 
   mountModal(`<div class="modal-backdrop"><div class="modal ad-modal">
     <div class="ad-head">
@@ -3369,9 +3418,11 @@ function showMcpClass(name, cls) {
     <div class="ad-body">
       <div class="ad-section">
         <div class="ad-entries">${rows || '<div class="ad-none">无条目</div>'}</div>
+        ${bulk}
       </div>
     </div>
     <div class="ad-foot">
+      ${fixable ? `<button class="btn-soft" type="button" data-action="show-config-backups" data-name="${escapeHtml(name)}">从备份恢复</button>` : ""}
       <button class="btn-cancel close-push" id="mcpcls-close">关闭</button>
     </div>
     <div class="ad-foot-note">${escapeHtml(footNote)}</div>
@@ -4256,6 +4307,10 @@ document.addEventListener("click", (e) => {
     else if (a === "cleanup-config") cleanupConfigFor(act.dataset.name);
     else if (a === "clean-legacy") cleanLegacyMcp(act.dataset.name);
     else if (a === "show-mcp-class") showMcpClass(act.dataset.name, act.dataset.class);
+    else if (a === "remove-mcp-entry") removeMcpEntry(act.dataset.name, act.dataset.key, act.dataset.high === "1", act.dataset.reason);
+    else if (a === "remove-mcp-class") removeMcpClassEntries(act.dataset.name, act.dataset.class);
+    else if (a === "show-config-backups") showConfigBackups(act.dataset.name);
+    else if (a === "restore-config-backup") restoreConfigBackup(act.dataset.name, act.dataset.path);
     else if (a === "skill-backup") backupSkill(act.dataset.skill);
     else if (a === "skill-export") exportSkill(act.dataset.skill);
     else if (a === "skill-rename") openRenameSkillModal(act.dataset.skill);
@@ -4412,6 +4467,133 @@ async function cleanLegacyMcp(name) {
     }
     return { ok: false, message: "清理未完成", detail: cliFailLines(res) || "未识别到清理结果标记" };
   }, undefined, ["备份原配置", "移除旧通道条目", "校验回写", "验证结果"]);
+}
+
+// ---------------- MCP 条目删除 / 批量清理 / 从备份恢复（阶段五） ----------------
+
+/**
+ * 把 `--format json` 的 MCP 结果转成 runTaskModal 契约。
+ *
+ * Task 6 已把 4 个新命令放进「阶段五早返回」组，带 `--format json` 时 stdout 是
+ * 纯 JSON，故这里直接 JSON.parse，不再做 legacy 路径那种 stdout 字符串匹配。
+ * status 取值：updated / unchanged / refused / missing / unsupported / error / dry-run。
+ */
+function mcpResultToTask(res, okMessage) {
+  let payload = null;
+  try { payload = JSON.parse(stripAnsi((res && res.stdout) || "")); } catch (e) { payload = null; }
+  if (!payload || typeof payload !== "object" || !payload.status) {
+    return { ok: false, message: "未识别到结构化结果", detail: cliFailLines(res) || cliErrDetail(res) };
+  }
+  const skippedList = payload.skipped_high_risk || [];
+  const skippedText = skippedList.length
+    ? `已跳过 ${skippedList.length} 条疑似客户端自带：${skippedList.map((s) => s.key).join("、")}` : "";
+  const skippedDetail = skippedList.map((s) => `- ${s.key}：${s.reason || "疑似客户端自带"}`).join("\n");
+  const attach = (payload.attach_updated || []).length
+    ? `（已同步摘除挂载声明：${payload.attach_updated.join("、")}）` : "";
+  switch (payload.status) {
+    case "updated": {
+      const count = (payload.removed || []).length;
+      return { ok: true, message: okMessage + (count > 1 ? `（共 ${count} 条）` : "") + attach + (skippedText ? `（${skippedText}）` : "") };
+    }
+    case "unchanged":
+      // 命中 0 条且确有被跳过高危的条目时，不能报「成功」——用户看到的应是「没清掉」。
+      if (skippedDetail) {
+        return { ok: false, message: "未清理任何条目（疑似客户端自带的条目默认不清理）", detail: skippedDetail };
+      }
+      return { ok: true, message: "没有匹配到要移除的条目" };
+    case "dry-run":
+      return { ok: true, message: "预演完成（未改动配置）", detail: payload.message || "" };
+    case "refused":
+      return {
+        ok: false,
+        message: "已拒绝" + (skippedText ? `（${skippedText}）` : ""),
+        detail: [payload.message, ...(payload.high_risk || []).map((h) => `- ${h.key}：${h.risk_reason || ""}`)].join("\n"),
+      };
+    case "missing":
+      return { ok: false, message: "配置文件缺失，未做改动", detail: payload.message };
+    case "unsupported":
+      return { ok: false, message: "该客户端不支持配置写入", detail: payload.message };
+    case "error":
+      return { ok: false, message: "操作未完成", detail: payload.message || cliErrDetail(res) };
+    default: // 未知状态（CLI 新增 status 时兜底）
+      return { ok: false, message: "操作未完成（" + payload.status + "）", detail: payload.message || cliErrDetail(res) };
+  }
+}
+
+async function removeMcpEntry(name, key, high, reason) {
+  const msg = high
+    ? `「${key}」疑似客户端自带${reason ? `（${reason}）` : ""}，删除可能破坏该客户端的功能。\n原配置会先备份。确认继续？`
+    : `将从 ${name} 的 MCP 配置中移除条目「${key}」。\n原配置会先备份，可用「从备份恢复」还原。继续？`;
+  const ok = high
+    ? await confirmTypedKeyModal("删除疑似客户端自带条目", msg, key)
+    : await confirmModal("删除 MCP 条目", msg, true);
+  if (!ok) return;
+  await runTaskModal(`删除 ${name} 的 ${key}`, async () => {
+    const args = ["--remove-mcp-entry", key, "--client", name, "--format", "json"];
+    if (high) args.push("--force-high-risk");
+    const res = await runCli(args);
+    if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
+    return mcpResultToTask(res, `已删除 ${key}`);
+  }, undefined, ["读取 MCP 配置", "备份原配置", "移除条目", "校验回写"]);
+}
+
+async function removeMcpClassEntries(name, cls) {
+  // 必须在弹窗被 confirmModal 覆盖之前读取勾选框状态。
+  const box = $("mcpcls-include-high");
+  const include = !!(box && box.checked);
+  const label = { legacy: "旧通道", unmanaged: "未纳管", attached: "已挂载" }[cls] || cls;
+  const ok = await confirmModal(
+    `清理全部${label}`,
+    `将移除 ${name} 的全部「${label}」MCP 条目${include ? "（含疑似客户端自带）" : "（默认跳过疑似客户端自带的条目）"}。\n原配置会先备份。继续？`,
+    true,
+  );
+  if (!ok) return;
+  await runTaskModal(`清理 ${name} 的${label}`, async () => {
+    const args = ["--remove-mcp-class", cls, "--client", name, "--format", "json"];
+    if (include) args.push("--include-high-risk");
+    const res = await runCli(args);
+    if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
+    return mcpResultToTask(res, `${label}已清理`);
+  }, undefined, ["读取 MCP 配置", "备份原配置", "移除条目", "校验回写"]);
+}
+
+async function showConfigBackups(name) {
+  const res = await runCli(["--list-config-backups", "--client", name, "--format", "json"]);
+  let payload = null;
+  try { payload = JSON.parse(stripAnsi((res && res.stdout) || "")); } catch (e) { payload = null; }
+  const backups = (payload && payload.backups) || [];
+  const rows = backups.map((b) => `<div class="ad-entry">
+      <span class="ad-e-key">${escapeHtml(b.mtime_text)}</span>
+      <span class="ad-e-loc" title="${escapeHtml(b.path)}">${escapeHtml(b.suffix || b.path)}</span>
+      <span class="ad-e-loc">${b.size} B</span>
+      <button class="ad-clean" type="button" data-action="restore-config-backup"
+        data-name="${escapeHtml(name)}" data-path="${escapeHtml(b.path)}">还原到此版本</button>
+    </div>`).join("");
+  const emptyNote = (res && payload)
+    ? '<div class="ad-none">暂无备份</div>'
+    : `<div class="ad-none">无法读取备份列表：${escapeHtml(cliFailLines(res) || cliErrDetail(res))}</div>`;
+  mountModal(`<div class="modal-backdrop"><div class="modal ad-modal">
+    <div class="ad-head"><div class="ad-head-top"><span class="ad-type">${escapeHtml(name)}</span></div>
+      <div class="ad-name">配置备份（${backups.length}）</div></div>
+    <div class="ad-body"><div class="ad-section"><div class="ad-entries">${rows || emptyNote}</div></div></div>
+    <div class="ad-foot"><button class="btn-cancel close-push" id="cfgbak-close">关闭</button></div>
+    <div class="ad-foot-note">还原是整文件覆盖：该配置文件的全部后续改动都会被回退，不只是 MCP 段落。还原前会把当前文件另存为一份新备份。</div>
+  </div></div>`);
+  $("cfgbak-close").onclick = closeModal;
+}
+
+async function restoreConfigBackup(name, path) {
+  const ok = await confirmModal(
+    "从备份还原",
+    `将用该备份覆盖 ${name} 的整个配置文件（不只是 MCP 段落，全部后续改动都会回退）。\n还原前会把当前文件另存为新备份。\n\n备份：${path}\n\n继续？`,
+    true,
+  );
+  if (!ok) return;
+  await runTaskModal(`还原 ${name} 的配置`, async () => {
+    const res = await runCli(["--restore-config-backup", path, "--client", name, "--format", "json"]);
+    if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
+    return mcpResultToTask(res, `已还原 ${name} 的配置`);
+  }, undefined, ["校验备份归属", "备份当前配置", "写回备份内容", "解析校验"]);
 }
 
 async function cleanupConfigFor(name) {
