@@ -2072,3 +2072,28 @@ git commit -m "docs: 补 MCP 条目删除/清理命令说明并将设计文档�
 
 **仍未验证**：GUI 实弹点击（需把新构建安装到 `/Applications`，属改动用户已装发行版，
 留待用户决定）。
+
+### GUI 实弹验证的环境前提（2026-09-20）
+
+安装 `0.21.0` 到 `/Applications` 后，GUI 点击验证被 macOS TCC 权限挡住：
+
+| 尝试 | 报错 |
+| --- | --- |
+| `screencapture -x` | `could not create image from display`（缺屏幕录制） |
+| `osascript … System Events` | `execution error: 权限违例 (-10004)`（缺辅助功能） |
+| `mcp__image-vision__screenshot` | `无法访问显示器` |
+
+**授权对象是 `DeepSeek Harness.app`**（bash 的父进程链在该 Electron 应用之下），不是 Terminal/iTerm——
+给别的 App 授权无效。两处都需授权：**隐私与安全性 → 屏幕录制 + 辅助功能**，且授权后必须
+**退出并重开 DeepSeek Harness**（这两项权限不即时生效）。
+
+**已完成的等价验证**（不依赖 TCC）：
+- 前端新代码进产物：解压 Tauri 的 brotli 资源 `out/tauri-codegen-assets/*.html`，sha256 与
+  `gui/dashboard.html` 相同，4 个新 action 名命中；
+- 白名单进二进制：`grep -a -c` 各命中所见 1 次（注意：`strings | grep -qx` 会**假阴性**，
+  Rust 连续拼接字符串字面量、无 NUL 分隔，整行精确匹配必然失败——不要用这个方法判定）；
+- CLI 端到端（壳透传的同一命令）：`--version` → `0.21.0`；`--remove-mcp-entry` 返回纯 JSON；
+- 真实配置往返：删除 → 备份 sha256 == 原文 → 安全门拒 Codex 自带条目且其配置零改动 → 还原 → sha256 回基线；
+- 前端逻辑分支（桩 DOM）：强确认 13/13、`mcpResultToTask` 12/12、渲染冒烟 20/20。
+
+**仍未验证**：真实 webview 内的按钮点击、`run_cli` argv 透传、弹窗手输解锁。
