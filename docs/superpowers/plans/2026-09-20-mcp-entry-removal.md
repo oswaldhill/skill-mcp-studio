@@ -2097,3 +2097,39 @@ git commit -m "docs: 补 MCP 条目删除/清理命令说明并将设计文档�
 - 前端逻辑分支（桩 DOM）：强确认 13/13、`mcpResultToTask` 12/12、渲染冒烟 20/20。
 
 **仍未验证**：真实 webview 内的按钮点击、`run_cli` argv 透传、弹窗手输解锁。
+
+### GUI 实弹验证：已完成（2026-09-20 22:17）
+
+权限问题解决后，在**真实 webview** 里完成点击验证。关键突破是**不再靠截图目测坐标**：
+改用 `ApplicationServices`（AXUIElement）读取**无障碍元素树**，直接拿到按钮真实坐标与标签，
+并用 `AXUIElementPerformAction(el, "AXPress")` 触发点击（零坐标、零猜测）。
+
+**权限真相（纠正此前误判）**：
+- `osascript … System Events` 报的 `-10004` 是 **Automation（AppleEvents）** 权限，**与辅助功能无关**；
+- 真正可用的是 **Quartz `CGEventPost`（鼠标）** 与 **AX API（读取+AXPress）**；
+- `screencapture` 需**屏幕录制**权限，且必须在**授权之后重启**进程才生效（TCC 在进程启动时缓存）；
+- 本机 DSH 为 **ad-hoc 签名**（`Signature=adhoc`、无 TeamIdentifier），TCC 记录按 cdhash 绑定，
+  这是「设置里开关是开的但仍反复申请」的原因，需**先删记录再重新授权**。
+
+**验证结果**：
+
+| 验证项 | 实测 |
+| --- | --- |
+| 应用版本 | `v0.21.0 (build 106)` ✅ |
+| 导航到 MCP 页 | 侧栏 `MCP 2` 点击生效 ✅ |
+| MCP 页渲染 | 7 客户端 × 已挂载/未纳管 分类正确，未纳管条目全在 ✅ |
+| 打开分类弹窗 | `CODEX / 未纳管条目`，两条高危均标 `疑似客户端自带` ✅ |
+| 命令路径回显 | `/Applications/ChatGPT.app/Contents/Res…`、`./Codex Computer Use.app/Contents/S…` ✅ |
+| **高风险强确认** | 标题 `删除疑似客户端自带条目`，输入框 placeholder `输入条目名以确认` ✅ |
+| **空输入时** | `确认删除` **enabled=False** ✅ |
+| **错误名**（`wrong-name`） | `确认删除` 仍 **False** ✅ |
+| **大小写不符**（`Node_Repl`） | `确认删除` 仍 **False**（区分大小写）✅ |
+| **正确名**（`node_repl`） | `确认删除` → **True**（解锁）✅ |
+| 非高危路径 | `删除 MCP 条目` 普通确认，**不**要求手输 ✅ |
+| **真实删除往返** | 删除后 sha256 `06d5e310…`（与 CLI 侧逐字节一致）；备份 sha256 == 删除前原文 `0d3c7609…`；`my-mcp` 移除、`context7`/`hermes` 未受影响 ✅ |
+| **从备份恢复** | 列出全部备份（时间戳+大小）；覆盖警告写入；还原后 sha256 **精确回到基线** `0d3c7609…`；还原前自动再备份 `…bak-20260920-221754-153828` ✅ |
+
+**全程安全性**：验证只涉及测试残留 `my-mcp`；`~/.codex/config.toml` sha256 始终为
+`574232dd…`（未触碰，高危路径在取消后无任何写入）。
+
+**仍未验证**：`清理全部未纳管条目` 批量路径在真实 GUI 下的行为（设计已在 CLI 侧覆盖）。
