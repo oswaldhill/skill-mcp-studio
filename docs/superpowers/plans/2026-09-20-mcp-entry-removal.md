@@ -1988,3 +1988,21 @@ git commit -m "docs: 补 MCP 条目删除/清理命令说明并将设计文档�
    实施时在 fixture 内补齐：在用例的 `TemporaryDirectory()` 里造一个真实的 overlay 目标文件并在
    config 顶层加 `profile_sources: [<overlay>]`；调用点与断言强度均未改动，另加两条断言证明
    挂载声明确有真实落盘、且空声明被拒时 overlay 也未被改动。
+
+### Task 6 暴露
+
+7. **路由落点不可达（计划代码与计划自己的验收自相矛盾）**：计划 Step 4 要求把 4 条路由插在
+   `--remove-legacy-mcp`（L1489）之前。但 `scan.py` L1332 已有一条更早的通用路由
+   `if getattr(args, "format", None) in ("json", "csv", "md"): return _run_single_profile_snapshot(...)`，
+   会把带 `--format json` 的新命令先截走；而计划 Step 5 的第 2/3/4 条验证、Task 7 GUI 的全部调用
+   以及 Task 8 验收**都要靠 `--format json`**。按计划落点实现，这些命令永远到不了新分支，stdout
+   还会混入阶段一二三的报告，使 Task 7 的 `JSON.parse(整个 stdout)` 必然失败。
+   实施时改为放进与 `--attach-endpoints` / `--list-mcp-inventory` 同一组「阶段五早返回」分支
+   （仍在 `--remove-legacy-mcp` 之前，且早于 `--format` 快照路由），实测 stdout 为纯 JSON。
+8. **文档口径不一致**：File Structure 表与 §5 自检表写「4 个 CLI 参数」，实际是 6 个
+   （`--force-high-risk` / `--include-high-risk` 未计入）；正文相应表述以本节为准。
+9. **`--list-config-backups` 的匹配口径宽于归属校验（安全，但需在文档里讲清）**：它按
+   `config_path + ".bak-"` 前缀匹配，会把非本模块生成的备份（如
+   `config.toml.bak-memory-remediation-20260920-163013`）也列出来（本机 Codex 的 20 个备份里就有 1 个）。
+   因为 `restore_config_backup` 用**同一前缀**做归属校验，凡列出的都能还原，故不是 bug；但
+   「列出即可控」的暗示应在 Task 8 的文档里说明。
