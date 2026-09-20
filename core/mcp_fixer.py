@@ -428,16 +428,25 @@ def _render(tool: Dict[str, Any], text: str, name: str, url: str, token: str = "
     raise ValueError("unsupported MCP configuration format")
 
 
-def _render_without_legacy(
-    tool: Dict[str, Any], text: str, legacy_names: List[str]
+def _render_without_entries(
+    tool: Dict[str, Any], text: str, keys: List[str]
 ) -> str:
-    """Remove only explicitly named legacy MCP entries."""
-    legacy = set(legacy_names)
+    """Remove exactly the named MCP entries from a client config.
+
+    原 ``_render_without_legacy``：删除逻辑与「legacy」无关，只是一组待删 key，
+    故泛化命名以复用同一条实现（六种格式共用）。
+
+    不变式：**没有命中任何待删 key 时原样返回 ``text``**（六个格式一致）。调用方
+    以 ``rendered == original`` 判定 unchanged；若某个格式在空删时仍重新序列化，
+    就会把「无操作」误报成 updated 并顺手改写用户的配置文件（含备份）。TOML 与
+    cordis 天然满足该不变式，JSON/YAML/Reasonix 需在 pop 之前显式短路。
+    """
+    targets = set(keys)
     config_format = tool.get("format", "json")
     key_path = tool.get("mcp_key_path", ["mcpServers"])
 
     if config_format == "cordis_yaml":
-        return _render_cordis_without_legacy(text, legacy_names)
+        return _render_cordis_without_entries(text, keys)
 
     if config_format == "yaml":
         data = yaml.safe_load(text) if text.strip() else {}
@@ -452,7 +461,9 @@ def _render_without_legacy(
                 return text
             if not isinstance(current, dict):
                 raise ValueError("configured MCP key is not an object")
-        for name in legacy:
+        if not any(name in current for name in targets):
+            return text  # nothing removed; keep original (preserves comments/format)
+        for name in targets:
             current.pop(name, None)
         return yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
 
@@ -467,7 +478,9 @@ def _render_without_legacy(
                 return text
             if not isinstance(current, dict):
                 raise ValueError("configured MCP key is not an object")
-        for name in legacy:
+        if not any(name in current for name in targets):
+            return text  # nothing removed; keep original (preserves comments/format)
+        for name in targets:
             current.pop(name, None)
         return json.dumps(data, ensure_ascii=False, indent=2) + "\n"
 
@@ -478,21 +491,23 @@ def _render_without_legacy(
         items = data.get(key_path[0])
         if not isinstance(items, list) or not all(isinstance(item, str) for item in items):
             raise ValueError("Reasonix MCP configuration must be a string array")
+        if not any(item.partition("=")[0].strip() in targets for item in items):
+            return text  # nothing removed; keep original (preserves comments/format)
         data[key_path[0]] = [
-            item for item in items if item.partition("=")[0].strip() not in legacy
+            item for item in items if item.partition("=")[0].strip() not in targets
         ]
         return json.dumps(data, ensure_ascii=False, indent=2) + "\n"
 
     _toml.loads(text)
     if config_format == "toml":
         ranges = []
-        for name in legacy:
+        for name in targets:
             ranges.extend(_toml_section_tree_ranges(text, f"mcp_servers.{name}"))
     elif config_format == "reasonix_toml":
         ranges = [
             (start, end)
             for start, end in _reasonix_plugin_ranges(text)
-            if _toml_string_field(text[start:end], "name") in legacy
+            if _toml_string_field(text[start:end], "name") in targets
         ]
     else:
         raise ValueError("unsupported MCP configuration format")
@@ -504,18 +519,25 @@ def _render_without_legacy(
     return rendered
 
 
-def _render_cordis_without_legacy(text: str, legacy_names: List[str]) -> str:
+def _render_without_legacy(
+    tool: Dict[str, Any], text: str, legacy_names: List[str]
+) -> str:
+    """向后兼容别名（旧调用点与 tests/test_mcp_fixer.py 沿用此名）。"""
+    return _render_without_entries(tool, text, legacy_names)
+
+
+def _render_cordis_without_entries(text: str, keys: List[str]) -> str:
     """Remove only the named legacy MCP entries from a cordis YAML array."""
     data = yaml.safe_load(text)
     if not isinstance(data, list):
         return text
-    legacy = set(legacy_names)
+    targets = set(keys)
     filtered = [
         entry for entry in data
         if not (
             isinstance(entry, dict)
             and isinstance(entry.get("config"), dict)
-            and entry["config"].get("serverName") in legacy
+            and entry["config"].get("serverName") in targets
         )
     ]
     if len(filtered) == len(data):
@@ -745,19 +767,34 @@ def fix_mcp_clients(
     return results
 
 
-def remove_legacy_mcp_tool(
+_GENERIC_REMOVAL_MESSAGES = {
+    "unchanged": "没有匹配到要移除的条目",
+    "dry-run": "将移除匹配到的条目",
+    "updated": "条目已移除并校验通过",
+}
+
+# 旧 CLI 输出被 GUI 字符串匹配消费（gui/dashboard.html:4406），必须逐字不变。
+_LEGACY_REMOVAL_MESSAGES = {
+    "unchanged": "没有残留的旧通道条目",
+    "dry-run": "将移除旧通道条目",
+    "updated": "旧通道条目已移除并校验通过",
+}
+
+
+def remove_mcp_entries_tool(
     tool: Dict[str, Any],
-    expected: Dict[str, Any],
+    keys: List[str],
     *,
     dry_run: bool = False,
+    messages: Optional[Dict[str, str]] = None,
 ) -> Dict[str, str]:
-    """纯粹移除旧通道（legacy）条目，不校验正典端点是否已配置。
+    """移除指定 key 的 MCP 条目（通用原语）。
 
-    删除旧通道不应以「正典端点已接入」为前提——正典端点缺失/待接入时，旧
-    通道可能是客户端当前唯一连接，但用户仍有权选择先删旧通道、之后再用
-    --fix-mcp 重新接入。这里只保证删除本身的安全：解析失败不动原文件，
-    写入前备份，最终返回重新序列化后的合法配置（由 _render_without_legacy
-    内部完成 parse 校验）。"""
+    安全链与旧 ``remove_legacy_mcp_tool`` 完全一致：解析 → 备份 → 重新序列化 →
+    再次解析校验 → 原子写。``messages`` 允许调用方覆盖 updated/unchanged/dry-run
+    三个结果文案（legacy 包装用旧文案保持向后兼容）。
+    """
+    labels = messages or _GENERIC_REMOVAL_MESSAGES
     path = os.path.expanduser(tool.get("config_path", ""))
     if not path or not os.path.isfile(path):
         return _result(tool, "missing", "配置文件缺失，未做改动")
@@ -765,22 +802,21 @@ def remove_legacy_mcp_tool(
         reason = tool.get("fix_unsupported_reason", "该客户端不支持此项修复")
         return _result(tool, "unsupported", reason)
 
-    legacy_names = _merged_legacy_names(expected, tool)
+    targets = [k for k in keys if isinstance(k, str) and k]
+    if not targets:
+        return _result(tool, "unchanged", labels["unchanged"])
+
     try:
         with open(path, "r", encoding="utf-8") as handle:
             original = handle.read()
-        rendered = _render_without_legacy(tool, original, legacy_names)
+        rendered = _render_without_entries(tool, original, targets)
     except (OSError, ValueError, TypeError, json.JSONDecodeError):
-        return _result(
-            tool,
-            "error",
-            "配置读取或解析失败，未做改动",
-        )
+        return _result(tool, "error", "配置读取或解析失败，未做改动")
 
     if rendered == original:
-        return _result(tool, "unchanged", "没有残留的旧通道条目")
+        return _result(tool, "unchanged", labels["unchanged"])
     if dry_run:
-        return _result(tool, "dry-run", "将移除旧通道条目")
+        return _result(tool, "dry-run", labels["dry-run"])
 
     mode = stat.S_IMODE(os.stat(path).st_mode)
     backup_path = _backup_path(path)
@@ -794,7 +830,28 @@ def remove_legacy_mcp_tool(
     except OSError:
         return _result(tool, "error", "原子写入失败，原配置未变")
 
-    return _result(tool, "updated", "旧通道条目已移除并校验通过")
+    result = _result(tool, "updated", labels["updated"])
+    result["backup"] = backup_path
+    return result
+
+
+def remove_legacy_mcp_tool(
+    tool: Dict[str, Any],
+    expected: Dict[str, Any],
+    *,
+    dry_run: bool = False,
+) -> Dict[str, str]:
+    """纯粹移除旧通道（legacy）条目，不校验正典端点是否已配置。
+
+    删除旧通道不应以「正典端点已接入」为前提——正典端点缺失/待接入时，旧
+    通道可能是客户端当前唯一连接，但用户仍有权选择先删旧通道、之后再用
+    --fix-mcp 重新接入。实现已泛化为 ``remove_mcp_entries_tool``；此处只负责
+    解析出 legacy 名单并沿用旧的输出文案（GUI 依赖字符串匹配）。
+    """
+    legacy_names = _merged_legacy_names(expected, tool)
+    return remove_mcp_entries_tool(
+        tool, legacy_names, dry_run=dry_run, messages=_LEGACY_REMOVAL_MESSAGES
+    )
 
 
 def remove_legacy_mcp_clients(
