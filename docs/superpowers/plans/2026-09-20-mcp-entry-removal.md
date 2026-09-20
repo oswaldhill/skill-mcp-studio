@@ -1968,3 +1968,23 @@ git commit -m "docs: 补 MCP 条目删除/清理命令说明并将设计文档�
    多个工具调用会并发执行，校验/提交会读到写入前的状态。Task 2 因此与我的计划修正提交竞争，
    导致那次提交丢失（改动留在工作区，已重新提交为 `d380331`）。此后一律：单次调用内顺序完成
    写入+提交，校验放在下一条消息。
+
+### Task 3 暴露
+
+5. **`validate_config_text` 对 `jsonc` 过严**：它（以及 `_render_without_entries` 的 jsonc 分支）
+   用的是 `json.loads`，而 JSONC 语义允许注释。实测：带 `// 注释` 的 jsonc 备份在还原路径上会被
+   判为「备份内容解析失败」而 `refused`；去掉注释的同样内容则 `updated`（对照组已证明差异只来自
+   注释）。这是从 `_render_without_legacy` 继承的既有口径，不是 Task 3 新引入；本机现有
+   `~/.config/opencode/*.jsonc.bak-*` 恰好无注释，故未触发。修法需新增一个能识别字符串字面量的
+   jsonc 注释剥离函数（纯正则会把 `"https://…"` 截断），建议作为独立小任务。
+
+### Task 4 暴露
+
+6. **Task 4 的测试 fixture 缺 `profile_sources`**：计划 `_config()` 只造了 `mcp_tools` 与 `profiles`，
+   但删除 attached 条目后要调 `endpoint_store.set_client_attach()` 落盘挂载声明，而该函数经
+   `_write_target` → `_source_paths` 只读顶层 `profile_sources`；为空时直接返回
+   `{"status": "error", "message": "no profile_sources configured"}`，导致
+   `test_attached_removal_drops_endpoint_key_not_config_key` **必然断言失败（与实现无关）**。
+   实施时在 fixture 内补齐：在用例的 `TemporaryDirectory()` 里造一个真实的 overlay 目标文件并在
+   config 顶层加 `profile_sources: [<overlay>]`；调用点与断言强度均未改动，另加两条断言证明
+   挂载声明确有真实落盘、且空声明被拒时 overlay 也未被改动。
