@@ -19,7 +19,23 @@
 
 ## 前置约定
 
-- 测试一律用 `from core.<module> import ...`；`core/` 内部模块之间用扁平导入（如 `from tool_registry import expand_path`）。
+- **测试文件头部固定写法**（仓库 34/35 个测试文件如此，勿改）：
+
+  ```python
+  import sys
+  import unittest
+  from pathlib import Path
+
+  ROOT = Path(__file__).resolve().parents[1]
+  sys.path.insert(0, str(ROOT / "core"))
+
+  from <module> import <name>  # noqa: E402
+  ```
+
+  即：先把 `core/` 插进 `sys.path`，再**扁平导入**（如 `from mcp_entry_risk import
+  is_high_risk_entry`），而非 `from core.X import ...`——后者依赖 pytest 注入仓库根到
+  `sys.path`，单文件直接 `python3 tests/test_x.py` 跑会失败。
+- `core/` 内部模块之间同样用扁平导入（如 `from tool_registry import expand_path`）。
 - 测试运行：`python3 -m pytest tests/<file> -q`。**必须用 `python3`（`/usr/local/bin/python3`）**，`/usr/bin/python3` 缺 PyYAML。
 - 提交信息沿用仓库风格：Conventional Commits + 中文描述。
 - 六种配置格式的既有 fixture 在 `tests/test_mcp_fixer.py`（含 `tool(path)` / `EXPECTED` / `URL` 助手），本计划的任务 2、3、4 直接复用其形状，不要另创格式。
@@ -61,9 +77,14 @@
 创建 `tests/test_mcp_entry_risk.py`：
 
 ```python
+import sys
 import unittest
+from pathlib import Path
 
-from core.mcp_entry_risk import is_high_risk_entry
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "core"))
+
+from mcp_entry_risk import is_high_risk_entry  # noqa: E402
 
 
 class HighRiskEntryTest(unittest.TestCase):
@@ -248,7 +269,7 @@ def is_high_risk_entry(entry: Dict[str, Any], tool: Dict[str, Any]) -> Tuple[boo
 - [ ] **Step 4: 运行测试，确认通过**
 
 Run: `python3 -m pytest tests/test_mcp_entry_risk.py -q`
-Expected: PASS（9 passed）
+Expected: PASS（8 passed）
 
 - [ ] **Step 5: 提交**
 
@@ -273,11 +294,15 @@ git commit -m "feat(mcp): 新增高风险 MCP 条目判定（疑似客户端自�
 
 ```python
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-from core.mcp_fixer import remove_legacy_mcp_tool, remove_mcp_entries_tool
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "core"))
+
+from mcp_fixer import remove_legacy_mcp_tool, remove_mcp_entries_tool  # noqa: E402
 
 URL = "https://hermes.example/mcp"
 
@@ -604,11 +629,15 @@ git commit -m "refactor(mcp): 删除原语泛化为按任意 key 移除，legacy
 
 ```python
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-from core.config_backups import list_config_backups, restore_config_backup
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "core"))
+
+from config_backups import list_config_backups, restore_config_backup  # noqa: E402
 
 
 def tool(path, **over):
@@ -994,10 +1023,10 @@ class RemovalOrchestrationTest(unittest.TestCase):
             self.assertIn("[mcp_servers.bundled]", path.read_text(encoding="utf-8"))
 ```
 
-并在该文件顶部导入行补充：
+并在该文件顶部导入行补充（沿用该文件已有的路径头，扁平导入）：
 
 ```python
-from core.mcp_entry_removal import remove_class, remove_entries
+from mcp_entry_removal import remove_class, remove_entries  # noqa: E402
 ```
 
 - [ ] **Step 2: 运行测试，确认失败**

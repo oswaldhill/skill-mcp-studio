@@ -5,7 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "core"))
 
-from core.mcp_entry_risk import is_high_risk_entry  # noqa: E402
+from mcp_entry_risk import is_high_risk_entry  # noqa: E402
 
 
 class HighRiskEntryTest(unittest.TestCase):
