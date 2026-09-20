@@ -21,6 +21,7 @@ from typing import Any, Dict, List
 
 from combined_checker import check_agents, result_ok
 from endpoint_library import endpoint_entries, resolve_client_attach, validate_attachment
+from mcp_entry_risk import is_high_risk_entry
 from mcp_inventory import inventory_client
 from profile_loader import load_profile, list_profiles
 from scanner import run_scan
@@ -158,6 +159,27 @@ def _effective_tools(config: Dict[str, Any]) -> List[Dict[str, Any]]:
     return _tool_registry_effective_tools(config)
 
 
+def _mcp_inventory_payload(entries: List[Any], tool: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """inventory 条目载荷；每条附带高风险判定，供 GUI 分级确认。"""
+    payload: List[Dict[str, Any]] = []
+    for entry in entries:
+        high, reason = is_high_risk_entry(
+            {"key": entry.key, "command": entry.command, "args": list(entry.args)}, tool
+        )
+        payload.append(
+            {
+                "key": entry.key,
+                "url": entry.url,
+                "command": entry.command,
+                "classification": entry.classification,
+                "endpoint_key": entry.endpoint_key,
+                "high_risk": high,
+                "risk_reason": reason,
+            }
+        )
+    return payload
+
+
 def build_management_snapshot(
     config: Dict[str, Any],
     config_path: str = "",
@@ -277,16 +299,7 @@ def build_management_snapshot(
             "config_path": tool.get("config_path", ""),
             "format": tool.get("format", "json"),
             "mcp_key_path": tool.get("mcp_key_path", ["mcpServers"]),
-            "inventory": [
-                {
-                    "key": e.key,
-                    "url": e.url,
-                    "command": e.command,
-                    "classification": e.classification,
-                    "endpoint_key": e.endpoint_key,
-                }
-                for e in entries
-            ],
+            "inventory": _mcp_inventory_payload(entries, tool),
         })
 
     # --- per-endpoint audit conclusion (reusing check_agents) ---
