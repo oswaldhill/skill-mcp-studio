@@ -95,6 +95,9 @@ from endpoint_store import (
     set_client_attach as store_set_client_attach,
 )
 from mcp_inventory import inventory_client
+# 阶段五增量：MCP 条目删除 / 清理与配置备份还原
+from config_backups import list_config_backups, restore_config_backup
+from mcp_entry_removal import remove_class, remove_entries
 
 
 def _run_all_profiles(args, config, config_path) -> int:
@@ -514,6 +517,105 @@ def _print_store_result(result) -> None:
     status = result.get("status", "error")
     icon = {"ok": "  ✅", "dry-run": "  🔍", "unchanged": "  ⏭️ ", "error": "  ❌"}.get(status, "  ⚠️ ")
     print(f"{icon} {status}: {result.get('message', '')} (path={result.get('path') or '—'})")
+
+
+def _print_mcp_result(result, as_json: bool) -> None:
+    """MCP 条目删除 / 清理 / 还原的统一输出。
+
+    ``--format json`` 时输出结构化对象，前端据此判定结果，不再对 stdout 做
+    字符串匹配（旧 ``--remove-legacy-mcp`` 保持原有字符串输出不变）。
+    """
+    if as_json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+    mark = "✅" if result.get("status") in ("updated", "unchanged") else "❌"
+    print(f"  {mark} {result.get('message', '')}")
+    if result.get("path"):
+        print(f"    配置: {result['path']}")
+    if result.get("backup"):
+        print(f"    备份: {result['backup']}")
+    if result.get("attach_updated"):
+        print(f"    已同步摘除挂载声明: {', '.join(result['attach_updated'])}")
+    for item in result.get("skipped_high_risk") or []:
+        print(f"    ⏭️ 跳过高风险: {item['key']}（{item['reason']}）")
+
+
+def _find_client_tool(config, client_name):
+    """按归一化名在有效客户端里查注册表条目。
+
+    与 ``mcp_fixer`` 对 ``--client`` 的既有口径一致：只比客户端名（归一化），
+    不匹配 aliases。
+    """
+    wanted = normalized_name(client_name)
+    for tool in effective_tools(config):
+        if isinstance(tool, dict) and normalized_name(tool.get("name", "")) == wanted:
+            return tool
+    return None
+
+
+def _run_remove_mcp_entry(args, config, config_path) -> int:
+    client = getattr(args, "client", None)
+    if not client:
+        print("  ❌ --remove-mcp-entry 需要配合 --client <客户端名>")
+        return 2
+    keys = [part.strip() for part in (args.remove_mcp_entry or "").split(",") if part.strip()]
+    if not keys:
+        print("  ❌ --remove-mcp-entry 需要至少一个条目 key")
+        return 2
+    result = remove_entries(
+        config, client, keys,
+        force_high_risk=bool(args.force_high_risk), dry_run=bool(args.dry_run),
+    )
+    _print_mcp_result(result, getattr(args, "format", None) == "json")
+    return 0 if result.get("status") in ("updated", "unchanged", "dry-run") else 2
+
+
+def _run_remove_mcp_class(args, config, config_path) -> int:
+    client = getattr(args, "client", None)
+    if not client:
+        print("  ❌ --remove-mcp-class 需要配合 --client <客户端名>")
+        return 2
+    result = remove_class(
+        config, client, args.remove_mcp_class,
+        include_high_risk=bool(args.include_high_risk), dry_run=bool(args.dry_run),
+    )
+    _print_mcp_result(result, getattr(args, "format", None) == "json")
+    return 0 if result.get("status") in ("updated", "unchanged", "dry-run") else 2
+
+
+def _run_list_config_backups(args, config, config_path) -> int:
+    client = getattr(args, "client", None)
+    if not client:
+        print("  ❌ --list-config-backups 需要配合 --client <客户端名>")
+        return 2
+    tool = _find_client_tool(config, client)
+    if tool is None:
+        print(f"  ❌ 未找到客户端 {client}")
+        return 2
+    backups = list_config_backups(tool.get("config_path", ""))
+    if getattr(args, "format", None) == "json":
+        print(json.dumps(
+            {"status": "ok", "client": client, "config_path": tool.get("config_path", ""),
+             "backups": backups}, ensure_ascii=False, indent=2))
+        return 0
+    print(f"  {client} 的配置备份（{len(backups)} 个）:")
+    for item in backups:
+        print(f"    {item['mtime_text']}  {item['size']:>8} B  {item['path']}")
+    return 0
+
+
+def _run_restore_config_backup(args, config, config_path) -> int:
+    client = getattr(args, "client", None)
+    if not client:
+        print("  ❌ --restore-config-backup 需要配合 --client <客户端名>")
+        return 2
+    tool = _find_client_tool(config, client)
+    if tool is None:
+        print(f"  ❌ 未找到客户端 {client}")
+        return 2
+    result = restore_config_backup(tool, args.restore_config_backup, dry_run=bool(args.dry_run))
+    _print_mcp_result(result, getattr(args, "format", None) == "json")
+    return 0 if result.get("status") in ("updated", "dry-run") else 2
 
 
 def _run_single_profile_snapshot(args, config, config_path) -> int:
@@ -1134,6 +1236,31 @@ def main() -> int:
         help="设置客户端 mcp_attach（配合 --client；写操作，支持 --dry-run）",
     )
     parser.add_argument(
+        "--remove-mcp-entry", type=str, default=None, metavar="KEY[,KEY...]",
+        help="移除指定 MCP 条目（配合 --client；高风险条目需 --force-high-risk；支持 --dry-run）",
+    )
+    parser.add_argument(
+        "--remove-mcp-class", type=str, default=None,
+        choices=["attached", "legacy", "unmanaged"],
+        help="按分类批量清理 MCP 条目（配合 --client；默认跳过高风险，需 --include-high-risk）",
+    )
+    parser.add_argument(
+        "--force-high-risk", action="store_true",
+        help="配合 --remove-mcp-entry：允许删除疑似客户端自带的条目",
+    )
+    parser.add_argument(
+        "--include-high-risk", action="store_true",
+        help="配合 --remove-mcp-class：批量清理时纳入疑似客户端自带的条目",
+    )
+    parser.add_argument(
+        "--list-config-backups", action="store_true",
+        help="只读列出该客户端配置的历史备份（配合 --client）",
+    )
+    parser.add_argument(
+        "--restore-config-backup", type=str, default=None, metavar="PATH",
+        help="从备份还原该客户端配置（配合 --client；整文件覆盖；支持 --dry-run）",
+    )
+    parser.add_argument(
         "--list-mcp-inventory", action="store_true",
         help="只读列出各客户端当前配置的全部 MCP 条目及分类（attached/legacy/unmanaged）",
     )
@@ -1296,6 +1423,19 @@ def main() -> int:
         return _run_attach_endpoints(args, config, config_path)
     if getattr(args, "list_mcp_inventory", False):
         return _run_list_mcp_inventory(args, config, config_path)
+    # 阶段五增量：MCP 条目删除 / 清理 / 配置备份还原。与上面几条管理台命令同属
+    # 「早返回」组，必须排在阶段三的通用 `--format json` 快照路由
+    # （_run_single_profile_snapshot）之前：这四个命令也支持 --format json，
+    # 且需要只输出自身结果的干净 stdout（GUI 直接 JSON.parse 整个 stdout），
+    # 否则通用快照路由会先截走 --format json 的调用。
+    if getattr(args, "remove_mcp_entry", None):
+        return _run_remove_mcp_entry(args, config, config_path)
+    if getattr(args, "remove_mcp_class", None):
+        return _run_remove_mcp_class(args, config, config_path)
+    if getattr(args, "list_config_backups", False):
+        return _run_list_config_backups(args, config, config_path)
+    if getattr(args, "restore_config_backup", None):
+        return _run_restore_config_backup(args, config, config_path)
     if getattr(args, "management", False):
         return _run_management(args, config, config_path)
     if getattr(args, "version", False):
