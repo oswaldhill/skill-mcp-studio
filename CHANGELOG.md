@@ -5,9 +5,57 @@
 
 > 注：项目早期历史未按版本逐次发布，以下按可识别的版本里程碑汇总。
 
+## [v0.20.1] - 2026-09
+
+build 105。
+
+### 修复
+
+- **安装探测**：GUI 壳（Finder / Dock 启动）继承 launchd 的最小 PATH，使经
+  Homebrew / npm / pipx 安装的 CLI 探测落空，在用客户端被误判为 `config_only`
+  「仅配置」——该状态会开放「删除客户端」清理入口（备份后删除其配置文件）。新增
+  `tool_registry.which_with_fallback`：PATH 优先，未命中再兜底常见 bin 目录
+  （Windows 按 `PATHEXT` 补后缀），成为 `detect_installation` 的默认实现；调用方
+  注入 `command_exists` 时仍完全接管该逻辑，测试契约不变。
+- **注册表**：`DeepSeek Harness` 的 app bundle 更正为 `/Applications/DeepSeek
+  Harness.app`（旧名 `DeepSeek AI Assistant.app` 保留兜底），`commands` 补
+  Homebrew 绝对路径，并修正过期的 bundle id 注释；主流默认注册表条目同步补
+  `app_bundles`，三平台一致。附带效果：`Claude Code` 等仅声明裸名 CLI 的客户端
+  也从漏判中恢复。
+
+### 工程化
+
+- `scripts/bump_version.py` 同步范围扩展：新增 README 版本 badge、`SECURITY.md`
+  「当前版本」、架构图版本标注、控制台浏览器预览兜底、Issue 模板版本示例与
+  CHANGELOG 链接块，消除文档版本与 `version.json` 的漂移。
+- 新增 `CliFallbackTest` 回归用例：裸名兜底命中、路径形态不扫描、默认走兜底、
+  注入语义不变。
+
+## [v0.20.0] - 2026-09
+
+build 104。
+
+### 变更
+
+- **跨平台**：新增 Windows / Linux 构建支持——`mainstream_registry` 引入 `by_os`
+  + `sys.platform` 路径分派，`tool_registry` 新增 `expand_path` 统一展开 `%VAR%`
+  与 `~`，Rust 壳 `cli_candidates` 三平台适配；新增 `build-windows.yml`
+  （NSIS + MSI）与 `build-linux.yml`（deb + rpm + AppImage）。
+
+### 修复
+
+- 修复 Windows / Linux 跨平台构建失败。
+
+### 工程化
+
+- tag（`v*`）触发时把 `.exe` / `.msi` 与 `.deb` / `.rpm` / `.AppImage` 追加到同一
+  GitHub Release；非 tag 触发仍只上传 artifact（与 `build-macos.yml` 对齐）。
+- 新增 GitHub 推送门禁 `pre-push` hook 模板：推送到 GitHub 需显式放行
+  （`GITHUB_PUSH_ALLOW=1`）。
+
 ## [v0.19.0] - 2026-09
 
-当前发布版本（build 103）。
+build 103。
 
 ### 变更
 
@@ -103,7 +151,9 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.19.0...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.20.1...HEAD
+[v0.20.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.20.1
+[v0.20.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.20.0
 [v0.19.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.19.0
 [v0.18.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.18.0
 [v0.16.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.16.1
