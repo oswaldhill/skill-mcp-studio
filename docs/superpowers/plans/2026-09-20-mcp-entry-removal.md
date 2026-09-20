@@ -2006,3 +2006,26 @@ git commit -m "docs: 补 MCP 条目删除/清理命令说明并将设计文档�
    `config.toml.bak-memory-remediation-20260920-163013`）也列出来（本机 Codex 的 20 个备份里就有 1 个）。
    因为 `restore_config_backup` 用**同一前缀**做归属校验，凡列出的都能还原，故不是 bug；但
    「列出即可控」的暗示应在 Task 8 的文档里说明。
+
+### Task 7 暴露
+
+10. **【最关键】File Structure 表漏了 `src-tauri/src/lib.rs`，导致桌面版四个功能全部不可用**：桌上壳的
+    `run_cli` 对 argv 首个 `--flag` 做白名单校验（`ALLOWED.contains(&bare)`，否则返回
+    `Err("run_cli: 子命令 … 不在白名单内（安全边界）")`）。计划只列了 `scan.py` 与 `gui/dashboard.html`，
+    新命令不在白名单里 → `runCli` 拿到 null → 四个按钮一律显示「工具未能执行」，即「渲染了按钮但
+    没人能处理」的半成品。已补 4 个 flag（`lib.rs:188-191`）并用仓库内 Rust 工具链跑
+    `cargo check --offline` 验证通过（exit 0）。**凡新增 CLI 参数，必须同时改这里**——这是既有
+    铁律（写盘在 CLI、壳只透传 argv），计划应当显式列出，而不是等到实现时才发现。
+11. **批量清理「全部被跳过高危」时不能报成功**：真实 CLI 在该情形返回 `status=unchanged` +
+    `skipped_high_risk`。计划的分支会显示成 ✅「没有匹配到要移除的条目」，用户会以为已清干净。
+    已改为失败态 + 逐条列出 reason。
+12. **计划用了不存在/不生效的东西**：`.cfm-typed` CSS 类未定义；`.cfm-msg` 无 `white-space: pre-line`，
+    而计划的确认文案都带 `\n`（多行会挤成一行）；计划还无条件渲染一个 disabled 的
+    「包含疑似客户端自带（0）」勾选框。均已修正。另：计划里 `mountModal` / `stripAnsi` 等假设
+    **确实存在**，行号则全部漂移（一律按函数名定位）。
+13. **计划沿用了既有 footNote 里的假话**：旧文案称「清理前会先做统一端点活体探测」，但
+    `remove_legacy_mcp_tool` 的 docstring 明确写了删除不以正典端点接入为前提，代码里也没有探测。
+    该句已随本次改动删除。
+14. **Task 7 无法在 Task 7 内完成实弹验证**：`tauri.conf.json` 的 `frontendDist: "../gui"` 意味着
+    dashboard.html 是**构建期**拷进 bundle 的，加上本次改了 Rust 白名单，必须重建 .app 才能在桌面端
+    点按钮。计划的 Step 7 只做语法自检，这一点应在 Task 8 的验收步骤里写明。
