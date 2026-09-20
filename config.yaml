@@ -147,10 +147,12 @@ mcp_tools:
   type: AI Agent
   aliases: [dsh, DSH, deepseek-dsh, dsh-web, deepseek-harness, deepseek]
   install:
-    # 桌面 app 为 /Applications/DeepSeek AI Assistant.app（bundle id com.deepseek.dsh-desktop，
-    # 可执行文件 DSHApp）；dsh CLI 未进 PATH，故以 app bundle 作为安装主证据。
-    app_bundles: [/Applications/DeepSeek AI Assistant.app]
-    commands: [dsh]
+    # 桌面 app 现名 /Applications/DeepSeek Harness.app（bundle id
+    # com.deepseek.harness.local）；旧名 DeepSeek AI Assistant.app 保留作兜底。
+    # commands 除裸名外补 Homebrew 绝对路径：GUI 壳从 Finder 启动时继承 launchd
+    # 最小 PATH（没有 /opt/homebrew/bin），只写裸名 dsh 会被误判成「仅配置」。
+    app_bundles: [/Applications/DeepSeek Harness.app, /Applications/DeepSeek AI Assistant.app]
+    commands: [dsh, /opt/homebrew/bin/dsh]
     config_paths: [~/.dsh/settings.yaml, ~/.dsh/profiles/web/cordis.patch.yml, ~/.dsh/mcp.json]
   config_path: ~/.dsh/profiles/web/cordis.patch.yml
   format: cordis_yaml

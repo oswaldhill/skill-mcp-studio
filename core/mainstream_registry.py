@@ -4,7 +4,8 @@
 以及 MCP 配置文件定位（config_path / format / mcp_key_path），使「默认添加」后
 能立即参与三态安装判定与 MCP 检查，与手工配置的 registry 条目完全一致。
 
-install.commands 的探测用 shutil.which（PATH 上的可执行文件），app_bundles /
+install.commands 的探测用 ``tool_registry.which_with_fallback``（PATH 优先，未命中再
+兜底常见 bin 目录——GUI 壳从 Finder 启动时 PATH 受限，裸名 which 会漏判），app_bundles /
 config_paths 用 os.path.exists（expanduser + %VAR% 展开后）。用户机器上未命中的
 条目会按三态语义落为 config_only（仅配置，显示待确认）或 none（隐藏），不会误报。
 
@@ -520,7 +521,16 @@ MAINSTREAM_TOOLS: List[Dict[str, Any]] = [
     # ---- 当前 AI 本体（原 DSH）----
     _entry(
         "DeepSeek Harness", type_="AI Agent",
-        commands=["dsh"],
+        # 桌面 app 现名 /Applications/DeepSeek Harness.app（bundle id
+        # com.deepseek.harness.local）；旧名 DeepSeek AI Assistant.app 保留作兜底。
+        # commands 除裸名外补 Homebrew 绝对路径：GUI 壳从 Finder 启动时继承 launchd
+        # 最小 PATH（没有 /opt/homebrew/bin），只写裸名会让在用客户端被误判成
+        # config_only（「仅配置」，并给出会删配置的清理入口）。
+        app_bundles=[
+            "/Applications/DeepSeek Harness.app",
+            "/Applications/DeepSeek AI Assistant.app",
+        ],
+        commands=["dsh", "/opt/homebrew/bin/dsh"],
         config_paths=["~/.dsh/settings.yaml", "~/.dsh/mcp.json"],
         skills_path="~/.dsh/skills",
         mcp_config_path="~/.dsh/mcp.json",
@@ -535,7 +545,7 @@ MAINSTREAM_TOOLS: List[Dict[str, Any]] = [
             },
             "linux": {
                 "app_bundles": [],
-                "commands": ["dsh"],
+                "commands": ["dsh", "/usr/local/bin/dsh"],
                 "config_paths": ["~/.dsh/settings.yaml", "~/.dsh/mcp.json"],
                 "skills_path": "~/.dsh/skills",
                 "mcp_config_path": "~/.dsh/mcp.json",

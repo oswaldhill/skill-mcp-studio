@@ -4,12 +4,18 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "core"))
 
-from tool_registry import detect_installation, read_app_versions, read_cli_versions  # noqa: E402
+from tool_registry import (  # noqa: E402
+    detect_installation,
+    read_app_versions,
+    read_cli_versions,
+    which_with_fallback,
+)
 
 
 class RegistryTest(unittest.TestCase):
@@ -88,6 +94,58 @@ class RegistryTest(unittest.TestCase):
         )
         self.assertFalse(result["installed"])
         self.assertEqual(result["evidence"], [])
+
+
+class CliFallbackTest(unittest.TestCase):
+    """GUI 壳（Finder 启动）PATH 受限时，裸名 CLI 仍应被常见 bin 目录兜底命中。
+
+    回归背景：控制台以 /Applications/skill-mcp-studio.app 运行时继承 launchd 的
+    最小 PATH，``shutil.which("dsh")`` 查不到 /opt/homebrew/bin/dsh，在用客户端被
+    误判成 config_only（「仅配置」）并给出会删配置的清理入口。
+    """
+
+    @staticmethod
+    def _make_cli(directory: str, name: str) -> str:
+        path = os.path.join(directory, name)
+        with open(path, "w") as fh:
+            fh.write("#!/bin/sh\nexit 0\n")
+        os.chmod(path, 0o755)
+        return path
+
+    def test_bare_name_found_in_extra_bin_dir_when_path_misses(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            expected = self._make_cli(tmp, "smp-studio-probe")
+            with mock.patch("tool_registry._EXTRA_BIN_DIRS_POSIX", (tmp,)), \
+                    mock.patch("tool_registry.shutil.which", return_value=None):
+                self.assertEqual(which_with_fallback("smp-studio-probe"), expected)
+
+    def test_path_form_command_is_not_dir_scanned(self):
+        """路径形态的命令只认 which 的结果，不参与兜底目录扫描。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch("tool_registry._EXTRA_BIN_DIRS_POSIX", (tmp,)), \
+                    mock.patch("tool_registry.shutil.which", return_value=None):
+                self.assertIsNone(which_with_fallback(os.path.join(tmp, "smp-studio-probe")))
+
+    def test_detect_installation_default_uses_fallback(self):
+        tool = {"install": {"app_bundles": [], "commands": ["smp-studio-probe"], "config_paths": []}}
+        with tempfile.TemporaryDirectory() as tmp:
+            self._make_cli(tmp, "smp-studio-probe")
+            with mock.patch("tool_registry._EXTRA_BIN_DIRS_POSIX", (tmp,)), \
+                    mock.patch("tool_registry.shutil.which", return_value=None):
+                result = detect_installation(tool)
+        self.assertTrue(result["installed"])
+        self.assertEqual(result["install_state"], "installed")
+        self.assertEqual(result["evidence"], ["cli"])
+
+    def test_injected_command_exists_still_takes_over(self):
+        """注入 command_exists 时不触碰文件系统兜底（测试契约不变）。"""
+        tool = {"install": {"app_bundles": [], "commands": ["smp-studio-probe"], "config_paths": []}}
+        with tempfile.TemporaryDirectory() as tmp:
+            self._make_cli(tmp, "smp-studio-probe")
+            with mock.patch("tool_registry._EXTRA_BIN_DIRS_POSIX", (tmp,)):
+                result = detect_installation(tool, command_exists=lambda command: None)
+        self.assertFalse(result["installed"])
+        self.assertEqual(result["install_state"], "none")
 
 
 class VersionProbeTest(unittest.TestCase):

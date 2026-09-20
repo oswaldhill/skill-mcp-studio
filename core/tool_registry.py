@@ -5,7 +5,7 @@ import plistlib
 import re
 import shutil
 import subprocess
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 
 def expand_path(path: str, environ: Dict[str, str] = None) -> str:
@@ -56,11 +56,81 @@ def _abbreviate_home(path: str, home: str) -> str:
     return path
 
 
+#: GUI 壳（Finder / Dock / Explorer 启动的应用）继承的是最小 PATH——macOS 上是
+#: launchd 默认的 ``/usr/bin:/bin:/usr/sbin:/sbin``——而 Homebrew / npm / pipx /
+#: cargo 装的 CLI 都落在用户级 bin 目录里。裸名 ``which`` 因此在 GUI 里必然查不到，
+#: 在用客户端会被误判成 ``config_only``（「仅配置」，并给出会删配置的清理入口）。
+#: 这里补一份常见安装位置作为兜底搜索路径；PATH 仍然优先，尊重用户的 shim 与版本
+#: 管理器（nvm / volta / asdf 等改 PATH 的写法照旧生效）。
+_EXTRA_BIN_DIRS_POSIX: Tuple[str, ...] = (
+    "/opt/homebrew/bin",   # macOS Apple Silicon Homebrew
+    "/opt/homebrew/sbin",
+    "/usr/local/bin",      # Intel Homebrew / 手工安装
+    "/usr/local/sbin",
+    "/opt/local/bin",      # MacPorts
+    "/usr/bin",
+    "/bin",
+    "/usr/sbin",
+    "/sbin",
+    "~/.local/bin",        # pipx / pip --user
+    "~/.npm-global/bin",
+    "~/Library/pnpm",
+    "~/.bun/bin",
+    "~/.volta/bin",
+    "~/.deno/bin",
+    "~/.cargo/bin",
+)
+
+_EXTRA_BIN_DIRS_WINDOWS: Tuple[str, ...] = (
+    "%APPDATA%\\npm",
+    "%LOCALAPPDATA%\\Programs\\Python\\Scripts",
+    "%USERPROFILE%\\.local\\bin",
+    "%USERPROFILE%\\.cargo\\bin",
+    "%LOCALAPPDATA%\\Microsoft\\WindowsApps",
+)
+
+
+def _extra_bin_dirs() -> Tuple[str, ...]:
+    """当前平台的兜底 bin 目录（``%VAR%`` 在 :func:`expand_path` 里展开）。"""
+    return _EXTRA_BIN_DIRS_WINDOWS if os.name == "nt" else _EXTRA_BIN_DIRS_POSIX
+
+
+def _command_filenames(command: str) -> List[str]:
+    """Windows 下按 ``PATHEXT`` 补后缀：文件查找不会自动补扩展名。"""
+    if os.name != "nt" or os.path.splitext(command)[1]:
+        return [command]
+    exts = (os.environ.get("PATHEXT") or ".COM;.EXE;.BAT;.CMD").split(os.pathsep)
+    return [command + ext.lower() for ext in exts if ext]
+
+
+def which_with_fallback(command: str) -> Optional[str]:
+    """``shutil.which`` 优先，未命中再扫常见安装目录。
+
+    这是 :func:`detect_installation` 的默认 CLI 探测实现。路径形态的命令
+    （含 ``os.sep``/``os.altsep``）直接交给 ``shutil.which`` 并原样返回其结果
+    ——它自己会校验可执行位；裸名在 PATH 未命中时，按 :func:`_extra_bin_dirs`
+    的顺序返回第一个真实存在的可执行文件。这样从 Finder 启动的 GUI 壳（PATH
+    受限）与终端（PATH 完整）会得到同一份判定，不再出现「终端说已安装、控制台
+    说仅配置」的分裂。
+    """
+    found = shutil.which(command)
+    if found or os.sep in command or (os.altsep and os.altsep in command):
+        return found
+    names = _command_filenames(command)
+    for directory in _extra_bin_dirs():
+        base = expand_path(directory)
+        for name in names:
+            candidate = os.path.join(base, name)
+            if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+                return candidate
+    return None
+
+
 def detect_installation(
     tool: Dict[str, Any],
     *,
     path_exists: Callable[[str], bool] = os.path.exists,
-    command_exists: Callable[[str], Any] = shutil.which,
+    command_exists: Callable[[str], Any] = which_with_fallback,
     expanduser: Callable[[str], str] = os.path.expanduser,
 ) -> Dict[str, Any]:
     """Return three-state installation evidence without treating a Skills link as proof.
@@ -75,8 +145,13 @@ def detect_installation(
 
     ``app``/``cli``/``config`` evidence lists use a portable ``~`` display form:
     every home-prefixed path (app bundles and config files via expanduser, CLI via
-    shutil.which) is abbreviated back to ``~/...``, matching the registry/config
-    source which declares ``~`` — the address reads the same on every device.
+    :func:`which_with_fallback`) is abbreviated back to ``~/...``, matching the
+    registry/config source which declares ``~`` — the address reads the same on
+    every device.
+
+    CLI 探测默认走 :func:`which_with_fallback`：PATH 优先、再兜底常见安装目录，
+    因此 GUI 壳（PATH 受限）与终端得到同一份判定。调用方注入 ``command_exists``
+    时（测试）完全接管该逻辑，不做任何额外文件系统探测。
     """
     install = tool.get("install", {}) or {}
     home = expanduser("~")
@@ -111,7 +186,8 @@ def detect_installation(
         _abbreviate_home(_expand(path), home) for path in install.get("app_bundles", [])
         if path_exists(_expand(path))
     ])
-    # shutil.which returns the resolved command path (or None); keep only hits.
+    # command_exists 默认是 which_with_fallback：返回解析后的命令路径（或 None）；
+    # 只保留命中项。
     cli_paths = _dedupe([
         _abbreviate_home(resolved, home)
         for resolved in (command_exists(cmd) for cmd in install.get("commands", []))
