@@ -526,6 +526,25 @@ def _render_without_legacy(
     return _render_without_entries(tool, text, legacy_names)
 
 
+def validate_config_text(tool: Dict[str, Any], text: str) -> None:
+    """按客户端声明的格式做解析校验；非法时抛异常。
+
+    与 ``_render_without_entries`` 使用完全相同的解析器，供「还原备份」等
+    不经过渲染的路径复用，避免出现第二套格式判定。
+    """
+    config_format = tool.get("format", "json")
+    if config_format == "cordis_yaml":
+        _load_cordis_yaml(text)
+    elif config_format == "yaml":
+        yaml.safe_load(text)
+    elif config_format in ("json", "jsonc"):
+        json.loads(text)
+    elif config_format == "reasonix":
+        json.loads(text)
+    else:
+        _toml.loads(text)
+
+
 def _render_cordis_without_entries(text: str, keys: List[str]) -> str:
     """Remove only the named legacy MCP entries from a cordis YAML array."""
     data = yaml.safe_load(text)
