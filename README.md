@@ -182,9 +182,32 @@ cleanup / commit / push / 修复。
 --test-endpoint KEY                 探测某端点（initialize + tools/list）
 --attach-endpoints KEY,... --client C   设置客户端 mcp_attach
 --list-mcp-inventory                逐客户端 MCP 条目分类（attached/legacy/unmanaged）
+--remove-mcp-entry KEY[,KEY...] --client C   删除指定 MCP 条目（含未纳管；高风险需 --force-high-risk）
+--remove-mcp-class attached|legacy|unmanaged --client C   按分类批量清理（默认跳过高风险，需 --include-high-risk 才纳入）
+--list-config-backups --client C    只读列出该客户端配置的历史备份（<配置文件名>.bak-<时间戳>）
+--restore-config-backup PATH --client C   用指定备份还原该客户端配置（整文件覆盖，还原前自动再备份当前）
 --management --format json          管理台管理快照（GUI 数据源）
 --version                           输出版本 JSON
 ```
+
+以上 6 个新参数（`--remove-mcp-entry` / `--remove-mcp-class` / `--force-high-risk` /
+`--include-high-risk` / `--list-config-backups` / `--restore-config-backup`）：
+
+- **`--client` 要求**：全部需要配合 `--client <客户端名>`，缺失即报错退出（码 2）。
+  `--force-high-risk` / `--include-high-risk` 是修饰 flag，不单独使用。
+- **`--dry-run` 支持**：`--remove-mcp-entry` / `--remove-mcp-class` /
+  `--restore-config-backup` 均支持 `--dry-run`（只算不写）；
+  `--list-config-backups` 本身只读。
+- **`--format json` 支持**：全部支持，stdout 为纯 JSON 结构
+  （`status` / `message` / `path` / `backup` / `removed` / `skipped_high_risk` /
+  `attach_updated`），GUI 据此判定结果而非做字符串匹配。
+- **高风险门**：疑似客户端自带（命令落在该客户端 app bundle 内、或条目名与客户端同名）
+  的条目默认**拒绝删除**并返回 `status=refused`、退出码 `2`；确需删除必须显式加
+  `--force-high-risk`（单条）或 `--include-high-risk`（批量）。
+- **回滚**：写操作都先落一份 `<配置文件名>.bak-<时间戳>` 备份；
+  还原是**整文件覆盖**（该配置文件的全部后续改动都会回退，不只是 MCP 段落）。
+- **删除 `attached` 条目会同步摘除挂载声明**；若摘除后声明将变空则整体拒绝
+  （本项目语义中「空声明」==「挂载全部端点」）。
 
 **客户端发现与生命周期**
 
