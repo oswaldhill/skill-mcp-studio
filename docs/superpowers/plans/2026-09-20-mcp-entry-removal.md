@@ -1929,3 +1929,42 @@ git commit -m "docs: 补 MCP 条目删除/清理命令说明并将设计文档�
 - 新增 `validate_config_text(tool, text)` 在 Task 3 定义并由 `config_backups` 调用。
 
 **已知偏差（需在实施时留意）：** Task 5 的 Step 3 与 Task 8 的验收以本机 2026-09-20 实测形状为准（Codex 两条自带条目、WorkBuddy `my-mcp` 为测试残留）。若届时机器状态已变，以实际输出为准判断，不强行套用期望值。
+---
+
+## 实施过程记录：计划执行中暴露的缺陷
+
+本节由实施过程中回填；计划正文保留原样，便于对照「计划写的」与「实际做的」。
+
+### Task 1 暴露
+
+1. **测试导入约定写错**：计划原文写「测试一律用 `from core.<module> import ...`」，与仓库实际
+   约定（34/35 个测试文件用「路径头 + 扁平导入」）不符；且 `from core.X` 依赖 pytest 把仓库根
+   注入 `sys.path`，单文件直接 `python3 tests/test_x.py` 会失败。已把「前置约定」及 Task 1/2/3/4
+   的测试片段统一为「路径头 + 扁平导入」，并把 `tests/test_mcp_entry_risk.py` 改为扁平导入
+   （直跑与 pytest 均通过）。
+2. **测试条数写错**：Task 1 原写「9 passed」，实际测试代码只有 8 个用例，已改为 8。
+
+### Task 2 暴露
+
+3. **实现代码与它自己的测试自相矛盾**：计划给的 `_render_without_entries`（沿用改动前的
+   `_render_without_legacy`）在 JSON/JSONC/YAML/Reasonix 四个分支**无条件重新序列化**，因此当
+   配置中没有任何待删 key 时 `rendered == original` 永远为假，会把「无操作」误报成 `updated`，
+   并顺手改写用户配置、生成备份；而计划自己的 `test_unknown_key_reports_unchanged` 与
+   `test_legacy_unchanged_message_is_byte_identical` 要求返回 `unchanged`——两者不可能同时成立
+   （实测：这两个用例在改动前的 HEAD 上同样失败）。
+
+   实施时按仓库取向「修实现、不改测试」处理：为这四个分支补上
+   `if not any(name in current for name in targets): return text` 短路，使六种格式统一满足
+   「无命中则原样返回」，与既有 cordis 分支的 `if len(filtered) == len(data): return text`
+   不变式对齐。副作用：`--remove-legacy-mcp` 在「配置里已无旧通道条目」时，由原来的假 `updated`
+   （改写配置 + 建备份）纠正为 `unchanged`；三条 legacy 结果文案逐字未变，GUI 的字符串匹配不受
+   影响（`tests/test_mcp_fixer.py` 27 passed 全绿）。
+   另：`updated` 结果现在多带 `backup` 字段（计划代码即如此），`scan.py` 只读 status/message/path，
+   无影响。
+
+### 流程缺陷（非计划内容）
+
+4. **不要边提交边并发派发子代理，也不要把「写入」和「校验」放进同一个消息块**：同一消息块内的
+   多个工具调用会并发执行，校验/提交会读到写入前的状态。Task 2 因此与我的计划修正提交竞争，
+   导致那次提交丢失（改动留在工作区，已重新提交为 `d380331`）。此后一律：单次调用内顺序完成
+   写入+提交，校验放在下一条消息。
