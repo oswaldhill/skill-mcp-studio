@@ -73,16 +73,42 @@
 将由「全部」变为「无」），影响 `has_explicit_attach` 闸门与覆盖矩阵取值，故不在本增量
 范围内，建议单独立项评估。
 
-**后续项 2（实施期实测发现）：jsonc 注释误拒。**
+**后续项 2（实施期实测发现）：jsonc 注释误拒。——已修复（提交 `137b935`）。**
 `core/mcp_fixer.py` 的 `validate_config_text` 与 `_render_without_entries` 的 jsonc 分支
 都用 `json.loads` 做解析（该口径从 `_render_without_legacy` 继承而来，非本增量引入），
 而 JSONC 语义允许 `//`、`/* */` 注释。后果：**带注释的 jsonc 备份 / 配置会被判为解析失败**
 ——还原路径返回 `status=refused`（「备份内容解析失败，已拒绝」，原配置不变），
 删除路径返回 `status=error`（「配置读取或解析失败，未做改动」）。实测对照：同一份内容
 去掉注释后还原为 `updated`，差异只来自注释；本机现有
-`~/.config/opencode/*.jsonc.bak-*` 恰好无注释，故未触发。修法是新增一个**能识别字符串
-字面量的注释剥离函数**（必须先判定是否处于 `"…"` 内再剥 `//` / `/*`——纯正则会截断
-`"https://…"` 这类 URL 字面量），建议作为独立小任务。
+`~/.config/opencode/*.jsonc.bak-*` 恰好无注释，故未触发。
+
+**修法**：新增 `core/jsonc_text.py`（纯函数、无 I/O），两条路径分别接入——
+
+| 路径 | 修法 |
+| --- | --- |
+| `validate_config_text`（jsonc 分支） | 先 `mask_jsonc_comments(text)` 再 `json.loads`。掩码**逐字符替换为空格并保留换行**，长度与偏移和原文一一对应；能识别字符串字面量与 `\"` 转义，`"https://…"` 里的 `//` 不会被误当注释 |
+| `_render_without_entries`（jsonc 分支） | 改走 `remove_object_members(text, key_path, keys)`，**按字节范围定点删除**命中成员与必要的分隔逗号（首/中/尾成员、**连续多成员成组**、尾随逗号、嵌套对象/数组、字符串内的括号与逗号都正确处理）；**不做「解析→改 dict→重新序列化」**，故注释、缩进、键序、其他成员逐字节不变。与 TOML 分支（`_toml_section_tree_ranges` + 文本切片）同一思路；未命中任何 key 时返回字节相同的原文，保持 `unchanged` 判定不变式 |
+| `json`（非 jsonc）分支 | 保持原样不动 |
+
+扫描器无法安全定位（根不是对象、括号未闭合、key 非字符串、`key_path` 值存在但非对象）
+时抛 `JsoncStructureError`（`ValueError` 子类），由调用方走既有 `error` 路径，不静默降级。
+覆盖测试见 `tests/test_jsonc_removal.py`。
+
+**实施期自查（随机化复核发现并已修）**：逗号删除必须按**连续段**处理——若「删到对象
+末尾的多个成员」只删各自的后随逗号，段首之前那个连接保留成员的分隔逗号会悬挂成
+尾随逗号（`json.loads`: Illegal trailing comma）。修法是段收尾于末成员时额外删掉段首
+的前置逗号；单成员尾删退化为同一规则。回归用例
+`test_tail_run_of_multiple_members_leaves_no_dangling_comma`、
+`test_every_subset_of_a_container_can_be_removed`；另以 5 组随机种子 × 5000 例注入
+注释/空白后做「内容等价 + 幂等 + 注释留存」复核，0 失败。
+
+**已知边界（本次未放宽）**：`mask_jsonc_comments` 只剥注释，**尾随逗号**仍会被严格
+`json.loads` 拒绝，因此带尾随逗号的 jsonc 备份在还原路径仍返回 `refused`
+（`remove_object_members` 本身支持尾随逗号；边界由
+`test_validate_config_text_still_rejects_trailing_comma_jsonc` 显式钉住）。
+另：新增/更新条目的 `_render` → `_render_json` 路径仍对 jsonc 用 `json.loads`，
+带注释的 opencode.jsonc 在 `--fix-mcp` 路径仍会解析失败——那需要 jsonc 的字节级 upsert，
+不在本次修复范围。**`--list-config-backups` 口径见后续项 3，未改动。**
 
 **后续项 3（实施期实测发现）：`--list-config-backups` 的匹配口径宽于「本模块生成」。**
 `list_config_backups` 按 `config_path + ".bak-"` **前缀**匹配，因此会把非本模块生成的
