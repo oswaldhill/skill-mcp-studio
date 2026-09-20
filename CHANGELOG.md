@@ -5,6 +5,40 @@
 
 > 注：项目早期历史未按版本逐次发布，以下按可识别的版本里程碑汇总。
 
+## [v0.21.0] - 2026-09
+
+build 106。
+
+### 新增
+
+- **MCP 条目删除与清理**：管理台可按条目或按分类（`attached` / `legacy` /
+  `unmanaged`）清理任意客户端的 MCP 条目，**包含以往只能查看、不能删除的「未纳管」
+  条目**。新增 CLI：`--remove-mcp-entry`、`--remove-mcp-class`、`--list-config-backups`、
+  `--restore-config-backup`，以及高风险门 `--force-high-risk` / `--include-high-risk`
+  （共 6 个参数，均支持 `--dry-run`，新命令支持 `--format json`）。
+- **高风险分级确认**：识别「疑似客户端自带」的条目（命令落在该客户端 `app_bundles`
+  内、路径含 `.app/Contents/`、或条目名与客户端同名/别名），默认拒绝删除；GUI 需
+  **手输条目名**方可解锁。本机实测恰好命中 Codex 的 `node_repl` 与 `computer-use`。
+- **配置备份回滚**：可列出某客户端配置的历史备份并从任意一份还原（整文件覆盖，
+  还原前自动再备份当前文件）。
+
+### 修复
+
+- **JSONC 配置无法删除条目/还原备份**：`json.loads` 不接受 JSONC 注释，带注释的
+  `opencode.jsonc` 在删除时报 `error`、还原报 `refused`。改为**按字节范围定点删除
+  成员**（不使用「解析→改 dict→序列化」），注释、缩进、键序逐字保留；校验路径改为
+  「注释屏蔽后再解析」。新增 `core/jsonc_text.py`（含 34 个用例）。
+- **删除原语的假成功**：JSON/YAML/Reasonix 分支在**没有命中任何待删条目**时仍会
+  重新序列化，把「无操作」误报成 `updated` 并顺手改写用户配置、生成备份。现统一
+  满足「无命中则原样返回」不变式（与既有 cordis 分支对齐）。
+
+### 变更
+
+- **Tauri 白名单**：`run_cli` 的允许参数新增上述 4 个命令（壳只透传 argv、写盘仍在
+  CLI 的安全链内）。
+- **构建文档**：修正 `src-tauri/BUILD.md` 中仓库本地工具链的 `PATH` 写法——原写法
+  `$CARGO_HOME` 含 `..`，会导致 `cargo: command not found`。
+
 ## [v0.20.1] - 2026-09
 
 build 105。
@@ -151,7 +185,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.20.1...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.21.0...HEAD
+[v0.21.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.21.0
 [v0.20.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.20.1
 [v0.20.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.20.0
 [v0.19.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.19.0
