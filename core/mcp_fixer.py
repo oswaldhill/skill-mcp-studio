@@ -9,6 +9,7 @@ import tempfile
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
+from jsonc_text import mask_jsonc_comments, remove_object_members
 from mcp_checker import inspect_mcp_configuration, load_mcp_servers
 from ops_log import ops_log
 from tool_registry import detect_installation, effective_tools, normalized_name
@@ -467,7 +468,12 @@ def _render_without_entries(
             current.pop(name, None)
         return yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
 
-    if config_format in ("json", "jsonc"):
+    if config_format == "jsonc":
+        # JSONC 语义允许 // 与 /* */ 注释，json.loads 会直接判解析失败。这里改走
+        # 按字节范围定点删除：只删目标成员与一个分隔逗号，注释/缩进/键序全保留。
+        return remove_object_members(text, key_path, list(targets))
+
+    if config_format == "json":
         data = json.loads(text)
         if not isinstance(data, dict):
             raise ValueError("JSON root must be an object")
@@ -537,8 +543,11 @@ def validate_config_text(tool: Dict[str, Any], text: str) -> None:
         _load_cordis_yaml(text)
     elif config_format == "yaml":
         yaml.safe_load(text)
-    elif config_format in ("json", "jsonc"):
+    elif config_format == "json":
         json.loads(text)
+    elif config_format == "jsonc":
+        # jsonc 允许注释：先按长度一一对应地把注释掩成空格，再按 JSON 解析校验。
+        json.loads(mask_jsonc_comments(text))
     elif config_format == "reasonix":
         json.loads(text)
     else:
