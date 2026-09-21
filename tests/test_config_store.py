@@ -35,10 +35,17 @@ class SetUnifiedDirTest(unittest.TestCase):
 
         self.mod = config_store
         self.local = os.path.join(self.tmp.name, "data", "local_overrides.yaml")
+        # 记录原函数：_local_overrides_file / _overlay_target 都是模块级函数，
+        # 不还原会污染同进程内的后续用例（OverlayRegistrationTest 会继承到本
+        # 用例已 cleanup 的临时目录，导致「单独运行通过、按文件或全量运行失败」）。
+        self._orig_local_overrides = config_store._local_overrides_file
+        self._orig_overlay_target = config_store._overlay_target
         self.mod._local_overrides_file = lambda: self.local
         self.mod._overlay_target = lambda cfg_path: self.local
 
     def tearDown(self):
+        self.mod._local_overrides_file = self._orig_local_overrides
+        self.mod._overlay_target = self._orig_overlay_target
         self.tmp.cleanup()
 
     def _read_trunk(self):
