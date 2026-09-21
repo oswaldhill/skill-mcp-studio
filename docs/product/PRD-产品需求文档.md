@@ -2,8 +2,11 @@
 
 | 版本 | 日期 | 说明 |
 |------|------|------|
-| v1.0 | 2026-09-07 | 基于当前版本（v0.7.0 build 79）重写；纠正既有定位/设计文档中「只读看板」「三栏」等已过时表述，作为产品层面的单一权威 PRD |
+| v1.0 | 2026-09-07 | 基于当时版本（v0.7.0 build 79）重写；纠正既有定位/设计文档中「只读看板」「三栏」等已过时表述，作为产品层面的单一权威 PRD |
 | v1.1 | 2026-09-07 | 新增 §1「应用范围」：跨平台（Windows / macOS / Linux）三环境支持，三类路径三平台化（决策 A）；配套调研见《跨平台路径矩阵-Windows-Linux.md》 |
+| v1.2 | 2026-09-18 | 版本时点字段改「另见 CHANGELOG」，不再散落快照号（`version.json` 单源真相）；§8 缺口看板标注关闭版本 |
+
+> **版本口径**：本文**不再内嵌「当前版本 = vX.Y.Z」快照**——版本号以仓库 `version.json`（及 `CHANGELOG.md`）为单一真相，本文只描述产品能力而不随版本号漂移。
 
 > **本文档角色**：回答「产品是什么、给谁用、核心能力与边界」。
 > 它与既有文档的关系见 §10。凡与本文不一致的旧表述（《产品定位与路线图规划》《产品形态与开发计划》中的「只读审计看板」「刻意不做写入型 GUI」「三栏管理台」等），**一律以本文为准**。
@@ -20,7 +23,7 @@ skill-mcp-studio 是**跨平台**的本地桌面工具，同一份代码在三�
 |------|------|----------|----------|
 | **Windows** | 支持 | `%USERPROFILE%`（家目录）、`%APPDATA%`（Roaming）、`%LOCALAPPDATA%`（Local） | **MSI 安装器** |
 | **macOS** | 支持（当前已实现） | `~`、`/Applications`、`~/Library`、`~/.config` | `.app` / `.dmg` |
-| **Linux** | 支持「主流」口径 = Ubuntu / Debian + XDG；**不覆盖 Fedora/RPM 系（本期）** | `~`、`~/.config`（XDG 优先）、`~/.local`、`/usr/share/applications`、`/opt` | `.deb` |
+| **Linux** | 支持「主流」口径 = Ubuntu / Debian / Fedora(RPM) + XDG + portable(AppImage) | `~`、`~/.config`（XDG 优先）、`~/.local`、`/usr/share/applications`、`/opt` | `.deb` `.rpm` `.AppImage` |
 
 > 架构结论：必须摒弃「macOS 中心」的路径硬编码，采用**跨平台分派**（决策 A，见 §1.3）。当前代码（`core/mainstream_registry.py`、`config.yaml`）仅含 macOS 路径，且全项目无 `sys.platform` 分派逻辑，Windows/Linux 支持为空白。
 
@@ -43,9 +46,9 @@ skill-mcp-studio 是**跨平台**的本地桌面工具，同一份代码在三�
 - **消费点收口**：新增统一分派层（建议落在 `core/tool_registry.py`），把「当前平台的 `install.app_bundles` / `install.commands` / `install.config_paths` / `skills_paths` / `config_path`」解析成一套平台无关视图，供 `detect_installation`、scanner、combined_checker、mcp_fixer、management_snapshot 等 10+ 处消费点调用，避免各处散写 `sys.platform`。
 - **Windows 路径展开**：`expanduser` 需扩展为同时展开 `%USERPROFILE%` / `%APPDATA%` / `%LOCALAPPDATA%`（`os.path.expandvars` + 平台映射）；Linux/macOS 沿用 `~` 展开。
 
-### 1.4 内置客户端清单（22 个）
+### 1.4 内置客户端清单（以主流注册表为唯一事实源）
 
-内置默认清单分两类，共 **22 个**（完整路径 + 确定度 + 来源 URL 见 [`跨平台路径矩阵-Windows-Linux.md`](../design/跨平台路径矩阵-Windows-Linux.md)）：
+内置默认清单分两类（国际 / 通用 + 国产）共 **22 个**（完整路径 + 确定度 + 来源 URL 见 [`跨平台路径矩阵-Windows-Linux.md`](../design/跨平台路径矩阵-Windows-Linux.md)）。**条目数量与路径以 `core/mainstream_registry.py`（`register_mainstream_tools()` 返回值）为唯一事实源**，本文的「22 个」只是 v0.7 时代的设计目标快照，后续新增（如 QwenWork、TraeWork、Trae CN）以注册表为准，不再回写本段落计数：
 
 **国际 / 通用（15 个）**：Claude Code、Cursor、VS Code、Windsurf、Codex、Gemini CLI、OpenCode、Aider、Cline、Roo Code、JetBrains(IDEA/PyCharm/WebStorm)、Zed、TRAE、Goose、Cherry Studio。
 
@@ -82,7 +85,7 @@ skill-mcp-studio 是一台面向开发者的**管理型桌面应用**（Tauri 2 
 |------|-----|
 | 产品形态 | 桌面 App（Tauri 2），webview 装载单文件 `gui/dashboard.html` |
 | 引擎层 | Python CLI（`scan.py`，≥ 3.11），core/ 审计引擎 |
-| 当前版本 | v0.7.0（build 79） |
+| 当前版本 | 见 `version.json` / `CHANGELOG.md`（单一真相，不在文档内快照） |
 | 交付物 | `.app`（macOS）+ `skill-mcp-studio` 控制台命令 |
 | 数据源 | `config.yaml`（客户端注册表 + endpoint 库）+ 仓库外 `profile_sources` 覆盖 |
 
@@ -197,6 +200,8 @@ skill-mcp-studio 是一台面向开发者的**管理型桌面应用**（Tauri 2 
 | 活动 endpoint（active_profile）切换 | 读（当前只读） | 快照 `settings.active_profile`；**编辑待后端命令** |
 | 版本 / 构建号 | 读 | `--version` 快照 |
 
+> **P-3 定案**：`auto_discover` 与 `active_profile` 两项在当前版本**保持只读展示**（不出编辑项）。未来的写命令命名为 `--set-auto-discover` / `--set-active-profile`（编辑 config 对应键），与 Rust `DENIED_FLAGS` 拒绝的**重定向参数** `--active-profile`／`--profile`／`--config`（把引擎指向任意配置文件、属提权面）是两组不同的 flag，**互不冲突**。切「默认端点」的受控写形态留待后续版本立项。
+
 ### 6.5 交互与视觉（当前实现）
 
 - **主题**：浅色 / 深色 / 跟随系统（`data-theme` + `prefers-color-scheme`）。
@@ -241,11 +246,13 @@ skill-mcp-studio 是一台面向开发者的**管理型桌面应用**（Tauri 2 
 - **不做**云端托管与跨设备实时同步（本地工具）。
 - 按需加载（阶段四 L5）作为增值层，立项时独立决策。
 
-### 当前已知缺口（本版本如实标注）
+### 当前已知缺口（缺口看板，逐项标注关闭版本）
 
-1. **自动发现、活动 endpoint 的 GUI 编辑**：设置页仅有只读展示，缺少 `--set-auto-discover` / `--set-active-profile` 后端写命令，UI 标注「即将支持」。
-2. **逐技能启停的 GUI 运行时边界**：GUI 的 ToggleSwitch 已绑定 `--enable-skill` / `--disable-skill`（对 per_skill 形态客户端），但这两个命令当前**不在** Rust `run_cli` 白名单内，桌面 App 中触发会被安全边界拦截。需在下一版把二者加入白名单（或明确降级为只读提示）。
-3. **端点 transport 选择、能力组编辑**：端点详情编辑目前仅支持 name / url，transport 与 required_capabilities 的完整编辑待后端补全。
+| # | 缺口 | 状态 | 关闭版本 |
+|---|------|------|---------|
+| 1 | **自动发现、活动 endpoint 的 GUI 编辑**：设置页仅有只读展示，缺少 `--set-auto-discover` / `--set-active-profile` 后端写命令，UI 标注「即将支持」 | 🟡 待实现 | — |
+| 2 | **逐技能启停的 GUI 运行时边界**：GUI 的 ToggleSwitch 已绑定 `--enable-skill` / `--disable-skill` | ✅ 已关闭（已加入 Rust `run_cli` 白名单） | v0.20.0 |
+| 3 | **端点 transport 选择、能力组编辑**：端点详情编辑最初仅支持 name / url | ✅ 已关闭（`--endpoint-url` / `--endpoint-command` / `--endpoint-required-yaml` 补全 transport 与 required_capabilities 编辑） | v0.20.0 |
 
 ---
 
