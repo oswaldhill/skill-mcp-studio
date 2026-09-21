@@ -5,7 +5,7 @@
 用户看到「MCP 不正常」而实际端点可用（k8s.carobo.cn 正常约 0.4s 但会偶发超时）。
 
 本护栏锁定两件事：
-* ``probe_mcp`` 只对 initialize 阶段的瞬时网络错误重试 ``retries`` 次；
+* ``probe_mcp`` 对 initialize 与 tools/list 两阶段的瞬时网络错误重试 ``retries`` 次；
 * 一旦拿到业务响应就停止重试，成功路径的调用次数与不重试时完全一致，
   因此审计结论（result_ok）语义不受影响，只是少报一次「假故障」。
 """
@@ -105,6 +105,44 @@ class ProbeRetryTest(unittest.TestCase):
         self.assertEqual(len(calls), 1, "业务错误不重试")
         self.assertFalse(out["initialize_ok"])
         self.assertIn("bad request", out["error"])
+
+
+    def test_tools_list_transient_timeout_recovers_with_retry(self):
+        """tools/list 阶段的瞬时网络错误同样重试，成功后 error 仍为空。"""
+        tools_calls = {"n": 0}
+
+        def fake(url, payload, *, session_id="", token="", timeout=8.0):
+            method = payload.get("method")
+            if method == "initialize":
+                return {"jsonrpc": "2.0", "id": 1, "result": {"protocolVersion": "2025-03-26"}}, ""
+            if method == "tools/list":
+                tools_calls["n"] += 1
+                if tools_calls["n"] == 1:
+                    raise urllib.error.URLError("timed out")
+                return {"jsonrpc": "2.0", "id": 2, "result": {"tools": [{"name": "a"}, {"name": "b"}]}}, ""
+            return {}, ""
+
+        out = self._run(fake, retries=1)
+        self.assertEqual(tools_calls["n"], 2, "tools/list 应恰好重试 1 次")
+        self.assertTrue(out["initialize_ok"])
+        self.assertTrue(out["tools_list_ok"])
+        self.assertEqual(out["error"], "", "重试成功后不应残留错误")
+        self.assertEqual(out["tool_names"], ["a", "b"])
+
+    def test_tools_list_exhausted_retries_still_report_real_error(self):
+        """tools/list 持续瞬时失败且重试耗尽时，应上报真实错误而非掩盖。"""
+
+        def fake(url, payload, *, session_id="", token="", timeout=8.0):
+            if payload.get("method") == "initialize":
+                return {"jsonrpc": "2.0", "id": 1, "result": {"protocolVersion": "2025-03-26"}}, ""
+            if payload.get("method") == "tools/list":
+                raise urllib.error.URLError("timed out")
+            return {}, ""
+
+        out = self._run(fake, retries=1)
+        self.assertTrue(out["initialize_ok"])
+        self.assertFalse(out["tools_list_ok"])
+        self.assertIn("timed out", out["error"], "tools/list 真实故障不得被重试掩盖")
 
 
 if __name__ == "__main__":

@@ -147,9 +147,10 @@ def probe_mcp(
     auth_env = token_env or "HERMES_MCP_AUTH_TOKEN"
     auth_token = token if token is not None else os.environ.get(auth_env, "")
     # 探活是「尽力而为」的可用性观测：远程 MCP 网关偶发抖动（单次 socket 超时）
-    # 并不等于端点故障。这里只对 initialize 阶段的瞬时网络错误重试 ``retries`` 次；
-    # 一旦拿到业务响应（result 或 error）就停止重试，因此成功路径与不重试时行为
-    # 完全一致（error 仍为 ""），审计结论 result_ok 不受影响，只是少报一次「假故障」。
+    # 并不等于端点故障。这里对 initialize 与 tools/list 两个阶段的瞬时网络错误
+    # 均重试 ``retries`` 次；一旦拿到业务响应（result 或 error）就停止重试，因此
+    # 成功路径与不重试时行为完全一致（error 仍为 ""），审计结论 result_ok 不受
+    # 影响，只是少报一次「假故障」。
     transient = (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, ValueError, OSError)
     attempts = max(1, int(retries) + 1)
     initialize: Dict[str, Any] = {}
@@ -184,9 +185,20 @@ def probe_mcp(
             }, session_id=session_id, token=auth_token, timeout=timeout)
         except (urllib.error.HTTPError, ValueError):
             pass
-        listed, _ = _post(url, {
-            "jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}
-        }, session_id=session_id, token=auth_token, timeout=timeout)
+        listed: Dict[str, Any] = {}
+        for attempt in range(attempts):
+            try:
+                listed, _ = _post(url, {
+                    "jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}
+                }, session_id=session_id, token=auth_token, timeout=timeout)
+                break
+            except transient as error:
+                # 与 initialize 阶段对称：tools/list 的瞬时网络错误同样重试，
+                # 拿到业务响应（result 或 error 结构）即停。成功路径 error 仍为 ""，
+                # 审计结论 result_ok 不受影响，只是少报一次「假故障」。
+                if attempt + 1 >= attempts:
+                    result["error"] = str(error)
+                    return result
         tools = listed.get("result", {}).get("tools", [])
         result["tool_names"] = sorted(
             tool.get("name", "") for tool in tools if isinstance(tool, dict) and tool.get("name")
