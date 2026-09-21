@@ -158,7 +158,8 @@ def get_github_latest_version(repo: str) -> Optional[str]:
             if tag:
                 # 去掉 v 前缀
                 return tag.lstrip("v")
-    except Exception:
+    except (subprocess.SubprocessError, FileNotFoundError, ValueError):
+        # D-9: 网络/binary/json 失败均按「未知最新版本」降级，不再裸吞任意异常。
         pass
 
     # fallback: 尝试 tags
@@ -173,7 +174,7 @@ def get_github_latest_version(repo: str) -> Optional[str]:
             if isinstance(data, list) and len(data) > 0:
                 tag = data[0].get("name", "")
                 return tag.lstrip("v") if tag else None
-    except Exception:
+    except (subprocess.SubprocessError, FileNotFoundError, ValueError):
         pass
 
     return None

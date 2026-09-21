@@ -4,14 +4,40 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "skill-mcp-studio"
-version = "0.1.0"
+version = "0.21.0"
 description = "Local multi-client Skill/MCP compliance audit & repair tool"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 dependencies = [
     "PyYAML>=6.0",
+    "certifi>=2024.2.2",
+]
+
+[project.optional-dependencies]
+# T-5: 测试与覆盖率依赖独立成组，CI 用 `pip install -e .[test]` 一次性装齐。
+test = [
+    "pytest>=8.0",
+    "coverage>=7.0",
 ]
 
 [project.scripts]
 skill-mcp-studio = "scan:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-ra"
+
+[tool.coverage.run]
+source = ["core", "scan"]
+branch = true
+omit = ["tests/*"]
+
+[tool.coverage.report]
+# 覆盖率不必为 100% 的样板/平台差异行，避免虚假红色门禁。
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]

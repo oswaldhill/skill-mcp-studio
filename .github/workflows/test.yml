@@ -1,0 +1,91 @@
+name: Test
+
+on:
+  push:
+    branches: [master, develop]
+  pull_request:
+    branches: [master, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-python:
+    name: Python unit tests (unittest)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install PyYAML certifi
+
+      # 统一入口：discover 全部 test_*.py。
+      # 失败即阻断，防止 mcp_fixer 写操作 / workspace_cleaner 删除等回归在合入前漏过。
+      - name: Run unit tests
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s tests -p 'test_*.py'
+
+  test-rust:
+    name: Rust unit tests (cargo test)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # T-3: 运行 lib.rs 的 #[cfg(test)]（cli_candidates 路径解析 + open_url 注入
+      # 校验）。与 build-linux 相同的 webkit2gtk 系统依赖。
+      - name: Install Linux system dependencies (webkit2gtk)
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo dependencies
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Run cargo test
+        working-directory: src-tauri
+        run: cargo test
+
+  test-js:
+    name: JS unit tests (node:test)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # T-3: 对 dashboard.html 内联脚本的纯函数（escapeHtml/stripAnsi/cliErrDetail/
+      # cliFailLines/dotFor）做真实行为测试；从 HTML 提取源码用 node:vm 编译后断言。
+      - name: Run node:test
+        run: node --test tests/gui_helpers.test.mjs

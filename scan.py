@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Skills Unifier - 主入口脚本
+Skill MCP Studio - 主入口脚本
 用法:
   python3 scan.py                        # 扫描 + 控制台报告（含前置检查）
   python3 scan.py --sync                 # 扫描前同步 git 仓库
@@ -49,16 +49,6 @@ from workspace_cleaner import (
     format_cleanliness_report,
     ensure_workspace_clean,
     format_clean_result,
-)
-from legacy_checker import (
-    check_legacy_channels,
-    format_legacy_report,
-)
-from ai_memory_checker import (
-    check_ai_memory_hooks,
-    format_ai_memory_hooks_report,
-    build_ai_memory_fix_template,
-    fix_ai_memory_all,
 )
 from version_checker import (
     check_all_versions,
@@ -380,6 +370,27 @@ def _run_add_client(args, config, config_path) -> int:
         mcp_key_path=getattr(args, "client_mcp_key_path", None),
         mcp_attach=[k.strip() for k in mcp_attach.split(",")] if mcp_attach else None,
         install=install or None,
+        dry_run=args.dry_run,
+    )
+    _print_store_result(result)
+    return 0 if result["status"] in ("ok", "dry-run", "unchanged") else 2
+
+
+def _run_update_client(args, config, config_path) -> int:
+    """写操作：更新已注册客户端的安装证据/目录设置（「编辑客户端」）。"""
+    from config_store import update_discovered_client
+
+    def _split(value):
+        return [p.strip() for p in value.split(",")] if value else None
+
+    result = update_discovered_client(
+        args.update_client,
+        app_bundles=_split(getattr(args, "app_bundles", None)),
+        commands=_split(getattr(args, "commands", None)),
+        config_paths=_split(getattr(args, "config_paths", None)),
+        skills_path=getattr(args, "skills_path", None),
+        mcp_config_path=getattr(args, "mcp_config_path", None),
+        scan_dir=getattr(args, "scan_dir", None),
         dry_run=args.dry_run,
     )
     _print_store_result(result)
@@ -1017,9 +1028,10 @@ def _run_skill_migrate(args, config, config_path) -> int:
     return exit_code
 
 
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
+    """Construct the full CLI argument parser (A-7: 从 main() 抽出，拆分 god-function)."""
     parser = argparse.ArgumentParser(
-        description="Skills Unifier - AI 工具 Skills 目录统一检查与修复工具",
+        description="Skill MCP Studio - IDE/Agent Skills 统一化与 Hermes MCP 接入管理工具",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
@@ -1086,15 +1098,15 @@ def main() -> int:
     )
     parser.add_argument(
         "--hermes", action="store_true",
-        help="Hermes 检查：检查各工具是否已接入 NAS Hermes 网关"
+        help="[已废弃] 旧 Hermes 通道检查，已并入 --mcp 统一检查的 legacy_channels 输出",
     )
     parser.add_argument(
         "--ai-memory", action="store_true",
-        help="ai-memory 检查：检查各工具是否已接入 ai-memory MCP（会话交接层）"
+        help="[已废弃] 旧 ai-memory 通道检查，已并入 --mcp 统一检查与 hooks 检查",
     )
     parser.add_argument(
         "--fix-ai-memory", action="store_true",
-        help="自动修复 ai-memory 接入：为已安装工具写入 ai-memory MCP 配置（带备份；需先 --ai-memory）"
+        help="[已废弃] 请改用 --fix-mcp 统一修复（本 flag 仅作为别名转发）",
     )
     parser.add_argument(
         "--no-interactive", action="store_true",
@@ -1313,6 +1325,34 @@ def main() -> int:
         help="配合 --add-client：安装检测用的配置文件路径，逗号分隔（如 ~/.foo/mcp.json,~/.foo/settings.json）",
     )
     parser.add_argument(
+        "--update-client", type=str, default=None, metavar="NAME",
+        help="更新已注册客户端的安装证据/目录设置（配合 --app-bundles/--commands/--config-paths/--skills-path/--mcp-config-path/--scan-dir；写操作，支持 --dry-run）",
+    )
+    parser.add_argument(
+        "--app-bundles", type=str, default=None,
+        help="配合 --update-client：安装检测用 App Bundle 路径，逗号分隔",
+    )
+    parser.add_argument(
+        "--commands", type=str, default=None,
+        help="配合 --update-client：安装检测用 CLI 命令，逗号分隔",
+    )
+    parser.add_argument(
+        "--config-paths", type=str, default=None,
+        help="配合 --update-client：安装检测用配置文件路径，逗号分隔",
+    )
+    parser.add_argument(
+        "--skills-path", type=str, default=None,
+        help="配合 --update-client：客户端 skills 目录路径",
+    )
+    parser.add_argument(
+        "--mcp-config-path", type=str, default=None,
+        help="配合 --update-client：客户端 MCP 配置文件路径",
+    )
+    parser.add_argument(
+        "--scan-dir", type=str, default=None,
+        help="配合 --update-client：客户端默认扫描目录",
+    )
+    parser.add_argument(
         "--add-defaults", action="store_true",
         help="一键「默认添加」所有主流 IDE/Agent 到 discovered 持久化（写操作，支持 --dry-run）",
     )
@@ -1354,7 +1394,11 @@ def main() -> int:
         help="软删除指定 skill：先备份再移入统一目录 _trash/（写操作，支持 --dry-run）",
     )
 
-    args = resolve_modes(parser.parse_args())
+    return parser
+
+
+def main() -> int:
+    args = resolve_modes(build_parser().parse_args())
 
     # 阶段二 §7.2/ADR-10：工具自身运行错误（各 Phase 内部异常）→ 退出码 2，
     # 与判定性 0/1 分层；这里收集，收尾统一映射，避免"恒为 0 残留"。
@@ -1364,7 +1408,11 @@ def main() -> int:
     # 码判成功与否）能识别——否则失败也恒为 0，前端会误报"修复成功"。
     repair_errors: List[str] = []
 
-    # 旧参数仅作为新模式别名，不再运行旧的多通道检查器。
+    # D-2: 旧参数仅作别名/废弃。--hermes/--ai-memory 不再运行旧多通道检查器（其
+    # 语义已并入 --mcp 统一检查的 legacy_channels 与 hooks 字段）；--fix-ai-memory
+    # 转发到 --fix-mcp。显式废弃告警，避免"失效门面"静默误导调用方。
+    if args.hermes or args.ai_memory:
+        print("  ⚠️ --hermes/--ai-memory 已废弃，改用 --mcp（统一检查已含旧通道与 hooks）。")
     args.fix = args.fix or args.fix_skills
     args.fix_mcp = args.fix_mcp or args.fix_ai_memory
     args.hermes = False
@@ -1442,6 +1490,8 @@ def main() -> int:
         return _run_version(args, config, config_path)
     if getattr(args, "add_client", None):
         return _run_add_client(args, config, config_path)
+    if getattr(args, "update_client", None):
+        return _run_update_client(args, config, config_path)
     if getattr(args, "add_defaults", False):
         return _run_add_defaults(args, config, config_path)
     if getattr(args, "remove_client", None):
@@ -1577,14 +1627,19 @@ def main() -> int:
         print(f"\n  ❌ Phase 3 异常: {e}")
         internal_errors.append(f"Phase 3: {e}")
 
-    # Unified Skills/MCP/hooks report. Live probing is opt-in except for --full.
+    # 阶段 7: Unified Skills/MCP/hooks 统一只读检查。Live probing 默认关，--full 开。
     combined_result = None
     if (args.mcp or args.hooks) and not args.setup_all:
         try:
+            print("")
+            print("=" * 60)
+            print("  Phase 7: Unified Skills/MCP/Hooks 统一检查")
+            print("=" * 60)
             combined_result = check_agents(config, scan_result, live_probe=args.probe_mcp, profile=profile)
             print(format_combined_report(combined_result))
         except Exception as e:
-            print(f"\n  ❌ Unified MCP check failed: {e}")
+            print(f"\n  ❌ Phase 7 异常: {e}")
+            internal_errors.append(f"Phase 7: {e}")
 
     if args.fix_mcp:
         print("")
@@ -1655,6 +1710,7 @@ def main() -> int:
                 )
         except Exception as e:
             print(f"\n  ❌ Legacy MCP cleanup failed: {e}")
+            repair_errors.append(f"Legacy MCP cleanup: {e}")
 
     # ================================================================
     # 阶段 4: 变更追踪
@@ -1673,7 +1729,7 @@ def main() -> int:
     if args.analyze:
         try:
             print("")
-            print("  Phase 4: Skills 分布分析")
+            print("  Phase 5: Skills 分布分析")
             print("")
 
             analysis = get_skills_summary(unified_dir)
@@ -1690,8 +1746,8 @@ def main() -> int:
             print("")
             print(format_frontmatter_report(audit_skill_frontmatter(unified_dir)))
         except Exception as e:
-            print(f"\n  ❌ Phase 4 异常: {e}")
-            internal_errors.append(f"Phase 4: {e}")
+            print(f"\n  ❌ Phase 5 异常: {e}")
+            internal_errors.append(f"Phase 5: {e}")
 
     # ================================================================
     # 阶段 6: 修复（--fix 或 --full 时执行）
@@ -1700,7 +1756,7 @@ def main() -> int:
         ops_log("fix_skills_begin", action="fix_skills", client=args.client, dry_run=bool(args.dry_run))
         try:
             print("")
-            print("  Phase 5: 自动修复")
+            print("  Phase 6: 自动修复")
             print("")
 
             fix_result = fix_all(scan_result, dry_run=args.dry_run, client=args.client)
@@ -1723,8 +1779,8 @@ def main() -> int:
                 )
                 print_console_report(scan_result)
         except Exception as e:
-            print(f"\n  ❌ Phase 5 异常: {e}")
-            internal_errors.append(f"Phase 5: {e}")
+            print(f"\n  ❌ Phase 6 异常（修复阶段）: {e}")
+            internal_errors.append(f"Phase 6: {e}")
 
     # --setup-all verifies the state after both repair classes have completed.
     if args.setup_all:
@@ -1741,112 +1797,7 @@ def main() -> int:
             print(format_combined_report(combined_result))
         except Exception as e:
             print(f"\n  ❌ Unified post-setup validation failed: {e}")
-
-    # ================================================================
-    # 阶段 7: Legacy 通道连通性检查（--hermes / --ai-memory 别名；统一走
-    #         legacy_checker 一次调用：hermes + ai-memory 检测块）
-    # ================================================================
-    if args.hermes or args.ai_memory:
-        try:
-            print("")
-            print("  Phase 7: Legacy 通道连通性检查")
-            print("")
-
-            # 从扫描结果中提取已安装的工具列表
-            installed_tools = []
-            for r in scan_result.get("results", []):
-                installed_tools.append({
-                    "name": r.get("tool_name", ""),
-                    "path": r.get("path", ""),
-                    "status": r.get("status", ""),
-                    "is_installed": r.get("is_installed", False),
-                })
-
-            legacy_result = check_legacy_channels(installed_tools, config, profile)
-            print(format_legacy_report(legacy_result))
-
-            # 给出修复建议（Hermes）
-            if legacy_result["disconnected"] > 0:
-                disconnected_tools = [
-                    t for t in legacy_result.get("tools", [])
-                    if t["installed"] and not t["connected"]
-                ]
-                if disconnected_tools:
-                    print("")
-                    print("  💡 建议为以下工具配置 Hermes 网关:")
-                    for t in disconnected_tools:
-                        print(f"      {t['name']} ({t['config_path']})")
-                        print(f"      添加 MCP 服务器:")
-                        print(f"        \"hermes\": {{")
-                        print(f"          \"command\": \"python3\",")
-                        print(f"          \"args\": [\"~/.local/bin/hermes-bridge.py\"],")
-                        print(f"          \"env\": {{")
-                        print(f"            \"NAS_GATEWAY_URL\": \"http://gateway.example.com:8642\",")
-                        print(f"            \"NAS_API_KEY\": \"<NAS_API_KEY>\",")
-                        print(f"            \"NAS_MODEL\": \"hermes-agent\"")
-                        print(f"          }}")
-                        print(f"        }}")
-                    print("")
-
-            # ai-memory 特有：hooks（自动交接）检查 + 修复
-            if args.ai_memory:
-                print("")
-                hooks_result = check_ai_memory_hooks(installed_tools)
-                print(format_ai_memory_hooks_report(hooks_result))
-                if hooks_result.get("hooks_missing", 0) > 0:
-                    print("")
-                    print("  💡 提示: MCP 接入 ≠ 自动交接。缺 hooks 的工具无法在会话")
-                    print("         开始/结束时自动注入/提交交接，需运行:")
-                    print("         cd ~/Applications/ai-memory && \\")
-                    print("           ./ai-memory install-hooks --agent <agent> --apply \\")
-                    print("             --server-url http://127.0.0.1:49374 --auth-token <token>")
-                    print("         (claude-code / codex / opencode)")
-
-                # 自动修复（--fix-ai-memory 时执行；默认 dry-run 预览，加 --no-interactive 真正写入）
-                if getattr(args, "fix_ai_memory", False):
-                    print("")
-                    apply = bool(args.no_interactive)
-                    results = fix_ai_memory_all(
-                        installed_tools, config,
-                        dry_run=not apply,
-                    )
-                    for r in results:
-                        if r.get("written"):
-                            mark = "✅"
-                        elif "dry-run" in r.get("message", "") or "预览" in r.get("message", ""):
-                            mark = "🔍"
-                        else:
-                            mark = "⏭️"
-                        print(f"  {mark} {r['name']}: {r['message']}")
-                    if not apply:
-                        print("")
-                        print("  ⚠️ 以上为预览（dry-run）。确认无误后真正写入:")
-                        print("     python3 scan.py --ai-memory --fix-ai-memory --no-interactive")
-                    print("")
-
-                # 给出修复建议（ai-memory）
-                connected_ai_memory = [
-                    s for t in legacy_result.get("tools", [])
-                    if t["connected"]
-                    for s in t.get("servers", [])
-                    if s.get("kind") == "ai-memory"
-                ]
-                if not connected_ai_memory:
-                    print("")
-                    print("  💡 建议为以下工具配置 ai-memory MCP（会话交接）:")
-                    template = build_ai_memory_fix_template()
-                    for t in legacy_result.get("tools", []):
-                        if t["installed"] and not t["connected"]:
-                            print(f"      {t['name']} ({t['config_path']})")
-                            print(f"      添加 MCP 服务器:")
-                            print(f"        {json.dumps(template, ensure_ascii=False, indent=2)}")
-                    print("")
-                    print("  ⚠️ 提示: 需先将 ai-memory-bridge.py 放入 ~/.local/bin/")
-                    print(f"        并把 token 填入 <AI_MEMORY_TOKEN>（与 NAS ai-memory 容器一致）")
-                    print("")
-        except Exception as e:
-            print(f"\n  ❌ Phase 7 异常: {e}")
-            internal_errors.append(f"Phase 7: {e}")
+            internal_errors.append(f"Unified post-setup validation: {e}")
 
     # ================================================================
     # 阶段 8: Skill 版本检查（--update 或 --full 时执行）

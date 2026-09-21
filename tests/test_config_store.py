@@ -35,10 +35,17 @@ class SetUnifiedDirTest(unittest.TestCase):
 
         self.mod = config_store
         self.local = os.path.join(self.tmp.name, "data", "local_overrides.yaml")
+        # 记录原函数：_local_overrides_file / _overlay_target 都是模块级函数，
+        # 不还原会污染同进程内的后续用例（OverlayRegistrationTest 会继承到本
+        # 用例已 cleanup 的临时目录，导致「单独运行通过、按文件或全量运行失败」）。
+        self._orig_local_overrides = config_store._local_overrides_file
+        self._orig_overlay_target = config_store._overlay_target
         self.mod._local_overrides_file = lambda: self.local
         self.mod._overlay_target = lambda cfg_path: self.local
 
     def tearDown(self):
+        self.mod._local_overrides_file = self._orig_local_overrides
+        self.mod._overlay_target = self._orig_overlay_target
         self.tmp.cleanup()
 
     def _read_trunk(self):
@@ -177,7 +184,7 @@ class AddDefaultClientsTest(unittest.TestCase):
         self.assertEqual(r2["added"], 0)
         self.assertEqual(r2["unchanged"], len(MAINSTREAM_TOOLS))
 
-        data = yaml.safe_load(open(self.disc, encoding="utf-8"))
+        data = yaml.safe_load(Path(self.disc).read_text(encoding="utf-8"))
         names = {d["name"] for d in data}
         # DeepSeek Harness（原 DSH）必须在主流清单中
         self.assertIn("DeepSeek Harness", names)
@@ -216,7 +223,7 @@ class RemoveDiscoveredClientTest(unittest.TestCase):
 
         r = remove_discovered_client("foo-agent")
         self.assertEqual(r["status"], "ok")
-        data = yaml.safe_load(open(self.disc, encoding="utf-8"))
+        data = yaml.safe_load(Path(self.disc).read_text(encoding="utf-8"))
         self.assertEqual(data, [])
 
     def test_remove_missing_is_unchanged(self):
@@ -230,7 +237,7 @@ class RemoveDiscoveredClientTest(unittest.TestCase):
 
         r = remove_discovered_client("Foo Agent", dry_run=True)
         self.assertEqual(r["status"], "dry-run")
-        data = yaml.safe_load(open(self.disc, encoding="utf-8"))
+        data = yaml.safe_load(Path(self.disc).read_text(encoding="utf-8"))
         self.assertEqual(len(data), 1)
 
 

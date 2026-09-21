@@ -32,3 +32,6 @@ scan-report.md
 
 # Personal topology will be moved out in phase-1 step 4; keep untracked until then
 profiles-hermes-home/
+
+# Local-only migration notes (contains personal email / SSH paths; never publish)
+新设备Git迁移指南.md

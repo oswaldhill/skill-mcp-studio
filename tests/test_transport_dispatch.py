@@ -116,17 +116,20 @@ class DeadlineBudgetTest(unittest.TestCase):
     """CLI-5a：timeout 是覆盖启动 + 两次握手的单一预算。"""
 
     def test_silent_server_respects_single_budget(self):
-        timeout = 1.5
+        # T-7: 用更大超时 + 更宽的收尾余量，避免 CI 负载抖动下解释器冷启动噪音
+        # 让墙钟断言误报。旧实现「每步独立计时」会 ≈ 2×timeout + 启动开销；单一
+        # 预算语义 ≈ timeout + 启动/回收开销，二者仍可稳定区分。
+        timeout = 2.0
         start = time.monotonic()
         result = probe_stdio(sys.executable, args=["-c", SLOW_SERVER], timeout=timeout)
         elapsed = time.monotonic() - start
         self.assertFalse(result["initialize_ok"])
         self.assertIn("timed out", result["error"])
-        # 旧实现每步独立计时 → 最多 ~2×timeout；单一预算下应 ≤ timeout + 收尾余量。
-        self.assertLess(elapsed, timeout * 1.6, f"elapsed={elapsed:.2f}s 超出单一预算语义")
+        # 单一预算下应 ≤ timeout + 启动/回收余量（1.5× 覆盖解释器冷启动噪声）。
+        self.assertLess(elapsed, timeout * 1.5, f"elapsed={elapsed:.2f}s 超出单一预算语义")
 
     def test_dispatch_inherits_budget_semantics(self):
-        timeout = 1.5
+        timeout = 2.0
         start = time.monotonic()
         result = dispatch_probe(
             ProbeSpec(transport="stdio", command=sys.executable, args=("-c", SLOW_SERVER)),
@@ -134,7 +137,7 @@ class DeadlineBudgetTest(unittest.TestCase):
         )
         elapsed = time.monotonic() - start
         self.assertFalse(result["initialize_ok"])
-        self.assertLess(elapsed, timeout * 1.6)
+        self.assertLess(elapsed, timeout * 1.5, f"elapsed={elapsed:.2f}s 超出单一预算语义")
 
 
 if __name__ == "__main__":

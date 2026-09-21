@@ -135,7 +135,7 @@ def rename_skill_meta(
 
     try:
         import yaml
-    except Exception:  # pragma: no cover - yaml is a declared dependency
+    except ImportError:  # pragma: no cover - yaml is a declared dependency
         return _error("缺少 yaml 依赖，无法编辑 frontmatter")
 
     try:

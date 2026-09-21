@@ -2,11 +2,16 @@ name: Build & Release macOS App
 
 on:
   push:
-    branches: [master]
+    branches: [master, develop]
     tags: ['v*']
   pull_request:
-    branches: [master]
+    branches: [master, develop]
   workflow_dispatch:
+
+# B-4: 同一 ref 的重复触发（push + PR 同步、连续 push）串行化，取消在途旧跑，避免一次发布 6 次并发构建。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -83,15 +88,33 @@ jobs:
         working-directory: src-tauri
         run: tauri build --target universal-apple-darwin
 
-      - name: Verify signature (when signed)
+      - name: Verify signature & notarization (when signed)
         if: ${{ env.ACTIONS_APPLE_CERTIFICATE != '' }}
         run: |
+          set -euo pipefail
           APP=$(find src-tauri/target -type d -name 'skill-mcp-studio.app' | head -1)
-          if [ -n "$APP" ]; then
-            codesign -dv --verbose=4 "$APP" 2>&1 || true
+          if [ -z "$APP" ]; then
+            echo "::warning::未找到 .app，跳过签名验证"
+            exit 0
+          fi
+          # B-6: 补全签名/公证验证——结构签名校验 + Gatekeeper 评估 + 公证票校验。
+          codesign --verify --deep --strict --verbose=4 "$APP"
+          codesign -dv --verbose=4 "$APP" 2>&1
+          # Gatekeeper（spctl）评估：签名有效 + 未公证会返回 2（rejected）。
+          # 未配置公证（无 APPLE_ID）时 spctl 只评估签名，不以失败阻断任一步骤。
+          spctl -a -vv "$APP" 2>&1 || echo "::warning::spctl 评估未通过（可能未公证，仅签名）"
+          # stapler 校验公证票是否已钉入 bundle（未钉票时返回非零，仅告警不阻断）。
+          if xcrun stapler validate "$APP" 2>&1; then
+            echo "公证票已钉入并通过校验"
+          else
+            echo "::warning::未检测到公证票（未公证或未 stapler staple）"
           fi
 
       - name: Package DMG + app.zip
+        # B-10: CI 走确定性极简打包（UDZO + Applications 软链），不依赖
+        # scripts/build_dmg.sh（开发机便利脚本，带 create-dmg 窗口布局 + 递归自包含
+        # 缺陷修复，输出名不同）。两者目标不同、刻意并存：CI 与脚本产物的安装语义
+        # 一致（都含 .app + Applications 拖拽快捷方式）。
         run: |
           set -euo pipefail
           APP="src-tauri/target/universal-apple-darwin/release/bundle/macos/skill-mcp-studio.app"
@@ -107,6 +130,8 @@ jobs:
             "dist/Skill-MCP-Studio-universal.dmg"
           # 将 .app 打包为 zip 供直接下载（保留 bundle 结构与符号链接）
           ditto -c -k --keepParent "$APP" "dist/skill-mcp-studio-universal.app.zip"
+          # B-6: 生成 SHA256 校验和，供用户校验下载完整性。
+          (cd dist && shasum -a 256 Skill-MCP-Studio-universal.dmg skill-mcp-studio-universal.app.zip > SHA256SUMS)
           ls -la dist/
 
       # 非 tag 触发（push/PR/manual）：仅上传构建产物作为 artifact 校验
@@ -119,6 +144,7 @@ jobs:
           path: |
             dist/Skill-MCP-Studio-universal.dmg
             dist/skill-mcp-studio-universal.app.zip
+            dist/SHA256SUMS
 
       # tag 触发（v*）：创建/更新 GitHub Release 并上传产物，自动生成 release notes
       - name: Publish GitHub Release
@@ -128,6 +154,7 @@ jobs:
           files: |
             dist/Skill-MCP-Studio-universal.dmg
             dist/skill-mcp-studio-universal.app.zip
+            dist/SHA256SUMS
           generate_release_notes: true
           draft: false
           prerelease: false

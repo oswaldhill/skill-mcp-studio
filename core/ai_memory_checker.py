@@ -18,6 +18,7 @@ import shutil
 import sys
 from typing import Any, Dict, List, Optional
 
+from file_atomic import atomic_write, backup_path
 from legacy_checker import (
     AI_MEMORY_DETECTION,
     MCP_CAPABLE_TOOLS,
@@ -104,14 +105,17 @@ AI_MEMORY_HOOK_SIGNATURE = ["ai-memory", "hook --event"]
 
 def _load_toml_file(filepath: str) -> Optional[Dict[str, Any]]:
     """读取 TOML 配置文件（尽力而为，失败返回 None）。"""
-    import tomllib
+    try:
+        import tomllib as _toml_mod
+    except ImportError:  # Python < 3.11
+        import tomli as _toml_mod
     expanded = os.path.expanduser(filepath)
     if not os.path.isfile(expanded):
         return None
     try:
         with open(expanded, "rb") as f:
-            return tomllib.load(f)
-    except (OSError, tomllib.TOMLDecodeError):
+            return _toml_mod.load(f)
+    except (OSError, _toml_mod.TOMLDecodeError):
         return None
 
 
@@ -337,15 +341,37 @@ def build_ai_memory_fix_template() -> Dict[str, Any]:
 # ── 自动修复（写入各 IDE 配置文件，带备份）───────────────────────────
 
 def _backup_file(filepath: str) -> str:
-    """备份配置文件，返回备份路径。"""
-    import shutil
-    import time
-    backup = f"{filepath}.bak.ai-memory.{int(time.time())}"
+    """备份配置文件，返回备份路径（微秒级时间戳，避免秒级碰撞——D-6）。"""
+    backup = backup_path(filepath)
     try:
         shutil.copy2(filepath, backup)
         return backup
     except OSError as e:
         raise RuntimeError(f"备份 {filepath} 失败: {e}")
+
+
+def _write_json_atomic(data: Dict[str, Any], config_path: str, backup: str) -> None:
+    """原子写 JSON（mkstemp+fsync+replace）+ re-parse 校验；失败即回滚（D-6）。
+
+    与 mcp_fixer 的写路径安全链对齐：备份 → 原子写 → 重新解析校验 → 失败回滚。
+    """
+    rendered = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
+    # 权限：配置可能承载 token，新建/改写一律 0o600；若原文件存在则保留其原 mode。
+    try:
+        mode = os.stat(config_path).st_mode & 0o777
+    except OSError:
+        mode = 0o600
+    try:
+        atomic_write(config_path, rendered, mode)
+        json.loads(rendered)  # re-parse 校验写入内容可解析
+    except Exception:
+        # 回滚：用备份覆盖原文件（尽力而为；回滚失败不可吞掉原始异常语义）
+        if os.path.isfile(backup):
+            try:
+                shutil.copy2(backup, config_path)
+            except OSError:
+                pass
+        raise
 
 
 def _find_json_mcp_section(data: Dict[str, Any], mcp_key_path: List[str]) -> Optional[Dict[str, Any]]:
@@ -425,9 +451,7 @@ def fix_ai_memory_config(
         result["backup"] = backup
         mcp_arr.append(entry)
         try:
-            with open(config_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-                f.write("\n")
+            _write_json_atomic(data, config_path, backup)
             result["written"] = True
             result["message"] = f"已写入 ai-memory 条目（备份 {backup}）"
         except OSError as e:
@@ -461,9 +485,7 @@ def fix_ai_memory_config(
     backup = _backup_file(config_path)
     result["backup"] = backup
     try:
-        with open(config_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-            f.write("\n")
+        _write_json_atomic(data, config_path, backup)
         result["written"] = True
         result["message"] = f"已写入 ai-memory 条目（备份 {backup}）"
     except OSError as e:

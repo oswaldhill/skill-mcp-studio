@@ -14,8 +14,9 @@ from dashboard_states import (  # noqa: E402
     STATE_GREEN,
     STATE_RED,
     STATE_YELLOW,
-    all_installed_green,
+    all_installed_compliant,
     classify_record,
+    probe_state,
 )
 
 
@@ -76,7 +77,7 @@ class TriStateTest(unittest.TestCase):
 
 
 class ConsistencyInvariantTest(unittest.TestCase):
-    def test_result_ok_equals_all_installed_green(self):
+    def test_result_ok_equals_all_installed_compliant(self):
         """The DoD invariant: CLI result_ok must agree with the GUI tri-state."""
         cases = [
             # (records, unmanaged, probe_error)
@@ -100,9 +101,20 @@ class ConsistencyInvariantTest(unittest.TestCase):
             }
             self.assertEqual(
                 result_ok(result),
-                all_installed_green(result),
+                all_installed_compliant(result),
                 msg=f"invariant broken for probe_error={probe_error!r} records={records} unmanaged={unmanaged}",
             )
+
+    def test_a2_config_only_reaches_ok(self):
+        """A-2 regression: a not-probed but otherwise compliant run is exit 0."""
+        result = {
+            "probe": {"error": "not probed"},
+            "records": [rec(mcp_initialize_ok=False, mcp_tools_list_ok=False, capabilities={"memory": False})],
+            "unmanaged": [],
+            "summary": {},
+        }
+        self.assertTrue(result_ok(result))
+        self.assertEqual(probe_state(result["probe"]), "not_probed")
 
 
 if __name__ == "__main__":

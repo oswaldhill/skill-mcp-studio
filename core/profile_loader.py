@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Optional
 import yaml
 
 from capability_templates import TemplateError, load_templates, resolve_capabilities
+from names import normalized_name
 
 
 class ProfileError(ValueError):
@@ -118,8 +119,6 @@ def apply_profile_sources(config: Dict[str, Any]) -> Dict[str, Any]:
             if not isinstance(registry, list):
                 registry = []
                 config["mcp_tools"] = registry
-            from tool_registry import normalized_name  # local import avoids cycles
-
             lookup = {
                 normalized_name(tool.get("name", "")): tool
                 for tool in registry
@@ -136,8 +135,6 @@ def apply_profile_sources(config: Dict[str, Any]) -> Dict[str, Any]:
         # 共享条目；合并为并集注入 config，供 effective_tools / run_scan 兜底过滤。
         raw_disabled = data.get("disabled_tools")
         if isinstance(raw_disabled, list):
-            from tool_registry import normalized_name  # local import avoids cycle
-
             merged = {normalized_name(n) for n in config.get("disabled_tools") or [] if isinstance(n, str)}
             for n in raw_disabled:
                 if isinstance(n, str) and n.strip():

@@ -108,6 +108,9 @@ class TemplateDrivenFourQuestionAuditTest(unittest.TestCase):
                 {"memory": ["memory_search", "memory_add"]},
             )
 
+            # 隔离本机发现的客户端：effective_tools 会懒加载 data/discovered_tools.yaml，
+            # 本机若装有 CC Switch/VS Code/WorkBuddy 等真实客户端会泄漏进记录、破坏断言
+            # （A-3/A-4 多源注册表单源，见 test isolation）。这里钉死为仅 FakeClient。
             with mock.patch(
                 "combined_checker.probe_mcp",
                 return_value={
@@ -116,7 +119,7 @@ class TemplateDrivenFourQuestionAuditTest(unittest.TestCase):
                     "tool_names": STUB_TOOL_NAMES,
                     "error": "",
                 },
-            ):
+            ), mock.patch("config_store.load_discovered", return_value=[]):
                 result = check_agents(
                     config, SCAN_RESULT, live_probe=True, profile=profile
                 )

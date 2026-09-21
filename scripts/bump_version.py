@@ -20,6 +20,7 @@
     * src-tauri/tauri.conf.json       （Tauri 打包 version）
     * src-tauri/Cargo.toml            （Rust 侧 version）
     * src-tauri/Cargo.lock            （本应用自身 package 的 version）
+    * pyproject.toml                  （pip 打包元数据 version）
     * README.md / SECURITY.md         （版本 badge 与「当前版本」表述）
     * gui/dashboard.html              （浏览器预览态的版本兜底）
     * skill-mcp-studio-architecture.svg（架构图版本标注）
@@ -44,6 +45,9 @@ ROOT = Path(__file__).resolve().parents[1]
 VERSION_PATH = ROOT / "version.json"
 TAURI_CONF = ROOT / "src-tauri" / "tauri.conf.json"
 CARGO_TOML = ROOT / "src-tauri" / "Cargo.toml"
+PYPROJECT = ROOT / "pyproject.toml"
+README = ROOT / "README.md"
+CHANGELOG = ROOT / "CHANGELOG.md"
 
 
 def load() -> dict:
@@ -160,6 +164,12 @@ def sync_docs(version: str, build: int) -> None:
     )
     _sub_once(
         ROOT / "README.md",
+        r"(badge/build-)\d+(-lightgrey)",
+        rf"\g<1>{build}\g<2>",
+        "README 构建号 badge",
+    )
+    _sub_once(
+        ROOT / "README.md",
         r"(如 `v)\d+\.\d+\.\d+(`)",
         rf"\g<1>{version}\g<2>",
         "README tag 示例",
@@ -206,6 +216,17 @@ def sync_docs(version: str, build: int) -> None:
                 changelog.write_text(txt, encoding="utf-8")
         if f"## [v{version}]" not in txt:
             print(f"  [提醒] CHANGELOG 缺少「## [v{version}]」正文段落，请人工补写")
+def sync_pyproject(version: str) -> None:
+    """pip 打包元数据 ``[project].version`` 同步（B-1/D-1 修复）。"""
+    if not PYPROJECT.exists():
+        return
+    txt = PYPROJECT.read_text(encoding="utf-8")
+    txt = re.sub(
+        r'^version\s*=\s*"[^"]*"',
+        f'version = "{version}"',
+        txt, count=1, flags=re.MULTILINE,
+    )
+    PYPROJECT.write_text(txt, encoding="utf-8")
 
 
 def main() -> int:
@@ -233,9 +254,10 @@ def main() -> int:
     )
     sync_tauri(new_version)
     sync_docs(new_version, new_build)
+    sync_pyproject(new_version)
     print(
         "  已写入: version.json, src-tauri/tauri.conf.json, src-tauri/Cargo.toml, "
-        "src-tauri/Cargo.lock, 文档/预览层版本引用"
+        "src-tauri/Cargo.lock, pyproject.toml, 文档/预览层版本引用"
     )
     return 0
 

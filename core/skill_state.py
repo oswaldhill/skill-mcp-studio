@@ -62,7 +62,7 @@ def _read_frontmatter(repo: str, rel_path: str) -> Dict[str, str]:
     import re
     try:
         import yaml
-    except Exception:  # pragma: no cover - yaml is a declared dependency
+    except ImportError:  # pragma: no cover - yaml is a declared dependency
         return {"name": "", "description": "", "homepage": ""}
 
     out: Dict[str, str] = {"name": "", "description": "", "homepage": ""}

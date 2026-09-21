@@ -2,7 +2,7 @@
 
 报告生成器
 - 控制台彩色表格输出
-- Markdown 文件输出（~/.skills/skills-unifier/scan-report.md）
+- Markdown 文件输出（默认写到仓库根 `scan-report.md`）
 """
 
 import os

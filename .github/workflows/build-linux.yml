@@ -5,8 +5,13 @@ on:
     branches: [master, develop]
     tags: ['v*']
   pull_request:
-    branches: [master]
+    branches: [master, develop]
   workflow_dispatch:
+
+# B-4: 同一 ref 的重复触发串行化，取消在途旧跑。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -58,13 +63,15 @@ jobs:
         working-directory: src-tauri
         run: tauri build --bundles deb,rpm,appimage
 
-      - name: Collect artifacts
+      - name: Collect artifacts + checksums
         run: |
           set -euo pipefail
           mkdir -p dist
           bundle="src-tauri/target/release/bundle"
           find "$bundle" -type f \( -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' \) \
             -exec cp {} dist/ \;
+          # B-6: 为发布产物生成 SHA256 校验和，供用户校验下载完整性。
+          (cd dist && sha256sum *.deb *.rpm *.AppImage > SHA256SUMS)
           ls -la dist/
 
       # 非 tag 触发（push/PR/manual）：仅上传构建产物作为 artifact 校验
@@ -78,6 +85,7 @@ jobs:
             dist/*.deb
             dist/*.rpm
             dist/*.AppImage
+            dist/SHA256SUMS
 
       # tag 触发（v*）：将 deb/rpm/AppImage 追加到 GitHub Release
       # （与 macOS/windows workflow 并存；action-gh-release 对已存在 release 做增量追加）
@@ -89,6 +97,7 @@ jobs:
             dist/*.deb
             dist/*.rpm
             dist/*.AppImage
+            dist/SHA256SUMS
           generate_release_notes: true
           draft: false
           prerelease: false

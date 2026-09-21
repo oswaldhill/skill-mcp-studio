@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/version-v0.21.0-blue" alt="version">
-  <img src="https://img.shields.io/badge/build-103-lightgrey" alt="build">
+  <img src="https://img.shields.io/badge/build-106-lightgrey" alt="build">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="license">
   <img src="https://img.shields.io/badge/python-%3E%3D3.11-3776AB" alt="python">
   <img src="https://img.shields.io/github/actions/workflow/status/oswaldhill/skill-mcp-studio/build-macos.yml?branch=master&label=CI%20(macOS)" alt="CI">

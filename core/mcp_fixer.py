@@ -5,13 +5,14 @@ import os
 import re
 import shutil
 import stat
-import tempfile
-from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
+from config_codec import parse_cordis_yaml as _parse_cordis_yaml
+from file_atomic import atomic_write as _atomic_write, backup_path as _backup_path
 from jsonc_text import mask_jsonc_comments, remove_object_members
 from mcp_checker import inspect_mcp_configuration, load_mcp_servers
 from ops_log import ops_log
+from profile_loader import list_profiles, load_profile
 from tool_registry import detect_installation, effective_tools, normalized_name
 
 
@@ -50,19 +51,10 @@ import yaml
 def _load_cordis_yaml(text: str) -> Any:
     """Parse a cordis patch YAML document tolerating ``!!js`` expressions.
 
-    DSH cordis loader-patch uses the custom ``!!js`` tag for runtime JS
-    expressions (e.g. env-var bearer headers). PyYAML cannot construct that tag,
-    so we register it as an opaque scalar for validation only; the value is never
-    used to make fixes decisions.
+    Delegates to the canonical ``config_codec.parse_cordis_yaml`` (A-6); the value
+    is used for validation only, never to make fix decisions.
     """
-    class CordisLoader(yaml.SafeLoader):
-        pass
-
-    CordisLoader.add_constructor(
-        "tag:yaml.org,2002:js",
-        lambda loader, node: loader.construct_scalar(node),
-    )
-    return yaml.load(text, Loader=CordisLoader)
+    return _parse_cordis_yaml(text)
 
 
 def _result(tool: Dict[str, Any], status: str, message: str) -> Dict[str, str]:
@@ -90,6 +82,26 @@ def _nested_container(data: Dict[str, Any], key_path: List[str]) -> Dict[str, An
 def _bearer_headers(token: str) -> Dict[str, str]:
     """落库用鉴权头：`Authorization: Bearer <token>`，token 明文写入客户端配置。"""
     return {"Authorization": "Bearer " + token}
+
+
+def _toml_string(value: str) -> str:
+    """Escape a string for embedding inside a TOML basic (double-quoted) string.
+
+    D-8：token/url 直接 f-string 拼进 TOML 时，若含 ``"``、``\\`` 或控制字符会产生
+    非法 TOML。此 helper 按 TOML 基本字符串转义规则处理后才返回带引号的字面量。
+    """
+    escaped = (
+        value.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace("\t", "\\t")
+    )
+    # 其余控制字符（0x00-0x1f）用 \uXXXX 转义，保证始终为合法 TOML basic string。
+    return '"' + "".join(
+        ch if ord(ch) >= 0x20 or ch == "\t" else f"\\u{ord(ch):04x}"
+        for ch in escaped
+    ) + '"'
 
 
 def _render_json(text: str, key_path: List[str], name: str, url: str, token: str = "") -> str:
@@ -184,9 +196,9 @@ def _render_toml(text: str, name: str, url: str, token: str = "") -> str:
         raise ValueError("duplicate canonical MCP sections")
     if not ranges:
         separator = "" if not text or text.endswith("\n\n") else ("\n" if text.endswith("\n") else "\n\n")
-        block = f'[{section_name}]\nurl = "{url}"\n'
+        block = f'[{section_name}]\nurl = {_toml_string(url)}\n'
         if token:
-            block += f'http_headers = {{ Authorization = "Bearer {token}" }}\n'
+            block += f'http_headers = {{ Authorization = {_toml_string("Bearer " + token)} }}\n'
         return text + separator + block
 
     start, end = ranges[0]
@@ -199,14 +211,14 @@ def _render_toml(text: str, name: str, url: str, token: str = "") -> str:
         raise ValueError("duplicate canonical MCP URL keys")
     if matches:
         match = matches[0]
-        replacement = match.group(1) + match.group(2) + url + match.group(4) + match.group(5)
+        replacement = match.group(1) + _toml_string(url) + match.group(5)
         section = section[:match.start()] + replacement + section[match.end():]
     else:
         header_end = section.find("\n")
         if header_end < 0:
-            section += f'\nurl = "{url}"\n'
+            section += f'\nurl = {_toml_string(url)}\n'
         else:
-            section = section[:header_end + 1] + f'url = "{url}"\n' + section[header_end + 1:]
+            section = section[:header_end + 1] + f'url = {_toml_string(url)}\n' + section[header_end + 1:]
     # 鉴权：Codex 官方字段 ``http_headers`` 静态表承载明文 ``Authorization`` 头；
     # 同时清理旧的环境变量引用写法（bearer_token_env_var）。
     section = _remove_toml_field(section, "bearer_token_env_var")
@@ -252,7 +264,7 @@ def _set_toml_field(block: str, field: str, value: str) -> str:
         replacement = match.group(1) + match.group(2) + value + match.group(4) + match.group(5)
         return block[:match.start()] + replacement + block[match.end():]
     header_end = _toml_header_end(block)
-    return block[:header_end] + f'{field} = "{value}"\n' + block[header_end:]
+    return block[:header_end] + f'{field} = {_toml_string(value)}\n' + block[header_end:]
 
 
 def _remove_toml_field(block: str, field: str) -> str:
@@ -269,7 +281,7 @@ def _set_toml_http_headers(block: str, token: str) -> str:
     Insert point is right after the section header line, matching the sibling
     :func:`_set_toml_field` convention.
     """
-    value = '{ Authorization = "Bearer ' + token + '" }'
+    value = '{ Authorization = ' + _toml_string("Bearer " + token) + ' }'
     line = re.compile(r"(?m)^[ \t]*http_headers\s*=.*(?:\n|$)")
     if line.search(block):
         return line.sub(f"http_headers = {value}\n", block, count=1)
@@ -317,7 +329,7 @@ def _replace_or_insert_toml_field(block: str, field: str, value: str) -> str:
     if not name_line:
         raise ValueError("canonical plugin has no name field")
     insert_at = name_line.end()
-    return block[:insert_at] + f'\n{field} = "{value}"' + block[insert_at:]
+    return block[:insert_at] + f'\n{field} = {_toml_string(value)}' + block[insert_at:]
 
 
 def _render_reasonix_toml(text: str, name: str, url: str, token: str = "") -> str:
@@ -330,9 +342,9 @@ def _render_reasonix_toml(text: str, name: str, url: str, token: str = "") -> st
         raise ValueError("duplicate canonical Reasonix plugins")
     if not matching:
         separator = "" if not text or text.endswith("\n\n") else ("\n" if text.endswith("\n") else "\n\n")
-        lines = ['[[plugins]]', f'name = "{name}"', 'type = "http"', f'url = "{url}"']
+        lines = ['[[plugins]]', f'name = {_toml_string(name)}', 'type = "http"', f'url = {_toml_string(url)}']
         if token:
-            lines.append(f'headers = {{ Authorization = "Bearer {token}" }}')
+            lines.append(f'headers = {{ Authorization = {_toml_string("Bearer " + token)} }}')
         rendered = text + separator + "\n".join(lines) + "\n"
     else:
         start, end = matching[0]
@@ -350,7 +362,7 @@ def _render_reasonix_toml(text: str, name: str, url: str, token: str = "") -> st
 
 def _set_reasonix_headers(block: str, token: str) -> str:
     """Set the reasonix http plugin ``headers`` inline table to a plaintext bearer token."""
-    value = f'{{ Authorization = "Bearer {token}" }}'
+    value = f'{{ Authorization = {_toml_string("Bearer " + token)} }}'
     line = re.compile(r"(?m)^[ \t]*headers\s*=.*(?:\n|$)")
     if line.search(block):
         return line.sub(f'headers = {value}\n', block, count=1)
@@ -626,32 +638,10 @@ def _validate_written_config(
         raise ValueError("legacy MCP entries remain after cleanup")
 
 
-def _backup_path(path: str) -> str:
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
-    return f"{path}.bak-{timestamp}"
-
-
-def _atomic_write(path: str, content: str, mode: int) -> None:
-    directory = os.path.dirname(path) or "."
-    descriptor, temp_path = tempfile.mkstemp(
-        dir=directory, prefix=f".{os.path.basename(path)}.", suffix=".tmp"
-    )
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            handle.write(content)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.chmod(temp_path, mode)
-        os.replace(temp_path, path)
-    finally:
-        if os.path.exists(temp_path):
-            os.unlink(temp_path)
-
-
 def _restore_backup(backup_path: str, path: str, mode: int) -> None:
-    with open(backup_path, "r", encoding="utf-8") as handle:
-        original = handle.read()
-    _atomic_write(path, original, mode)
+    from file_atomic import restore_backup
+
+    restore_backup(backup_path, path, mode)
 
 
 def fix_mcp_tool(
@@ -735,10 +725,8 @@ def _endpoint_profiles(config: Dict[str, Any]) -> List[Tuple[str, Dict[str, Any]
 
     Returns every managed endpoint in display order (stage-5 P2: a client with
     no explicit ``mcp_attach`` mounts every endpoint, so ``--fix-mcp`` must write
-    each one by its own ``name``). Lazy import avoids a load-time cycle.
+    each one by its own ``name``).
     """
-    from profile_loader import list_profiles, load_profile
-
     out: List[Tuple[str, Dict[str, Any]]] = []
     for key in list_profiles(config):
         out.append((key, load_profile(config, key, config_path=None)["profile"]))
@@ -894,7 +882,12 @@ def remove_legacy_mcp_clients(
     ``client`` narrows the removal to a single registry entry by name
     (normalized comparison); when omitted every installed client is processed.
     """
-    expected = profile if profile is not None else config.get("unified_mcp", {})
+    if profile is not None:
+        expected = profile
+    else:
+        # A-8: 走 profile_loader 规范化解析（含 legacy unified_mcp 包装），避免 raw
+        # ``config["unified_mcp"]`` 的静默 no-op 分支。
+        expected = load_profile(config)["profile"]
     wanted = normalized_name(client) if client else None
     results = []
     for tool in _effective_tools(config):

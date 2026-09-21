@@ -168,3 +168,16 @@ src-tauri/
 │   └── lib.rs          # run_audit（只读命令；缺 CLI 时提示 pipx 安装）
 └── icons/              # 由 `cargo tauri icon` 生成（首次执行）
 ```
+
+## 7. 平台产物与依赖说明（B-9 定案）
+
+- **arm64（Windows/Linux）**：当前仅产出 `x86_64`（macOS 已 universal）。
+  Windows ARM64（`aarch64-pc-windows-msvc`）与 Linux ARM64（`aarch64-unknown-linux-gnu`）
+  按需立项——有真实用户诉求后再加 matrix（Linux 侧可用 QEMU/`buildjet` 大幅减慢构建，
+  见 [Tauri v2 Debian 交叉编译](https://v2.tauri.app/distribute/debian/)）。当前不默认产出。
+- **Linux 运行时依赖**：`deb`/`rpm` 由 Tauri v2 打包器自动注入 `libwebkit2gtk-4.1-0`、
+  `libgtk-3-0`（及系统托盘场景的 appindicator），构建侧已显式安装对应 `-dev` 头文件
+  （`build-linux.yml` 的 `libwebkit2gtk-4.1-dev`/`libgtk-3-dev`/`libayatana-appindicator3-dev`）。
+  **AppImage** 默认不自带 WebKitGTK（Tauri v2 `bundleMediaFramework` 默认关），运行时依赖
+  目标机已装 `libwebkit2gtk-4.1-0`；如需完全自带可开 `bundle.linux.appimage.bundleMediaFramework`
+  （体积显著增大），当前遵循 Tauri 默认值，不在配置里额外声明。

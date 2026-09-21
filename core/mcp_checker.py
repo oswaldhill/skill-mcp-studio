@@ -2,28 +2,22 @@
 
 import json
 import os
-import re
 from typing import Any, Dict, Iterable, List
 from urllib.parse import urlparse
 
-try:
-    import tomllib as _toml
-except ImportError:  # Python < 3.11
-    import tomli as _toml
-
 import yaml
+
+from config_codec import (
+    parse_cordis_yaml as _parse_cordis_yaml,
+    parse_reasonix_json as _parse_reasonix_json,
+    parse_reasonix_toml as _parse_reasonix_toml,
+    parse_toml_mcp_servers as _parse_toml_mcp_servers,
+)
 
 
 def _load_cordis_yaml_text(text: str) -> Any:
-    """Parse cordis YAML tolerating the custom ``!!js`` tag (opaque scalar)."""
-    class CordisLoader(yaml.SafeLoader):
-        pass
-
-    CordisLoader.add_constructor(
-        "tag:yaml.org,2002:js",
-        lambda loader, node: loader.construct_scalar(node),
-    )
-    return yaml.load(text, Loader=CordisLoader)
+    """Thin alias: cordis ``!!js``-tolerant parse lives in config_codec (A-6)."""
+    return _parse_cordis_yaml(text)
 
 
 def is_valid_mcp_url(url: str) -> bool:
@@ -45,40 +39,13 @@ def _nested(data: Any, keys: Iterable[str]) -> Any:
 
 
 def _load_simple_toml_servers(text: str) -> Dict[str, Dict[str, Any]]:
-    servers: Dict[str, Dict[str, Any]] = {}
-    current = ""
-    for raw_line in text.splitlines():
-        line = raw_line.strip()
-        section = re.match(r"^\[mcp_servers\.([^\]]+)\]$", line)
-        if section:
-            name = section.group(1)
-            if name.endswith(".env"):
-                current = name[:-4]
-                servers.setdefault(current, {}).setdefault("env", {})
-            else:
-                current = name
-                servers.setdefault(current, {})
-            continue
-        if not current or not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = [part.strip() for part in line.split("=", 1)]
-        value = value.strip('"').strip("'")
-        if line.startswith("["):
-            continue
-        servers[current][key] = value
-    return servers
+    """Parse ``[mcp_servers.<name>]`` table sections (delegates to config_codec)."""
+    return _parse_toml_mcp_servers(text)
 
 
 def _load_reasonix(text: str) -> Dict[str, Dict[str, Any]]:
-    data = json.loads(text)
-    servers: Dict[str, Dict[str, Any]] = {}
-    for item in data.get("mcp", []):
-        if not isinstance(item, str) or "=" not in item:
-            continue
-        name, command = item.split("=", 1)
-        parts = command.split()
-        servers[name.strip()] = {"command": parts[0] if parts else "", "args": parts[1:]}
-    return servers
+    """Parse ``{"mcp": ["name=command args"]}`` (delegates to config_codec)."""
+    return _parse_reasonix_json(text)
 
 
 def _load_cordis_yaml(text: str) -> Dict[str, Dict[str, Any]]:
@@ -113,18 +80,8 @@ def _load_cordis_yaml(text: str) -> Dict[str, Dict[str, Any]]:
 
 
 def _load_reasonix_toml(text: str) -> Dict[str, Dict[str, Any]]:
-    data = _toml.loads(text)
-    plugins = data.get("plugins", []) if isinstance(data, dict) else []
-    servers: Dict[str, Dict[str, Any]] = {}
-    if not isinstance(plugins, list):
-        return servers
-    for plugin in plugins:
-        if not isinstance(plugin, dict) or not isinstance(plugin.get("name"), str):
-            continue
-        servers[plugin["name"]] = {
-            key: value for key, value in plugin.items() if key != "name"
-        }
-    return servers
+    """Parse TOML ``plugins`` array (delegates to config_codec)."""
+    return _parse_reasonix_toml(text)
 
 
 def _load_yaml_servers(text: str, key_path: List[str]) -> Dict[str, Dict[str, Any]]:

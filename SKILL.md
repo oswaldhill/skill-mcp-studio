@@ -141,9 +141,9 @@ Legacy flags (`--hermes`, `--ai-memory`) remain aliases during migration. They r
 
 Do not delete legacy MCP entries automatically. Remove them only after the new endpoint passes capability checks in that specific client.
 
-## Read-only Dashboard
+## Dashboard (管理台，可写)
 
-`gui/dashboard.html` renders an `--all-profiles --format json` snapshot as a client × state matrix (green / yellow / red / gray) with dynamically generated capability columns. It is read-only — no write or repair entry — and can be opened directly in a browser (upload the JSON snapshot or paste it). Repair remains CLI-only. A Tauri shell in `src-tauri/` wraps the same dashboard as a macOS `.app` (`cargo tauri build`); see `src-tauri/BUILD.md`.
+`gui/dashboard.html` renders an `--management` snapshot (see below) as a five-page management console: overview / IDE·Agent / Skills / MCP / Settings. Beyond the read-only client × state matrix (green / yellow / red / gray), it drives **write operations** through the Tauri `run_cli` bridge with the unified backup → atomic write → re-parse validate → rollback safety chain: fix Skills links, write unified MCP config, per-skill enable/disable, and endpoint CRUD. A Tauri shell in `src-tauri/` wraps the same dashboard as a desktop `.app`; the browser-only preview shows a read-only unconfigured sample state (the real write commands require the `window.__TAURI__` shell). Repair is therefore available both from the CLI and the management console; see `src-tauri/BUILD.md`.
 
 ## Validation
 

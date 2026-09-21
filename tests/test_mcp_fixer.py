@@ -495,6 +495,24 @@ class McpFixerTest(unittest.TestCase):
             self.assertIn('http_headers = { Authorization = "Bearer SECRET" }', text)
             self.assertNotIn("bearer_token_env_var", text)
 
+    def test_toml_auth_token_with_special_chars_is_escaped(self):
+        # D-8 回归：token 含双引号/反斜杠/换行时，不能直接 f-string 拼出非法 TOML；
+        # 必须转义后才能被 tomllib/tomli 重新解析。
+        import tomllib
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "config.toml"
+            path.write_text("", encoding="utf-8")
+            token = 'a"b\\c'
+            expected = {"name": "K8s", "url": URL, "auth_token": token}
+            result = fix_mcp_tool(
+                tool(path, "toml", mcp_key_path=["mcp_servers"]), expected
+            )
+            self.assertEqual(result["status"], "updated")
+            data = tomllib.loads(path.read_text(encoding="utf-8"))
+            headers = data["mcp_servers"]["K8s"]["http_headers"]
+            self.assertEqual(headers["Authorization"], "Bearer " + token)
+
     def test_toml_http_headers_inserted_in_correct_section_when_not_first(self):
         # 回归：目标 section 前有其它 section + 空行时，http_headers 必须落到
         # 目标 `[mcp_servers.K8s]` 段内，而不是误插到上一个段。
