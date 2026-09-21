@@ -15,7 +15,7 @@ from __future__ import annotations
 import os
 from typing import Any, Dict, Optional
 
-from mcp_fixer import _backup_path
+from file_atomic import backup_path as _backup_path
 from skill_state import classify_skill_state, repo_skill_names, skill_link_form
 
 

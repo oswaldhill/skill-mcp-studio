@@ -27,6 +27,12 @@ import os
 import re
 from typing import Any, Dict, List, Optional
 
+from config_codec import (
+    parse_reasonix_json as _parse_reasonix_json,
+    parse_reasonix_toml as _parse_reasonix_toml,
+    parse_toml_mcp_servers as _parse_toml_mcp_servers,
+)
+
 
 # Known MCP-capable tools and their configuration path templates (built-in
 # registry; merged with config.yaml's mcp_tools at runtime).
@@ -39,21 +45,21 @@ MCP_CAPABLE_TOOLS = [
      "mcp_key_path": ["mcpServers"], "note": "全局 MCP 配置"},
     {"name": "WorkBuddy", "config_path": "~/.workbuddy/mcp.json",
      "mcp_key_path": ["mcpServers"], "note": "全局 MCP 配置（原 CodeBuddy）"},
-    {"name": "Qoder", "config_path": "~/.qoder/shared_client/mcp.json",
-     "mcp_key_path": ["mcpServers"], "note": "共享客户端 MCP 配置"},
+    {"name": "Qoder", "config_path": "~/.qoder/settings.json",
+     "mcp_key_path": ["mcpServers"], "note": "Qoder/通义灵码 MCP 配置"},
     {"name": "Continue", "config_path": "~/.continue/config.json",
      "mcp_key_path": ["experimental", "mcpServers"], "note": "实验性 MCP 支持"},
     {"name": "OpenCode", "config_path": "~/.config/opencode/opencode.json",
      "mcp_key_path": ["mcp"], "env_key": "environment",
      "note": "OpenCode 全局 MCP 配置"},
-    {"name": "Cherry Studio", "config_path": "~/.cherrystudio/mcp/mcp.json",
+    {"name": "Cherry Studio", "config_path": "~/.config/CherryStudio/mcp.json",
      "mcp_key_path": ["mcpServers"], "note": "MCP 配置存储在 IndexedDB 中"},
     {"name": "Codex", "config_path": "~/.codex/config.toml",
      "mcp_key_path": ["mcp_servers"], "format": "toml",
      "note": "OpenAI Codex 全局 MCP 配置（TOML 格式）"},
-    {"name": "Reasonix", "config_path": "~/.reasonix/config.json",
-     "mcp_key_path": ["mcp"], "format": "reasonix-json",
-     "note": "Reasonix 全局 MCP 配置（mcp 数组格式）"},
+    {"name": "Reasonix", "config_path": "~/.reasonix/config.toml",
+     "mcp_key_path": ["plugins"], "format": "reasonix_toml",
+     "note": "Reasonix 全局 MCP 配置（TOML plugins 格式）"},
 ]
 
 
@@ -301,89 +307,45 @@ def _load_toml_mcp_servers(filepath: str) -> Optional[Dict[str, Any]]:
     expanded = os.path.expanduser(filepath)
     if not os.path.isfile(expanded):
         return None
-    servers: Dict[str, Any] = {}
-    cur = None
-    cur_env = False
     try:
         with open(expanded, "r", encoding="utf-8") as handle:
-            lines = handle.readlines()
+            text = handle.read()
     except OSError:
         return None
-    for line in lines:
-        line = line.strip()
-        if line.startswith("[mcp_servers.") and line.endswith("]"):
-            section = line[len("[mcp_servers."):-1].strip()
-            if section.endswith(".env"):
-                cur = section[:-len(".env")]
-                cur_env = True
-                servers.setdefault(cur, {})
-            else:
-                cur = section
-                cur_env = False
-                servers.setdefault(cur, {})
-        elif cur and "=" in line and not line.startswith("["):
-            key, _, value = line.partition("=")
-            key = key.strip()
-            value = value.strip()
-            if value.startswith("[") and value.endswith("]"):
-                inner = value[1:-1].strip()
-                value = [i.strip().strip('"') for i in inner.split(",")] if inner else []
-            else:
-                value = value.strip('"')
-            if cur_env:
-                servers[cur].setdefault("env", {})[key] = value
-            else:
-                servers[cur][key] = value
-    return servers if servers else None
+    servers = _parse_toml_mcp_servers(text)
+    return servers or None
 
 
 def _load_reasonix_plugins(filepath: str) -> Optional[Dict[str, Any]]:
-    import tomllib
     expanded = os.path.expanduser(filepath)
     if not os.path.isfile(expanded):
         return None
     try:
-        with open(expanded, "rb") as handle:
-            data = tomllib.load(handle)
-    except (OSError, tomllib.TOMLDecodeError):
+        with open(expanded, "r", encoding="utf-8") as handle:
+            text = handle.read()
+    except OSError:
         return None
-    plugins = data.get("plugins")
-    if not isinstance(plugins, list):
-        return None
-    servers = {}
-    for plugin in plugins:
-        if not isinstance(plugin, dict) or not plugin.get("name"):
-            continue
-        servers[plugin["name"]] = {k: v for k, v in plugin.items() if k != "name"}
-    return servers if servers else None
+    servers = _parse_reasonix_toml(text)
+    return servers or None
 
 
 def _load_reasonix_json_mcp(filepath: str) -> Optional[Dict[str, Any]]:
     expanded = os.path.expanduser(filepath)
     if not os.path.isfile(expanded):
         return None
-    data = _load_json_file(expanded)
-    if not isinstance(data, dict):
+    try:
+        with open(expanded, "r", encoding="utf-8") as handle:
+            text = handle.read()
+    except OSError:
         return None
-    mcp_list = data.get("mcp")
-    if not isinstance(mcp_list, list):
-        return None
-    servers = {}
-    for entry in mcp_list:
-        if not isinstance(entry, str) or "=" not in entry:
-            continue
-        name, cmdline = entry.split("=", 1)
-        parts = cmdline.split()
-        if not parts:
-            continue
-        servers[name.strip()] = {"command": parts[0], "args": parts[1:]}
-    return servers if servers else None
+    servers = _parse_reasonix_json(text)
+    return servers or None
 
 
 def _get_mcp_config_for_tool(tool_def: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     if tool_def.get("format") == "toml":
         return _load_toml_mcp_servers(tool_def["config_path"])
-    if tool_def.get("format") == "reasonix":
+    if tool_def.get("format") in ("reasonix", "reasonix_toml"):
         return _load_reasonix_plugins(tool_def["config_path"])
     if tool_def.get("format") == "reasonix-json":
         return _load_reasonix_json_mcp(tool_def["config_path"])

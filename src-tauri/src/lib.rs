@@ -189,9 +189,18 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
         "--remove-mcp-class",
         "--list-config-backups",
         "--restore-config-backup",
+        // 六维度评审整改：skill 备份 / 导出 / 重命名 / 删除。
+        "--backup-skill",
+        "--export-skill",
+        "--rename-skill",
+        "--delete-skill",
     ];
     // Reject redirection-class flags outright (they re-point the engine at an
     // arbitrary config/profile file, a privilege escalation vector).
+    // P-3: `--active-profile` (redirect the invocation to another profile) is
+    // distinct from the future write command `--set-active-profile` (persist a
+    // default endpoint into config). The former is denied here; the latter, once
+    // implemented, is a non-redirect write flag and is not blocked by this list.
     const DENIED_FLAGS: &[&str] = &["--config", "--profile", "--active-profile"];
 
     let first_flag = args.iter().find(|a| a.starts_with("--")).cloned();
@@ -237,14 +246,24 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
 /// Whitelisted to http(s) only so the passthrough cannot be co-opted to launch
 /// arbitrary schemes/files from a compromised page.  Platform dispatcher:
 /// macOS `open`, Windows `cmd /C start`, Linux `xdg-open`.
+///
+/// D-4/B-5 hardening: beyond the scheme prefix, we reject any URL containing a
+/// Windows ``cmd.exe`` metacharacter (``& | < > ^ " ``` etc.) so a crafted URL
+/// such as ``https://x&calc.exe`` cannot be parsed by ``cmd /C start`` into an
+/// extra command.  The URL is additionally double-quoted on the Windows branch.
 #[tauri::command]
 fn open_url(url: String) -> Result<(), String> {
     if !(url.starts_with("https://") || url.starts_with("http://")) {
         return Err("open_url: 仅允许 http(s) 链接".to_string());
     }
+    // Reject shell metacharacters that carry meaning for the Windows `cmd /C
+    // start` dispatcher (defense in depth; the webview is the only caller).
+    if url.chars().any(|c| matches!(c, '&' | '|' | '<' | '>' | '^' | '"' | '\'' | '`' | '$' | '(' | ')' | ';')) {
+        return Err("open_url: URL 含非法字符（命令注入防护）".to_string());
+    }
     // 命令名与参数都是普通字符串，所有平台均可编译，用 cfg! 运行时分支即可。
     let (program, args): (&str, Vec<&str>) = if cfg!(target_os = "windows") {
-        ("cmd", vec!["/C", "start", "", url.as_str()])
+        ("cmd", vec!["/C", "start", "", "\"", url.as_str(), "\""])
     } else if cfg!(target_os = "macos") {
         ("open", vec![url.as_str()])
     } else {
@@ -291,4 +310,47 @@ pub fn run() {
         }
         _ => {}
     });
+}
+
+#[cfg(test)]
+mod tests {
+    // T-3: 为 spawn 路径解析与 open_url 注入校验补 Rust 单元测试。仅覆盖纯函数
+    // 与「在任何子进程 spawn 之前就返回」的拒绝分支，确保 `cargo test` 无副作用
+    // 且跨平台确定。
+    use super::*;
+
+    #[test]
+    fn cli_candidates_are_non_empty_and_start_with_path_name() {
+        let candidates = cli_candidates();
+        assert!(!candidates.is_empty(), "CLI 候选序列不应为空");
+        assert_eq!(
+            candidates[0].as_str(),
+            "skill-mcp-studio",
+            "首个候选必须是 PATH 裸名"
+        );
+    }
+
+    #[test]
+    fn open_url_rejects_non_http_schemes() {
+        assert!(open_url("ftp://example.com".to_string()).is_err());
+        assert!(open_url("file:///etc/passwd".to_string()).is_err());
+        assert!(open_url("javascript:alert(1)".to_string()).is_err());
+        assert!(open_url("data:text/html,bad".to_string()).is_err());
+    }
+
+    #[test]
+    fn open_url_rejects_shell_metacharacters() {
+        for bad in [
+            "https://x.com/a&calc.exe",
+            "https://x.com/a|b",
+            "https://x.com/a;rm",
+            "https://x.com/a\"b",
+            "https://x.com/a'b",
+        ] {
+            assert!(
+                open_url(bad.to_string()).is_err(),
+                "带注入风险的 URL 应被拒绝: {bad}"
+            );
+        }
+    }
 }

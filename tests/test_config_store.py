@@ -177,7 +177,7 @@ class AddDefaultClientsTest(unittest.TestCase):
         self.assertEqual(r2["added"], 0)
         self.assertEqual(r2["unchanged"], len(MAINSTREAM_TOOLS))
 
-        data = yaml.safe_load(open(self.disc, encoding="utf-8"))
+        data = yaml.safe_load(Path(self.disc).read_text(encoding="utf-8"))
         names = {d["name"] for d in data}
         # DeepSeek Harness（原 DSH）必须在主流清单中
         self.assertIn("DeepSeek Harness", names)
@@ -216,7 +216,7 @@ class RemoveDiscoveredClientTest(unittest.TestCase):
 
         r = remove_discovered_client("foo-agent")
         self.assertEqual(r["status"], "ok")
-        data = yaml.safe_load(open(self.disc, encoding="utf-8"))
+        data = yaml.safe_load(Path(self.disc).read_text(encoding="utf-8"))
         self.assertEqual(data, [])
 
     def test_remove_missing_is_unchanged(self):
@@ -230,7 +230,7 @@ class RemoveDiscoveredClientTest(unittest.TestCase):
 
         r = remove_discovered_client("Foo Agent", dry_run=True)
         self.assertEqual(r["status"], "dry-run")
-        data = yaml.safe_load(open(self.disc, encoding="utf-8"))
+        data = yaml.safe_load(Path(self.disc).read_text(encoding="utf-8"))
         self.assertEqual(len(data), 1)
 
 

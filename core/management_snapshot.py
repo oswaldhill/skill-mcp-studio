@@ -88,7 +88,8 @@ def _client_skill_stats(tool: Dict[str, Any], scan_result: Dict[str, Any], unifi
                         states[skill] = state
         enabled_count = sum(1 for v in states.values() if v == "enabled")
         skills_total = len(states)
-    except Exception:
+    except (OSError, ValueError):
+        # D-9: 技能状态读取失败按「无状态信息」降级，不再裸吞任意异常。
         pass
     return {
         "skills_compliant": compliant,
@@ -351,6 +352,7 @@ def build_management_snapshot(
                 "config_paths": (mt.get("install") or {}).get("config_paths", []),
                 "skills_paths": mt.get("skills_paths", []),
                 "config_path": mt.get("config_path", ""),
+                "scan_dir": mt.get("scan_dir", ""),
                 "format": mt.get("format", "json"),
                 "mcp_key_path": mt.get("mcp_key_path", ["mcpServers"]),
                 "registered": norm in registered_names,
@@ -385,7 +387,8 @@ def build_management_snapshot(
             "scan_paths": (config.get("auto_discover") or {}).get("scan_paths", []),
             "exclude_paths": (config.get("auto_discover") or {}).get("exclude_paths", []),
         },
-        "unified_mcp": config.get("unified_mcp", {}),
+        # A-8: 不再透出 legacy ``unified_mcp`` 旧键——现代端点库由 ``endpoints`` +
+        # ``active_profile`` 表达（含 legacy 包装后的规范化视图）。
         "endpoints": endpoints,
         "platform": {
             "os": _platform_label,

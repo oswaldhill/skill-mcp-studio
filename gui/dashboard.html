@@ -1368,7 +1368,13 @@ function mountModal(html) {
   const focusEl = modal.querySelector("input, select, textarea, button");
   if (focusEl) focusEl.focus();
 }
-function closeModal() { $("modal-root").innerHTML = ""; }
+
+// U-5: Esc/backdrop 关闭确认框时须结算挂起的 confirm Promise，避免调用方 await 永久悬空。
+let _pendingConfirm = null;
+function closeModal() {
+  if (_pendingConfirm) { const settle = _pendingConfirm; _pendingConfirm = null; settle(); }
+  $("modal-root").innerHTML = "";
+}
 
 /**
  * Custom confirmation dialog — replaces browser window.confirm().
@@ -1376,10 +1382,13 @@ function closeModal() { $("modal-root").innerHTML = ""; }
  */
 function confirmModal(title, message, danger) {
   return new Promise((resolve) => {
+    let settled = false;
+    const settle = (val) => { if (!settled) { settled = true; _pendingConfirm = null; resolve(val); } };
+    _pendingConfirm = () => settle(false);
     const iconHtml = danger
       ? '<div class="cfm-icon">!</div>'
       : '';
-    $("modal-root").innerHTML = `<div class="modal-backdrop"><div class="modal cfm-card">
+    $("modal-root").innerHTML = `<div class="modal-backdrop"><div class="modal cfm-card" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}" tabindex="-1">
       ${iconHtml}
       <div class="cfm-title">${escapeHtml(title)}</div>
       <div class="cfm-msg">${escapeHtml(message)}</div>
@@ -1388,8 +1397,8 @@ function confirmModal(title, message, danger) {
         <button class="cfm-btn-danger" id="cfm-yes">${danger ? '确认删除' : '确认'}</button>
       </div>
     </div></div>`;
-    $("cfm-no").onclick = () => { closeModal(); resolve(false); };
-    $("cfm-yes").onclick = () => { closeModal(); resolve(true); };
+    $("cfm-no").onclick = () => { settle(false); closeModal(); };
+    $("cfm-yes").onclick = () => { settle(true); closeModal(); };
   });
 }
 
@@ -3191,7 +3200,16 @@ async function runCli(args) {
     const res = await tauriInvoke("run_cli", { args });
     return JSON.parse(res);
   } catch (err) {
+    // U-3: 区分三种失败语义并透出具体指引，而非静默吞掉。
+    const msg = String(err && (err.message || err) ? (err.message || err) : err);
     console.error("runCli error:", err);
+    if (/无法启动|请先安装 CLI|pipx install/i.test(msg)) {
+      showBanner("err", "未检测到 skill-mcp-studio CLI（无法执行审计/写操作）。" + msg);
+    } else if (/安全边界|白名单|重定向参数/i.test(msg)) {
+      showBanner("err", "操作被 run_cli 安全边界拦截：" + msg);
+    } else {
+      showBanner("err", "命令执行失败：" + msg);
+    }
     return null;
   }
 }
@@ -3211,7 +3229,10 @@ async function loadManagement() {
       clearBanner();
       return true;
     }
-    showBanner("err", "管理快照失败：" + (mgmt ? mgmt.stderr : "无法执行"));
+    // mgmt === null 时 runCli 已透出具体错误（CLI 未装/安全边界/连接失败），此处不再覆盖。
+    if (mgmt && mgmt.code !== 0) {
+      showBanner("err", "管理快照失败：" + mgmt.stderr);
+    }
     return false;
   } catch (err) {
     showBanner("err", "工具运行失败（非审计结论）：" + err);
@@ -3795,7 +3816,7 @@ function renderMergePreview(data) {
     { n: sum.missing, l: "缺失", c: "err" },
     { n: sum.wrong_link + sum.broken_link, l: "错误指向 / 断链", c: "warn" },
     { n: sum.skipped, l: "跳过（工具自有）", c: "" },
-  ].map((s) => `<div class="stat-card ${s.c ? 'accent' : ''}" style="${s.c === 'err' ? '' : ''}">
+  ].map((s) => `<div class="stat-card">
       <div class="num ${s.c}">${s.n}</div><div class="lbl">${s.l}</div></div>`).join("");
 
   mountModal(`<div class="modal-backdrop"><div class="modal modal-form" style="width:min(920px,94vw)">
@@ -4323,6 +4344,18 @@ document.addEventListener("click", (e) => {
   if ($("pop-root") && $("pop-root").innerHTML) closePop();
 });
 
+// U-1: 技能行/卡用 role="button" + tabindex="0"，须补 Enter/Space 键盘触发查看详情。
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" && e.key !== " ") return;
+  const t = e.target.closest(".skill-card, .skill-row");
+  if (!t || !t.dataset.skill) return;
+  // 焦点落在卡片内嵌的真实交互控件（kebab/展开切换/官网链接等）时交由它们自身的
+  // 原生按钮/链接键盘行为，本处理器只服务「整行等效按钮」的查看详情动作。
+  if (e.target.closest("button, a, [data-open-url], [data-toggle-nest]")) return;
+  e.preventDefault();
+  showSkillDetail(t.dataset.skill);
+});
+
 // ---------------- Agent 卡片 kebab 溢出菜单 ----------------
 // 链接形态的可读名称：root/per_skill 都表示「通过软链接/快捷方式链接到统一技能目录」。
 function linkFormText(f) {
@@ -4642,7 +4675,6 @@ const SAMPLE_MGMT = {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",
     auto_discover: { enabled: true, scan_paths: ["~/.config/*/skills", "~/.*/skills"], exclude_paths: [] },
-    unified_mcp: {},
     endpoints: [],
   },
   agents: [

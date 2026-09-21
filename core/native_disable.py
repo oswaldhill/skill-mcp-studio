@@ -57,9 +57,12 @@ def read_native_disabled(tool: Dict[str, Any]) -> Set[str]:
         if fmt == "yaml":
             data = yaml.safe_load(text)
         elif fmt == "toml":
-            import tomllib  # stdlib since 3.11
+            try:
+                import tomllib as _toml_mod  # stdlib since 3.11
+            except ImportError:
+                import tomli as _toml_mod
 
-            data = tomllib.loads(text)
+            data = _toml_mod.loads(text)
         else:
             data = json.loads(text)
     except (OSError, ValueError, yaml.YAMLError):

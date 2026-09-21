@@ -16,14 +16,17 @@ def _ssl_context() -> ssl.SSLContext:
 
     macOS python.org framework builds ship without a linked system CA store, so
     ``ssl.create_default_context()`` alone cannot verify real HTTPS endpoints
-    (``CERTIFICATE_VERIFY_FAILED``). ``certifi`` is already a dependency; when
-    importable we load its bundle explicitly. Verification is always enforced —
-    a security audit tool must never downgrade to ``CERT_NONE``.
+    (``CERTIFICATE_VERIFY_FAILED``). ``certifi`` is a declared dependency (see
+    ``pyproject.toml``); we load its bundle explicitly. Verification is always
+    enforced — a security audit tool must never downgrade to ``CERT_NONE``.
     """
     context = ssl.create_default_context()
     try:
-        import certifi  # optional at runtime, but bundled in most envs
-    except ImportError:
+        import certifi
+    except ImportError:  # pragma: no cover - declared dependency, defensive only
+        import warnings
+
+        warnings.warn("certifi 未安装，TLS 校验将依赖系统默认 CA（macOS python.org 构建可能失败）")
         return context
     context.load_verify_locations(certifi.where())
     return context
@@ -150,7 +153,7 @@ def probe_mcp(
             "params": {
                 "protocolVersion": "2025-03-26",
                 "capabilities": {},
-                "clientInfo": {"name": "skills-mcp-unifier", "version": "1.0"},
+                "clientInfo": {"name": "skill-mcp-studio", "version": "1.0"},
             },
         }, token=auth_token, timeout=timeout)
         if initialize.get("error") or not initialize.get("result"):

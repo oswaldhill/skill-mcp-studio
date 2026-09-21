@@ -11,6 +11,8 @@ from skill_state_auditor import audit_skill_states
 from native_disable import read_native_disabled
 from tool_registry import detect_installation, effective_tools, normalized_name
 from endpoint_library import clients_attached_to, has_explicit_attach
+from profile_loader import load_profile
+from dashboard_states import classify_record
 
 
 def _skills_compliant(name: str, scan_result: Dict[str, Any]) -> bool:
@@ -156,7 +158,14 @@ def check_agents(
     profile: Optional[Dict[str, Any]] = None,
     endpoint_key: Optional[str] = None,
 ) -> Dict[str, Any]:
-    expected = profile if profile is not None else config.get("unified_mcp", {})
+    if profile is not None:
+        expected = profile
+    else:
+        # A-8: 通过 profile_loader 规范化解析（含 legacy unified_mcp 包装 + 默认值），
+        # 而非直接读 raw ``config["unified_mcp"]``——后者缺默认值，形成静默 no-op
+        # 分支（expected_url="" → 所有客户端恒判 not-configured）。无 profile 时
+        # 明确抛 ProfileError，而不是把所有客户端静默判为未接入。
+        expected = load_profile(config, endpoint_key)["profile"]
     expected_name = expected.get("name", "hermes")
     expected_url = expected.get("url", "")
     legacy_names = expected.get("legacy_names", [])
@@ -211,7 +220,7 @@ def check_agents(
             group: _has_group(tool_names, names)
             for group, names in required.items()
         }
-        records.append({
+        record = {
             "name": tool.get("name", "Unknown"),
             "installed": install["installed"],
             "install_state": install["install_state"],
@@ -235,7 +244,11 @@ def check_agents(
             "hook_events": hooks["events"],
             "legacy_channels": mcp["legacy_channels"],
             **_skill_state_fields(tool.get("name", ""), scan_result, tool),
-        })
+        }
+        # U-2: 把单一 rule set（dashboard_states.classify_record）的合规总态
+        # green/yellow/red/gray 直接落到每条 record，GUI 与 CLI 消费同一 state。
+        record["state"] = classify_record(record, probe)
+        records.append(record)
     unmanaged = _unmanaged_installed_clients(
         registry,
         scan_result,
@@ -268,10 +281,17 @@ def check_agents(
 def result_ok(result: Dict[str, Any], *, strict_skill_state: bool = False) -> bool:
     """Phase-2 exit-code judgment: is a ``check_agents`` result fully compliant?
 
-    Non-compliant (``False``) when a live probe failed, any installed client
-    fails a required field (skills / MCP configure / initialize / tools-list /
-    hooks), any capability group is unmet, any legacy channel remains, or any
-    unmanaged installed client is present.
+    Non-compliant (``False``) when a live probe fails, any installed client
+    fails a required config field (skills / MCP configure / hooks), any
+    capability group is unmet (only meaningful when the probe ran), any legacy
+    channel remains, or any unmanaged installed client is present.
+
+    A-2 (probe tri-state): probe-derived fields (``mcp_initialize_ok``,
+    ``mcp_tools_list_ok``, ``capabilities``) are only enforced when the live
+    probe actually ran.  A config-only run (``live_probe=False`` → probe.error
+    == ``"not probed"``) reports those fields as ``False``/empty but is still
+    compliant, so ``python3 scan.py`` can reach exit 0.  Only ``probed_failed``
+    (a probe that ran and errored) is a hard failure.
 
     Stage-4 (design §4.4): by default the L5 skill state is NOT part of this
     judgment. ``strict_skill_state=True`` (CLI ``--strict-skill-state``)
@@ -280,22 +300,26 @@ def result_ok(result: Dict[str, Any], *, strict_skill_state: bool = False) -> bo
     probe_error = (result.get("probe") or {}).get("error", "")
     if probe_error and probe_error != "not probed":
         return False
+    not_probed = probe_error == "not probed"
     for record in result.get("records", []) or []:
         if not record.get("installed"):
             continue
         if not (
             record.get("skills_compliant")
             and record.get("mcp_configured")
-            and record.get("mcp_initialize_ok")
-            and record.get("mcp_tools_list_ok")
             and (record.get("hooks_configured") or not record.get("hooks_required", True))
         ):
             return False
         if record.get("legacy_channels"):
             return False
-        capabilities = record.get("capabilities", {}) or {}
-        if not all(capabilities.values()):
-            return False
+        # A-2: live-probe-derived fields gate only when the probe actually ran;
+        # "not probed" is a measurement gap, not a failure.
+        if not not_probed:
+            if not record.get("mcp_initialize_ok") or not record.get("mcp_tools_list_ok"):
+                return False
+            capabilities = record.get("capabilities", {}) or {}
+            if not all(capabilities.values()):
+                return False
     if result.get("unmanaged"):
         return False
     if strict_skill_state:

@@ -7,7 +7,7 @@
 
 ## [v0.21.0] - 2026-09
 
-build 106。
+当前发布版本（build 106）。
 
 ### 新增
 
@@ -34,6 +34,18 @@ build 106。
 
 ### 变更
 
+- **六维度深度评审整改**：按 `docs/reviews/评审报告-v0.20.0-六维度深度评审.md`
+  完成 54 项整改——CLI 契约单源（A-1）、探测三态退出码（A-2）、注册表收敛（A-3/A-4）、
+  无环 import（A-5）、config_codec（A-6）、`main()` 拆分 `build_parser()` 与 Phase 7 编号
+  补齐（A-7）、active_profile 只读定案（P-3）、后端 `state` 契约落到每条 record（U-2）；
+  auth_token 0o600（D-3）、open_url 注入加固 + CSP 收紧（D-4）、除死代码与裸 except
+  （D-2/D-9）、TOML 转义（D-8）、原子写（D-6）、退出码 2 分层（D-7）；GUI 键盘可达性 /
+  CLI 未装透出 / 语义色 / 模态可及性（U-1/U-3/U-4/U-5）；CI 测试门禁（Python unittest +
+  cargo test + node:test）+ 签名/公证验证 + SHA256SUMS + 平台 bundle.targets +
+  concurrency（T-1/B-2/B-3/B-4/B-6）；Rust `#[cfg(test)]`（spawn 路径解析 + open_url
+  注入）+ node:test 纯函数（T-3）；pytest/coverage 配置 + wheel 形态守护 + 跨平台路径 +
+  flaky/文件句柄/环境耦合修正（T-4..T-10）；QwenWork/TraeWork 注册表（P-5/B-8）；arm64
+  按需立项文档化（B-9）。测试 381 → 448（Python 440 + Rust `cargo test` 3 + node:test 5）。
 - **Tauri 白名单**：`run_cli` 的允许参数新增上述 4 个命令（壳只透传 argv、写盘仍在
   CLI 的安全链内）。
 - **构建文档**：修正 `src-tauri/BUILD.md` 中仓库本地工具链的 `PATH` 写法——原写法
@@ -90,7 +102,6 @@ build 104。
 ## [v0.19.0] - 2026-09
 
 build 103。
-
 ### 变更
 
 - **隐私加固**：主干中硬编码的真实端点域名与 IP 全部改用占位符；`ai-memory` 默认服务
@@ -128,6 +139,11 @@ build 96。
 ## 早期里程碑（v0.x 之前）
 
 以下为阶段一至阶段五过程中的关键能力落地：
+
+> **命名迁移（P-10）**：项目自历史名 `skills-mcp-unifier` 更名并迁移为
+> `skill-mcp-studio`（仓库 `github.com/oswaldhill/skill-mcp-studio`）。代码内 CLI
+> `--help`、MCP `clientInfo.name`、报告头均使用新名；旧名仅作为符号链接别名目录
+> （`skills-unifier`/`skills-mcp-unifier`）与历史文档中的演进记录保留。
 
 ### 阶段五 · 通用管理台重塑
 

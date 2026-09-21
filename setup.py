@@ -15,14 +15,16 @@ import shutil
 from setuptools import setup
 from setuptools.command.build_py import build_py
 
-CORE_MODULES = sorted(p.stem for p in Path("core").glob("*.py"))
+# B-10: 路径锚定到本文件所在目录（仓库根），不再依赖调用方的 cwd。
+_ROOT = Path(__file__).resolve().parent
+CORE_MODULES = sorted(p.stem for p in (_ROOT / "core").glob("*.py"))
 
 
 class FlattenCoreModules(build_py):
     def run(self):
         super().run()
         for name in CORE_MODULES:
-            src = Path("core") / f"{name}.py"
+            src = _ROOT / "core" / f"{name}.py"
             dst = Path(self.build_lib) / f"{name}.py"
             shutil.copyfile(src, dst)
 

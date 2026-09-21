@@ -16,7 +16,7 @@ from typing import Any, Dict, List
 
 try:
     import yaml
-except Exception:  # pragma: no cover - yaml is a declared dependency
+except ImportError:  # pragma: no cover - yaml is a declared dependency
     yaml = None
 
 # frontmatter 块只出现在 SKILL.md 顶部。

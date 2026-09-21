@@ -143,6 +143,14 @@ class CombinedCheckerTest(unittest.TestCase):
     def test_dsh_installed_via_config_evidence(self):
         # DSH ships no CLI/App in PATH; the cordis patch config file is the proof
         # of installation, so is_tool_installed must resolve it via config evidence.
+        # T-6: 该用例依赖本机真实存在 ~/.dsh 配置文件，属环境耦合；在未安装 DSH
+        # 的 CI/干净主机上应跳过而非失败。
+        dsh_evidence = [
+            Path.home() / ".dsh" / "settings.yaml",
+            Path.home() / ".dsh" / "mcp.json",
+        ]
+        if not any(p.exists() for p in dsh_evidence):
+            self.skipTest("本机无 ~/.dsh 配置证据，跳过 DSH 安装证据断言（T-6 环境耦合）")
         self.assertTrue(is_tool_installed("DSH"))
         self.assertTrue(is_tool_installed("dsh"))
 
@@ -429,6 +437,38 @@ class ResultOkTest(unittest.TestCase):
             "unmanaged": [],
         }
         self.assertTrue(result_ok(result))
+
+    def test_check_agents_without_profile_fails_loud(self):
+        # A-8: 无 profiles 无 legacy unified_mcp 时，check_agents 不能再静默走
+        # raw config["unified_mcp"] 的 no-op 分支（把所有客户端判为未接入）；应抛
+        # ProfileError，让调用方知道缺少端点/profile 而非误报"未配置"。
+        from profile_loader import ProfileError
+
+        config = {"mcp_tools": [], "tools": []}
+        with self.assertRaises(ProfileError):
+            check_agents(config, {"results": []})
+
+    def test_check_agents_records_carry_backend_state(self):
+        # U-2: check_agents 的每条 record 都携带单一 rule set 产生的合规总态
+        # state（green/yellow/red/gray），GUI 与 CLI 消费同一个后端结论。
+        from dashboard_states import classify_record
+
+        config = {
+            "unified_mcp": {
+                "name": "hermes",
+                "url": "https://mcp.example.com/mcp",
+                "legacy_names": [],
+                "required_capabilities": {},
+            },
+            "mcp_tools": [],
+            "tools": [],
+        }
+        result = check_agents(config, {"results": []})
+        probe = result.get("probe", {})
+        self.assertIn("records", result)
+        for record in result["records"]:
+            self.assertIn("state", record)
+            self.assertEqual(record["state"], classify_record(record, probe))
 
 
 if __name__ == "__main__":

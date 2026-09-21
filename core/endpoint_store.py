@@ -62,7 +62,10 @@ def _persist(path: str, data: Dict[str, Any], dry_run: bool) -> Dict[str, str]:
     if dry_run:
         return {"status": "dry-run", "message": rendered, "path": path, "backup": ""}
 
-    mode = os.stat(path).st_mode & 0o7777 if os.path.isfile(path) else 0o644
+    # Profile overlay may carry auth_token; always tighten to owner-only (0600)
+    # regardless of pre-existing mode, so a previously world-readable overlay
+    # (legacy 0644 default) is repaired on the next write.  ADR-19/D-3.
+    mode = 0o600
     backup = _backup_path(path) if os.path.isfile(path) else ""
     try:
         if backup:

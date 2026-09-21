@@ -641,6 +641,32 @@ def register_mainstream_tools():
                                "config_paths": ["%LOCALAPPDATA%\\Doubao"]},
                    "linux": {"app_bundles": [], "commands": [], "config_paths": []},
                }),
+        # QwenWork（千问办公）：仅 macOS / Windows / HarmonyOS，无 Linux 桌面版；
+        # MCP 走 GUI 录入口，未公开落盘文件 → 不声明 mcp_config_path（P-5/B-8）。
+        _entry("QwenWork", type_="AI Assistant",
+               app_bundles=["/Applications/QwenWork.app"], commands=[],
+               config_paths=["~/.qwenworkcn"],
+               skills_path="~/.qwenworkcn/skills",
+               aliases=["qwenwork", "qwenoffice", "千问办公"],
+               by_os={
+                   "windows": {"app_bundles": [], "commands": [],
+                               "config_paths": ["%USERPROFILE%\\.qwenworkcn"],
+                               "skills_path": "%USERPROFILE%\\.qwenworkcn\\skills"},
+                   "linux": {"app_bundles": [], "commands": [], "config_paths": []},
+               }),
+        # TraeWork（字节 AI 工作台，前身 TraeCode SOLO）：桌面版仅 macOS/Windows；
+        # MCP 走 GUI 录入口，未公开本地文件 → 不声明 mcp_config_path（P-5/B-8）。
+        _entry("TraeWork", type_="AI Assistant",
+               app_bundles=["/Applications/TraeWork.app"], commands=[],
+               config_paths=["~/.trae-cn"],
+               skills_path="~/.trae-cn/skills",
+               aliases=["traework", "traecode", "trae-cn"],
+               by_os={
+                   "windows": {"app_bundles": [], "commands": [],
+                               "config_paths": ["%USERPROFILE%\\.trae-cn"],
+                               "skills_path": "%USERPROFILE%\\.trae-cn\\skills"},
+                   "linux": {"app_bundles": [], "commands": [], "config_paths": []},
+               }),
         _entry("Huawei CodeArts", type_="IDE Plugin",
                commands=["codearts"], config_paths=["~/.codearts/mcp.json"],
                aliases=["codearts", "huawei-codearts"],

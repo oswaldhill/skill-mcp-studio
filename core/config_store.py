@@ -21,7 +21,9 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
-from mcp_fixer import _atomic_write, _backup_path
+from file_atomic import atomic_write as _atomic_write, backup_path as _backup_path
+from mainstream_registry import MAINSTREAM_TOOLS
+from names import normalized_name
 
 
 def _default_config_path() -> str:
@@ -237,7 +239,7 @@ def cleanup_config_only_client(
     """
     import shutil
 
-    from tool_registry import detect_installation, effective_tools, normalized_name
+    from tool_registry import detect_installation, effective_tools
 
     wanted = normalized_name(name)
     target = None
@@ -302,8 +304,6 @@ def _disable_in_overlay(
     cfg_path = config_path or _default_config_path()
     target = _overlay_target(cfg_path)
 
-    from tool_registry import normalized_name  # local import avoids cycle
-
     wanted = normalized_name(name)
     existing = {}
     if os.path.isfile(target):
@@ -360,7 +360,7 @@ def remove_managed_client(
     """
     import shutil
 
-    from tool_registry import detect_installation, normalized_name
+    from tool_registry import detect_installation
 
     wanted = normalized_name(name)
     # 收集**所有** name 匹配的条目（mcp_tools + tools + discovered），而不是用
@@ -537,14 +537,97 @@ def add_discovered_client(
     return {"status": "ok", "message": f"已添加客户端 {name!r}", "path": path, "backup": backup}
 
 
+def update_discovered_client(
+    name: str,
+    *,
+    app_bundles: Optional[List[str]] = None,
+    commands: Optional[List[str]] = None,
+    config_paths: Optional[List[str]] = None,
+    skills_path: Optional[str] = None,
+    mcp_config_path: Optional[str] = None,
+    scan_dir: Optional[str] = None,
+    dry_run: bool = False,
+) -> Dict[str, str]:
+    """Update a client recorded in ``data/discovered_tools.yaml`` in place.
+
+    Backs the ``--update-client`` management action ("编辑客户端" in the GUI):
+    a user edits the default install evidence (app bundles / CLI commands /
+    config paths), the Skills dir, the MCP config path, or the scan dir of an
+    already-registered client.  Falls back to ``add_discovered_client`` when no
+    matching entry exists, so the same action can also create it (idempotent).
+    """
+    path = _discovered_file()
+    discovered = load_discovered()
+    norm = "".join(c for c in name.lower() if c.isalnum())
+
+    idx = None
+    for i, existing in enumerate(discovered):
+        if "".join(c for c in str(existing.get("name", "")).lower() if c.isalnum()) == norm:
+            idx = i
+            break
+
+    if idx is None:
+        # Not present yet: delegate to add (builds install block from the args).
+        install: Optional[Dict[str, Any]] = None
+        if app_bundles or commands or config_paths:
+            install = {
+                "app_bundles": list(app_bundles or []),
+                "commands": list(commands or []),
+                "config_paths": list(config_paths or []),
+            }
+        return add_discovered_client(
+            name,
+            skills_path=skills_path,
+            config_path=mcp_config_path,
+            install=install,
+            dry_run=dry_run,
+        )
+
+    entry = dict(discovered[idx])
+    # Install evidence block (app_bundles/commands/config_paths).
+    if app_bundles is not None or commands is not None or config_paths is not None:
+        install = dict(entry.get("install") or {})
+        if app_bundles is not None:
+            install["app_bundles"] = list(app_bundles)
+        if commands is not None:
+            install["commands"] = list(commands)
+        if config_paths is not None:
+            install["config_paths"] = list(config_paths)
+        entry["install"] = install
+    # Skills dir (single value; stored as skills_paths list).
+    if skills_path is not None:
+        entry["skills_paths"] = [skills_path]
+    # MCP config path (single primary config_path + format/mcp_key_path stay).
+    if mcp_config_path is not None:
+        entry["config_path"] = mcp_config_path
+    # Scan dir (FEAT-1 extension; persisted verbatim).
+    if scan_dir is not None:
+        entry["scan_dir"] = scan_dir
+
+    discovered[idx] = entry
+    rendered = yaml.safe_dump(discovered, allow_unicode=True, default_flow_style=False)
+    if dry_run:
+        return {"status": "dry-run", "message": rendered, "path": path, "backup": ""}
+
+    mode = os.stat(path).st_mode & 0o7777 if os.path.isfile(path) else 0o644
+    backup = _backup_path(path) if os.path.isfile(path) else ""
+    try:
+        if backup:
+            import shutil
+
+            shutil.copy2(path, backup)
+        _atomic_write(path, rendered, mode)
+    except OSError as exc:
+        return {"status": "error", "message": f"write failed: {exc}", "path": path, "backup": backup}
+    return {"status": "ok", "message": f"已更新客户端 {name!r}", "path": path, "backup": backup}
+
+
 def add_default_clients(dry_run: bool = False) -> Dict[str, Any]:
     """一键「默认添加」主流 IDE/Agent 到 discovered 持久化（整改）。
 
     遍历 ``mainstream_registry.MAINSTREAM_TOOLS``，逐个调用
     ``add_discovered_client``（按归一化名去重），返回逐条目结果与汇总。
     """
-    from mainstream_registry import MAINSTREAM_TOOLS  # local import avoids cycles
-
     results: List[Dict[str, str]] = []
     for tool in MAINSTREAM_TOOLS:
         install = tool.get("install") or {}
