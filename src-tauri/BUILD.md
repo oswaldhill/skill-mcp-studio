@@ -116,6 +116,55 @@ staging 目录直出。产物自检（挂载→核对 .app→卸载）。
 （2.6MB，UDZO 压缩率 92.5%）。`tauri.conf.json` 的 `targets` 保持
 `["app"]`（tauri 内置 dmg 调用仍有缺陷 2，不要用）。
 
+### 3.2 安装到 `/Applications`（本机实操记录，2026-09-21）
+
+构建产物不会自动替换已安装应用，需手工安装。本机步骤（`master` = 合并
+`develop` 后的 `0.21.0` build 106）：
+
+```bash
+cd src-tauri
+export CARGO_HOME="$(cd .. && pwd)/.cargo-home"   # 必须规范化，见 §1 PATH 陷阱
+export RUSTUP_HOME="$(cd .. && pwd)/.rustup-home"
+export PATH="$CARGO_HOME/bin:$PATH"
+cargo tauri build                                  # 28.7s，BUILD_EXIT=0
+
+NEW="$PWD/target/release/bundle/macos/skill-mcp-studio.app"
+DEST=/Applications/skill-mcp-studio.app
+BK=~/.skill-mcp-studio-backups
+
+# 1) 先退出正在运行的实例（否则替换 bundle 行为未定义）
+osascript -e 'tell application "skill-mcp-studio" to quit' || \
+  pkill -TERM -f "skill-mcp-studio.app/Contents/MacOS"
+
+# 2) 备份旧版本，再安装（ditto 保留元数据/签名）
+mkdir -p "$BK"
+ditto "$DEST" "$BK/skill-mcp-studio-0.21.0-premerge.app"
+rm -rf "$DEST" && ditto "$NEW" "$DEST"
+
+# 3) 校验：安装后二进制 sha256 必须与产物一致
+shasum -a 256 "$NEW/Contents/MacOS/skill-mcp-studio" "$DEST/Contents/MacOS/skill-mcp-studio"
+```
+
+**权限**：`/Applications` 与 `~/.skill-mcp-studio-backups` 均在会话工作区之外，
+workspace-write 沙箱下 `rm`/`ditto` 报 `Operation not permitted`，需完全访问权限。
+
+**本次结果**：产物与安装后 sha256 均为
+`e253763e449a76e8333d29e88e91f6fa5482461593f3e54188271088c784970c`（逐字节一致）；
+旧版备份在 `~/.skill-mcp-studio-backups/skill-mcp-studio-0.21.0-premerge.app`。
+
+> ⚠️ **替换 .app 会使系统授权失效**：本机 DSH 为 ad-hoc 签名
+> （`Signature=adhoc`、无 TeamIdentifier），macOS TCC 记录按 cdhash 绑定。
+> 新 bundle 的 cdhash 已变，**屏幕录制 / 辅助功能**授权会失效，且需先在
+> 系统设置中删除旧记录再重新授权，仅重启进程无效（TCC 在进程启动时缓存）。
+
+**启动后自检**（`AXUIElement` 读无障碍树，比截图可靠）：
+
+```
+AXStaticText 'v0.21.0 (build 106)'     ← 版本署名
+AXButton     'MCP 2'                    ← 侧栏渲染完成
+AXButton     'IDE / Agent 6'            ← 8dc646e 后空壳 CLI 不再计为已装（原 7）
+```
+
 > **运行时三处已修（2026-09-04）**：
 > 1. `tauri.conf.json` 开 `app.withGlobalTauri: true`——否则 Tauri 2 不注入
 >    `window.__TAURI__`，看板「刷新审计」按钮不出现，`.app` 只显示示例数据；

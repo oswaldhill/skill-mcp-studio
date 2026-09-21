@@ -31,6 +31,14 @@
 - **删除原语的假成功**：JSON/YAML/Reasonix 分支在**没有命中任何待删条目**时仍会
   重新序列化，把「无操作」误报成 `updated` 并顺手改写用户配置、生成备份。现统一
   满足「无命中则原样返回」不变式（与既有 cordis 分支对齐）。
+- **测试跨用例状态污染**（长期存在的顺序依赖失败）：`SetUnifiedDirTest.setUp` 把
+  `config_store._local_overrides_file` / `_overlay_target` 两个**模块级函数**替换为
+  指向自身临时目录的 lambda，`tearDown` 却只清理目录、未还原函数。污染因此在同
+  进程内持续存活，后续 `OverlayRegistrationTest` 拿到的「原函数」已是污染版本，
+  其 `_overlay_target` 返回前一个用例已销毁的临时目录。表现为
+  `test_overlay_target_reuses_first_existing_profiles_local` **单独运行通过、按文件
+  或全量运行失败**。已在 `setUp` 记录原函数、`tearDown` 还原。全量测试
+  `1 failed, 514 passed` → **`515 passed`**。
 
 ### 变更
 
@@ -161,6 +169,20 @@ build 96。
 - **打包**：pipx/pip 可安装发行、产品 README。
 
 ## [Unreleased]
+
+### 变更
+
+- **分支合并（2026-09-21）**：`master` 原为 `develop` 的**祖先**（两条线并非分叉），
+  `develop` 比它多 4 个提交（`8dc646e` 注册表 / `517ed72` 六维度整改 / `137006e` 文档
+  同步 / `d7795f7` 测试污染修复）。以 `--no-ff` 将 `develop` 合入 `master`
+  （`807b80d`），合并后两分支 **tree 哈希一致**（`4d0ac637`），全量测试 `515 passed`。
+- **本机构建与安装**：合并后重新 `cargo tauri build`（`0.21.0` build 106，28.7s，
+  `BUILD_EXIT=0`），安装到 `/Applications/skill-mcp-studio.app`，产物与安装后二进制
+  sha256 一致（`e253763e…`）；旧版备份至
+  `~/.skill-mcp-studio-backups/skill-mcp-studio-0.21.0-premerge.app`。步骤与权限、
+  TCC 授权失效注意事项见 `src-tauri/BUILD.md` §3.2。
+- **安装数变化**：`8dc646e` 使「空壳 CLI 启动器」不再被计为安装证据，管理台
+  `IDE / Agent` 计数由 **7 → 6**（预期行为修正，非回归）。
 
 ### 跨平台支持（Windows / Linux）
 
