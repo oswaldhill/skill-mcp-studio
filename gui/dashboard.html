@@ -314,13 +314,44 @@
   thead th { background: var(--panel); color: var(--faint); font-weight: 600; position: sticky; top: 0; font-family: var(--sans); font-size: var(--fs-2xs); letter-spacing: .08em; text-transform: uppercase; border-bottom: 1px solid var(--line); }
   tbody tr:hover { background: var(--bg-elev); }
   tbody tr:last-child td { border-bottom: none; }
-  /* 覆盖矩阵：固定布局 + 端点列居中，与表头严格对齐 */
-  .mcp-matrix { table-layout: fixed; }
-  .mcp-matrix .mcp-matrix-client { width: 220px; text-align: left; }
-  .mcp-matrix thead th:not(.mcp-matrix-client) { text-align: center; }
-  .mcp-matrix td { text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  /* 端点挂载状态：期望来源标注 + 异常（声明要挂却没挂）高亮 */
-  .mcp-src { display: block; margin-top: 4px; font-size: var(--fs-2xs); color: var(--faint); }
+  /* ============ MCP 面板：客户端 × 端点 覆盖表 ============
+     设计读法：密集运维台（非营销页）。端点状态用「固定列 + 形态/色彩双编码」，
+     端点名只出现在表头（不再在每个单元格里重复），条目清单放最后一列，
+     窗口变窄时先横向滚出，覆盖矩阵本身始终可见。 */
+  .mcp-table thead th.mcp-c-ep { text-transform: none; letter-spacing: 0; font-family: var(--mono); text-align: center; }
+  .mcp-table th.mcp-c-client { min-width: 150px; }
+  .mcp-table th.mcp-c-ep { width: 104px; }
+  .mcp-table th.mcp-c-cover { width: 66px; text-align: center; }
+  .mcp-table td.mcp-c-ep, .mcp-table td.mcp-c-cover { text-align: center; }
+  .mcp-table td.mcp-c-cover { font-family: var(--mono); font-size: var(--fs-xs); color: var(--muted); }
+  .mcp-table td.mcp-c-cover.mcp-anomaly { color: var(--warn); font-weight: 600; }
+  .mcp-cover-sep { color: var(--faint); font-weight: 400; }
+  /* 三态：实心点 = 配置里已有；空心环 = 声明要挂却缺失；浅灰环 = 未纳入期望。
+     形态与色彩双重编码，不单独依赖颜色传达状态。 */
+  .mcp-st { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-2xs); color: var(--muted); }
+  .mcp-st.ok { color: var(--ok); }
+  .mcp-st.warn { color: var(--warn); font-weight: 600; }
+  /* 未纳入：沿用 muted 而非 faint。11px 文字用 --faint 在浅色底下只有 ~3.4:1，
+     低于 WCAG AA；去强调交给空心环，不靠压低文字对比度。 */
+  .mcp-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; box-shadow: inset 0 0 0 1.5px var(--line-strong); }
+  .mcp-dot.ok { background: var(--ok); box-shadow: none; }
+  .mcp-dot.warn { box-shadow: inset 0 0 0 1.5px var(--warn); }
+  .mcp-dot.na { box-shadow: inset 0 0 0 1.5px var(--line); }
+  .tag-btn .mcp-dot { margin-right: 5px; vertical-align: -0.5px; }
+  /* 客户端：名称 + 期望来源微标签（自动 = 未显式声明 mcp_attach，按端点库全集期望） */
+  .mcp-client { display: flex; align-items: baseline; gap: 7px; }
+  .mcp-client-name { font-weight: 500; }
+  .mcp-src { flex: none; font-family: var(--mono); font-size: var(--fs-2xs); color: var(--muted);
+    border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0 6px; }
+  .mcp-src.auto { border-style: dashed; }
+  /* 异常行：左侧 2px 警示条，不与客户端名称争视觉权重 */
+  .mcp-table tbody tr.is-anomaly td:first-child { box-shadow: inset 2px 0 0 var(--warn); }
+  .mcp-legend { margin: 12px 0 0; }
+  @media (max-width: 768px) {
+    .mcp-table th.mcp-c-client { min-width: 118px; }
+    .mcp-table th.mcp-c-ep { width: 78px; }
+    .mcp-table th.mcp-c-cover { width: 54px; }
+  }
   .mcp-anomaly { color: var(--warn); font-weight: 600; }
 
   /* 一键合并预览：分节标题 + 对比表格 */
@@ -1290,7 +1321,7 @@
     <!-- ===== MCP（业务：每客户端挂载与清单） ===== -->
     <section id="page-mcp" class="hidden">
       <div class="page-head">
-        <div class="hd"><h2>MCP</h2><div class="hint">每客户端挂载与 MCP 清单；端点库请在「设置」中管理</div></div>
+        <div class="hd"><h2>MCP</h2><div class="hint">每客户端挂载与 MCP 清单；「自动」= 未显式声明 mcp_attach，按端点库全集期望；端点库请在「设置」中管理</div></div>
       </div>
       <div id="mcp-clients"></div>
     </section>
@@ -2665,82 +2696,111 @@ function renderMcpClients(mcp, endpoints) {
   const el = $("mcp-clients");
   if (!el) return;
   const clients = mcp.clients || [];
-  if (!clients.length) { el.innerHTML = '<div class="empty">无客户端</div>'; return; }
-
-  // P2：「端点挂载状态」按端点呈现**实际观测**结果，并标出期望来源。
-  // 此前该列直接渲染 mcp_attach（未显式声明时 = 端点库全集），把「默认期望」
-  // 当成「已配置事实」，于是完全没有 MCP 配置的客户端也显示为已接入。
-  const epOrder = endpoints.map((e) => e.key);
-  const buildEntryMap = (c) => {
-    const map = {};
-    (c.inventory || []).forEach((e) => {
-      if (e.endpoint_key && !map[e.endpoint_key]) map[e.endpoint_key] = e.key;
-    });
-    return map;
-  };
-
-  el.innerHTML = '<div class="table-scroll"><table><thead><tr><th>客户端</th><th>端点挂载状态</th><th>MCP 条目（分类）</th></tr></thead><tbody>' +
-    clients.map((c) => {
-      const observed = new Set(c.observed_attach || []);
-      const missing = new Set(c.missing_attach || []);
-      const undeclared = new Set(c.undeclared_attach || []);
-      const expected = c.mcp_attach || [];
-      const byEntry = buildEntryMap(c);
-      const keys = epOrder.filter((k) => expected.includes(k) || observed.has(k));
-      const tags = keys.map((k) => {
-        if (observed.has(k)) {
-          const via = byEntry[k];
-          const tip = via && via !== k ? `实际条目：${via}` : "配置文件中已存在该条目";
-          const extra = undeclared.has(k) ? "（未声明）" : "";
-          return `<span class="tag ok" title="${escapeHtml(tip)}">${escapeHtml(k)} ✓${extra}</span>`;
-        }
-        if (missing.has(k)) {
-          return `<span class="tag warn" title="期望挂载，但配置文件中不存在该条目">${escapeHtml(k)} ⚠ 未挂载</span>`;
-        }
-        return `<span class="tag" title="既未期望也未观测">${escapeHtml(k)} 未配置</span>`;
-      }).join(" ");
-      const body = tags || '<span class="ok-na">无</span>';
-      const src = c.has_explicit_attach
-        ? '<span class="mcp-src">来源：手动指定</span>'
-        : '<span class="mcp-src">来源：自动（默认全部端点）</span>';
-      const flag = missing.size
-        ? `<span class="mcp-anomaly" title="期望挂载却未挂载"> ⚠ ${missing.size}</span>`
-        : "";
-      const inv = (c.inventory || []).map((e) => {
-        const cls = e.classification || "unmanaged";
-        const label = CLASS_TRANSLATE[cls] || cls;
-        const color = CLASS_COLOR[cls] || "";
-        const risk = e.high_risk ? " ⚠" : "";
-        const bits = [];
-        if (e.endpoint_key) bits.push(`端点：${e.endpoint_key}`);
-        if (e.url) bits.push(e.url);
-        if (e.command) bits.push(e.command);
-        if (e.high_risk) bits.push(e.risk_reason || "疑似客户端自带");
-        const tip = bits.join(" · ");
-        return `<button type="button" class="tag tag-btn ${color}" data-action="show-mcp-class" data-name="${escapeHtml(c.name)}" data-class="${escapeHtml(cls)}" title="${escapeHtml(tip)}">${escapeHtml(e.key)} · ${escapeHtml(label)}${risk}</button>`;
-      }).join(" ") || '<span class="ok-na">无</span>';
-      return `<tr><td>${escapeHtml(c.name)}${flag}</td><td>${body}${src}</td><td class="mono">${inv}</td></tr>`;
-    }).join("") + "</tbody></table></div>";
-
-  const epKeys = epOrder;
-  if (epKeys.length && clients.length) {
-    el.innerHTML += '<h3 class="subhead">端点 × 客户端 覆盖矩阵</h3>' +
-      '<div class="table-scroll"><table class="mcp-matrix"><thead><tr>' +
-      '<th class="mcp-matrix-client">客户端</th>' +
-      epKeys.map((k) => `<th class="mono">${escapeHtml(k)}</th>`).join("") +
-      '</tr></thead><tbody>' + clients.map((c) => {
-        // 依据**实际观测**着色：期望但缺失 => 异常（此前只看 mcp_attach，导致
-        // 未配置的客户端也显示「已配置」；且把 attached 误标为「未纳管」）。
-        const observed = new Set(c.observed_attach || []);
-        const missing = new Set(c.missing_attach || []);
-        const cells = epKeys.map((k) => {
-          if (observed.has(k)) return '<td><span class="ok-true">已挂载</span></td>';
-          if (missing.has(k)) return '<td><span class="mcp-anomaly">未挂载 ⚠</span></td>';
-          return '<td><span class="ok-na">未配置</span></td>';
-        }).join("");
-        return `<tr><td class="mono mcp-matrix-client">${escapeHtml(c.name)}</td>${cells}</tr>`;
-      }).join("") + "</tbody></table></div>";
+  if (!clients.length) {
+    el.innerHTML = '<div class="empty">无客户端<div class="empty-cta">请在「设置 → IDE / Agent」中添加要纳管的客户端</div></div>';
+    return;
   }
+
+  // 单表覆盖矩阵：端点名只在表头出现一次，单元格只表达状态。
+  // 此前「端点挂载状态」列（端点键 + ✓/⚠ + 来源长文案）与下方矩阵是同一份数据的
+  // 两种写法，行内还要重复端点名，既宽又难纵向扫读；合并后纵向对齐、无重复。
+  const epOrder = endpoints.map((e) => e.key);
+  const seenEp = new Set(epOrder);
+  clients.forEach((c) => {
+    [].concat(c.mcp_attach || [], c.observed_attach || [], c.missing_attach || [], c.undeclared_attach || [])
+      .forEach((k) => { if (k && !seenEp.has(k)) { seenEp.add(k); epOrder.push(k); } });
+  });
+  const epUrl = {};
+  endpoints.forEach((e) => { epUrl[e.key] = e.url || ""; });
+
+  // 三态语义与「自动来源」在图例里解释一次，行内不再重复长文案。
+  const nAnomaly = clients.filter((c) => (c.missing_attach || []).length).length;
+  const legend = '<div class="skill-legend mcp-legend">' +
+    '<span class="legend-label">图例</span>' +
+    '<span class="legend-item"><span class="mcp-dot ok"></span>已挂载</span>' +
+    '<span class="legend-item"><span class="mcp-dot warn"></span>缺失（声明要挂，配置里没有）</span>' +
+    '<span class="legend-item"><span class="mcp-dot na"></span>未纳入期望</span>' +
+    `<span class="legend-note">${clients.length} 客户端 · ${epOrder.length} 端点` +
+    (nAnomaly ? ` · <span class="mcp-anomaly">${nAnomaly} 个存在缺失</span>` : "") +
+    '</span></div>';
+
+  const head = '<tr><th class="mcp-c-client">客户端</th>' +
+    epOrder.map((k) => {
+      const t = epUrl[k] ? `${k}：${epUrl[k]}` : k;
+      return `<th class="mcp-c-ep" title="${escapeHtml(t)}">${escapeHtml(k)}</th>`;
+    }).join("") +
+    '<th class="mcp-c-cover" title="已挂载端点数 / 期望挂载端点数">挂载</th>' +
+    '<th>MCP 条目（分类）</th></tr>';
+
+  const rows = clients.map((c) => {
+    // 三态依据**实际观测**：声明要挂却缺失 = 异常。此前只看 mcp_attach（未显式声明
+    // 时等于端点库全集），未配置的客户端也会显示「已配置」，且 attached 被误标为「未纳管」。
+    const observed = new Set(c.observed_attach || []);
+    const missing = new Set(c.missing_attach || []);
+    const undeclared = new Set(c.undeclared_attach || []);
+    const expected = c.mcp_attach || [];
+    const byEntry = {};
+    (c.inventory || []).forEach((e) => {
+      if (e.endpoint_key && !byEntry[e.endpoint_key]) byEntry[e.endpoint_key] = e.key;
+    });
+
+    const cells = epOrder.map((k) => {
+      if (observed.has(k)) {
+        const via = byEntry[k];
+        let tip = via && via !== k ? `由条目「${via}」提供` : "配置文件中已存在对应条目";
+        if (undeclared.has(k)) tip += "；未在 mcp_attach 中声明";
+        return `<td class="mcp-c-ep"><span class="mcp-st ok" title="${escapeHtml(tip)}">` +
+          '<span class="mcp-dot ok"></span>已挂载</span></td>';
+      }
+      if (missing.has(k)) {
+        return '<td class="mcp-c-ep"><span class="mcp-st warn" title="声明要挂载该端点，但配置文件中没有对应条目">' +
+          '<span class="mcp-dot warn"></span>缺失</span></td>';
+      }
+      return '<td class="mcp-c-ep"><span class="mcp-st na" title="既未声明要挂载，也未观测到">' +
+        '<span class="mcp-dot na"></span>未纳入</span></td>';
+    }).join("");
+
+    const nOk = epOrder.filter((k) => observed.has(k)).length;
+    const denom = expected.length;
+    const coverTip = denom
+      ? `已挂载 ${nOk} 个 / 期望 ${denom} 个` + (undeclared.size ? `；另有 ${undeclared.size} 个已挂载但未声明` : "")
+      : `未声明期望端点；已挂载 ${nOk} 个`;
+    const cover = denom
+      ? `<span title="${escapeHtml(coverTip)}">${nOk}<span class="mcp-cover-sep"> / ${denom}</span></span>`
+      : (nOk ? `<span title="${escapeHtml(coverTip)}">${nOk}</span>`
+             : '<span class="ok-na" title="未声明端点，也未观测到挂载">无端点</span>');
+
+    const srcTip = c.has_explicit_attach
+      ? "来源：在 config.yaml 中显式声明了 mcp_attach"
+      : "来源：未显式声明 mcp_attach，按端点库全集期望（自动）";
+    const src = `<span class="mcp-src${c.has_explicit_attach ? "" : " auto"}" title="${escapeHtml(srcTip)}">` +
+      `${c.has_explicit_attach ? "手动" : "自动"}</span>`;
+
+    const inv = (c.inventory || []).map((e) => {
+      const cls = e.classification || "unmanaged";
+      const label = CLASS_TRANSLATE[cls] || cls;
+      const color = CLASS_COLOR[cls] || "";
+      const risk = e.high_risk
+        ? `<span class="mcp-dot warn" title="${escapeHtml(e.risk_reason || "疑似客户端自带")}"></span>`
+        : "";
+      const bits = [];
+      if (e.endpoint_key) bits.push(`端点：${e.endpoint_key}`);
+      if (e.url) bits.push(e.url);
+      if (e.command) bits.push(e.command);
+      if (e.high_risk) bits.push(e.risk_reason || "疑似客户端自带");
+      const tip = bits.join(" · ");
+      return `<button type="button" class="tag tag-btn ${color}" data-action="show-mcp-class" data-name="${escapeHtml(c.name)}" data-class="${escapeHtml(cls)}" title="${escapeHtml(tip)}">${risk}${escapeHtml(e.key)} · ${escapeHtml(label)}</button>`;
+    }).join(" ") || '<span class="ok-na">无</span>';
+
+    return `<tr${missing.size ? ' class="is-anomaly"' : ""}>` +
+      `<td class="mcp-c-client"><span class="mcp-client"><span class="mcp-client-name">${escapeHtml(c.name)}</span>${src}</span></td>` +
+      cells +
+      `<td class="mcp-c-cover${missing.size ? " mcp-anomaly" : ""}">${cover}</td>` +
+      `<td>${inv}</td></tr>`;
+  }).join("");
+
+  el.innerHTML = legend + '<div class="table-scroll"><table class="mcp-table"><thead>' + head +
+    '</thead><tbody>' + rows + '</tbody></table></div>';
 }
 
 // ---------------- 设置（通用配置） ----------------
