@@ -224,8 +224,9 @@ class RenderTest(unittest.TestCase):
     def test_rows_align_after_merge(self):
         rows = _rows(_render(MCP_OK, ENDPOINTS))
         self.assertEqual(rows[0][1], ["客户端", "ep1", "ep2", "挂载", "MCP 条目（分类）"])
-        self.assertEqual(rows[1][1], ["已接入 自动", "已挂载", "已挂载", "2 / 2", "s1 · 已挂载"])
-        self.assertEqual(rows[2][1], ["缺配置 未应用 回流", "缺失", "缺失", "0 / 2", "无"])
+        # 「挂载」列现在只说状态（与顶部总览卡同色），不再重复 N / M 数字
+        self.assertEqual(rows[1][1], ["已接入 自动", "已挂载", "已挂载", "已挂载", "无"])
+        self.assertEqual(rows[2][1], ["缺配置 未应用 回流", "缺失", "缺失", "未挂载", "无"])
 
     def test_only_missing_client_is_flagged(self):
         rows = _rows(_render(MCP_OK, ENDPOINTS))
@@ -289,7 +290,7 @@ class RenderTest(unittest.TestCase):
         }
         rows = _rows(_render(mcp, []))
         self.assertEqual(rows[0][1], ["客户端", "ghost", "挂载", "MCP 条目（分类）"])
-        self.assertEqual(rows[1][1], ["越界 自动", "已挂载", "1", "g · 已挂载"])
+        self.assertEqual(rows[1][1], ["越界 自动", "已挂载", "已挂载", "无"])
 
     def test_no_client_renders_empty_state(self):
         html = _render({"clients": []}, [])
@@ -351,6 +352,104 @@ class DriftRenderTest(unittest.TestCase):
         """不支持 MCP 的客户端没有配置文件，谈不上被改写。"""
         rows = _rows(_render(MCP_UNSUPPORTED, ENDPOINTS))
         self.assertNotIn("被外部改写", rows[2][1][0])
+
+
+@unittest.skipUnless(NODE, "需要 node 才能执行渲染护栏")
+class ResidualEntryColumnTest(unittest.TestCase):
+    """最后一列只承载端点列表达不了的信息，不再重复「已挂载」。
+
+    端点列已逐列给出挂载状态、「挂载」列给出 N/M 汇总，最后一列若再列一遍
+    「x · 已挂载」就是同一事实的第三种写法。这一列只留旧通道 / 未纳管 / 带风险
+    标记的条目，顺序固定为 旧通道 -> 未纳管，避免行与行之间顺序抖动。
+    """
+
+    def _mixed(self):
+        return {
+            "clients": [
+                _client(
+                    "混合",
+                    ["ep1", "ep2"],
+                    ["ep1", "ep2"],
+                    [],
+                    [],
+                    inventory=[
+                        {"key": "u1", "classification": "unmanaged", "url": "https://u1/mcp"},
+                        {"key": "l1", "classification": "legacy", "command": "npx l1"},
+                        {"key": "ep2", "classification": "attached", "endpoint_key": "ep2"},
+                        {"key": "ep1", "classification": "attached", "endpoint_key": "ep1"},
+                    ],
+                )
+            ]
+        }
+
+    def test_mounted_entries_not_repeated_in_last_column(self):
+        cell = _rows(_render(self._mixed(), ENDPOINTS))[1][1][-1]
+        self.assertNotIn("已挂载", cell, "端点列已表达的已挂载不得在最后一列重复")
+        self.assertIn("l1 · 旧通道", cell)
+        self.assertIn("u1 · 未纳管", cell)
+
+    def test_residual_order_is_stable(self):
+        cell = _rows(_render(self._mixed(), ENDPOINTS))[1][1][-1]
+        self.assertLess(
+            cell.index("l1 · 旧通道"), cell.index("u1 · 未纳管"),
+            "旧通道（异常）应排在未纳管之前，且不随 inventory 原始顺序抖动",
+        )
+
+    def test_risky_mounted_entry_still_listed(self):
+        """带风险标记的已挂载条目是端点列表达不了的信息，须保留。"""
+        mcp = {"clients": [_client(
+            "带风险", ["ep1"], ["ep1"], [], [],
+            inventory=[{"key": "ep1", "classification": "attached", "endpoint_key": "ep1",
+                        "high_risk": True, "risk_reason": "疑似客户端自带"}],
+        )]}
+        cell = _rows(_render(mcp, ENDPOINTS))[1][1][-1]
+        self.assertIn("ep1 · 已挂载", cell)
+
+    def test_attached_outside_header_is_kept(self):
+        """端点列里没有这一列时，条目不能被静默丢掉。"""
+        mcp = {"clients": [_client(
+            "端点库外", [], [], [], [],
+            inventory=[{"key": "x", "classification": "attached", "endpoint_key": "not-in-header"}],
+        )]}
+        cell = _rows(_render(mcp, []))[1][1][-1]
+        self.assertIn("x · 已挂载", cell)
+
+    def test_cover_cell_is_entry_to_attached_details(self):
+        """「挂载」列仍是明细入口，但只说状态、不再重复 N / M 数字。"""
+        html = _render(MCP_OK, ENDPOINTS)
+        blob = re.search(r'<td class="mcp-c-cover[^"]*">(.*?)</td>', html, re.S).group(1)
+        self.assertIn('data-action="show-mcp-class"', blob)
+        self.assertIn('data-class="attached"', blob)
+        self.assertIn('data-name="已接入"', blob)
+        text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", blob)).strip()
+        self.assertEqual(text, "已挂载")
+        self.assertIn("mcp-cover-btn ok", blob, "齐全用与总览卡一致的绿")
+        self.assertIn("mcp-dot ok", blob, "形态与色彩双重编码，不单靠颜色")
+
+    def test_cover_status_color_matches_overview_card(self):
+        """「挂载」列配色与总览卡同口径：齐全=绿，有落差=黄。"""
+        blobs = re.findall(r'<td class="mcp-c-cover[^"]*">(.*?)</td>', _render(MCP_OK, ENDPOINTS), re.S)
+        self.assertIn("mcp-cover-btn ok", blobs[0], "期望的都挂上了 -> 绿")
+        self.assertIn("mcp-cover-btn warn", blobs[1], "有落差 -> 黄")
+        for b in blobs:
+            self.assertNotIn("mcp-cover-sep", b, "N / M 分隔符样式应已废弃")
+
+    def test_cover_cell_has_no_fraction_text(self):
+        """整表不再出现「N / M」数字——数量已在总览卡与 title 里表达。"""
+        for blob in re.findall(r'<td class="mcp-c-cover[^"]*">(.*?)</td>', _render(MCP_OK, ENDPOINTS), re.S):
+            text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", blob)).strip()
+            self.assertNotRegex(text, r"\d+\s*/\s*\d+")
+
+    def test_cover_tooltip_keeps_the_counts(self):
+        """数字从视觉里去掉，但 title 仍保留 N / M 明细，信息不丢失。"""
+        self.assertIn('title="已挂载 2 个 / 期望 2 个"', _render(MCP_OK, ENDPOINTS))
+
+    def test_anomalous_client_keeps_clickable_cover(self):
+        rows = _rows(_render(MCP_OK, ENDPOINTS))
+        self.assertIn("is-anomaly", rows[2][0], "缺配置行仍标异常")
+        html = _render(MCP_OK, ENDPOINTS)
+        blobs = re.findall(r'<td class="mcp-c-cover[^"]*">(.*?)</td>', html, re.S)
+        self.assertIn('data-name="缺配置"', blobs[1], "未挂载也该能点进详情看缺了什么")
 
 
 if __name__ == "__main__":

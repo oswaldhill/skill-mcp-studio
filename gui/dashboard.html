@@ -325,7 +325,12 @@
   .mcp-table td.mcp-c-ep, .mcp-table td.mcp-c-cover { text-align: center; }
   .mcp-table td.mcp-c-cover { font-family: var(--mono); font-size: var(--fs-xs); color: var(--muted); }
   .mcp-table td.mcp-c-cover.mcp-anomaly { color: var(--warn); font-weight: 600; }
-  .mcp-cover-sep { color: var(--faint); font-weight: 400; }
+  /* 「挂载」列只给状态色点（口径与顶部总览卡一致：绿=齐全 / 黄=有落差 / 灰=无期望端点），
+     N / M 数字不再重复显示——数量留在 title，明细留在点开后的清单里。 */
+  .mcp-cover-btn { display: inline-flex; align-items: center; gap: 6px;
+    font-size: var(--fs-2xs); color: var(--muted); }
+  .mcp-cover-btn.ok { color: var(--ok); }
+  .mcp-cover-btn.warn { color: var(--warn); font-weight: 600; }
   /* 四态：实心点 = 配置里已有；空心环 = 声明要挂却缺失；浅灰环 = 未纳入期望；
      横杠 = 该客户端不支持 MCP（不适用，非故障）。形态与色彩双重编码，
      不单独依赖颜色传达状态，且「不支持」与「缺失」颜色与形状都不同。 */
@@ -1769,6 +1774,29 @@ const kv = (k, v, mono) => `<div class="row"><span class="k">${escapeHtml(k)}</s
 const settingsCard = (title, rowsHtml, extra) => `<div class="settings-card"><h4>${escapeHtml(title)}</h4><div class="rows" style="font-size:var(--fs-sm)">${rowsHtml}</div>${extra || ""}</div>`;
 
 // ---------------- 概览 ----------------
+// 端点探活的三态判定（总览卡与 MCP 面板共用，避免两处口径不一致）：
+//   "ok"      —— initialize 与 tools/list 均通过，且没有错误
+//   "fail"    —— 确实探活过但未通过（超时、鉴权、无工具等）
+//   "unknown" —— 尚未探活（未开启 live_probe，或快照未携带 probe）
+// 关键点：「未探活」不能算作「不正常」，否则会把没探测过的端点误报为故障。
+function probeVerdict(probe) {
+  const p = probe || {};
+  const err = String(p.error || "").trim();
+  if (err === "not probed") return "unknown";
+  const init = !!p.initialize_ok;
+  const tools = !!p.tools_list_ok;
+  // 既没有成功标记、也没有任何错误信息 => 快照没带探活结果
+  if (!init && !tools && !err) return "unknown";
+  return init && tools && !err ? "ok" : "fail";
+}
+
+// 从审计记录（per-record 的 mcp_initialize_ok / mcp_tools_list_ok）取同一套三态。
+// 记录里没有错误文本，因此只区分「通过 / 未通过 / 无记录」。
+function probeVerdictFromRecord(rec) {
+  if (!rec) return "unknown";
+  return rec.mcp_initialize_ok && rec.mcp_tools_list_ok ? "ok" : "fail";
+}
+
 function renderOverview() {
   const el = $("overview-body");
   if (!el) return;
@@ -1783,13 +1811,45 @@ function renderOverview() {
   // 「探活」= 端点 probe 成功（initialize + tools-list 均通过），而非「全合规」。
   // result_ok() 是审计结论（还要求每个客户端 hooks 全配齐），与「探活」是不同语义，
   // 之前误把 audit ``ok`` 当探活统计，导致 probe 成功却显示 0/1。
-  const probeOk = endpoints.filter((e) => {
-    const s = e && e.key && (mcp.endpoint_status || {})[e.key];
-    const p = s && s.probe;
-    return !!(p && p.initialize_ok && p.tools_list_ok && !p.error);
-  }).length;
+  const statusMap = mcp.endpoint_status || {};
+  const verdicts = endpoints.map((e) => {
+    const s = (e && e.key && statusMap[e.key]) || null;
+    const p = (s && s.probe) || null;
+    return {
+      key: (e && e.key) || "",
+      url: (e && e.url) || "",
+      verdict: probeVerdict(p),
+      error: String((p && p.error) || "").trim(),
+    };
+  });
+  const probed = verdicts.filter((v) => v.verdict !== "unknown");
+  const probeOk = probed.filter((v) => v.verdict === "ok").length;
+  const failed = verdicts.filter((v) => v.verdict === "fail");
+  const unprobed = verdicts.filter((v) => v.verdict === "unknown").length;
+  // 分母只用「已探活」的端点：没有探活结果的端点不该被算成失败。
+  let probeNum = `${probeOk}/${probed.length}`;
+  let probeLbl = "MCP 探活正常";
+  let probeCls = "ok";
+  let probeTip = `已探活 ${probed.length} 个端点全部通过`;
+  if (!endpoints.length) {
+    probeNum = "0/0";
+    probeLbl = "MCP 端点";
+    probeCls = "";
+    probeTip = "尚未配置任何 MCP 端点";
+  } else if (!probed.length) {
+    probeNum = `${endpoints.length}`;
+    probeLbl = "MCP 未探活";
+    probeCls = "";
+    probeTip = "本次快照未包含探活结果，点击可重新探活";
+  } else if (failed.length) {
+    probeCls = "warn";
+    probeTip = "探活失败：" + failed.map((v) => `${v.key || v.url}${v.error ? `（${v.error}）` : ""}`).join("；");
+    if (unprobed) probeTip += `；另有 ${unprobed} 个端点未探活`;
+  } else if (unprobed) {
+    probeTip += `；另有 ${unprobed} 个端点未探活`;
+  }
   const registered = mainstream.filter((t) => t.registered).length;
-  const card = (num, lbl, cls, accent) => `<div class="stat-card${accent ? " accent" : ""}"><div class="num ${cls || ""}">${num}</div><div class="lbl">${lbl}</div></div>`;
+  const card = (num, lbl, cls, accent, tip) => `<div title="${escapeHtml(tip || "")}" class="stat-card${accent ? " accent" : ""}"><div class="num ${cls || ""}">${num}</div><div class="lbl">${lbl}</div></div>`;
   el.innerHTML =
     '<div class="stat-grid">' +
     card(agents.length, "受管客户端", "", false) +
@@ -1797,12 +1857,13 @@ function renderOverview() {
     card(configOnly, "仅发现配置", "warn", false) +
     card(uncovered, "未安装", "err", false) +
     card(skills.skill_count || 0, "统一技能", "", false) +
-    card(`${probeOk}/${endpoints.length}`, "MCP 探活正常", probeOk === endpoints.length && endpoints.length ? "ok" : "warn", false) +
+    card(probeNum, probeLbl, probeCls, false, probeTip) +
     card(`${registered}/${mainstream.length}`, "主流已纳入", "", false) +
     "</div>" +
     '<div class="quickbox"><span class="quickbox-label">快捷操作</span>' +
     '<button class="btn-soft" data-action="add-agent">添加 IDE / API</button>' +
     '<button class="btn-soft" data-action="merge">一键合并技能</button>' +
+    '<button class="btn-soft" data-action="reprobe">重新探活</button>' +
     '<button class="btn-soft" data-goto="settings">管理 MCP 端点</button>' +
     "</div>";
 }
@@ -1987,11 +2048,19 @@ function renderHomeCardsView(q) {
       } else {
         countTag = `<span class="tag err" title="${modeTitle}，端点未在设置中正确配置">${configuredCount}/${total} 端点已设置</span>`;
       }
+      const probeStates = (SNAP && SNAP.mcp && SNAP.mcp.endpoint_status) || {};
       const keyTags = states.map(({ key, configured, rec }) => {
         if (configured) {
-          const probeOk = rec.mcp_initialize_ok && rec.mcp_tools_list_ok;
-          const probeTxt = probeOk ? "端点探活通过" : "端点探活未通过";
-          return `<span class="tag ok" title="已在设置中正确配置，${probeTxt}">${escapeHtml(key)} 已设置</span>`;
+          // 与总览卡同源同口径：优先用端点探活结果（含失败原因），记录字段仅兜底。
+          // 之前这里恒为绿色 tag ok，探活未通过也显示「已设置」，与总览互相矛盾。
+          const st = probeStates[key] || null;
+          const probe = (st && st.probe) || null;
+          const verdict = probe ? probeVerdict(probe) : probeVerdictFromRecord(rec);
+          const probeTxt = verdict === "ok" ? "端点探活通过"
+            : (verdict === "unknown" ? "端点尚未探活" : "端点探活未通过");
+          const probeErr = probe && probe.error ? `：${probe.error}` : "";
+          const probeCls = verdict === "ok" ? "ok" : (verdict === "unknown" ? "" : "warn");
+          return `<span class="tag ${probeCls}" title="已在设置中正确配置，${probeTxt}${escapeHtml(probeErr)}">${escapeHtml(key)} 已设置</span>`;
         }
         const reason = rec ? "该端点未在设置中正确配置" : "该端点无此客户端审计记录";
         return `<span class="tag err" title="${reason}">${escapeHtml(key)} 未设置</span>`;
@@ -2795,12 +2864,25 @@ function renderMcpClients(mcp, endpoints) {
     const coverTip = denom
       ? `已挂载 ${nOk} 个 / 期望 ${denom} 个` + (undeclared.size ? `；另有 ${undeclared.size} 个已挂载但未声明` : "")
       : `未声明期望端点；已挂载 ${nOk} 个`;
+    // 「挂载」列的 N / M 即「已挂载端点」明细的入口：条目明细已从最后一列移走，
+    // 需要看具体是哪些端点时点这里，不必为此把最后一列重新塞满。
+    const coverAttrs = `data-action="show-mcp-class" data-name="${escapeHtml(c.name)}" data-class="attached"`;
+    // 「挂载」列只说状态、不再重复 N / M 数字：数量在顶部总览卡与 title 里已有，
+    // 具体是哪些端点则点开「已挂载端点」明细看。配色沿用总览卡的绿 / 黄 / 灰口径。
+    let coverCls = "na", coverLabel = "无端点";
+    if (denom > 0) {
+      if (nOk === denom) { coverCls = "ok"; coverLabel = "已挂载"; }
+      else if (nOk > 0) { coverCls = "warn"; coverLabel = "部分挂载"; }
+      else { coverCls = "warn"; coverLabel = "未挂载"; }
+    } else if (nOk > 0) {
+      coverCls = "warn"; coverLabel = "已挂载";
+    }
     const cover = unsupported
       ? '<span class="mcp-st off" title="该客户端不支持 MCP，不适用挂载统计"><span class="mcp-dot off"></span>不支持</span>'
-      : (denom
-        ? `<span title="${escapeHtml(coverTip)}">${nOk}<span class="mcp-cover-sep"> / ${denom}</span></span>`
-        : (nOk ? `<span title="${escapeHtml(coverTip)}">${nOk}</span>`
-               : '<span class="ok-na" title="未声明端点，也未观测到挂载">无端点</span>'));
+      : (coverCls === "na"
+        ? '<span class="ok-na" title="未声明端点，也未观测到挂载">无端点</span>'
+        : `<button type="button" class="mcp-cover-btn ${coverCls}" ${coverAttrs} title="${escapeHtml(coverTip)}">` +
+          `<span class="mcp-dot ${coverCls}"></span>${coverLabel}</button>`);
 
     // 支持 MCP 时标签说明期望来源；不支持时该槽位改说明能力缺失（来源无意义）。
     // 有端点丢失时，这个槽位优先说明「丢失的原因」并给出回流入口：
@@ -2818,7 +2900,28 @@ function renderMcpClients(mcp, endpoints) {
         : `<span class="mcp-src${c.has_explicit_attach ? "" : " auto"}" title="${escapeHtml(c.has_explicit_attach ? "来源：在 config.yaml 中显式声明了 mcp_attach" : "来源：未显式声明 mcp_attach，按端点库全集期望（自动）")}">` +
           `${c.has_explicit_attach ? "手动" : "自动"}</span>`);
 
-    const inv = (c.inventory || []).map((e) => {
+    // 最后一列只承载端点列表达不了的信息：端点列已逐列给出「已挂载」，
+    // 「挂载」列又给了 N/M 汇总，这里再列一遍同一事实只会让行变宽。
+    // 故过滤掉「已挂载且端点已在表头」的条目，只留旧通道 / 未纳管 / 带风险标记
+    // （疑似客户端自带）的条目；顺序固定为 旧通道 -> 未纳管 -> 其他，避免行与行
+    // 之间顺序随 inventory 原始顺序抖动。
+    const _clsRank = { legacy: 0, unmanaged: 1, attached: 2 };
+    const invItems = (c.inventory || [])
+      .filter((e) => {
+        const cls = e.classification || "unmanaged";
+        if (cls !== "attached" || e.high_risk) return true;
+        // 端点库之外的附带条目（表头里没有这一列）不算重复，保留以免静默丢失。
+        return !(e.endpoint_key && seenEp.has(e.endpoint_key));
+      })
+      .sort((a, b) => {
+        const ra = _clsRank[a.classification || "unmanaged"];
+        const rb = _clsRank[b.classification || "unmanaged"];
+        const ca = ra === undefined ? 9 : ra;
+        const cb = rb === undefined ? 9 : rb;
+        if (ca !== cb) return ca - cb;
+        return String(a.key).localeCompare(String(b.key));
+      });
+    const inv = invItems.map((e) => {
       const cls = e.classification || "unmanaged";
       const label = CLASS_TRANSLATE[cls] || cls;
       const color = CLASS_COLOR[cls] || "";
@@ -3443,6 +3546,25 @@ async function refreshWithBtn(btnEl) {
     if (btn) { btn.disabled = false; btn.textContent = orig; }
   }
   showToast(ok ? "ok" : "err", ok ? "刷新完成" : "刷新失败");
+}
+
+// 重新探活：重跑 --management 快照（内含 live_probe），给出探活专用反馈。
+// 快照原先只在启动时拉一次；端点网关抖动恢复后，用户可就地刷新而不必重启应用。
+async function reprobeEndpoints(btnEl) {
+  if (LOADING) return;
+  LOADING = true;
+  const btn = btnEl;
+  const orig = btn ? btn.textContent : "";
+  if (btn) { btn.disabled = true; btn.textContent = "探活中…"; }
+  showToast("info", "正在重新探活 MCP 端点…", { loading: true });
+  let ok = false;
+  try {
+    ok = await loadManagement();
+  } finally {
+    LOADING = false;
+    if (btn) { btn.disabled = false; btn.textContent = orig; }
+  }
+  showToast(ok ? "ok" : "err", ok ? "探活完成" : "探活失败");
 }
 
 function showAgentDetail(name) {
@@ -4468,6 +4590,7 @@ document.addEventListener("click", (e) => {
     else if (a === "refresh-audit") refreshWithBtn(act);
     else if (a === "rescan") doRescan(act);
     else if (a === "refresh") refreshWithBtn(act);
+    else if (a === "reprobe") reprobeEndpoints(act);
     else if (a === "fix-all") fixAllSkillsMcp();
     else if (a === "set-dir") openUnifiedDirModal();
     else if (a === "merge") openMergePreview();
