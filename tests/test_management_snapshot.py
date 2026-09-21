@@ -103,6 +103,49 @@ class ManagementSnapshotTest(unittest.TestCase):
         self.assertEqual(by_name["Cursor"]["format"], "json")
         self.assertEqual(by_name["Cursor"]["mcp_key_path"], ["mcpServers"])
 
+    def test_data7_unsupported_client_is_not_a_missing_anomaly(self):
+        """DATA-7：「不支持 MCP」必须与「缺失」区分。
+
+        注册表未声明 mcp_config_path 的客户端（实况如 ima.copilot，已安装但
+        没有 MCP 配置文件）根本没有 MCP 能力，不适用「期望挂载」。此前仍按默认
+        「全部端点」给它套上期望，于是被判成「声明要挂却没挂」的异常——把能力
+        缺失误报成故障。此用例锁定：supports_mcp=False 且 missing 为空。
+        """
+        from unittest.mock import patch
+
+        def fake_detect(tool, **kwargs):
+            return {"installed": True, "install_state": "installed", "evidence": [],
+                    "app_paths": [], "cli_paths": [], "config_paths": []}
+
+        config = {
+            "schema_version": 2,
+            "active_profile": "a",
+            "profiles": {"a": {"name": "mcp-a", "url": "https://a.example.com/mcp",
+                               "required_capabilities": {}}},
+            "mcp_tools": [
+                {"name": "Cursor", "config_path": "~/.cursor/mcp.json",
+                 "skills_paths": ["~/.cursor/skills"]},
+                {"name": "ima.copilot", "config_path": "",
+                 "skills_paths": ["~/.ima/skills"]},
+            ],
+            "tools": [],
+            "unified_skills_dir": "~/.skills-manager/skills",
+        }
+        with patch("management_snapshot.detect_installation", side_effect=fake_detect):
+            snap = build_management_snapshot(config, config_path="", live_probe=False, auto_discover=False)
+        by_name = {c["name"]: c for c in snap["mcp"]["clients"]}
+
+        unsupported = by_name["ima.copilot"]
+        self.assertFalse(unsupported["supports_mcp"], "无 mcp_config_path 即不支持 MCP")
+        self.assertEqual(unsupported["mcp_attach"], [], "不支持 MCP 时期望应为空")
+        self.assertEqual(unsupported["missing_attach"], [], "能力缺失不得报成「缺失」异常")
+
+        # 对照组：有 MCP 能力的客户端仍按默认「全部端点」期望，缺挂才算异常
+        supported = by_name["Cursor"]
+        self.assertTrue(supported["supports_mcp"])
+        self.assertEqual(supported["mcp_attach"], ["a"])
+        self.assertEqual(supported["missing_attach"], ["a"], "声明要挂却没挂仍须判为缺失")
+
     def test_uninstalled_ghost_excluded_from_skills_and_mcp(self):
         """一致性门控：未安装（install_state=none）的幽灵客户端不应出现在
         skills.clients_states 与 mcp.clients（与 home 列表 install_state!=="none" 对齐）。"""

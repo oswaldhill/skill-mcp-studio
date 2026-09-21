@@ -293,16 +293,20 @@ def build_management_snapshot(
         # 稳定排序保持同类目下的原始顺序。
         _cls_rank = {"attached": 0, "legacy": 1, "unmanaged": 2}
         entries = sorted(entries, key=lambda e: _cls_rank.get(e.classification, 2))
-        # DATA-6: 期望挂载（声明或默认全部）与实际观测（配置文件里真实存在）分列
-        # 输出，供 UI 判定「声明要挂却没挂」这类异常。此前 UI 只拿 mcp_attach 当
-        # 「已配置」渲染，于是完全没有 MCP 配置的客户端也显示为已接入。
-        expected_attach = resolve_client_attach(tool, config)
+        # DATA-7: 区分「不支持 MCP」与「缺失」。注册表未声明 mcp_config_path 的
+        # 客户端（如 ima.copilot）根本没有 MCP 能力，不适用「期望挂载」这一概念。
+        # 此前仍按默认「全部端点」给它套上期望，于是被判成「声明要挂却没挂」的
+        # 异常——把能力缺失误报成故障。不支持时期望置空，缺失自然为空。
+        supports_mcp = bool(tool.get("config_path"))
+        expected_attach = resolve_client_attach(tool, config) if supports_mcp else []
         consistency = attachment_consistency(entries, expected_attach)
         mcp_clients.append({
             "name": tool.get("name", "Unknown"),
             "mcp_attach": expected_attach,
             # 显式声明 vs 默认「全部端点」——UI 据此标注来源
             "has_explicit_attach": bool(tool.get("mcp_attach")),
+            # 该客户端是否具备 MCP 能力（未声明 mcp_config_path 即不支持）
+            "supports_mcp": supports_mcp,
             # 期望 / 实际 / 缺失(异常) / 未声明
             "observed_attach": consistency["observed"],
             "missing_attach": consistency["missing"],

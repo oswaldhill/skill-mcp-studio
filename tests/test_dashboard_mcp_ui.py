@@ -6,8 +6,10 @@ P2 修复之后，「端点挂载状态」列（端点键 + 状态 + 来源长�
 
 * 单表：端点状态列 + 条目列，不再有第二张矩阵表；
 * 端点名只出现在表头一次（表头保留大小写，不被 thead 的 uppercase 改写）；
-* 三态用「形态 + 色彩」双编码，不单独依赖颜色；
+* 状态用「形态 + 色彩」双编码，不单独依赖颜色；
 * 异常行用左侧警示条标注，不与客户端名争视觉权重；
+* 「不支持 MCP」与「缺失」严格区分：前者是能力缺失（不适用、横杠、不计异常），
+  后者是声明要挂却没挂（异常、空心环、左侧警示条）；
 * 真实数据渲染快照（node 可用时执行）。
 """
 
@@ -34,11 +36,15 @@ def _script() -> str:
     return m.group(1)
 
 
-def _render_fn() -> str:
+def _fn(name: str) -> str:
     body = _script()
-    i = body.index("function renderMcpClients(mcp, endpoints) {")
+    i = body.index(f"function {name}(")
     j = body.index("\n}\n", i) + 3
     return body[i:j]
+
+
+def _render_fn() -> str:
+    return _fn("renderMcpClients")
 
 
 def _css_block() -> str:
@@ -60,6 +66,11 @@ def _rows(html: str):
     return out
 
 
+def _legend(html: str) -> str:
+    m = re.search(r'<div class="skill-legend mcp-legend">(.*?)</div>\s*<div class="table-scroll">', html, re.S)
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", m.group(1))).strip() if m else ""
+
+
 def _render(mcp: dict, endpoints: list) -> str:
     """在 node 里执行真实 renderMcpClients，返回它写入面板的 HTML。"""
     src = _src()
@@ -74,6 +85,7 @@ def _render(mcp: dict, endpoints: list) -> str:
             esc,
             'const holder = { _v: "", set innerHTML(v) { this._v = v; }, get innerHTML() { return this._v; } };',
             'const $ = (id) => (id === "mcp-clients" ? holder : null);',
+            _fn("_supportsMcp"),
             _render_fn(),
             "renderMcpClients(SNAP.mcp, SNAP.endpoints);",
             "process.stdout.write(holder._v);",
@@ -88,7 +100,8 @@ def _render(mcp: dict, endpoints: list) -> str:
     return proc.stdout
 
 
-def _client(name, expected, observed, missing, undeclared, explicit=False, inventory=None):
+def _client(name, expected, observed, missing, undeclared,
+            explicit=False, inventory=None, supports=True):
     return {
         "name": name,
         "mcp_attach": expected,
@@ -96,6 +109,8 @@ def _client(name, expected, observed, missing, undeclared, explicit=False, inven
         "missing_attach": missing,
         "undeclared_attach": undeclared,
         "has_explicit_attach": explicit,
+        "supports_mcp": supports,
+        "config_path": "~/.demo/mcp.json" if supports else "",
         "inventory": inventory or [],
     }
 
@@ -111,6 +126,14 @@ MCP_OK = {
             inventory=[{"key": "s1", "classification": "attached", "endpoint_key": "ep1"}],
         ),
         _client("缺配置", ["ep1", "ep2"], [], ["ep1", "ep2"], []),
+    ]
+}
+# 实况形态：ima.copilot 已安装但没有 MCP 配置文件 -> supports_mcp=False、期望与缺失均为空
+MCP_UNSUPPORTED = {
+    "clients": [
+        _client("正常", ["ep1", "ep2"], ["ep1", "ep2"], [], [],
+                inventory=[{"key": "s1", "classification": "attached", "endpoint_key": "ep1"}]),
+        _client("ima.copilot", [], [], [], [], supports=False),
     ]
 }
 ENDPOINTS = [
@@ -146,10 +169,27 @@ class StaticShapeTest(unittest.TestCase):
             css.count("inset 0 0 0 1.5px"), 2, "缺失/未纳入用空心环，与实心点在形态上区分"
         )
 
+    def test_unsupported_shape_differs_from_missing(self):
+        """不支持用横杠、缺失用空心环；两者颜色也不同，形状与色彩都区分得开。"""
+        css = _css_block()
+        off = re.search(r"\.mcp-dot\.off \{[^}]*\}", css)
+        self.assertIsNotNone(off, "缺少不支持态样式")
+        self.assertIn("border-top", off.group(0), "不支持用横杠，不是圆点")
+        self.assertNotIn("border-radius: 50%", off.group(0))
+        warn = re.search(r"\.mcp-dot\.warn \{[^}]*\}", css)
+        self.assertIn("var(--warn)", warn.group(0), "缺失必须是警示色")
+        self.assertIn(".mcp-st.off", css)
+        self.assertIn(".mcp-src.off", css)
+
     def test_anomaly_row_uses_left_rail(self):
         css = _css_block()
         self.assertIn("tr.is-anomaly td:first-child", css)
         self.assertIn("box-shadow: inset 2px 0 0 var(--warn)", css)
+
+    def test_unsupported_row_is_dimmed_not_flagged(self):
+        css = _css_block()
+        self.assertIn("tr.is-unsupported .mcp-client-name", css)
+        self.assertNotIn("is-unsupported td:first-child", css, "不支持不得用异常警示条")
 
     def test_source_semantics_explained_once_not_per_row(self):
         src = _src()
@@ -158,10 +198,17 @@ class StaticShapeTest(unittest.TestCase):
         self.assertIn("自动", hint)
         self.assertIn("mcp_attach", hint, "页面提示须解释「自动」= 未显式声明 mcp_attach")
 
+    def test_home_and_mcp_panel_share_unsupported_wording(self):
+        """首页 MCP 列与 MCP 面板用同一套词汇（此前首页写「无配置」）。"""
+        src = _src()
+        self.assertNotIn("不支持 MCP 修复", src, "tooltip 文案应说明是能力缺失而非待修复")
+        self.assertIn("不支持 MCP / 无端点", src, "首页 MCP 图例须与面板一致")
+        self.assertGreaterEqual(src.count("不支持 MCP（非故障）"), 2, "首页两处单元格文案")
+
 
 @unittest.skipUnless(NODE, "需要 node 才能执行渲染护栏")
 class RenderTest(unittest.TestCase):
-    """真实执行 renderMcpClients，锁定对齐后的内容与异常标注。"""
+    """真实执行 renderMcpClients，锁定对齐后的内容与状态标注。"""
 
     def test_rows_align_after_merge(self):
         rows = _rows(_render(MCP_OK, ENDPOINTS))
@@ -174,10 +221,40 @@ class RenderTest(unittest.TestCase):
         self.assertNotIn("is-anomaly", rows[1][0], "已接入的客户端不应被标异常")
         self.assertIn("is-anomaly", rows[2][0], "声明要挂却缺失的客户端须标异常")
 
+    def test_unsupported_row_reads_as_not_applicable(self):
+        rows = _rows(_render(MCP_UNSUPPORTED, ENDPOINTS))
+        self.assertIn("is-unsupported", rows[2][0], "不支持 MCP 的行须有自己的标记")
+        self.assertNotIn("is-anomaly", rows[2][0], "不支持不是异常，不得用异常标记")
+        self.assertEqual(
+            rows[2][1],
+            ["ima.copilot 不支持 MCP", "不适用", "不适用", "不支持", "无"],
+        )
+
+    def test_unsupported_counted_separately_from_missing(self):
+        mcp = {"clients": MCP_UNSUPPORTED["clients"] + [_client("真缺失", ["ep1"], [], ["ep1"], [])]}
+        legend = _legend(_render(mcp, ENDPOINTS))
+        self.assertIn("1 个不支持 MCP", legend)
+        self.assertIn("1 个存在缺失", legend, "缺失与不支持须分别计数")
+
+    def test_unsupported_only_legend_has_no_anomaly(self):
+        legend = _legend(_render(MCP_UNSUPPORTED, ENDPOINTS))
+        self.assertIn("1 个不支持 MCP", legend)
+        self.assertNotIn("存在缺失", legend, "能力缺失不得计入异常")
+
+    def test_old_snapshot_without_supports_mcp_falls_back(self):
+        """旧快照没有 supports_mcp 字段时，按 config_path 是否为空判定。"""
+        legacy = [
+            {k: v for k, v in _client("旧快照无能力字段", [], [], [], [], supports=False).items()
+             if k != "supports_mcp"},
+        ]
+        html = _render({"clients": legacy}, ENDPOINTS)
+        self.assertIn("is-unsupported", html, "config_path 为空应回退判为不支持")
+
     def test_rendered_output_has_no_pictographs(self):
-        html = _render(MCP_OK, ENDPOINTS)
-        for glyph in ("\u26a0", "\u2713"):  # 警告三角 / 对勾：改用形态点表达
-            self.assertNotIn(glyph, html)
+        for mcp in (MCP_OK, MCP_UNSUPPORTED):
+            html = _render(mcp, ENDPOINTS)
+            for glyph in ("\u26a0", "\u2713"):  # 警告三角 / 对勾：改用形态点表达
+                self.assertNotIn(glyph, html)
 
     def test_empty_endpoint_library_does_not_crash(self):
         html = _render({"clients": [_client("孤立", [], [], [], [])]}, [])

@@ -326,26 +326,36 @@
   .mcp-table td.mcp-c-cover { font-family: var(--mono); font-size: var(--fs-xs); color: var(--muted); }
   .mcp-table td.mcp-c-cover.mcp-anomaly { color: var(--warn); font-weight: 600; }
   .mcp-cover-sep { color: var(--faint); font-weight: 400; }
-  /* 三态：实心点 = 配置里已有；空心环 = 声明要挂却缺失；浅灰环 = 未纳入期望。
-     形态与色彩双重编码，不单独依赖颜色传达状态。 */
+  /* 四态：实心点 = 配置里已有；空心环 = 声明要挂却缺失；浅灰环 = 未纳入期望；
+     横杠 = 该客户端不支持 MCP（不适用，非故障）。形态与色彩双重编码，
+     不单独依赖颜色传达状态，且「不支持」与「缺失」颜色与形状都不同。 */
   .mcp-st { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-2xs); color: var(--muted); }
   .mcp-st.ok { color: var(--ok); }
   .mcp-st.warn { color: var(--warn); font-weight: 600; }
+  .mcp-st.off { color: var(--muted); }
   /* 未纳入：沿用 muted 而非 faint。11px 文字用 --faint 在浅色底下只有 ~3.4:1，
      低于 WCAG AA；去强调交给空心环，不靠压低文字对比度。 */
   .mcp-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; box-shadow: inset 0 0 0 1.5px var(--line-strong); }
   .mcp-dot.ok { background: var(--ok); box-shadow: none; }
   .mcp-dot.warn { box-shadow: inset 0 0 0 1.5px var(--warn); }
   .mcp-dot.na { box-shadow: inset 0 0 0 1.5px var(--line); }
+  /* 不适用：短横杠（不是圆点），与三态在形状上就分开 */
+  .mcp-dot.off { width: 9px; height: 0; border-radius: 0; box-shadow: none;
+    border-top: 1.5px solid var(--line-strong); }
   .tag-btn .mcp-dot { margin-right: 5px; vertical-align: -0.5px; }
-  /* 客户端：名称 + 期望来源微标签（自动 = 未显式声明 mcp_attach，按端点库全集期望） */
+  /* 客户端：名称 + 标签。支持 MCP 时标签说明期望来源（自动 = 未显式声明
+     mcp_attach，按端点库全集期望）；不支持时该槽位改说明能力缺失。 */
   .mcp-client { display: flex; align-items: baseline; gap: 7px; }
   .mcp-client-name { font-weight: 500; }
   .mcp-src { flex: none; font-family: var(--mono); font-size: var(--fs-2xs); color: var(--muted);
     border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0 6px; }
   .mcp-src.auto { border-style: dashed; }
+  /* 不支持：实底中性标签，与前两者（描边/虚线）在形式上就不同类 */
+  .mcp-src.off { border-color: transparent; background: var(--panel-2); color: var(--muted); }
   /* 异常行：左侧 2px 警示条，不与客户端名称争视觉权重 */
   .mcp-table tbody tr.is-anomaly td:first-child { box-shadow: inset 2px 0 0 var(--warn); }
+  /* 不支持 MCP 的整行去强调：读作「不适用」，而不是「坏了」 */
+  .mcp-table tbody tr.is-unsupported .mcp-client-name { color: var(--muted); font-weight: 400; }
   .mcp-legend { margin: 12px 0 0; }
   @media (max-width: 768px) {
     .mcp-table th.mcp-c-client { min-width: 118px; }
@@ -1826,7 +1836,7 @@ function renderAgents() {
       <span class="legend-item"><span class="legend-swatch ok"></span>全部已设置</span>
       <span class="legend-item"><span class="legend-swatch warn"></span>部分已设置</span>
       <span class="legend-item"><span class="legend-swatch err"></span>未设置</span>
-      <span class="legend-item"><span class="legend-swatch na"></span>无配置 / 无端点</span>
+      <span class="legend-item"><span class="legend-swatch na"></span>不支持 MCP / 无端点</span>
       <span class="legend-note">N / M = 已设置端点数 / 声明挂载的端点总数</span>
     </div>
     <div id="agent-home-body"></div>`;
@@ -1949,7 +1959,7 @@ function renderHomeCardsView(q) {
     let mcpConfiguredCount = 0;
     let mcpTotal = 0;
     if (!a.mcp_config_path) {
-      mcpHtml = '<span class="tag" title="该客户端未声明 MCP 配置文件，不支持 MCP 修复">无 MCP 配置</span>';
+      mcpHtml = '<span class="tag" title="该客户端未声明 MCP 配置文件，不支持 MCP（非故障）">不支持</span>';
     } else if (!attachKeys.length) {
       mcpHtml = '<span class="tag">无端点</span>';
     } else {
@@ -2098,7 +2108,7 @@ function renderHomeListView(q) {
     }).length;
     let mcpCell;
     if (!a.mcp_config_path) {
-      mcpCell = '<span class="ok-na" title="该客户端未声明 MCP 配置文件，不支持 MCP 修复">无配置</span>';
+      mcpCell = '<span class="ok-na" title="该客户端未声明 MCP 配置文件，不支持 MCP（非故障）">不支持</span>';
     } else if (!mcpTotal) {
       mcpCell = '<span class="ok-na" title="未声明要挂载的端点">0</span>';
     } else if (mcpConfigured === mcpTotal) {
@@ -2713,14 +2723,19 @@ function renderMcpClients(mcp, endpoints) {
   const epUrl = {};
   endpoints.forEach((e) => { epUrl[e.key] = e.url || ""; });
 
-  // 三态语义与「自动来源」在图例里解释一次，行内不再重复长文案。
+  // 四态语义在图例里解释一次，行内不再重复长文案。注意「不支持」与「缺失」
+  // 是两件不同的事：缺失 = 声明要挂却没挂（异常）；不支持 = 客户端没有 MCP 能力
+  // （不适用）。后者不计入异常数。
   const nAnomaly = clients.filter((c) => (c.missing_attach || []).length).length;
+  const nUnsupported = clients.filter((c) => !_supportsMcp(c)).length;
   const legend = '<div class="skill-legend mcp-legend">' +
     '<span class="legend-label">图例</span>' +
     '<span class="legend-item"><span class="mcp-dot ok"></span>已挂载</span>' +
     '<span class="legend-item"><span class="mcp-dot warn"></span>缺失（声明要挂，配置里没有）</span>' +
     '<span class="legend-item"><span class="mcp-dot na"></span>未纳入期望</span>' +
+    '<span class="legend-item"><span class="mcp-dot off"></span>不支持 MCP（无 MCP 能力，非故障）</span>' +
     `<span class="legend-note">${clients.length} 客户端 · ${epOrder.length} 端点` +
+    (nUnsupported ? ` · ${nUnsupported} 个不支持 MCP` : "") +
     (nAnomaly ? ` · <span class="mcp-anomaly">${nAnomaly} 个存在缺失</span>` : "") +
     '</span></div>';
 
@@ -2733,8 +2748,9 @@ function renderMcpClients(mcp, endpoints) {
     '<th>MCP 条目（分类）</th></tr>';
 
   const rows = clients.map((c) => {
-    // 三态依据**实际观测**：声明要挂却缺失 = 异常。此前只看 mcp_attach（未显式声明
+    // 四态依据**实际观测**：声明要挂却缺失 = 异常。此前只看 mcp_attach（未显式声明
     // 时等于端点库全集），未配置的客户端也会显示「已配置」，且 attached 被误标为「未纳管」。
+    const unsupported = !_supportsMcp(c);
     const observed = new Set(c.observed_attach || []);
     const missing = new Set(c.missing_attach || []);
     const undeclared = new Set(c.undeclared_attach || []);
@@ -2744,7 +2760,12 @@ function renderMcpClients(mcp, endpoints) {
       if (e.endpoint_key && !byEntry[e.endpoint_key]) byEntry[e.endpoint_key] = e.key;
     });
 
+    // 不支持 MCP：每个端点列给「不适用」横杠，而不是伪装成缺失。
     const cells = epOrder.map((k) => {
+      if (unsupported) {
+        return '<td class="mcp-c-ep"><span class="mcp-st off" title="该客户端不支持 MCP">' +
+          '<span class="mcp-dot off"></span>不适用</span></td>';
+      }
       if (observed.has(k)) {
         const via = byEntry[k];
         let tip = via && via !== k ? `由条目「${via}」提供` : "配置文件中已存在对应条目";
@@ -2765,16 +2786,18 @@ function renderMcpClients(mcp, endpoints) {
     const coverTip = denom
       ? `已挂载 ${nOk} 个 / 期望 ${denom} 个` + (undeclared.size ? `；另有 ${undeclared.size} 个已挂载但未声明` : "")
       : `未声明期望端点；已挂载 ${nOk} 个`;
-    const cover = denom
-      ? `<span title="${escapeHtml(coverTip)}">${nOk}<span class="mcp-cover-sep"> / ${denom}</span></span>`
-      : (nOk ? `<span title="${escapeHtml(coverTip)}">${nOk}</span>`
-             : '<span class="ok-na" title="未声明端点，也未观测到挂载">无端点</span>');
+    const cover = unsupported
+      ? '<span class="mcp-st off" title="该客户端不支持 MCP，不适用挂载统计"><span class="mcp-dot off"></span>不支持</span>'
+      : (denom
+        ? `<span title="${escapeHtml(coverTip)}">${nOk}<span class="mcp-cover-sep"> / ${denom}</span></span>`
+        : (nOk ? `<span title="${escapeHtml(coverTip)}">${nOk}</span>`
+               : '<span class="ok-na" title="未声明端点，也未观测到挂载">无端点</span>'));
 
-    const srcTip = c.has_explicit_attach
-      ? "来源：在 config.yaml 中显式声明了 mcp_attach"
-      : "来源：未显式声明 mcp_attach，按端点库全集期望（自动）";
-    const src = `<span class="mcp-src${c.has_explicit_attach ? "" : " auto"}" title="${escapeHtml(srcTip)}">` +
-      `${c.has_explicit_attach ? "手动" : "自动"}</span>`;
+    // 支持 MCP 时标签说明期望来源；不支持时该槽位改说明能力缺失（来源无意义）。
+    const src = unsupported
+      ? '<span class="mcp-src off" title="客户端注册表未声明 MCP 配置文件，该客户端不支持 MCP">不支持 MCP</span>'
+      : `<span class="mcp-src${c.has_explicit_attach ? "" : " auto"}" title="${escapeHtml(c.has_explicit_attach ? "来源：在 config.yaml 中显式声明了 mcp_attach" : "来源：未显式声明 mcp_attach，按端点库全集期望（自动）")}">` +
+        `${c.has_explicit_attach ? "手动" : "自动"}</span>`;
 
     const inv = (c.inventory || []).map((e) => {
       const cls = e.classification || "unmanaged";
@@ -2792,15 +2815,22 @@ function renderMcpClients(mcp, endpoints) {
       return `<button type="button" class="tag tag-btn ${color}" data-action="show-mcp-class" data-name="${escapeHtml(c.name)}" data-class="${escapeHtml(cls)}" title="${escapeHtml(tip)}">${risk}${escapeHtml(e.key)} · ${escapeHtml(label)}</button>`;
     }).join(" ") || '<span class="ok-na">无</span>';
 
-    return `<tr${missing.size ? ' class="is-anomaly"' : ""}>` +
+    const rowCls = unsupported ? ' class="is-unsupported"' : (missing.size ? ' class="is-anomaly"' : "");
+    return `<tr${rowCls}>` +
       `<td class="mcp-c-client"><span class="mcp-client"><span class="mcp-client-name">${escapeHtml(c.name)}</span>${src}</span></td>` +
       cells +
-      `<td class="mcp-c-cover${missing.size ? " mcp-anomaly" : ""}">${cover}</td>` +
+      `<td class="mcp-c-cover${missing.size && !unsupported ? " mcp-anomaly" : ""}">${cover}</td>` +
       `<td>${inv}</td></tr>`;
   }).join("");
 
   el.innerHTML = legend + '<div class="table-scroll"><table class="mcp-table"><thead>' + head +
     '</thead><tbody>' + rows + '</tbody></table></div>';
+}
+
+// 客户端是否具备 MCP 能力：注册表声明了 mcp_config_path 才算支持。
+// 旧快照没有 supports_mcp 字段时回退到 config_path 是否为空。
+function _supportsMcp(c) {
+  return c && c.supports_mcp === undefined ? !!c.config_path : !!(c && c.supports_mcp);
 }
 
 // ---------------- 设置（通用配置） ----------------
