@@ -5,9 +5,42 @@
 
 > 注：项目早期历史未按版本逐次发布，以下按可识别的版本里程碑汇总。
 
+## [v0.21.1] - 2026-09
+
+当前发布版本（build 107）。
+
+### 修复
+
+- **P0（数据损失）TOML 嵌套子表被当成独立 MCP 条目**：`parse_toml_mcp_servers` 只特判了
+  `.env` 子表，其余子表一律落成新 server。Codex 用
+  `[mcp_servers.<name>.tools.<tool>]` 记录 `approval_mode` 审批设置，于是真实 4 个 server
+  被解析成 **11 条**，多出的 7 条被归类为「未纳管」并出现在「清理未纳管」清单里——点击即
+  删掉这些审批设置。现按 TOML 语义只取**第一个点分段**为 server 名，更深子表归属该 server
+  且不贡献字段（`env` 仍折叠进 `env`）；只有子表、没有父表时不再凭空造出 server。
+  顺带修正两处泄漏：段头可带 `# 注释`（此前导致该段字段写入**上一个** server）、非
+  `mcp_servers` 段结束当前上下文（此前跨段字段会混入上一个 server）。
+- **P1（假阳性）「已配置 MCP 端点」把期望当事实**：端点列原本直接渲染 `mcp_attach`，而未
+  显式声明时 `resolve_client_attach` 返回**端点库全集**，因此一个 `config_path` 为空、
+  inventory 为 0 的客户端也显示为「已配置两个端点」。快照新增
+  `has_explicit_attach` / `observed_attach` / `missing_attach` / `undeclared_attach`
+  （`mcp_inventory.attachment_consistency`），把「期望」与「实际观测」分开，使
+  **声明要挂却没挂**可被判为异常。实况：`ima.copilot` 由「已配置 K8s-uat, hermes-home」
+  修正为 **⚠ 2 个端点未挂载**。
+- **P2（冗余与误标）界面两列语义重叠**：第二列改为**端点视角的挂载状态**（已挂载 ✓ /
+  未挂载 ⚠ / 未配置），并标注期望来源（手动指定 vs 自动默认全部端点）；第三列保留
+  「配置文件里的真实条目」并在 tooltip 里给出 `端点：<key>` 映射，消除两列命名错位
+  （端点键 `hermes-home` vs 配置键 `hermes`）。覆盖矩阵同步改为按**实际观测**着色，修掉
+  同一假阳性，并修正把 `attached`（已挂载但未声明）显示成「未纳管」的误标。
+
+### 测试
+
+- `tests/test_config_codec.py` 9 → 20 例（嵌套子表、跨段字段泄漏、真实 Codex 形状回归、
+  两条解析链路一致性）；新增 `tests/test_mcp_attachment_consistency.py` 12 例
+  （观测端点、期望/缺失/未声明、快照字段护栏）。全量 **538 passed, 28 subtests**。
+
 ## [v0.21.0] - 2026-09
 
-当前发布版本（build 106）。
+该版本构建号 build 106。
 
 ### 新增
 
@@ -170,29 +203,6 @@ build 96。
 
 ## [Unreleased]
 
-### 修复
-
-- **P0（数据损失）TOML 嵌套子表被当成独立 MCP 条目**：`parse_toml_mcp_servers` 只特判了
-  `.env` 子表，其余子表一律落成新 server。Codex 用
-  `[mcp_servers.<name>.tools.<tool>]` 记录 `approval_mode` 审批设置，于是真实 4 个 server
-  被解析成 **11 条**，多出的 7 条被归类为「未纳管」并出现在「清理未纳管」清单里——点击即
-  删掉这些审批设置。现按 TOML 语义只取**第一个点分段**为 server 名，更深子表归属该 server
-  且不贡献字段（`env` 仍折叠进 `env`）；只有子表、没有父表时不再凭空造出 server。
-  顺带修正两处泄漏：段头可带 `# 注释`（此前导致该段字段写入**上一个** server）、非
-  `mcp_servers` 段结束当前上下文（此前跨段字段会混入上一个 server）。
-- **P1（假阳性）「已配置 MCP 端点」把期望当事实**：端点列原本直接渲染 `mcp_attach`，而未
-  显式声明时 `resolve_client_attach` 返回**端点库全集**，因此一个 `config_path` 为空、
-  inventory 为 0 的客户端也显示为「已配置两个端点」。快照新增
-  `has_explicit_attach` / `observed_attach` / `missing_attach` / `undeclared_attach`
-  （`mcp_inventory.attachment_consistency`），把「期望」与「实际观测」分开，使
-  **声明要挂却没挂**可被判为异常。实况：`ima.copilot` 由「已配置 K8s-uat, hermes-home」
-  修正为 **⚠ 2 个端点未挂载**。
-- **P2（冗余与误标）界面两列语义重叠**：第二列改为**端点视角的挂载状态**（已挂载 ✓ /
-  未挂载 ⚠ / 未配置），并标注期望来源（手动指定 vs 自动默认全部端点）；第三列保留
-  「配置文件里的真实条目」并在 tooltip 里给出 `端点：<key>` 映射，消除两列命名错位
-  （端点键 `hermes-home` vs 配置键 `hermes`）。覆盖矩阵同步改为按**实际观测**着色，修掉
-  同一假阳性，并修正把 `attached`（已挂载但未声明）显示成「未纳管」的误标。
-
 ### 变更
 
 - **分支合并（2026-09-21）**：`master` 原为 `develop` 的**祖先**（两条线并非分叉），
@@ -247,7 +257,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.21.0...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.21.1...HEAD
+[v0.21.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.21.1
 [v0.21.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.21.0
 [v0.20.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.20.1
 [v0.20.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.20.0

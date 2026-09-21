@@ -15,7 +15,7 @@
   <rect width="1020" height="900" fill="url(#grid)"/>
 
   <text x="30" y="32" font-size="20" font-weight="700" fill="#f1f5f9">Skill MCP Studio · 架构</text>
-  <text x="30" y="52" font-size="11" fill="#64748b">v0.21.0 (build 106) · 本地多客户端 Skill / MCP 合规审计与修复</text>
+  <text x="30" y="52" font-size="11" fill="#64748b">v0.21.1 (build 107) · 本地多客户端 Skill / MCP 合规审计与修复</text>
 
   <!-- ============ L1 桌面壳 + GUI (frontend cyan) ============ -->
   <g>
