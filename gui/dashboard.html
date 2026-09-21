@@ -321,16 +321,14 @@
   .mcp-table thead th.mcp-c-ep { text-transform: none; letter-spacing: 0; font-family: var(--mono); text-align: center; }
   .mcp-table th.mcp-c-client { min-width: 150px; }
   .mcp-table th.mcp-c-ep { width: 104px; }
-  .mcp-table th.mcp-c-cover { width: 66px; text-align: center; }
-  .mcp-table td.mcp-c-ep, .mcp-table td.mcp-c-cover { text-align: center; }
-  .mcp-table td.mcp-c-cover { font-family: var(--mono); font-size: var(--fs-xs); color: var(--muted); }
-  .mcp-table td.mcp-c-cover.mcp-anomaly { color: var(--warn); font-weight: 600; }
-  /* 「挂载」列只给状态色点（口径与顶部总览卡一致：绿=齐全 / 黄=有落差 / 灰=无期望端点），
-     N / M 数字不再重复显示——数量留在 title，明细留在点开后的清单里。 */
-  .mcp-cover-btn { display: inline-flex; align-items: center; gap: 6px;
-    font-size: var(--fs-2xs); color: var(--muted); }
-  .mcp-cover-btn.ok { color: var(--ok); }
-  .mcp-cover-btn.warn { color: var(--warn); font-weight: 600; }
+  .mcp-table td.mcp-c-ep { text-align: center; }
+  /* 「已挂载」单元格本身就是明细入口：点它看该客户端挂了哪些端点。
+     此前另设一列把端点列已有的状态再汇总一遍，属重复表达，已删除。
+     按钮重置成纯文本外观，只在 hover / focus 时提示可点。 */
+  .mcp-ep-btn { background: none; border: 0; padding: 0; font: inherit;
+    cursor: pointer; border-radius: 4px; }
+  .mcp-ep-btn:hover { text-decoration: underline; text-underline-offset: 2px; }
+  .mcp-ep-btn:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
   /* 四态：实心点 = 配置里已有；空心环 = 声明要挂却缺失；浅灰环 = 未纳入期望；
      横杠 = 该客户端不支持 MCP（不适用，非故障）。形态与色彩双重编码，
      不单独依赖颜色传达状态，且「不支持」与「缺失」颜色与形状都不同。 */
@@ -372,7 +370,6 @@
   @media (max-width: 768px) {
     .mcp-table th.mcp-c-client { min-width: 118px; }
     .mcp-table th.mcp-c-ep { width: 78px; }
-    .mcp-table th.mcp-c-cover { width: 54px; }
   }
   .mcp-anomaly { color: var(--warn); font-weight: 600; }
 
@@ -2822,7 +2819,6 @@ function renderMcpClients(mcp, endpoints) {
       const t = epUrl[k] ? `${k}：${epUrl[k]}` : k;
       return `<th class="mcp-c-ep" title="${escapeHtml(t)}">${escapeHtml(k)}</th>`;
     }).join("") +
-    '<th class="mcp-c-cover" title="已挂载端点数 / 期望挂载端点数">挂载</th>' +
     '<th>MCP 条目（分类）</th></tr>';
 
   const rows = clients.map((c) => {
@@ -2832,12 +2828,14 @@ function renderMcpClients(mcp, endpoints) {
     const observed = new Set(c.observed_attach || []);
     const missing = new Set(c.missing_attach || []);
     const undeclared = new Set(c.undeclared_attach || []);
-    const expected = c.mcp_attach || [];
     const byEntry = {};
     (c.inventory || []).forEach((e) => {
       if (e.endpoint_key && !byEntry[e.endpoint_key]) byEntry[e.endpoint_key] = e.key;
     });
 
+    // 端点列每个「已挂载」都是「该客户端已挂载端点」明细的入口，
+    // 共用同一份 dataset 属性，点击后由 showMcpClass 打开清单。
+    const epDetailAttrs = `data-action="show-mcp-class" data-name="${escapeHtml(c.name)}" data-class="attached"`;
     // 不支持 MCP：每个端点列给「不适用」横杠，而不是伪装成缺失。
     const cells = epOrder.map((k) => {
       if (unsupported) {
@@ -2848,8 +2846,10 @@ function renderMcpClients(mcp, endpoints) {
         const via = byEntry[k];
         let tip = via && via !== k ? `由条目「${via}」提供` : "配置文件中已存在对应条目";
         if (undeclared.has(k)) tip += "；未在 mcp_attach 中声明";
-        return `<td class="mcp-c-ep"><span class="mcp-st ok" title="${escapeHtml(tip)}">` +
-          '<span class="mcp-dot ok"></span>已挂载</span></td>';
+        // 「已挂载」自己就是明细入口：点开看该客户端挂了哪些端点。
+        return `<td class="mcp-c-ep"><button type="button" class="mcp-st ok mcp-ep-btn" ${epDetailAttrs} ` +
+          `title="${escapeHtml(tip + "；点击查看该客户端已挂载的端点")}">` +
+          '<span class="mcp-dot ok"></span>已挂载</button></td>';
       }
       if (missing.has(k)) {
         return '<td class="mcp-c-ep"><span class="mcp-st warn" title="声明要挂载该端点，但配置文件中没有对应条目">' +
@@ -2858,31 +2858,6 @@ function renderMcpClients(mcp, endpoints) {
       return '<td class="mcp-c-ep"><span class="mcp-st na" title="既未声明要挂载，也未观测到">' +
         '<span class="mcp-dot na"></span>未纳入</span></td>';
     }).join("");
-
-    const nOk = epOrder.filter((k) => observed.has(k)).length;
-    const denom = expected.length;
-    const coverTip = denom
-      ? `已挂载 ${nOk} 个 / 期望 ${denom} 个` + (undeclared.size ? `；另有 ${undeclared.size} 个已挂载但未声明` : "")
-      : `未声明期望端点；已挂载 ${nOk} 个`;
-    // 「挂载」列的 N / M 即「已挂载端点」明细的入口：条目明细已从最后一列移走，
-    // 需要看具体是哪些端点时点这里，不必为此把最后一列重新塞满。
-    const coverAttrs = `data-action="show-mcp-class" data-name="${escapeHtml(c.name)}" data-class="attached"`;
-    // 「挂载」列只说状态、不再重复 N / M 数字：数量在顶部总览卡与 title 里已有，
-    // 具体是哪些端点则点开「已挂载端点」明细看。配色沿用总览卡的绿 / 黄 / 灰口径。
-    let coverCls = "na", coverLabel = "无端点";
-    if (denom > 0) {
-      if (nOk === denom) { coverCls = "ok"; coverLabel = "已挂载"; }
-      else if (nOk > 0) { coverCls = "warn"; coverLabel = "部分挂载"; }
-      else { coverCls = "warn"; coverLabel = "未挂载"; }
-    } else if (nOk > 0) {
-      coverCls = "warn"; coverLabel = "已挂载";
-    }
-    const cover = unsupported
-      ? '<span class="mcp-st off" title="该客户端不支持 MCP，不适用挂载统计"><span class="mcp-dot off"></span>不支持</span>'
-      : (coverCls === "na"
-        ? '<span class="ok-na" title="未声明端点，也未观测到挂载">无端点</span>'
-        : `<button type="button" class="mcp-cover-btn ${coverCls}" ${coverAttrs} title="${escapeHtml(coverTip)}">` +
-          `<span class="mcp-dot ${coverCls}"></span>${coverLabel}</button>`);
 
     // 支持 MCP 时标签说明期望来源；不支持时该槽位改说明能力缺失（来源无意义）。
     // 有端点丢失时，这个槽位优先说明「丢失的原因」并给出回流入口：
@@ -2941,7 +2916,6 @@ function renderMcpClients(mcp, endpoints) {
     return `<tr${rowCls}>` +
       `<td class="mcp-c-client"><span class="mcp-client"><span class="mcp-client-name">${escapeHtml(c.name)}</span>${src}</span></td>` +
       cells +
-      `<td class="mcp-c-cover${missing.size && !unsupported ? " mcp-anomaly" : ""}">${cover}</td>` +
       `<td>${inv}</td></tr>`;
   }).join("");
 
