@@ -22,7 +22,7 @@ from typing import Any, Dict, List
 from combined_checker import check_agents, result_ok
 from endpoint_library import endpoint_entries, resolve_client_attach, validate_attachment
 from mcp_entry_risk import is_high_risk_entry
-from mcp_inventory import inventory_client
+from mcp_inventory import attachment_consistency, inventory_client
 from profile_loader import load_profile, list_profiles
 from scanner import run_scan
 from tool_registry import (
@@ -293,9 +293,20 @@ def build_management_snapshot(
         # 稳定排序保持同类目下的原始顺序。
         _cls_rank = {"attached": 0, "legacy": 1, "unmanaged": 2}
         entries = sorted(entries, key=lambda e: _cls_rank.get(e.classification, 2))
+        # DATA-6: 期望挂载（声明或默认全部）与实际观测（配置文件里真实存在）分列
+        # 输出，供 UI 判定「声明要挂却没挂」这类异常。此前 UI 只拿 mcp_attach 当
+        # 「已配置」渲染，于是完全没有 MCP 配置的客户端也显示为已接入。
+        expected_attach = resolve_client_attach(tool, config)
+        consistency = attachment_consistency(entries, expected_attach)
         mcp_clients.append({
             "name": tool.get("name", "Unknown"),
-            "mcp_attach": resolve_client_attach(tool, config),
+            "mcp_attach": expected_attach,
+            # 显式声明 vs 默认「全部端点」——UI 据此标注来源
+            "has_explicit_attach": bool(tool.get("mcp_attach")),
+            # 期望 / 实际 / 缺失(异常) / 未声明
+            "observed_attach": consistency["observed"],
+            "missing_attach": consistency["missing"],
+            "undeclared_attach": consistency["undeclared"],
             # DATA-5:透传 MCP 配置定位字段，供 UI 展示与未来编辑入口
             "config_path": tool.get("config_path", ""),
             "format": tool.get("format", "json"),

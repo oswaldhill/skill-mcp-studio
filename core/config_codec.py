@@ -50,6 +50,29 @@ def parse_cordis_yaml(text: str) -> Any:
     return yaml.load(text, Loader=CordisLoader)
 
 
+def _split_toml_server_section(section: str) -> "tuple[str, str]":
+    """Split ``<name>[.<sub.table>]`` into ``(server_name, sub_table_path)``.
+
+    TOML semantics: only the **first** dotted key names the server.  A section such
+    as ``[mcp_servers.K8s-uat.tools.list_clusters]`` declares the
+    ``tools.list_clusters`` *sub-table of server* ``K8s-uat`` — it does not declare a
+    server whose name happens to contain dots.  Quoted keys
+    (``[mcp_servers."a.b"]``) are TOML's way to give a server a dotted name, so they
+    are honoured.
+    """
+    text = section.strip()
+    if not text:
+        return "", ""
+    if text[0] in "\"'":
+        quote = text[0]
+        end = text.find(quote, 1)
+        if end == -1:
+            return text.strip(quote), ""
+        return text[1:end], text[end + 1:].lstrip(".").strip()
+    name, _, rest = text.partition(".")
+    return name.strip(), rest.strip()
+
+
 def parse_toml_mcp_servers(text: str) -> Dict[str, Any]:
     """Parse ``[mcp_servers.<name>]`` table sections into a ``name → fields`` map.
 
@@ -58,23 +81,46 @@ def parse_toml_mcp_servers(text: str) -> Dict[str, Any]:
     This is the superset of the former ``mcp_checker._load_simple_toml_servers``
     (which dropped list values) and ``legacy_checker._load_toml_mcp_servers``
     (which only stripped double quotes).
+
+    **Nested sub-tables never become servers.**  Codex stores per-tool settings as
+    ``[mcp_servers.<name>.tools.<tool>]`` (``approval_mode = "approve"``).  Treating
+    each of those as a server invented phantom entries; they were classified as
+    "unmanaged" and therefore offered for batch cleanup, which silently stripped the
+    user's approval settings.  Only the first dotted key is the server name — deeper
+    tables are recognised as belonging to it and contribute **no** server fields
+    (``env`` is the sole exception, collapsed into ``env``).
+
+    A section header may carry a trailing ``# comment``, and any header outside
+    ``mcp_servers`` ends the current context so that later fields can never leak into
+    the previously seen server.
     """
     servers: Dict[str, Any] = {}
     cur: str = ""
     cur_env = False
+    # True while inside a nested sub-table (or outside mcp_servers at all): field
+    # lines are ignored instead of being merged into ``cur``.
+    cur_skip = True
     for raw_line in text.splitlines():
         line = raw_line.strip()
-        if line.startswith("[mcp_servers.") and line.endswith("]"):
-            section = line[len("[mcp_servers."):-1].strip()
-            if section.endswith(".env"):
-                cur = section[:-len(".env")]
-                cur_env = True
-                servers.setdefault(cur, {})
+        header = line.split("#", 1)[0].strip() if line.startswith("[") else ""
+        if header.startswith("[") and header.endswith("]"):
+            if header.startswith("[mcp_servers."):
+                name, sub = _split_toml_server_section(header[len("[mcp_servers."):-1])
+                if not name:
+                    cur, cur_env, cur_skip = "", False, True
+                elif not sub:
+                    cur, cur_env, cur_skip = name, False, False
+                    servers.setdefault(name, {})
+                elif sub == "env":
+                    cur, cur_env, cur_skip = name, True, False
+                    servers.setdefault(name, {})
+                else:
+                    # Sub-table of `name` (e.g. tools.<tool>): belongs to the server
+                    # but defines no server field, so it must not add an entry.
+                    cur, cur_env, cur_skip = name, False, True
             else:
-                cur = section
-                cur_env = False
-                servers.setdefault(cur, {})
-        elif cur and "=" in line and not line.startswith("["):
+                cur, cur_env, cur_skip = "", False, True
+        elif cur and not cur_skip and "=" in line and not line.startswith("["):
             key, _, value = line.partition("=")
             key = key.strip()
             value = value.strip()
