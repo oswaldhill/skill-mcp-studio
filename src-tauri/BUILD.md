@@ -152,10 +152,10 @@ workspace-write 沙箱下 `rm`/`ditto` 报 `Operation not permitted`，需完全
 `e253763e449a76e8333d29e88e91f6fa5482461593f3e54188271088c784970c`（逐字节一致）；
 旧版备份在 `~/.skill-mcp-studio-backups/skill-mcp-studio-0.21.0-premerge.app`。
 
-> ⚠️ **替换 .app 会使系统授权失效**：本机 DSH 为 ad-hoc 签名
-> （`Signature=adhoc`、无 TeamIdentifier），macOS TCC 记录按 cdhash 绑定。
-> 新 bundle 的 cdhash 已变，**屏幕录制 / 辅助功能**授权会失效，且需先在
-> 系统设置中删除旧记录再重新授权，仅重启进程无效（TCC 在进程启动时缓存）。
+> ⚠️ **替换本 .app 会使系统授权失效**：本机 DSH 为 ad-hoc 签名
+> （`Identifier=com.deepseek.harness.local`、`Signature=adhoc`、
+> `TeamIdentifier=not set`），macOS TCC 记录按 **cdhash** 绑定；新 bundle 的
+> cdhash 已变 ⇒ 屏幕录制 / 辅助功能授权失效。**同类触发源与处置见 §3.3。**
 
 **启动后自检**（`AXUIElement` 读无障碍树，比截图可靠）：
 
@@ -164,6 +164,78 @@ AXStaticText 'v0.21.0 (build 106)'     ← 版本署名
 AXButton     'MCP 2'                    ← 侧栏渲染完成
 AXButton     'IDE / Agent 6'            ← 8dc646e 后空壳 CLI 不再计为已装（原 7）
 ```
+
+### 3.3 TCC 授权失效：**DSH 本体更新**才是更常见的触发源
+
+2026-09-21 实测：GUI 实证验证中途，屏幕录制与辅助功能**同时**失效，且反复
+「重新授权 + 重启」三轮均无效。结论记此以免重复排查。
+
+**判据（关键：拿无关系统进程做对照）**
+
+```bash
+# 1) 进程自问是否受信任 —— 最直接的判据
+python3 -c "import ApplicationServices as AS; print(AS.AXIsProcessTrusted())"
+
+# 2) 对照：Finder / Dock 与本项目无关
+#    err=-25211（kAXErrorAPIDisabled）⇒ 是「我方授权」问题，不是被测应用卡住
+# 3) 屏幕录制
+screencapture -x /tmp/perm.png     # 失败：could not create image from display
+# 4) 交叉印证：缺屏幕录制时 kCGWindowName 被系统屏蔽为 None
+```
+
+**本次实测输出**（全部指向「授权丢失」，而非应用缺陷）：
+
+```
+AXIsProcessTrusted()   → False
+AX 读 Finder / Dock    → err=-25211
+screencapture          → could not create image from display
+kCGWindowName          → None
+DSH CDHash             → 362933c1dd01244d502a8a5c5922448b7518cfc1
+DSH .app 文件时间      → 当日 10:20（当天被更新过）
+```
+
+> **不要因为 AX 读不到就把结论写成「应用卡死」**——先读 Finder/Dock 对照。
+> 本次若只看被测应用，会误判为 GUI 崩溃；对照后确认是自身授权丢失。
+
+**根因**：DSH 为 **ad-hoc 签名且无 TeamIdentifier**，macOS 无法用
+identifier/TeamID 表述其身份，只能回退到 **cdhash 基准**（实测其 designated
+requirement 即 `cdhash H"362933c1..."`）。于是：
+
+- **DSH 本体每次更新（或重建/替换）cdhash 即变** ⇒ 既有 TCC 记录全部指向失效身份；
+- 系统设置里的开关**看起来仍是开的**，但运行中的进程判定为未授权；
+- **TCC 在进程启动时求值并缓存** ⇒ 只重启被测 `.app` 无用，必须重启 **DSH 本体**；
+- ad-hoc 下反复「删记录 → 重新授权 → 重启」**不稳定**，本次三轮后仍为 `False`。
+
+**根治手段与为何 Agent 做不了**：换稳定签名（自签证书或 Apple Development
+证书）可让授权跨更新持久化，但 `codesign` 需**交互式**访问钥匙串私钥。沙箱/非
+交互环境下实测**连极小文件都失败**：
+
+```
+codesign --force --sign "Apple Development: …" /tmp/testbin
+  → unknown exception            （退出码 1）
+codesign --force --sign - /tmp/testbin      # 对照：ad-hoc 可用
+  → 退出码 0
+```
+
+失败与体积（1.2 G）、Electron 结构、`--deep` **均无关**——纯粹是钥匙串访问被拒。
+**切勿在 Agent 会话内替换 `/Applications/DeepSeek Harness.app`**：签坏会导致 DSH
+无法启动。确需根治请在**普通终端**由本人执行（会弹钥匙串授权，确认即可）：
+
+```bash
+cp -R "/Applications/DeepSeek Harness.app" /tmp/dsh-resign.app    # 1.2G，先在副本上做
+codesign -d --entitlements :- "/Applications/DeepSeek Harness.app" > /tmp/dsh-ents.plist
+codesign --force --deep --sign "Apple Development: <证书名>" \
+  --entitlements /tmp/dsh-ents.plist /tmp/dsh-resign.app
+codesign -d -r- /tmp/dsh-resign.app    # 期望 DR 不再是 cdhash，而是 identifier 基准
+```
+
+成功后先备份原件再替换，并重新授权一次，此后即可跨更新持久化。
+注意 Electron 需保留原 entitlements（本机为 `allow-jit` /
+`allow-unsigned-executable-memory` / `disable-library-validation`）。
+
+**缓解**：不做重签名时，每次 DSH 更新后到「隐私与安全性」**删除旧记录**再授权。
+另需明确：**授权失效只影响 Agent 读取 GUI 的能力**，不影响版本与产物核验——
+`Info.plist`、二进制 sha256、CLI 自报、`CGWindowListCopyWindowInfo` 均不依赖 TCC。
 
 > **运行时三处已修（2026-09-04）**：
 > 1. `tauri.conf.json` 开 `app.withGlobalTauri: true`——否则 Tauri 2 不注入

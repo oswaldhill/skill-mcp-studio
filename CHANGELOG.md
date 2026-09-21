@@ -180,7 +180,8 @@ build 96。
   `BUILD_EXIT=0`），安装到 `/Applications/skill-mcp-studio.app`，产物与安装后二进制
   sha256 一致（`e253763e…`）；旧版备份至
   `~/.skill-mcp-studio-backups/skill-mcp-studio-0.21.0-premerge.app`。步骤与权限、
-  TCC 授权失效注意事项见 `src-tauri/BUILD.md` §3.2。
+  TCC 授权失效须知见 `src-tauri/BUILD.md` §3.2；**DSH 本体更新**（ad-hoc 签名、
+  无 TeamIdentifier，cdhash 变更即失效）导致授权丢失的完整判据与根治手段见 §3.3。
 - **安装数变化**：`8dc646e` 使「空壳 CLI 启动器」不再被计为安装证据，管理台
   `IDE / Agent` 计数由 **7 → 6**（预期行为修正，非回归）。
 
