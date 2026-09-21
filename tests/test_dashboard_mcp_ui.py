@@ -101,7 +101,7 @@ def _render(mcp: dict, endpoints: list) -> str:
 
 
 def _client(name, expected, observed, missing, undeclared,
-            explicit=False, inventory=None, supports=True):
+            explicit=False, inventory=None, supports=True, drift=None):
     return {
         "name": name,
         "mcp_attach": expected,
@@ -112,7 +112,18 @@ def _client(name, expected, observed, missing, undeclared,
         "supports_mcp": supports,
         "config_path": "~/.demo/mcp.json" if supports else "",
         "inventory": inventory or [],
+        "drift": drift or {"suspected": False, "lost": [], "backup_count": 0,
+                           "last_backup": "", "last_backup_at": ""},
     }
+
+
+def _drift_client(name, lost):
+    """被外部工具改写的客户端：有本工具备份，但期望的端点已不见。"""
+    return _client(name, lost, [], lost, [], drift={
+        "suspected": True, "lost": lost, "backup_count": 3,
+        "last_backup": "~/.demo/mcp.json.bak-20260921-160315-913403",
+        "last_backup_at": "2026-09-21 16:03:15",
+    })
 
 
 MCP_OK = {
@@ -214,7 +225,7 @@ class RenderTest(unittest.TestCase):
         rows = _rows(_render(MCP_OK, ENDPOINTS))
         self.assertEqual(rows[0][1], ["客户端", "ep1", "ep2", "挂载", "MCP 条目（分类）"])
         self.assertEqual(rows[1][1], ["已接入 自动", "已挂载", "已挂载", "2 / 2", "s1 · 已挂载"])
-        self.assertEqual(rows[2][1], ["缺配置 自动", "缺失", "缺失", "0 / 2", "无"])
+        self.assertEqual(rows[2][1], ["缺配置 未应用 回流", "缺失", "缺失", "0 / 2", "无"])
 
     def test_only_missing_client_is_flagged(self):
         rows = _rows(_render(MCP_OK, ENDPOINTS))
@@ -295,6 +306,51 @@ class RenderTest(unittest.TestCase):
         rows = _rows(_render(mcp, ENDPOINTS))
         self.assertEqual(rows[1][1][0], "手动 手动")
         self.assertEqual(rows[1][1][2], "未纳入", "未声明的端点列须显示「未纳入」")
+
+
+@unittest.skipUnless(NODE, "需要 node 才能执行渲染护栏")
+class DriftRenderTest(unittest.TestCase):
+    """被外部工具改写：说清「为什么缺」并就地给出回流入口。"""
+
+    def test_rewritten_client_shows_cause_and_reflow(self):
+        rows = _rows(_render({"clients": [_drift_client("Codex", ["ep1", "ep2"])]}, ENDPOINTS))
+        client_cell = rows[1][1][0]
+        self.assertIn("被外部改写", client_cell, "有备份且端点不见 => 报「被外部改写」")
+        self.assertIn("回流", client_cell, "须就地给出回流入口")
+        self.assertEqual(rows[1][1][1], "缺失", "端点列仍是缺失（原因与状态分开表达）")
+
+    def test_unapplied_client_not_labelled_as_rewrite(self):
+        """无备份（从未写入成功）只说「未应用」，不误报外部改写。"""
+        mcp = {"clients": [_client("新客户端", ["ep1"], [], ["ep1"], [])]}
+        rows = _rows(_render(mcp, ENDPOINTS))
+        cell = rows[1][1][0]
+        self.assertIn("未应用", cell)
+        self.assertNotIn("被外部改写", cell)
+
+    def test_reflow_button_wired_to_existing_fix_action(self):
+        html = _render({"clients": [_drift_client("Codex", ["ep1"])]}, ENDPOINTS)
+        self.assertIn('data-action="fix-mcp"', html, "回流须复用已接线的 fix-mcp 动作")
+        self.assertIn('data-name="Codex"', html)
+
+    def test_drift_count_in_legend(self):
+        mcp = {"clients": [_drift_client("Codex", ["ep1"]), _client("正常", ["ep1"], ["ep1"], [], [])]}
+        legend = _legend(_render(mcp, ENDPOINTS))
+        self.assertIn("1 个疑似被外部改写", legend)
+
+    def test_no_drift_keeps_plain_source_chip(self):
+        """全部已挂载时保持原来的「手动/自动」来源标签，不引入回流入口。"""
+        mcp = {"clients": [_client("已接入", ["ep1"], ["ep1"], [], [],
+                                   inventory=[{"key": "s1", "classification": "attached",
+                                               "endpoint_key": "ep1"}])]}
+        html = _render(mcp, ENDPOINTS)
+        self.assertIn("自动", html)
+        self.assertNotIn("回流", html, "没有丢失时不该出现回流按钮")
+        self.assertNotIn("被外部改写", html)
+
+    def test_drift_is_not_reported_for_unsupported_client(self):
+        """不支持 MCP 的客户端没有配置文件，谈不上被改写。"""
+        rows = _rows(_render(MCP_UNSUPPORTED, ENDPOINTS))
+        self.assertNotIn("被外部改写", rows[2][1][0])
 
 
 if __name__ == "__main__":

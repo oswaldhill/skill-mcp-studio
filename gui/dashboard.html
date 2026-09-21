@@ -352,6 +352,13 @@
   .mcp-src.auto { border-style: dashed; }
   /* 不支持：实底中性标签，与前两者（描边/虚线）在形式上就不同类 */
   .mcp-src.off { border-color: transparent; background: var(--panel-2); color: var(--muted); }
+  /* 被外部工具改写：警示描边标签，把「缺失的原因」与「缺失本身」分开说 */
+  .mcp-src.drift { border-color: var(--warn-border); color: var(--warn); background: var(--warn-bg); }
+  /* 回流：把丢失的端点按端点库重新写回该客户端 */
+  .mcp-fix { cursor: pointer; font-family: var(--mono); font-size: var(--fs-2xs); color: var(--accent);
+    border: 1px solid var(--accent-border); background: var(--accent-bg); border-radius: var(--r-pill);
+    padding: 0 7px; }
+  .mcp-fix:hover { border-color: var(--accent); }
   /* 异常行：左侧 2px 警示条，不与客户端名称争视觉权重 */
   .mcp-table tbody tr.is-anomaly td:first-child { box-shadow: inset 2px 0 0 var(--warn); }
   /* 不支持 MCP 的整行去强调：读作「不适用」，而不是「坏了」 */
@@ -2728,6 +2735,7 @@ function renderMcpClients(mcp, endpoints) {
   // （不适用）。后者不计入异常数。
   const nAnomaly = clients.filter((c) => (c.missing_attach || []).length).length;
   const nUnsupported = clients.filter((c) => !_supportsMcp(c)).length;
+  const nDrift = clients.filter((c) => (c.drift || {}).suspected).length;
   const legend = '<div class="skill-legend mcp-legend">' +
     '<span class="legend-label">图例</span>' +
     '<span class="legend-item"><span class="mcp-dot ok"></span>已挂载</span>' +
@@ -2736,6 +2744,7 @@ function renderMcpClients(mcp, endpoints) {
     '<span class="legend-item"><span class="mcp-dot off"></span>不支持 MCP（无 MCP 能力，非故障）</span>' +
     `<span class="legend-note">${clients.length} 客户端 · ${epOrder.length} 端点` +
     (nUnsupported ? ` · ${nUnsupported} 个不支持 MCP` : "") +
+    (nDrift ? ` · <span class="mcp-anomaly">${nDrift} 个疑似被外部改写</span>` : "") +
     (nAnomaly ? ` · <span class="mcp-anomaly">${nAnomaly} 个存在缺失</span>` : "") +
     '</span></div>';
 
@@ -2794,10 +2803,20 @@ function renderMcpClients(mcp, endpoints) {
                : '<span class="ok-na" title="未声明端点，也未观测到挂载">无端点</span>'));
 
     // 支持 MCP 时标签说明期望来源；不支持时该槽位改说明能力缺失（来源无意义）。
+    // 有端点丢失时，这个槽位优先说明「丢失的原因」并给出回流入口：
+    // 有备份 = 本工具写入确实成功过、之后被别人改掉了（疑似外部改写）；
+    // 无备份 = 只是尚未应用。两者都只需一次回流，但用户该不该警觉完全不同。
+    const drift = c.drift || {};
+    const lost = (drift.lost || []).length ? drift.lost : Array.from(missing);
     const src = unsupported
       ? '<span class="mcp-src off" title="客户端注册表未声明 MCP 配置文件，该客户端不支持 MCP">不支持 MCP</span>'
-      : `<span class="mcp-src${c.has_explicit_attach ? "" : " auto"}" title="${escapeHtml(c.has_explicit_attach ? "来源：在 config.yaml 中显式声明了 mcp_attach" : "来源：未显式声明 mcp_attach，按端点库全集期望（自动）")}">` +
-        `${c.has_explicit_attach ? "手动" : "自动"}</span>`;
+      : (lost.length
+        ? (drift.suspected
+            ? `<span class="mcp-src drift" title="疑似被外部工具改写：本工具曾成功写入（最近备份 ${escapeHtml(drift.last_backup_at)}，共 ${drift.backup_count} 份），其后 ${escapeHtml(lost.join("、"))} 被移除。常见来源：CC Switch 切换通道、客户端自身升级重写配置。">被外部改写</span>`
+            : `<span class="mcp-src auto" title="尚未应用：期望挂载 ${escapeHtml(lost.join("、"))}，该配置文件里还没有">未应用</span>`) +
+          `<button type="button" class="mcp-fix" data-action="fix-mcp" data-name="${escapeHtml(c.name)}" title="按端点库把 ${escapeHtml(lost.join("、"))} 写回该客户端（写入前自动备份）">回流</button>`
+        : `<span class="mcp-src${c.has_explicit_attach ? "" : " auto"}" title="${escapeHtml(c.has_explicit_attach ? "来源：在 config.yaml 中显式声明了 mcp_attach" : "来源：未显式声明 mcp_attach，按端点库全集期望（自动）")}">` +
+          `${c.has_explicit_attach ? "手动" : "自动"}</span>`);
 
     const inv = (c.inventory || []).map((e) => {
       const cls = e.classification || "unmanaged";

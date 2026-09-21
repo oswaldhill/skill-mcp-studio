@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 from combined_checker import check_agents, result_ok
+from config_backups import list_config_backups
 from endpoint_library import endpoint_entries, resolve_client_attach, validate_attachment
 from mcp_entry_risk import is_high_risk_entry
 from mcp_inventory import attachment_consistency, inventory_client
@@ -33,6 +34,38 @@ from tool_registry import (
     read_cli_versions,
 )
 from tool_registry import effective_tools as _tool_registry_effective_tools
+
+
+def _drift_payload(config_path: str, missing: List[str]) -> Dict[str, Any]:
+    """DATA-8: 识别「被外部工具改写」（漂移），与「尚未应用」区分。
+
+    ``~/.codex/config.toml`` 这类文件是**多写者竞争**的：CC Switch 切换通道、
+    Codex 应用升级都会重写整份文件，而它们的模板里通常不含用户自建的 MCP 条目，
+    于是刚修好的端点会被静默抹掉（实测：修复后 34 秒即被写回旧状态）。
+
+    判据只用一个客观事实：``<config>.bak-*`` 兄弟备份是**本工具写入前**留下的，
+    所以只要存在备份、而期望的端点又不见了，就说明写入确实成功过、之后被别的
+    程序改掉了。从未写入（无备份）只是「尚未应用」，不报漂移——避免把两件事
+    混为一谈。返回证据（丢失项 + 最近备份）而非断言，措辞用「疑似」。
+    """
+    if not missing:
+        return {"suspected": False, "lost": [], "backup_count": 0,
+                "last_backup": "", "last_backup_at": ""}
+    try:
+        backups = list_config_backups(config_path) if config_path else []
+    except OSError:
+        backups = []
+    if not backups:
+        return {"suspected": False, "lost": [], "backup_count": 0,
+                "last_backup": "", "last_backup_at": ""}
+    newest = backups[0]
+    return {
+        "suspected": True,
+        "lost": sorted(missing),
+        "backup_count": len(backups),
+        "last_backup": _abbreviate_home(newest["path"], os.path.expanduser("~")),
+        "last_backup_at": newest["mtime_text"],
+    }
 
 
 def _client_skills_paths(tool: Dict[str, Any], scan_result: Dict[str, Any]) -> List[str]:
@@ -316,6 +349,8 @@ def build_management_snapshot(
             "format": tool.get("format", "json"),
             "mcp_key_path": tool.get("mcp_key_path", ["mcpServers"]),
             "inventory": _mcp_inventory_payload(entries, tool),
+            # DATA-8: 被外部工具改写（漂移）的客观证据，供 UI 提示 + 一键回流
+            "drift": _drift_payload(tool.get("config_path", ""), consistency["missing"]),
         })
 
     # --- per-endpoint audit conclusion (reusing check_agents) ---

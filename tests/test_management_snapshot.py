@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "core"))
 
-from management_snapshot import build_management_snapshot, _effective_tools  # noqa: E402
+from management_snapshot import build_management_snapshot, _effective_tools, _drift_payload  # noqa: E402
 
 
 def _config():
@@ -322,6 +322,69 @@ class EffectiveToolsTest(unittest.TestCase):
             snap = build_management_snapshot(config, config_path="", live_probe=False, auto_discover=False)
         names = {a["name"] for a in snap["agents"]}
         self.assertIn("CustomAgent", names)
+
+
+class DriftDetectionTest(unittest.TestCase):
+    """DATA-8: 区分「被外部工具改写」与「尚未应用」。
+
+    ``~/.codex/config.toml`` 是多写者竞争的文件：CC Switch 切换通道、客户端升级
+    都会重写整份文件，而它们的模板里没有用户自建的 MCP 条目，于是刚修好的端点会
+    被静默抹掉。判据用一个客观事实：``<config>.bak-*`` 兄弟备份是本工具**写入前**
+    留下的，所以「有备份 + 期望端点不见」= 写入成功过、之后被改掉（疑似外部改写）；
+    「无备份 + 期望端点不见」= 只是尚未应用。两者都会让端点缺失，但不该混为一谈。
+    """
+
+    def _tmp(self):
+        import tempfile
+
+        self._dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self._dir.cleanup)
+        return Path(self._dir.name)
+
+    def test_no_missing_means_no_drift(self):
+        root = self._tmp()
+        cfg = root / "config.toml"
+        cfg.write_text("", encoding="utf-8")
+        (root / "config.toml.bak-20260921-160315-913403").write_text("[mcp_servers.X]\n", encoding="utf-8")
+        payload = _drift_payload(str(cfg), [])
+        self.assertFalse(payload["suspected"])
+        self.assertEqual(payload["lost"], [])
+        self.assertEqual(payload["backup_count"], 0)
+
+    def test_backup_plus_missing_means_external_rewrite(self):
+        root = self._tmp()
+        cfg = root / "config.toml"
+        cfg.write_text("[mcp_servers.kept]\n", encoding="utf-8")
+        (root / "config.toml.bak-20260920-163013-000001").write_text("old\n", encoding="utf-8")
+        (root / "config.toml.bak-20260921-160315-913403").write_text("new\n", encoding="utf-8")
+        payload = _drift_payload(str(cfg), ["K8s-uat", "hermes-home"])
+        self.assertTrue(payload["suspected"], "有本工具备份 + 端点不见 => 疑似被外部改写")
+        self.assertEqual(payload["lost"], ["K8s-uat", "hermes-home"])
+        self.assertEqual(payload["backup_count"], 2)
+        self.assertTrue(payload["last_backup_at"], "须给出最近备份时间作为证据")
+        self.assertIn("config.toml.bak-", payload["last_backup"])
+
+    def test_missing_without_backup_is_merely_unapplied(self):
+        root = self._tmp()
+        cfg = root / "config.toml"
+        cfg.write_text("{}\n", encoding="utf-8")
+        payload = _drift_payload(str(cfg), ["K8s-uat"])
+        self.assertFalse(payload["suspected"], "从未写入过不算漂移，避免误报外部改写")
+        self.assertEqual(payload["backup_count"], 0)
+
+    def test_missing_config_file_does_not_raise(self):
+        root = self._tmp()
+        payload = _drift_payload(str(root / "nope.toml"), ["K8s-uat"])
+        self.assertFalse(payload["suspected"])
+        self.assertEqual(_drift_payload("", ["K8s-uat"])["suspected"], False)
+
+    def test_snapshot_clients_carry_drift_field(self):
+        """快照每个客户端都要带 drift，供 UI 判断显示「被外部改写」还是「未应用」。"""
+        snap = build_management_snapshot(_config(), config_path="", live_probe=False, auto_discover=False)
+        for c in snap["mcp"]["clients"]:
+            self.assertIn("drift", c)
+            for field in ("suspected", "lost", "backup_count", "last_backup", "last_backup_at"):
+                self.assertIn(field, c["drift"])
 
 
 if __name__ == "__main__":
