@@ -7,6 +7,17 @@
 
 ## [Unreleased]
 
+（暂无未发布变更）
+
+## [v0.22.0] - 2026-09
+
+当前发布版本（build 108）。
+
+本次为 **minor** 升级：含 2 项新功能（MCP 面板改为单表覆盖矩阵、漂移识别与一键回流）、
+4 项缺陷修复、1 项非 IDE/Agent 客户端身份定案、1 项 CI 基础设施升级。
+本版同时是 `0.21.1` 的**首次正式发布**——`0.21.1` 此前只进过 `develop`，
+从未打 tag、从未发布，其内容一并包含在此版本中（见下方 `v0.21.1` 段落）。
+
 ### 修复
 
 - **备份列表的顺序不再依赖 mtime（真实缺陷，非仅测试脆弱）**：`list_config_backups`
@@ -353,7 +364,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.21.1...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.22.0...HEAD
+[v0.22.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.22.0
 [v0.21.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.21.1
 [v0.21.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.21.0
 [v0.20.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.20.1

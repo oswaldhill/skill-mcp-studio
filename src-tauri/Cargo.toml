@@ -1,6 +1,6 @@
 [package]
 name = "skill-mcp-studio"
-version = "0.21.1"
+version = "0.22.0"
 description = "Skill MCP Studio — read-only audit dashboard (Tauri shell)"
 authors = ["skill-mcp-studio"]
 edition = "2021"

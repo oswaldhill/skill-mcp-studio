@@ -1,8 +1,8 @@
 # Skill MCP Studio
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v0.21.1-blue" alt="version">
-  <img src="https://img.shields.io/badge/build-107-lightgrey" alt="build">
+  <img src="https://img.shields.io/badge/version-v0.22.0-blue" alt="version">
+  <img src="https://img.shields.io/badge/build-108-lightgrey" alt="build">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="license">
   <img src="https://img.shields.io/badge/python-%3E%3D3.11-3776AB" alt="python">
   <img src="https://img.shields.io/github/actions/workflow/status/oswaldhill/skill-mcp-studio/build-macos.yml?branch=master&label=CI%20(macOS)" alt="CI">
@@ -411,7 +411,7 @@ cargo tauri build --target universal-apple-darwin
 | --- | --- |
 | push / PR 到 `master` | 构建 universal `.app` + `.dmg`，上传为 workflow artifact |
 | 手动 `workflow_dispatch` | 同上 |
-| push `v*` tag（如 `v0.21.1`） | 构建并**自动创建 GitHub Release**，上传 `.dmg` 与 `.app.zip` |
+| push `v*` tag（如 `v0.22.0`） | 构建并**自动创建 GitHub Release**，上传 `.dmg` 与 `.app.zip` |
 
 产物为**通用二进制（universal）**，原生运行于 Intel 与 Apple Silicon，无需 Rosetta。
 
