@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -31,6 +32,13 @@ class ListBackupsTest(unittest.TestCase):
             newer = Path(str(path) + ".bak-20260920-110000-000000")
             older.write_text('{"mcpServers":{"a":{}}}\n', encoding="utf-8")
             newer.write_text('{"mcpServers":{"b":{}}}\n', encoding="utf-8")
+            # 关键：把两个备份的 mtime 压成同一个值。真实场景里这很常见（同一秒内
+            # 连续写入，或文件系统分辨率粗），CI 上就复现了——此时若只按 mtime 排序，
+            # 顺序会退化成 os.listdir 的任意顺序，"最上面"的未必是最新备份，
+            # 用户据此还原就会选错版本。故顺序必须由文件名时间戳决定。
+            same = 1_700_000_000
+            os.utime(older, (same, same))
+            os.utime(newer, (same, same))
             # 干扰项：不是本配置的备份
             (Path(temp_dir) / "other.json.bak-20260920-120000-000000").write_text(
                 "{}\n", encoding="utf-8"
@@ -41,6 +49,26 @@ class ListBackupsTest(unittest.TestCase):
             self.assertEqual([b["path"] for b in backups], [str(newer), str(older)])
             self.assertEqual(backups[0]["size"], newer.stat().st_size)
             self.assertTrue(backups[0]["mtime_text"])
+
+    def test_order_survives_identical_mtime_and_inode_order(self):
+        """mtime 全同 + 目录返回顺序与时间序相反时，仍必须按文件名时间戳倒序。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "mcp.json"
+            path.write_text('{"mcpServers":{}}\n', encoding="utf-8")
+            # 故意先建"新"的、后建"旧"的，再统一 mtime，让任何依赖创建序/mtime 的
+            # 实现都排序失败——只有读文件名时间戳的实现能通过。
+            newest = Path(str(path) + ".bak-20260920-120000-000000")
+            middle = Path(str(path) + ".bak-20260920-110000-000000")
+            oldest = Path(str(path) + ".bak-20260920-100000-000000")
+            for p in (newest, middle, oldest):
+                p.write_text('{"mcpServers":{}}\n', encoding="utf-8")
+                os.utime(p, (1_700_000_000, 1_700_000_000))
+
+            backups = list_config_backups(str(path))
+
+            self.assertEqual(
+                [b["path"] for b in backups], [str(newest), str(middle), str(oldest)]
+            )
 
 
 class RestoreBackupTest(unittest.TestCase):

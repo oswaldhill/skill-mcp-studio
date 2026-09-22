@@ -50,7 +50,15 @@ def list_config_backups(config_path: str) -> List[Dict[str, Any]]:
                 "suffix": name[len(prefix):],
             }
         )
-    found.sort(key=lambda item: item["mtime"], reverse=True)
+    # 排序以**文件名里的时间戳**为主键：它是单调递增的权威序号（写入时生成），
+    # 而 mtime 会被文件系统分辨率与"同一秒内连续写入"抹平——实测两个备份的 mtime
+    # 相同（CI 上写入极快、部分文件系统秒级分辨率），此时仅按 mtime 排序会退化为
+    # os.listdir 的任意顺序，让列表里"最上面"的未必是最新备份，用户据此还原就会
+    # 选错版本。故：先比后缀时间戳（字符串按字典序即时间序，格式定长零填充），
+    # 再比 mtime 兜底，最后用路径做稳定裁决（保证任何输入下顺序唯一确定）。
+    found.sort(
+        key=lambda item: (item["suffix"], item["mtime"], item["path"]), reverse=True
+    )
     return found
 
 

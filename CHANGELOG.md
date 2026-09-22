@@ -9,6 +9,16 @@
 
 ### 修复
 
+- **备份列表的顺序不再依赖 mtime（真实缺陷，非仅测试脆弱）**：`list_config_backups`
+  原先只按 `mtime` 倒序，而 `mtime` 会被「同一秒内连续写入」或文件系统的时间分辨率
+  抹平——此时排序退化成 `os.listdir` 的任意顺序，**列表里「最上面」的未必是最新备份**，
+  用户据此还原就会选错版本。备份文件名后缀（`.bak-YYYYMMDD-HHMMSS-ffffff`，定长零
+  填充）才是单调递增的权威序号，现在它以主键参与排序（`suffix` → `mtime` → `path`
+  稳定裁决），任何输入下顺序唯一确定。该缺陷由 CI 暴露（本地因 mtime 恰好不同而侥幸
+  通过）：`test_lists_only_own_backups_newest_first` 在 GitHub Actions 上稳定失败。
+  已补两例测试（其中之一把 mtime 全部压平、并让目录顺序与时间序相反），并做过反证
+  ——把实现改回旧写法时两例均失败。
+
 - **CC Switch 不再是「一个 AI Agent」（FEAT-6）**：CC Switch（`com.ccswitch.desktop`）
   是**供应商切换器 + 本地代理**，给 Claude Code / Codex / Gemini / OpenCode 切换配置
   （其库中 `providers` 按 app_type 分 claude/codex/gemini/opencode；`mcp_servers` 带
@@ -87,7 +97,7 @@
 - 新增 `tests/test_dashboard_agents_panel.py` 7 例：静态锁定所有 IDE/Agent 面板
   必须经 `_agentsForPanel()` 取数（防回归），并用 node 驱动真实
   `renderHomeListView` 断言非 IDE/Agent 既不入行也不计数、旧快照缺字段时不丢行。
-- 全量 **607 passed, 28 subtests**。
+- 全量 **608 passed, 28 subtests**（含备份排序缺陷新增的 2 例）。
 
 > 以下为合入 `master` 前累积的未发布记录。
 
