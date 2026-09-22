@@ -30,7 +30,11 @@ TYPE_KEYWORDS = {
         "claude", "codex", "aider", "opencode", "codebuddy", "reasonix",
         "gemini", "goose", "hermes", "dsh", "harness", "devin", "openclaw",
         "kimi", "moonshot", "qwen", "doubao", "deepseek", "workbuddy",
-        "cherry", "cc-switch", "ghcp-appmod",
+        # 注意：`cc-switch`（CC Switch）**故意不在此表**。它是供应商切换器/配置工具，
+        # 既不是 IDE 也不是 Agent（见 config.yaml 中它的 non_agent 声明）。此前它列在
+        # 这里，自动发现时就近被推断成「AI Agent」，与 config.yaml 里「非 AI Agent」
+        # 的注释自相矛盾。
+        "cherry", "ghcp-appmod",
     ],
 }
 

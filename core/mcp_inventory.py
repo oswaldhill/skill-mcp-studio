@@ -118,6 +118,55 @@ def classify_entries(
     return classified
 
 
+def observed_endpoint_keys(entries: List[McpEntry]) -> List[str]:
+    """Endpoint keys **actually mounted**, derived from the config on disk.
+
+    Only entries classified ``attached`` carry an ``endpoint_key``, so this is the
+    observed counterpart of ``endpoint_library.resolve_client_attach`` (which is a
+    declaration/default, not an observation).  Order follows inventory order and
+    duplicates are dropped.
+    """
+    observed: List[str] = []
+    for entry in entries:
+        key = entry.endpoint_key
+        if isinstance(key, str) and key and key not in observed:
+            observed.append(key)
+    return observed
+
+
+def attachment_consistency(
+    entries: List[McpEntry],
+    expected_keys: List[str],
+) -> Dict[str, List[str]]:
+    """Compare *expected* attachment against what the client really mounts.
+
+    ``expected_keys`` comes from ``resolve_client_attach``: an explicit
+    ``mcp_attach`` declaration, or — when the client declares none — the default
+    "every endpoint in the library".  That value is an **intention**, so presenting
+    it as "已配置" without checking the config produced false positives (a client
+    with no MCP config at all still looked fully wired up).
+
+    Returns three ordered lists:
+
+    - ``observed``   — mounted, per the config file;
+    - ``missing``    — expected but absent from the config (**anomaly**);
+    - ``undeclared`` — present in the config but not expected.
+
+    ``expected`` itself is echoed so callers need not re-resolve it.
+    """
+    expected: List[str] = []
+    for key in expected_keys or []:
+        if isinstance(key, str) and key and key not in expected:
+            expected.append(key)
+    observed = observed_endpoint_keys(entries)
+    return {
+        "expected": expected,
+        "observed": observed,
+        "missing": [key for key in expected if key not in observed],
+        "undeclared": [key for key in observed if key not in expected],
+    }
+
+
 def inventory_client(
     tool: Dict[str, Any],
     *,

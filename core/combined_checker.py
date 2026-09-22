@@ -179,6 +179,10 @@ def check_agents(
         token=expected.get("auth_token"),
         token_env=expected.get("auth_token_env"),
         url_policy=expected.get("url_policy", "strict"),
+        # 默认重试 1 次：远程网关偶发单次超时（如 k8s.carobo.cn 正常约 0.4s 但会抖动）
+        # 不应被当成端点故障，否则总览会把「实际正常的 MCP」显示成「探活不正常」。
+        # profile 可用 probe_retries 覆盖（0 = 关闭重试）。
+        retries=expected.get("probe_retries", 1),
     ) if live_probe else {
         "initialize_ok": False, "tools_list_ok": False, "tool_names": [], "error": "not probed"
     }

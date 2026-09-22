@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "core"))
 
-from management_snapshot import build_management_snapshot, _effective_tools  # noqa: E402
+from management_snapshot import build_management_snapshot, _effective_tools, _drift_payload  # noqa: E402
 
 
 def _config():
@@ -102,6 +102,49 @@ class ManagementSnapshotTest(unittest.TestCase):
         self.assertEqual(by_name["Cursor"]["config_path"], "~/.cursor/mcp.json")
         self.assertEqual(by_name["Cursor"]["format"], "json")
         self.assertEqual(by_name["Cursor"]["mcp_key_path"], ["mcpServers"])
+
+    def test_data7_unsupported_client_is_not_a_missing_anomaly(self):
+        """DATA-7：「不支持 MCP」必须与「缺失」区分。
+
+        注册表未声明 mcp_config_path 的客户端（实况如 ima.copilot，已安装但
+        没有 MCP 配置文件）根本没有 MCP 能力，不适用「期望挂载」。此前仍按默认
+        「全部端点」给它套上期望，于是被判成「声明要挂却没挂」的异常——把能力
+        缺失误报成故障。此用例锁定：supports_mcp=False 且 missing 为空。
+        """
+        from unittest.mock import patch
+
+        def fake_detect(tool, **kwargs):
+            return {"installed": True, "install_state": "installed", "evidence": [],
+                    "app_paths": [], "cli_paths": [], "config_paths": []}
+
+        config = {
+            "schema_version": 2,
+            "active_profile": "a",
+            "profiles": {"a": {"name": "mcp-a", "url": "https://a.example.com/mcp",
+                               "required_capabilities": {}}},
+            "mcp_tools": [
+                {"name": "Cursor", "config_path": "~/.cursor/mcp.json",
+                 "skills_paths": ["~/.cursor/skills"]},
+                {"name": "ima.copilot", "config_path": "",
+                 "skills_paths": ["~/.ima/skills"]},
+            ],
+            "tools": [],
+            "unified_skills_dir": "~/.skills-manager/skills",
+        }
+        with patch("management_snapshot.detect_installation", side_effect=fake_detect):
+            snap = build_management_snapshot(config, config_path="", live_probe=False, auto_discover=False)
+        by_name = {c["name"]: c for c in snap["mcp"]["clients"]}
+
+        unsupported = by_name["ima.copilot"]
+        self.assertFalse(unsupported["supports_mcp"], "无 mcp_config_path 即不支持 MCP")
+        self.assertEqual(unsupported["mcp_attach"], [], "不支持 MCP 时期望应为空")
+        self.assertEqual(unsupported["missing_attach"], [], "能力缺失不得报成「缺失」异常")
+
+        # 对照组：有 MCP 能力的客户端仍按默认「全部端点」期望，缺挂才算异常
+        supported = by_name["Cursor"]
+        self.assertTrue(supported["supports_mcp"])
+        self.assertEqual(supported["mcp_attach"], ["a"])
+        self.assertEqual(supported["missing_attach"], ["a"], "声明要挂却没挂仍须判为缺失")
 
     def test_uninstalled_ghost_excluded_from_skills_and_mcp(self):
         """一致性门控：未安装（install_state=none）的幽灵客户端不应出现在
@@ -279,6 +322,137 @@ class EffectiveToolsTest(unittest.TestCase):
             snap = build_management_snapshot(config, config_path="", live_probe=False, auto_discover=False)
         names = {a["name"] for a in snap["agents"]}
         self.assertIn("CustomAgent", names)
+
+
+class NonAgentClientTest(unittest.TestCase):
+    """FEAT-6: 非 IDE/Agent 的工具管理器（CC Switch）的可见性边界。
+
+    CC Switch 是供应商切换器 + 本地代理（com.ccswitch.desktop），给 Claude Code /
+    Codex / Gemini / OpenCode 切换配置：它自身不做推理、不跑 agent 循环，也不消费
+    MCP（它把 MCP 注入别的客户端）。它同时带技能管理功能，故 ~/.cc-switch/skills 是
+    统一技能库的挂载点。因此它的正确可见范围是「技能审计可见、IDE/Agent 表不可见、
+    MCP 面板不可见」——既不能因为不是客户端就被隐藏（那样挂载点失去可见性），也不能
+    因为它装了 App 就被当成一个 Agent 计数。
+    """
+
+    def _config(self):
+        return {
+            "mcp_tools": [{"name": "Real", "config_path": "~/.real/mcp.json",
+                           "skills_paths": ["~/.real/skills"]}],
+            "tools": [{"name": "CC Switch", "non_agent": True, "type": "配置工具",
+                       "install": {"app_bundles": ["/Applications/CC Switch.app"]},
+                       "skills_paths": ["~/.cc-switch/skills"]}],
+            "skills": [],
+        }
+
+    def _snapshot(self):
+        import os as _os
+        import tempfile
+        from unittest.mock import patch
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        skills_dir = _os.path.join(tmp.name, "skills")
+        _os.makedirs(skills_dir, exist_ok=True)
+
+        install = {
+            "installed": True, "install_state": "installed", "evidence": ["app"],
+            "app_paths": ["/Applications/CC Switch.app"], "cli_paths": [],
+            "config_paths": [],
+        }
+        with patch("management_snapshot.detect_installation", return_value=install), \
+             patch("management_snapshot.run_scan",
+                   return_value={"unified_dir": "~/.skills-manager/skills", "results": [
+                       {"tool_name": "CC Switch", "path": "~/.cc-switch/skills",
+                        "expanded_path": skills_dir, "status": "correct"},
+                   ]}):
+            return build_management_snapshot(self._config(), config_path="", live_probe=False,
+                                             auto_discover=False)
+
+    def test_marked_non_agent_in_agents_payload(self):
+        snap = self._snapshot()
+        entry = next(a for a in snap["agents"] if a["name"] == "CC Switch")
+        self.assertFalse(entry["is_agent"], "非 IDE/Agent 必须显式标注，供 UI 排除")
+        self.assertEqual(entry["type"], "配置工具")
+        self.assertTrue(entry["installed"], "装了 App 就该算已安装（否则审计看不见）")
+
+    def test_regular_clients_stay_agents(self):
+        snap = self._snapshot()
+        entry = next(a for a in snap["agents"] if a["name"] == "Real")
+        self.assertTrue(entry["is_agent"], "普通客户端不受影响")
+
+    def test_absent_from_mcp_panel(self):
+        """它不消费 MCP，不该被渲染成一行「不支持 MCP」。"""
+        snap = self._snapshot()
+        self.assertNotIn("CC Switch", [c["name"] for c in snap["mcp"]["clients"]])
+
+    def test_visible_in_skills_audit(self):
+        """技能挂载点必须在技能审计里可见，否则这个挂载点失去可见性。"""
+        snap = self._snapshot()
+        self.assertIn("CC Switch", [c["name"] for c in snap["skills"]["clients_states"]])
+
+
+class DriftDetectionTest(unittest.TestCase):
+    """DATA-8: 区分「被外部工具改写」与「尚未应用」。
+
+    ``~/.codex/config.toml`` 是多写者竞争的文件：CC Switch 切换通道、客户端升级
+    都会重写整份文件，而它们的模板里没有用户自建的 MCP 条目，于是刚修好的端点会
+    被静默抹掉。判据用一个客观事实：``<config>.bak-*`` 兄弟备份是本工具**写入前**
+    留下的，所以「有备份 + 期望端点不见」= 写入成功过、之后被改掉（疑似外部改写）；
+    「无备份 + 期望端点不见」= 只是尚未应用。两者都会让端点缺失，但不该混为一谈。
+    """
+
+    def _tmp(self):
+        import tempfile
+
+        self._dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self._dir.cleanup)
+        return Path(self._dir.name)
+
+    def test_no_missing_means_no_drift(self):
+        root = self._tmp()
+        cfg = root / "config.toml"
+        cfg.write_text("", encoding="utf-8")
+        (root / "config.toml.bak-20260921-160315-913403").write_text("[mcp_servers.X]\n", encoding="utf-8")
+        payload = _drift_payload(str(cfg), [])
+        self.assertFalse(payload["suspected"])
+        self.assertEqual(payload["lost"], [])
+        self.assertEqual(payload["backup_count"], 0)
+
+    def test_backup_plus_missing_means_external_rewrite(self):
+        root = self._tmp()
+        cfg = root / "config.toml"
+        cfg.write_text("[mcp_servers.kept]\n", encoding="utf-8")
+        (root / "config.toml.bak-20260920-163013-000001").write_text("old\n", encoding="utf-8")
+        (root / "config.toml.bak-20260921-160315-913403").write_text("new\n", encoding="utf-8")
+        payload = _drift_payload(str(cfg), ["K8s-uat", "hermes-home"])
+        self.assertTrue(payload["suspected"], "有本工具备份 + 端点不见 => 疑似被外部改写")
+        self.assertEqual(payload["lost"], ["K8s-uat", "hermes-home"])
+        self.assertEqual(payload["backup_count"], 2)
+        self.assertTrue(payload["last_backup_at"], "须给出最近备份时间作为证据")
+        self.assertIn("config.toml.bak-", payload["last_backup"])
+
+    def test_missing_without_backup_is_merely_unapplied(self):
+        root = self._tmp()
+        cfg = root / "config.toml"
+        cfg.write_text("{}\n", encoding="utf-8")
+        payload = _drift_payload(str(cfg), ["K8s-uat"])
+        self.assertFalse(payload["suspected"], "从未写入过不算漂移，避免误报外部改写")
+        self.assertEqual(payload["backup_count"], 0)
+
+    def test_missing_config_file_does_not_raise(self):
+        root = self._tmp()
+        payload = _drift_payload(str(root / "nope.toml"), ["K8s-uat"])
+        self.assertFalse(payload["suspected"])
+        self.assertEqual(_drift_payload("", ["K8s-uat"])["suspected"], False)
+
+    def test_snapshot_clients_carry_drift_field(self):
+        """快照每个客户端都要带 drift，供 UI 判断显示「被外部改写」还是「未应用」。"""
+        snap = build_management_snapshot(_config(), config_path="", live_probe=False, auto_discover=False)
+        for c in snap["mcp"]["clients"]:
+            self.assertIn("drift", c)
+            for field in ("suspected", "lost", "backup_count", "last_backup", "last_backup_at"):
+                self.assertIn(field, c["drift"])
 
 
 if __name__ == "__main__":

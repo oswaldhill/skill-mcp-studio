@@ -5,9 +5,149 @@
 
 > 注：项目早期历史未按版本逐次发布，以下按可识别的版本里程碑汇总。
 
+## [Unreleased]
+
+（暂无未发布变更）
+
+## [v0.22.0] - 2026-09
+
+当前发布版本（build 108）。
+
+本次为 **minor** 升级：含 2 项新功能（MCP 面板改为单表覆盖矩阵、漂移识别与一键回流）、
+4 项缺陷修复、1 项非 IDE/Agent 客户端身份定案、1 项 CI 基础设施升级。
+本版同时是 `0.21.1` 的**首次正式发布**——`0.21.1` 此前只进过 `develop`，
+从未打 tag、从未发布，其内容一并包含在此版本中（见下方 `v0.21.1` 段落）。
+
+### 修复
+
+- **备份列表的顺序不再依赖 mtime（真实缺陷，非仅测试脆弱）**：`list_config_backups`
+  原先只按 `mtime` 倒序，而 `mtime` 会被「同一秒内连续写入」或文件系统的时间分辨率
+  抹平——此时排序退化成 `os.listdir` 的任意顺序，**列表里「最上面」的未必是最新备份**，
+  用户据此还原就会选错版本。备份文件名后缀（`.bak-YYYYMMDD-HHMMSS-ffffff`，定长零
+  填充）才是单调递增的权威序号，现在它以主键参与排序（`suffix` → `mtime` → `path`
+  稳定裁决），任何输入下顺序唯一确定。该缺陷由 CI 暴露（本地因 mtime 恰好不同而侥幸
+  通过）：`test_lists_only_own_backups_newest_first` 在 GitHub Actions 上稳定失败。
+  已补两例测试（其中之一把 mtime 全部压平、并让目录顺序与时间序相反），并做过反证
+  ——把实现改回旧写法时两例均失败。
+
+- **CC Switch 不再是「一个 AI Agent」（FEAT-6）**：CC Switch（`com.ccswitch.desktop`）
+  是**供应商切换器 + 本地代理**，给 Claude Code / Codex / Gemini / OpenCode 切换配置
+  （其库中 `providers` 按 app_type 分 claude/codex/gemini/opencode；`mcp_servers` 带
+  `enabled_claude`/`enabled_codex`/`enabled_gemini`/`enabled_opencode`/`enabled_hermes`
+  标志）。它自身不做推理、不跑 agent 循环，也不消费 MCP——它是把 MCP **注入**别的
+  客户端。同时它带技能管理功能（282 条技能 / 10 个远端仓库），故 `~/.cc-switch/skills`
+  是统一技能库的挂载点。它既不是 IDE 也不是 Agent。
+  此前它被自动发现登记成带点的目录名 `.cc-switch`、类型推断成「AI Agent」、
+  安装状态因发现条目缺 `install` 段而误判为 `none`，再被 UI 的
+  `install_state !== "none"` 过滤掉——于是「看不见」，但那是**安装判定失败导致的
+  巧合**，一旦修好安装判定它就会冒出来并被算成一个 Agent。
+  现在在 `config.yaml` 中给它正规身份（`name: CC Switch`、`type: 配置工具`、
+  `install.app_bundles`、`skills_paths`、`non_agent: true`）。因 `effective_tools`
+  按归一化名去重（`.cc-switch` 与 `CC Switch` 同归一为 `ccswitch`），该声明与发现
+  条目**字段级合并**，幽灵条目随之消失、名字与类型被修正。可见范围明确为：
+  **技能审计里可见**（185 技能，`skills_compliant` 亦转正，审计退出码 0），
+  **IDE/Agent 表与统计里不可见**（`is_agent: false`，前端统一经
+  `_agentsForPanel()` 取数），**MCP 面板里不出现**（它不消费 MCP）。
+  同时把 `cc-switch` 从 `scanner.py` 的「AI Agent」类型关键词中移除，
+  消除与 `config.yaml`「非 AI Agent」注释的自相矛盾。
+
+- **新增「被外部工具改写」识别与一键回流（DATA-8）**：`~/.codex/config.toml` 这类
+  文件是**多写者竞争**的。实测：CC Switch 每次切换通道都用它自己的两个片段
+  （当前 provider 的 `config` + `codex` 通用配置）重新生成整份文件，而这两个片段里
+  **不含任何 `[mcp_servers]`**；把活文件去掉 `mcp_servers` 后与二者合并结果比对，
+  12 个键与值完全一致。因此凡是不被它登记的端点（如 `K8s-uat`、`hermes`）都会被
+  静默抹掉，而它自己登记的（`hermes-nas`：活文件里的块与它数据库里的配置逐字节一致）
+  与客户端自带的（`node_repl`、`computer-use`）则存活。现场复现：16:03:15 修复写入
+  成功，**34 秒后**即被写回旧状态。
+  快照新增 `drift`（`suspected` / `lost` / `backup_count` / `last_backup` /
+  `last_backup_at`），判据只用一个客观事实：`<config>.bak-*` 兄弟备份是**本工具写入
+  前**留下的，故「有备份 + 期望端点不见」= 写入成功过、之后被别人改掉（疑似外部
+  改写）；「无备份 + 端点不见」只是「尚未应用」。面板据此在客户端标签位说明**原因**
+  并就地给出 `回流` 按钮（复用既有 `fix-mcp` 动作，写入前自动备份），图例汇总
+  「N 个疑似被外部改写」；`缺失` 仍表达端点状态，原因与状态分开表述。
+
+- **「不支持 MCP」被误报成「缺失」**：注册表未声明 `mcp_config_path` 的客户端
+  （实况 `ima.copilot`，已安装但没有 MCP 配置文件）根本没有 MCP 能力，
+  却仍被按默认「全部端点」套上期望，于是判成「声明要挂却没挂」的异常，
+  在异常计数里多出一个虚假故障。快照新增 `supports_mcp`，不支持时期望与缺失
+  均为空（`core/management_snapshot.py`），能力缺失不再计入异常。
+  界面上「不支持」与「缺失」双维度区分：缺失 = 橙色空心环 + 左侧 2px 警示条
+  （真异常）；不支持 = 灰色横杠 + 整行去强调（不适用，非故障），端点列显示
+  「不适用」、挂载列显示「不支持」，且不计入异常数。首页 MCP 列的「无配置」
+  一并统一为「不支持」，与面板共用一套词汇。
+
+### 变更
+
+- **MCP 面板改为单表覆盖矩阵**：P2 修复之后，「端点挂载状态」列（端点键 + 状态 +
+  来源长文案）与下方「端点 × 客户端 覆盖矩阵」表达的是同一份数据，界面出现两张等价表，
+  且单元格里重复端点名，既冗余又难纵向扫读。现合并为一张表
+  （客户端 / 各端点状态列 / 挂载 / MCP 条目），端点名只在表头出现一次，
+  端点库之外但实际观测到的端点仍会补出列，不会静默丢状态。
+- **状态改为形态 + 色彩双编码**：实心点 = 配置里已有；空心环 = 声明要挂却缺失；
+  浅灰环 = 未纳入期望；灰色横杠 = 不支持 MCP。异常行用左侧 2px 警示条标注，
+  不再用与客户端名争权重的 `⚠ N` 角标；端点表头保留大小写（此前被 `thead` 的
+  `text-transform: uppercase` 改写成 `K8S-UAT`）；「来源」由每行长文案改为
+  `手动` / `自动` 微标签 + tooltip，语义在页面提示与图例里解释一次。
+- 图例复用 Skills 面板的 `.skill-legend` 形态，右侧汇总「N 客户端 · M 端点 ·
+  K 个不支持 MCP · K 个存在缺失」；新增空端点库、零客户端、显式声明、
+  库外端点等边界处理。
+
+### 测试
+
+- 新增 `tests/test_dashboard_mcp_ui.py` 20 例：源码结构护栏（单表、端点名仅在表头、
+  表头大小写、形态/色彩双编码、不支持与缺失的形状区分、警示条只给异常、
+  语义只解释一次、首页与面板词汇一致）与 node 渲染快照（对齐后的表头/行内容、
+  仅异常客户端被标注、不支持行读作不适用、两类计数分离、旧快照回退、
+  输出无 `⚠`/`✓` 图形字符、空库/库外端点/零客户端/手动来源）。
+- `tests/test_management_snapshot.py` 新增 DATA-7 用例，锁定「不支持 MCP 不得报成
+  缺失异常」，并与「声明要挂却没挂仍判缺失」的对照组一并断言；新增 `DriftDetectionTest`
+  5 例锁定漂移判据（有备份+缺失=外部改写、无备份=尚未应用、无缺失不报、文件不存在不抛）。
+- `tests/test_dashboard_mcp_ui.py` 13 → 26 例。
+- `tests/test_management_snapshot.py` 新增 `NonAgentClientTest` 4 例，锁定
+  「技能审计可见 / IDE/Agent 表不可见 / MCP 面板不可见」三条边界。
+- 新增 `tests/test_dashboard_agents_panel.py` 7 例：静态锁定所有 IDE/Agent 面板
+  必须经 `_agentsForPanel()` 取数（防回归），并用 node 驱动真实
+  `renderHomeListView` 断言非 IDE/Agent 既不入行也不计数、旧快照缺字段时不丢行。
+- 全量 **608 passed, 28 subtests**（含备份排序缺陷新增的 2 例）。
+
+> 以下为合入 `master` 前累积的未发布记录。
+
+## [v0.21.1] - 2026-09
+
+当前发布版本（build 107）。
+
+### 修复
+
+- **P0（数据损失）TOML 嵌套子表被当成独立 MCP 条目**：`parse_toml_mcp_servers` 只特判了
+  `.env` 子表，其余子表一律落成新 server。Codex 用
+  `[mcp_servers.<name>.tools.<tool>]` 记录 `approval_mode` 审批设置，于是真实 4 个 server
+  被解析成 **11 条**，多出的 7 条被归类为「未纳管」并出现在「清理未纳管」清单里——点击即
+  删掉这些审批设置。现按 TOML 语义只取**第一个点分段**为 server 名，更深子表归属该 server
+  且不贡献字段（`env` 仍折叠进 `env`）；只有子表、没有父表时不再凭空造出 server。
+  顺带修正两处泄漏：段头可带 `# 注释`（此前导致该段字段写入**上一个** server）、非
+  `mcp_servers` 段结束当前上下文（此前跨段字段会混入上一个 server）。
+- **P1（假阳性）「已配置 MCP 端点」把期望当事实**：端点列原本直接渲染 `mcp_attach`，而未
+  显式声明时 `resolve_client_attach` 返回**端点库全集**，因此一个 `config_path` 为空、
+  inventory 为 0 的客户端也显示为「已配置两个端点」。快照新增
+  `has_explicit_attach` / `observed_attach` / `missing_attach` / `undeclared_attach`
+  （`mcp_inventory.attachment_consistency`），把「期望」与「实际观测」分开，使
+  **声明要挂却没挂**可被判为异常。实况：`ima.copilot` 由「已配置 K8s-uat, hermes-home」
+  修正为 **⚠ 2 个端点未挂载**。
+- **P2（冗余与误标）界面两列语义重叠**：第二列改为**端点视角的挂载状态**（已挂载 ✓ /
+  未挂载 ⚠ / 未配置），并标注期望来源（手动指定 vs 自动默认全部端点）；第三列保留
+  「配置文件里的真实条目」并在 tooltip 里给出 `端点：<key>` 映射，消除两列命名错位
+  （端点键 `hermes-home` vs 配置键 `hermes`）。覆盖矩阵同步改为按**实际观测**着色，修掉
+  同一假阳性，并修正把 `attached`（已挂载但未声明）显示成「未纳管」的误标。
+
+### 测试
+
+- `tests/test_config_codec.py` 9 → 20 例（嵌套子表、跨段字段泄漏、真实 Codex 形状回归、
+  两条解析链路一致性）；新增 `tests/test_mcp_attachment_consistency.py` 12 例
+  （观测端点、期望/缺失/未声明、快照字段护栏）。全量 **538 passed, 28 subtests**。
+
 ## [v0.21.0] - 2026-09
 
-当前发布版本（build 106）。
+该版本构建号 build 106。
 
 ### 新增
 
@@ -168,7 +308,7 @@ build 96。
 - **按需加载与启停（L5）**：每「客户端 × 技能」三态启停矩阵、漂移审计、回滚幂等。
 - **打包**：pipx/pip 可安装发行、产品 README。
 
-## [Unreleased]
+### 仍未发布：合入 `master` 前的累积记录
 
 ### 变更
 
@@ -224,7 +364,9 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.21.0...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.22.0...HEAD
+[v0.22.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.22.0
+[v0.21.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.21.1
 [v0.21.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.21.0
 [v0.20.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.20.1
 [v0.20.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.20.0

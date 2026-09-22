@@ -20,9 +20,10 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 from combined_checker import check_agents, result_ok
+from config_backups import list_config_backups
 from endpoint_library import endpoint_entries, resolve_client_attach, validate_attachment
 from mcp_entry_risk import is_high_risk_entry
-from mcp_inventory import inventory_client
+from mcp_inventory import attachment_consistency, inventory_client
 from profile_loader import load_profile, list_profiles
 from scanner import run_scan
 from tool_registry import (
@@ -33,6 +34,38 @@ from tool_registry import (
     read_cli_versions,
 )
 from tool_registry import effective_tools as _tool_registry_effective_tools
+
+
+def _drift_payload(config_path: str, missing: List[str]) -> Dict[str, Any]:
+    """DATA-8: 识别「被外部工具改写」（漂移），与「尚未应用」区分。
+
+    ``~/.codex/config.toml`` 这类文件是**多写者竞争**的：CC Switch 切换通道、
+    Codex 应用升级都会重写整份文件，而它们的模板里通常不含用户自建的 MCP 条目，
+    于是刚修好的端点会被静默抹掉（实测：修复后 34 秒即被写回旧状态）。
+
+    判据只用一个客观事实：``<config>.bak-*`` 兄弟备份是**本工具写入前**留下的，
+    所以只要存在备份、而期望的端点又不见了，就说明写入确实成功过、之后被别的
+    程序改掉了。从未写入（无备份）只是「尚未应用」，不报漂移——避免把两件事
+    混为一谈。返回证据（丢失项 + 最近备份）而非断言，措辞用「疑似」。
+    """
+    if not missing:
+        return {"suspected": False, "lost": [], "backup_count": 0,
+                "last_backup": "", "last_backup_at": ""}
+    try:
+        backups = list_config_backups(config_path) if config_path else []
+    except OSError:
+        backups = []
+    if not backups:
+        return {"suspected": False, "lost": [], "backup_count": 0,
+                "last_backup": "", "last_backup_at": ""}
+    newest = backups[0]
+    return {
+        "suspected": True,
+        "lost": sorted(missing),
+        "backup_count": len(backups),
+        "last_backup": _abbreviate_home(newest["path"], os.path.expanduser("~")),
+        "last_backup_at": newest["mtime_text"],
+    }
 
 
 def _client_skills_paths(tool: Dict[str, Any], scan_result: Dict[str, Any]) -> List[str]:
@@ -147,6 +180,10 @@ def _agent_entry(tool: Dict[str, Any], config: Dict[str, Any], scan_result: Dict
         "mcp_attach": resolved_attach,
         "has_explicit_attach": has_explicit,
         "fix_supported": tool.get("fix_supported", True),
+        # FEAT-6: 非 IDE/Agent 客户端（如 CC Switch 这类配置/工具管理器）。它们是
+        # 技能挂载点而非客户端，故只在技能审计里可见；UI 据此把它们排除在
+        # IDE/Agent 列表与统计之外（否则一个「配置工具」会被算成一个 Agent）。
+        "is_agent": not bool(tool.get("non_agent")),
         **skill_stats,
     }
 
@@ -283,6 +320,11 @@ def build_management_snapshot(
     for tool in _effective_tools(config):
         if not isinstance(tool, dict) or not tool.get("name"):
             continue
+        # FEAT-6: 非 IDE/Agent 管理器（CC Switch）不进 MCP 面板——它不消费 MCP，
+        # 而是把 MCP 注入别的客户端。留在这里会被渲染成一行「不支持 MCP」，
+        # 那是在暗示一个它并不扮演的角色。
+        if tool.get("non_agent"):
+            continue
         # 一致性门控：mcp 面板与 home / skills 面板对齐，只保留本机扫描到的
         # 客户端（installed / config_only），跳过未安装（none）的幽灵客户端。
         if detect_installation(tool)["install_state"] == "none":
@@ -293,14 +335,31 @@ def build_management_snapshot(
         # 稳定排序保持同类目下的原始顺序。
         _cls_rank = {"attached": 0, "legacy": 1, "unmanaged": 2}
         entries = sorted(entries, key=lambda e: _cls_rank.get(e.classification, 2))
+        # DATA-7: 区分「不支持 MCP」与「缺失」。注册表未声明 mcp_config_path 的
+        # 客户端（如 ima.copilot）根本没有 MCP 能力，不适用「期望挂载」这一概念。
+        # 此前仍按默认「全部端点」给它套上期望，于是被判成「声明要挂却没挂」的
+        # 异常——把能力缺失误报成故障。不支持时期望置空，缺失自然为空。
+        supports_mcp = bool(tool.get("config_path"))
+        expected_attach = resolve_client_attach(tool, config) if supports_mcp else []
+        consistency = attachment_consistency(entries, expected_attach)
         mcp_clients.append({
             "name": tool.get("name", "Unknown"),
-            "mcp_attach": resolve_client_attach(tool, config),
+            "mcp_attach": expected_attach,
+            # 显式声明 vs 默认「全部端点」——UI 据此标注来源
+            "has_explicit_attach": bool(tool.get("mcp_attach")),
+            # 该客户端是否具备 MCP 能力（未声明 mcp_config_path 即不支持）
+            "supports_mcp": supports_mcp,
+            # 期望 / 实际 / 缺失(异常) / 未声明
+            "observed_attach": consistency["observed"],
+            "missing_attach": consistency["missing"],
+            "undeclared_attach": consistency["undeclared"],
             # DATA-5:透传 MCP 配置定位字段，供 UI 展示与未来编辑入口
             "config_path": tool.get("config_path", ""),
             "format": tool.get("format", "json"),
             "mcp_key_path": tool.get("mcp_key_path", ["mcpServers"]),
             "inventory": _mcp_inventory_payload(entries, tool),
+            # DATA-8: 被外部工具改写（漂移）的客观证据，供 UI 提示 + 一键回流
+            "drift": _drift_payload(tool.get("config_path", ""), consistency["missing"]),
         })
 
     # --- per-endpoint audit conclusion (reusing check_agents) ---

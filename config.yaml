@@ -223,4 +223,20 @@ tools:
   skills_paths:
   - ~/.copilot/skills
   type: AI Assistant
+# 非 IDE/Agent：供应商切换器 + 本地代理（com.ccswitch.desktop），给 Claude Code /
+# Codex / Gemini / OpenCode 切换配置，自身不做推理、不跑 agent 循环，也不消费 MCP
+# （它是把 MCP「注入」到别的客户端）。它同时带技能管理功能，故 ~/.cc-switch/skills
+# 是统一技能库的挂载点。`non_agent: true` 的语义（见 management_snapshot）：只在
+# 技能审计里可见，不进 IDE/Agent 列表与统计，也不进 MCP 面板。
+# name 归一化后与自动发现写入的 `.cc-switch` 同名（都归一为 ccswitch），因此这里的
+# 声明会与发现条目字段级合并，顺带修掉「显示成带点的目录名」那个问题。
+- backup_suffix: .bak
+  name: CC Switch
+  aliases: [cc-switch, .cc-switch, ccswitch]
+  non_agent: true
+  install:
+    app_bundles: [/Applications/CC Switch.app]
+  skills_paths:
+  - ~/.cc-switch/skills
+  type: 配置工具
 unified_skills_dir: ~/.skills-manager/skills
