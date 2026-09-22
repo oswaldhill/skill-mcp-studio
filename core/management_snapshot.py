@@ -180,6 +180,10 @@ def _agent_entry(tool: Dict[str, Any], config: Dict[str, Any], scan_result: Dict
         "mcp_attach": resolved_attach,
         "has_explicit_attach": has_explicit,
         "fix_supported": tool.get("fix_supported", True),
+        # FEAT-6: 非 IDE/Agent 客户端（如 CC Switch 这类配置/工具管理器）。它们是
+        # 技能挂载点而非客户端，故只在技能审计里可见；UI 据此把它们排除在
+        # IDE/Agent 列表与统计之外（否则一个「配置工具」会被算成一个 Agent）。
+        "is_agent": not bool(tool.get("non_agent")),
         **skill_stats,
     }
 
@@ -315,6 +319,11 @@ def build_management_snapshot(
     mcp_clients: List[Dict[str, Any]] = []
     for tool in _effective_tools(config):
         if not isinstance(tool, dict) or not tool.get("name"):
+            continue
+        # FEAT-6: 非 IDE/Agent 管理器（CC Switch）不进 MCP 面板——它不消费 MCP，
+        # 而是把 MCP 注入别的客户端。留在这里会被渲染成一行「不支持 MCP」，
+        # 那是在暗示一个它并不扮演的角色。
+        if tool.get("non_agent"):
             continue
         # 一致性门控：mcp 面板与 home / skills 面板对齐，只保留本机扫描到的
         # 客户端（installed / config_only），跳过未安装（none）的幽灵客户端。

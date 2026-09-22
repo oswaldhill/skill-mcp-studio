@@ -324,6 +324,74 @@ class EffectiveToolsTest(unittest.TestCase):
         self.assertIn("CustomAgent", names)
 
 
+class NonAgentClientTest(unittest.TestCase):
+    """FEAT-6: 非 IDE/Agent 的工具管理器（CC Switch）的可见性边界。
+
+    CC Switch 是供应商切换器 + 本地代理（com.ccswitch.desktop），给 Claude Code /
+    Codex / Gemini / OpenCode 切换配置：它自身不做推理、不跑 agent 循环，也不消费
+    MCP（它把 MCP 注入别的客户端）。它同时带技能管理功能，故 ~/.cc-switch/skills 是
+    统一技能库的挂载点。因此它的正确可见范围是「技能审计可见、IDE/Agent 表不可见、
+    MCP 面板不可见」——既不能因为不是客户端就被隐藏（那样挂载点失去可见性），也不能
+    因为它装了 App 就被当成一个 Agent 计数。
+    """
+
+    def _config(self):
+        return {
+            "mcp_tools": [{"name": "Real", "config_path": "~/.real/mcp.json",
+                           "skills_paths": ["~/.real/skills"]}],
+            "tools": [{"name": "CC Switch", "non_agent": True, "type": "配置工具",
+                       "install": {"app_bundles": ["/Applications/CC Switch.app"]},
+                       "skills_paths": ["~/.cc-switch/skills"]}],
+            "skills": [],
+        }
+
+    def _snapshot(self):
+        import os as _os
+        import tempfile
+        from unittest.mock import patch
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        skills_dir = _os.path.join(tmp.name, "skills")
+        _os.makedirs(skills_dir, exist_ok=True)
+
+        install = {
+            "installed": True, "install_state": "installed", "evidence": ["app"],
+            "app_paths": ["/Applications/CC Switch.app"], "cli_paths": [],
+            "config_paths": [],
+        }
+        with patch("management_snapshot.detect_installation", return_value=install), \
+             patch("management_snapshot.run_scan",
+                   return_value={"unified_dir": "~/.skills-manager/skills", "results": [
+                       {"tool_name": "CC Switch", "path": "~/.cc-switch/skills",
+                        "expanded_path": skills_dir, "status": "correct"},
+                   ]}):
+            return build_management_snapshot(self._config(), config_path="", live_probe=False,
+                                             auto_discover=False)
+
+    def test_marked_non_agent_in_agents_payload(self):
+        snap = self._snapshot()
+        entry = next(a for a in snap["agents"] if a["name"] == "CC Switch")
+        self.assertFalse(entry["is_agent"], "非 IDE/Agent 必须显式标注，供 UI 排除")
+        self.assertEqual(entry["type"], "配置工具")
+        self.assertTrue(entry["installed"], "装了 App 就该算已安装（否则审计看不见）")
+
+    def test_regular_clients_stay_agents(self):
+        snap = self._snapshot()
+        entry = next(a for a in snap["agents"] if a["name"] == "Real")
+        self.assertTrue(entry["is_agent"], "普通客户端不受影响")
+
+    def test_absent_from_mcp_panel(self):
+        """它不消费 MCP，不该被渲染成一行「不支持 MCP」。"""
+        snap = self._snapshot()
+        self.assertNotIn("CC Switch", [c["name"] for c in snap["mcp"]["clients"]])
+
+    def test_visible_in_skills_audit(self):
+        """技能挂载点必须在技能审计里可见，否则这个挂载点失去可见性。"""
+        snap = self._snapshot()
+        self.assertIn("CC Switch", [c["name"] for c in snap["skills"]["clients_states"]])
+
+
 class DriftDetectionTest(unittest.TestCase):
     """DATA-8: 区分「被外部工具改写」与「尚未应用」。
 

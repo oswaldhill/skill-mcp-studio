@@ -1794,10 +1794,17 @@ function probeVerdictFromRecord(rec) {
   return rec.mcp_initialize_ok && rec.mcp_tools_list_ok ? "ok" : "fail";
 }
 
+// FEAT-6: IDE/Agent 面板的数据源。`is_agent === false` 的条目是「非 IDE/Agent 的
+// 工具/管理器」（如 CC Switch：供应商切换器，同时是统一技能库的挂载点）——它们只在
+// 技能审计里可见，不应被算进客户端数、类型分布或列表。旧快照无该字段，按「是 Agent」处理。
+function _agentsForPanel() {
+  return ((SNAP && SNAP.agents) || []).filter((a) => a.is_agent !== false);
+}
+
 function renderOverview() {
   const el = $("overview-body");
   if (!el) return;
-  const agents = (SNAP && SNAP.agents) || [];
+  const agents = _agentsForPanel();
   const skills = (SNAP && SNAP.skills) || {};
   const mcp = (SNAP && SNAP.mcp) || {};
   const mainstream = (SNAP && SNAP.mainstream_tools) || [];
@@ -1867,7 +1874,7 @@ function renderOverview() {
 
 // ---------------- IDE / Agent ----------------
 function renderAgents() {
-  const agents = (SNAP && SNAP.agents) || [];
+  const agents = _agentsForPanel();
   const visible = agents.filter((a) => a.install_state !== "none");
   $("count-agents").textContent = visible.length;
   const el = $("agents-list");
@@ -1947,7 +1954,7 @@ function homeType() { return loadStore("home-agent-type", "all"); }
 function setHomeType(v) { saveStore("home-agent-type", v); }
     // 主页卡片视图：按分类分组（与设置页同序同配色、组标题可折叠）
 function renderHomeCardsView(q) {
-  const agents = (SNAP && SNAP.agents) || [];
+  const agents = _agentsForPanel();
   let list = agents.filter((a) => a.install_state !== "none");
   const _hOrder = ["AI Agent", "AI IDE", "IDE Plugin", "其他"];
   list.sort((a, b) => {
@@ -2135,7 +2142,7 @@ function renderHomeCardsView(q) {
 
 // 主页列表视图：紧凑表格（名称 / 类型 / 安装 / APP / CLI / CONFIG / Skills / MCP / 操作）
 function renderHomeListView(q) {
-  const agents = (SNAP && SNAP.agents) || [];
+  const agents = _agentsForPanel();
   let list = agents.filter((a) => a.install_state !== "none");
   const _hOrder = ["AI Agent", "AI IDE", "IDE Plugin", "其他"];
   list.sort((a, b) => {

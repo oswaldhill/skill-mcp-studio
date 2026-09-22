@@ -9,6 +9,27 @@
 
 ### 修复
 
+- **CC Switch 不再是「一个 AI Agent」（FEAT-6）**：CC Switch（`com.ccswitch.desktop`）
+  是**供应商切换器 + 本地代理**，给 Claude Code / Codex / Gemini / OpenCode 切换配置
+  （其库中 `providers` 按 app_type 分 claude/codex/gemini/opencode；`mcp_servers` 带
+  `enabled_claude`/`enabled_codex`/`enabled_gemini`/`enabled_opencode`/`enabled_hermes`
+  标志）。它自身不做推理、不跑 agent 循环，也不消费 MCP——它是把 MCP **注入**别的
+  客户端。同时它带技能管理功能（282 条技能 / 10 个远端仓库），故 `~/.cc-switch/skills`
+  是统一技能库的挂载点。它既不是 IDE 也不是 Agent。
+  此前它被自动发现登记成带点的目录名 `.cc-switch`、类型推断成「AI Agent」、
+  安装状态因发现条目缺 `install` 段而误判为 `none`，再被 UI 的
+  `install_state !== "none"` 过滤掉——于是「看不见」，但那是**安装判定失败导致的
+  巧合**，一旦修好安装判定它就会冒出来并被算成一个 Agent。
+  现在在 `config.yaml` 中给它正规身份（`name: CC Switch`、`type: 配置工具`、
+  `install.app_bundles`、`skills_paths`、`non_agent: true`）。因 `effective_tools`
+  按归一化名去重（`.cc-switch` 与 `CC Switch` 同归一为 `ccswitch`），该声明与发现
+  条目**字段级合并**，幽灵条目随之消失、名字与类型被修正。可见范围明确为：
+  **技能审计里可见**（185 技能，`skills_compliant` 亦转正，审计退出码 0），
+  **IDE/Agent 表与统计里不可见**（`is_agent: false`，前端统一经
+  `_agentsForPanel()` 取数），**MCP 面板里不出现**（它不消费 MCP）。
+  同时把 `cc-switch` 从 `scanner.py` 的「AI Agent」类型关键词中移除，
+  消除与 `config.yaml`「非 AI Agent」注释的自相矛盾。
+
 - **新增「被外部工具改写」识别与一键回流（DATA-8）**：`~/.codex/config.toml` 这类
   文件是**多写者竞争**的。实测：CC Switch 每次切换通道都用它自己的两个片段
   （当前 provider 的 `config` + `codex` 通用配置）重新生成整份文件，而这两个片段里
@@ -61,7 +82,12 @@
   缺失异常」，并与「声明要挂却没挂仍判缺失」的对照组一并断言；新增 `DriftDetectionTest`
   5 例锁定漂移判据（有备份+缺失=外部改写、无备份=尚未应用、无缺失不报、文件不存在不抛）。
 - `tests/test_dashboard_mcp_ui.py` 13 → 26 例。
-- 全量 **570 passed, 28 subtests**。
+- `tests/test_management_snapshot.py` 新增 `NonAgentClientTest` 4 例，锁定
+  「技能审计可见 / IDE/Agent 表不可见 / MCP 面板不可见」三条边界。
+- 新增 `tests/test_dashboard_agents_panel.py` 7 例：静态锁定所有 IDE/Agent 面板
+  必须经 `_agentsForPanel()` 取数（防回归），并用 node 驱动真实
+  `renderHomeListView` 断言非 IDE/Agent 既不入行也不计数、旧快照缺字段时不丢行。
+- 全量 **607 passed, 28 subtests**。
 
 > 以下为合入 `master` 前累积的未发布记录。
 
