@@ -167,6 +167,42 @@ class SearchTest(unittest.TestCase):
         self.assertNotIn("check", called)
         self.assertNotIn("update", called)
 
+    def test_url_pairs_with_its_own_entry_not_by_order(self):
+        """URL 必须绑定到它上方的条目；若某条缺 URL，后面的不得整体错位。
+        样例取自真实输出（含 ASCII banner 与 └ 行）。"""
+        sample = (
+            "███████╗██╗  ██╗\n\n"
+            "Install with npx skills add <owner/repo@skill>\n\n"
+            "a/one@first 10K installs\n"
+            "\u2514 https://skills.sh/a/one/first\n\n"
+            "b/two@no-url 5K installs\n\n"
+            "c/three@third 1K installs\n"
+            "\u2514 https://skills.sh/c/three/third\n"
+        )
+        with mock.patch("skill_market._run_npx",
+                        return_value={"code": 0, "stdout": sample, "stderr": ""}):
+            out = search("x")
+        by = {r["package"]: r["url"] for r in out["results"]}
+        self.assertEqual(by["a/one@first"], "https://skills.sh/a/one/first")
+        self.assertIsNone(by["b/two@no-url"])
+        self.assertEqual(by["c/three@third"], "https://skills.sh/c/three/third")
+
+    def test_banner_is_not_parsed_as_result(self):
+        with mock.patch("skill_market._run_npx",
+                        return_value={"code": 0,
+                                      "stdout": "██╗     ██╗\n╚═╝     ╚═╝\n", "stderr": ""}):
+            out = search("x")
+        self.assertEqual(out["results"], [])
+
+    def test_no_result_message_is_relayed_verbatim(self):
+        """npx skills find 无结果时退出码为 0，转述它的原文案而非自造措辞。"""
+        with mock.patch("skill_market._run_npx",
+                        return_value={"code": 0,
+                                      "stdout": '\nNo skills found for "zzz"\n', "stderr": ""}):
+            out = search("zzz")
+        self.assertEqual(out["results"], [])
+        self.assertIn("No skills found", out["reason"])
+
 
 if __name__ == "__main__":
     unittest.main()

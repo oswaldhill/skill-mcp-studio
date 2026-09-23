@@ -161,8 +161,14 @@ _SPINNER = "\u25d0\u25d3\u25d1\u25d2\u280b\u2819\u2839\u2838\u283c\u2834\u2826\u
 _PROGRESS_RE = re.compile(
     rf"^[{_SPINNER}\s]*(?:Fetching|Cloning|Updating)[^\n]*\n?", re.M
 )
-_ENTRY_RE = re.compile(r"^([\w.\-]+/[\w.\-]+@[\w.\-]+)\s+(.*?installs?)\s*$", re.M)
-_URL_RE = re.compile(r"^\s*\u2514\s+(https?://\S+)\s*$", re.M)
+# 真实输出的形态是「条目行 + 紧邻的 └ URL 行」成对出现，因此按块解析，
+# 不按出现顺序分别收集再配对 —— 那样一旦某条缺 URL 就会整体错位。
+_PAIR_RE = re.compile(
+    r"^([\w.\-]+/[\w.\-]+@[\w.\-]+)\s+(.*?installs?)\s*$"
+    r"(?:\n\s*\u2514\s+(https?://\S+)\s*$)?",
+    re.M,
+)
+_NO_RESULT_RE = re.compile(r'No skills found for "?([^"\n]*)"?')
 
 
 def strip_ansi(text: str) -> str:
@@ -197,12 +203,16 @@ def search(query: str, owner: Optional[str] = None) -> Dict[str, Any]:
         }
 
     clean = strip_ansi(res["stdout"])
-    urls = _URL_RE.findall(clean)
-    results = []
-    for idx, (pkg, installs) in enumerate(_ENTRY_RE.findall(clean)):
-        results.append({
-            "package": pkg,
-            "installs": installs.strip(),
-            "url": urls[idx] if idx < len(urls) else None,
-        })
-    return {"results": results, "reason": "" if results else "未找到匹配技能"}
+    results = [
+        {"package": pkg, "installs": installs.strip(), "url": url or None}
+        for pkg, installs, url in _PAIR_RE.findall(clean)
+    ]
+    if results:
+        return {"results": results, "reason": ""}
+    # npx skills find 在无结果时退出码仍为 0，只打印一行说明；原样转述它，
+    # 比自造「未找到匹配技能」更有用。
+    m = _NO_RESULT_RE.search(clean)
+    return {
+        "results": [],
+        "reason": m.group(0).strip() if m else "未找到匹配技能",
+    }
