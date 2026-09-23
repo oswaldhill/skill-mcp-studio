@@ -663,6 +663,29 @@ def _run_single_profile_snapshot(args, config, config_path) -> int:
     return 0 if ok else 1
 
 
+def _non_agent_names(config_path) -> set:
+    """FEAT-7 口径：声明 non_agent 的客户端（如 CC Switch）不进技能面板。
+
+    它同时管着合并预览（GUI「修复链接」弹窗）的统计与实写：`~/.cc-switch/skills`
+    是 CC Switch 自管的挂载点，本工具不代它修链接，也不该计入"总路径"。
+    曾因这里漏了过滤，卡片显示 7 条路径而用户实际只有 6 个 IDE/Agent。
+    """
+    return {normalized_name(t.get("name", ""))
+            for t in effective_tools(load_config(config_path))
+            if t.get("name") and t.get("non_agent")}
+
+
+def _drop_non_agent_rows(scan_result, config_path):
+    """按 _non_agent_names 口径过滤扫描行。预览与实写共用，杜绝两处不同源。"""
+    names = _non_agent_names(config_path)
+    if not names:
+        return scan_result
+    return {**scan_result, "results": [
+        r for r in scan_result.get("results", [])
+        if normalized_name(r.get("tool_name", "")) not in names
+    ]}
+
+
 def _run_fix_skills_preview(args, config, config_path) -> int:
     """「一键合并预览」机读出口（--fix-skills --format json）。
 
@@ -674,27 +697,35 @@ def _run_fix_skills_preview(args, config, config_path) -> int:
     严格只读：修复计划始终以 dry_run=True 生成（真正写入走 --fix-skills 的
     11 阶段主流程，由 GUI 的「确认实写」按钮触发）。
     """
+    tools = effective_tools(load_config(config_path))
+    # 与 IDE/Agent 页保持统一（FEAT-7）：只纳入「已安装 / 仅配置」的客户端，
+    # 过滤掉 install_state == "none" 的幽灵条目与 non_agent 客户端。
+    # 过滤必须发生在 fix_all 之前：修复计划要和表格同源，否则预览显示 N 项、
+    # 实写却按另一套口径执行。
+    install_by_name = {
+        normalized_name(t.get("name", "")): detect_installation(t)["install_state"]
+        for t in tools
+        if t.get("name")
+    }
+
     try:
         scan_result = run_scan(config_path=config_path, auto_discover=args.discover)
-        fix_result = fix_all(scan_result, dry_run=True, client=args.client)
-        changes = compute_changes(scan_result)
     except Exception as exc:  # 预览失败不得拖垮 GUI
         print(json.dumps({"kind": "fix-skills-preview", "error": str(exc)}, ensure_ascii=False, indent=2))
         return 2
 
-    # 与 IDE/Agent 页保持统一：只纳入「已安装 / 仅配置」的客户端，
-    # 过滤掉 install_state == "none" 的幽灵条目（无 app/cli/config，本机根本不存在）。
-    # 否则合并清单里会出现 IDE/Agent 页看不到的未安装客户端，造成两处口径不一致。
-    install_by_name = {
-        normalized_name(t.get("name", "")): detect_installation(t)["install_state"]
-        for t in effective_tools(load_config(config_path))
-        if t.get("name")
-    }
-    scan_results = scan_result.get("results", [])
+    scan_result = _drop_non_agent_rows(scan_result, config_path)
     scan_results = [
-        r for r in scan_results
+        r for r in scan_result.get("results", [])
         if install_by_name.get(normalized_name(r.get("tool_name", ""))) != "none"
     ]
+    scan_result = {**scan_result, "results": scan_results}
+    try:
+        fix_result = fix_all(scan_result, dry_run=True, client=args.client)
+        changes = compute_changes(scan_result)
+    except Exception as exc:
+        print(json.dumps({"kind": "fix-skills-preview", "error": str(exc)}, ensure_ascii=False, indent=2))
+        return 2
 
     payload = {
         "kind": "fix-skills-preview",
@@ -1964,6 +1995,9 @@ def main() -> int:
     # 阶段 6: 修复（--fix 或 --full 时执行）
     # ================================================================
     if args.fix:
+        # FEAT-7 口径：non_agent 客户端（CC Switch 等）不进技能面板，也不代修链接。
+        # 与「修复链接」弹窗的预览同源过滤，否则预览显示 6 项、实写按 7 项执行。
+        scan_result = _drop_non_agent_rows(scan_result, config_path)
         ops_log("fix_skills_begin", action="fix_skills", client=args.client, dry_run=bool(args.dry_run))
         try:
             print("")

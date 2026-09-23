@@ -531,6 +531,17 @@
 
   /* 进度 / 结果对话框 */
   .task-card { width: min(420px, 94vw) !important; }
+  /* 长耗时 CLI 调用期间的进度对话框（FEAT-11 UX 整改）：
+     复用 task-card 的视觉语言，但完成即自动消失——刷新/统计会高频触发，
+     强制多点一次「完成」只会招烦。z-index 高于 .modal-backdrop(50)。 */
+  .busy-backdrop {
+    position: fixed; inset: 0; z-index: 70;
+    display: flex; align-items: center; justify-content: center;
+    padding: 16px; background: rgba(0,0,0,.42);
+    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  }
+  .busy-time { font-family: var(--mono, monospace); font-size: var(--fs-sm); color: var(--muted); margin-top: 10px; }
+  .busy-note { font-size: var(--fs-xs); color: var(--faint); margin-top: 4px; }
   .task-spinner {
     width: 34px; height: 34px; border-radius: 50%;
     margin: 0 auto 16px; flex: none;
@@ -1403,6 +1414,14 @@
 </div>
 
 <div id="modal-root"></div>
+<div id="busy-root" class="busy-backdrop hidden" role="status" aria-live="polite">
+  <div class="modal cfm-card task-card">
+    <div class="task-spinner"></div>
+    <div class="cfm-title" id="busy-label">执行中…</div>
+    <div class="busy-time" id="busy-time">已用 0 秒</div>
+    <div class="busy-note">全量扫描需要 30 秒以上，对话框会在完成后自动关闭</div>
+  </div>
+</div>
 <div id="toast-root" class="toast-root"></div>
 <div id="pop-root"></div>
 
@@ -3472,8 +3491,29 @@ document.querySelectorAll("#settings-tabs .settings-tab").forEach((btn) => {
 const tauriInvoke = window.__TAURI__ && (
   (window.__TAURI__.core && window.__TAURI__.core.invoke) || window.__TAURI__.invoke
 );
-async function runCli(args) {
+let _busyTimer = null;
+function showBusy(label) {
+  const el = $("busy-root"); if (!el) return;
+  const t0 = Date.now();
+  const lb = $("busy-label"); if (lb) lb.textContent = label || "执行中…";
+  const tm = $("busy-time"); if (tm) tm.textContent = "已用 0 秒";
+  el.classList.remove("hidden");
+  clearInterval(_busyTimer);
+  _busyTimer = setInterval(() => {
+    const t = $("busy-time");
+    if (t) t.textContent = "已用 " + Math.round((Date.now() - t0) / 1000) + " 秒";
+  }, 1000);
+}
+function hideBusy() {
+  clearInterval(_busyTimer); _busyTimer = null;
+  const el = $("busy-root"); if (el) el.classList.add("hidden");
+}
+
+// progress：给长耗时调用挂进度对话框。hideBusy 放 finally —— 异常路径也必须收，
+// 否则对话框卡死全屏锁输入（没有比"关不掉的进度框"更糟的反馈）。
+async function runCli(args, progress) {
   if (!tauriInvoke) { showBanner("warn", "当前为浏览器预览模式：写操作不会执行（需在桌面 App 中运行）。"); return null; }
+  if (progress) showBusy(progress);
   try {
     const res = await tauriInvoke("run_cli", { args });
     return JSON.parse(res);
@@ -3489,6 +3529,8 @@ async function runCli(args) {
       showBanner("err", "命令执行失败：" + msg);
     }
     return null;
+  } finally {
+    if (progress) hideBusy();
   }
 }
 
@@ -3546,7 +3588,7 @@ function loadInternal(discover) {
   return (async () => {
     const args = ["--management", "--format", "json"];
     if (discover) args.push("--discover");
-    const mgmt = await runCli(args);
+    const mgmt = await runCli(args, "更新审计：扫描全部技能与客户端（约 30 秒）");
     if (mgmt && mgmt.code === 0) { render(JSON.parse(mgmt.stdout)); clearBanner(); }
     else showBanner("err", (mgmt && mgmt.stderr) || "扫描失败");
   })();
@@ -3591,6 +3633,9 @@ async function reprobeEndpoints(btnEl) {
     LOADING = false;
     if (btn) { btn.disabled = false; btn.textContent = orig; }
   }
+  showToast(ok ? "ok" : "err", ok ? "探活完成" : "探活失败");
+}
+
 
   // ---------------- 技能使用统计（FEAT-10） ----------------
   // 判据全部在后端（core/skill_usage.py）：只认工具调用记录里的技能路径。
@@ -3609,6 +3654,7 @@ async function reprobeEndpoints(btnEl) {
     if (!el) return;
     const open = show === undefined ? el.classList.contains("hidden") : show;
     el.classList.toggle("hidden", !open);
+    if (open) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
     if (open && !USAGE_DATA) runSkillUsage();
   }
 
@@ -3633,7 +3679,7 @@ async function reprobeEndpoints(btnEl) {
     const args = ["--skill-usage", "--format", "json"];
     const since = usageSince(USAGE_DAYS);
     if (since) args.push("--usage-since", since);
-    const res = await runCli(args);
+    const res = await runCli(args, "统计技能使用：通读全部会话日志（约 30 秒）");
     if (btn) btn.disabled = false;
     if (!res || res.code !== 0) {
       setUsageStatus("");
@@ -3699,6 +3745,7 @@ async function reprobeEndpoints(btnEl) {
     if (!el) return;
     const open = show === undefined ? el.classList.contains("hidden") : show;
     el.classList.toggle("hidden", !open);
+    if (open) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
     if (open && !ADVICE_DATA) runMergeAdvice();
   }
 
@@ -3711,7 +3758,7 @@ async function reprobeEndpoints(btnEl) {
     const args = ["--merge-advice", "--format", "json"];
     const since = usageSince(ADVICE_DAYS);
     if (since) args.push("--usage-since", since);
-    const res = await runCli(args);
+    const res = await runCli(args, "分析整理建议：汇总使用数据并按判据配对（约 35 秒）");
     if (btn) btn.disabled = false;
     if (!res || res.code !== 0) {
       setAdviceStatus("");
@@ -3805,6 +3852,7 @@ async function reprobeEndpoints(btnEl) {
     if (!el) return;
     const open = show === undefined ? el.classList.contains("hidden") : show;
     el.classList.toggle("hidden", !open);
+    if (open) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
     if (open && !MARKET_DATA.sources) loadMarketSources();
   }
 
@@ -3868,7 +3916,7 @@ async function reprobeEndpoints(btnEl) {
     renderMarketProgress([{ text: `正在搜索「${q}」`, kind: "info" }]);
     try {
       const res = await runCli(["--market", "search", "--market-query", q,
-                                "--format", "json"]);
+                                "--format", "json"], `搜索技能市场：「${q}」（联网查询）`);
       if (!res || res.code !== 0) {
         appendMarketProgress((res && res.stderr) || "搜索失败", "err");
         return;
@@ -3913,7 +3961,7 @@ async function reprobeEndpoints(btnEl) {
     if (btn) { btn.disabled = true; btn.textContent = "检查中…"; }
     renderMarketProgress([{ text: "正在检查更新（只读，不会修改任何技能）", kind: "info" }]);
     try {
-      const res = await runCli(["--market", "check", "--format", "json"]);
+      const res = await runCli(["--market", "check", "--format", "json"], "检查技能更新：逐个查询上游（耗时取决于网络）");
       if (!res || res.code !== 0) {
         appendMarketProgress((res && res.stderr) || "检查失败", "err");
         return;
@@ -3979,13 +4027,13 @@ async function reprobeEndpoints(btnEl) {
 
   async function executeMarketInstall(pkg) {
     appendMarketProgress(`正在安装 ${pkg}`, "info");
-    const res = await runCli(["--market-install", pkg, "--yes", "--format", "json"]);
+    const res = await runCli(["--market-install", pkg, "--yes", "--format", "json"], `安装 ${pkg}：拉取上游仓库`);
     reportMarketExec(res, `安装 ${pkg}`);
   }
 
   async function executeMarketUpgrade(name) {
     appendMarketProgress(`正在升级 ${name}`, "info");
-    const res = await runCli(["--market-upgrade", name, "--yes", "--format", "json"]);
+    const res = await runCli(["--market-upgrade", name, "--yes", "--format", "json"], `升级 ${name}：拉取最新版本`);
     reportMarketExec(res, `升级 ${name}`);
   }
 
@@ -4003,9 +4051,6 @@ async function reprobeEndpoints(btnEl) {
                          ok ? "ok" : "warn");
     showToast(ok ? "ok" : "err", ok ? `${what} 完成` : `${what} 未生效`);
   }
-  showToast(ok ? "ok" : "err", ok ? "探活完成" : "探活失败");
-}
-
 function showAgentDetail(name) {
   const a = (SNAP && SNAP.agents || []).find((x) => x.name === name);
   if (!a) { showBanner("err", "未找到客户端 " + name); return; }
@@ -4494,7 +4539,7 @@ function openUnifiedDirModal() {
 
 async function openMergePreview() {
   showToast("info", "正在生成合并预览（dry-run）…", { loading: true });
-  const preview = await runCli(["--fix-skills", "--dry-run", "--format", "json"]);
+  const preview = await runCli(["--fix-skills", "--dry-run", "--format", "json"], "生成链接修复预览（只读 dry-run）");
   if (!preview || preview.code !== 0) { showToast("err", (preview && preview.stderr) || "预览失败"); return; }
   let data;
   try { data = JSON.parse(preview.stdout || "{}"); }
@@ -4580,7 +4625,7 @@ function renderMergePreview(data) {
   $("mg-apply").onclick = async () => {
     closeModal();
     showBanner("warn", "正在执行合并（实写）…");
-    const apply = await runCli(["--fix-skills"]);
+    const apply = await runCli(["--fix-skills"], "执行链接修复：自动备份，失败回滚");
     if (apply && apply.code === 0) { showBanner("ok", "合并完成：" + (apply.stdout || "").split("\n").slice(0, 2).join(" ")); loadInternal(); }
     else showBanner("err", (apply && apply.stderr) || "合并失败（已回滚）");
   };
