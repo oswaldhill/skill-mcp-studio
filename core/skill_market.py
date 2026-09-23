@@ -88,3 +88,63 @@ def read_sources() -> Dict[str, Any]:
                 ),
             }
     return {"backend": backend, "sources": sources}
+
+
+_AGENTS_DIR = Path.home() / ".agents"
+_DEFAULT_LOCK = _AGENTS_DIR / ".skill-lock.json"
+_SKILLS_DIR = Path.home() / ".skills-manager" / "skills"
+
+
+def _read_lock(lock_path: Path) -> Dict[str, Any]:
+    try:
+        return json.loads(Path(lock_path).read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError):
+        return {}
+
+
+def list_installed(
+    lock_path: Optional[Path] = None,
+    skills_dir: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """已装技能清单：lock 的来源登记 + 统一库实体目录。
+
+    folder_hash 归一为 None —— 实测该字段恒为空字符串，若原样透出会被
+    调用方误当作版本标识。
+    """
+    lock_path = Path(lock_path) if lock_path else _DEFAULT_LOCK
+    skills_dir = Path(skills_dir) if skills_dir else _SKILLS_DIR
+
+    lock = _read_lock(lock_path)
+    registered = lock.get("skills") or {}
+
+    hashes = set()
+    if skills_dir.is_dir():
+        # 技能库根目录含 .git 等元数据目录，它们不是技能，必须排除。
+        hashes = {
+            d.name for d in skills_dir.iterdir()
+            if d.is_dir() and not d.name.startswith(".")
+        }
+
+    installed: List[Dict[str, Any]] = []
+    for name in sorted(hashes | set(registered)):
+        meta = registered.get(name) or {}
+        raw_hash = meta.get("skillFolderHash") or ""
+        installed.append({
+            "name": name,
+            "source": meta.get("source"),
+            "source_type": meta.get("sourceType"),
+            "source_url": meta.get("sourceUrl"),
+            "skill_path": meta.get("skillPath"),
+            "installed_at": meta.get("installedAt"),
+            "updated_at": meta.get("updatedAt"),
+            "folder_hash": raw_hash or None,
+            "on_disk": name in hashes,
+            "registered": name in registered,
+        })
+
+    reason = ""
+    if not lock_path.exists():
+        reason = f"未找到来源登记 {lock_path}；仅列出磁盘上的技能"
+    return {"installed": installed, "reason": reason, "lock_path": str(lock_path)}
