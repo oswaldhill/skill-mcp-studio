@@ -1305,6 +1305,7 @@
       <div class="page-head">
         <div class="hd"><h2>Skills</h2><div class="hint">技能清单与每客户端启用状态</div></div>
         <div class="page-actions">
+          <button class="btn-soft" data-action="refresh-skills">刷新技能</button>
           <button class="btn-soft" data-action="merge">一键合并技能</button>
         </div>
       </div>
@@ -3511,14 +3512,19 @@ function loadInternal(discover) {
   })();
 }
 
-// 刷新审计：按钮进入 loading 态 + 防重复点击，重新拉取管理快照
+// 刷新审计：按钮进入 loading 态 + 防重复点击，重新拉取管理快照。
+// 快照是整份的（概览/IDE-Agent/Skills/MCP 同源），故各页共用此逻辑；toast 文案
+// 直接复用按钮自身的标签（去掉「刷新」前缀后回填），避免写死「刷新审计」而在
+// Skills 页对不上——也不做「刷新」+标签的拼接，否则「重新扫描」会变成
+// 「正在刷新重新扫描…」这种病句。
 async function refreshWithBtn(btnEl) {
   if (LOADING) return;
   LOADING = true;
   const btn = btnEl;
   const orig = btn ? btn.textContent : "";
+  const label = (orig || "").replace(/^刷新/, "") || "数据";
   if (btn) { btn.disabled = true; btn.textContent = "刷新中…"; }
-  showToast("info", "正在刷新审计…", { loading: true });
+  showToast("info", `正在刷新${label}…`, { loading: true });
   let ok = false;
   try {
     ok = await loadManagement();
@@ -3526,7 +3532,7 @@ async function refreshWithBtn(btnEl) {
     LOADING = false;
     if (btn) { btn.disabled = false; btn.textContent = orig; }
   }
-  showToast(ok ? "ok" : "err", ok ? "刷新完成" : "刷新失败");
+  showToast(ok ? "ok" : "err", ok ? `${label}已刷新` : "刷新失败");
 }
 
 // 重新探活：重跑 --management 快照（内含 live_probe），给出探活专用反馈。
@@ -4571,6 +4577,7 @@ document.addEventListener("click", (e) => {
     else if (a === "refresh-audit") refreshWithBtn(act);
     else if (a === "rescan") doRescan(act);
     else if (a === "refresh") refreshWithBtn(act);
+    else if (a === "refresh-skills") refreshWithBtn(act);
     else if (a === "reprobe") reprobeEndpoints(act);
     else if (a === "fix-all") fixAllSkillsMcp();
     else if (a === "set-dir") openUnifiedDirModal();
