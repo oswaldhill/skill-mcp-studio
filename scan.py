@@ -1087,6 +1087,29 @@ def _run_skill_usage(args) -> int:
     return 0
 
 
+def _run_merge_advice(args) -> int:
+    """`--merge-advice` 只读出口：技能整理建议（FEAT-11）。
+
+    全程只读：判据在 `skill_merge_advisor` 内，本函数不写盘、不移动、不删除。
+    `--usage-since` 复用于窗口过滤，因为 `load`/`sessions` 参与保留者打分。
+    """
+    from skill_merge_advisor import scan_advice, summarize_text
+
+    want_json = getattr(args, "format", None) == "json"
+    try:
+        payload = scan_advice(since=getattr(args, "usage_since", None))
+    except Exception as exc:                      # 库缺失等异常不中断其他流程
+        payload = {"error": str(exc)}
+
+    if want_json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    elif payload.get("error"):
+        print(f"  ❌ {payload['error']}")
+    else:
+        print(summarize_text(payload))
+    return 0
+
+
 def _run_skill_migrate(args, config, config_path) -> int:
     """Migrate root-form clients to per-skill symlinks (design §14.1 P2).
 
@@ -1481,6 +1504,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--usage-since", type=str, default=None, metavar="ISO_DATE",
         help="配合 --skill-usage：只统计该日期之后的动作（如 2026-08-24）",
     )
+    # === 技能整理建议（FEAT-11，只读，不删不改不移）===
+    parser.add_argument(
+        "--merge-advice", action="store_true",
+        help="产出技能整理建议（只读）：可执行合并组 / 上游仅标注 / 已否决变体，不删改任何文件",
+    )
     parser.add_argument(
         "--client-command", type=str, default=None,
         help="配合 --add-client：安装检测用的 CLI 命令（如 foo）",
@@ -1686,6 +1714,11 @@ def main() -> int:
     # JSON.parse，必须排在通用快照路由之前。
     if getattr(args, "skill_usage", False):
         return _run_skill_usage(args)
+
+    # 技能整理建议（FEAT-11）同上：只读且 GUI 会 JSON.parse 整段 stdout，
+    # 必须排在通用快照路由之前，否则输出会被快照截走。
+    if getattr(args, "merge_advice", False):
+        return _run_merge_advice(args)
 
     # 阶段二：--all-profiles 一次遍历全部 profile，输出跨 profile 汇总报告。
     if getattr(args, "all_profiles", False):

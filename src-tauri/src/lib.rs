@@ -199,6 +199,8 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
         "--market",
         // 技能使用统计（FEAT-10）：只读，解析客户端会话日志，不写盘。
         "--skill-usage",
+        // 技能整理建议（FEAT-11）：只读判据，不删、不改、不移动任何技能目录。
+        "--merge-advice",
     ];
     // Reject redirection-class flags outright (they re-point the engine at an
     // arbitrary config/profile file, a privilege escalation vector).

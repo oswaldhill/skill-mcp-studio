@@ -47,8 +47,13 @@
 `actionable` **3 组** —— `ima`+`ima-skill`（T1，保留 load=21 的 `ima`）、
 `skills-mcp-unifier`+`skills-unifier`（T1）、`grafana-dashboard`+`-dashboards`+
 `-dashboarding`（T3，三合一组而非三对）；`upstream_only` 0 组；
-词表拦截 **18 对**，**全部**来自 `sensteed` 族（`*-review` 两两 × 语言限定词）。
-即：护栏把一个都没有漏，也没有误伤真重复。
+词表拦截 **24 对**（`variant`）+ 悬空转发 4 条（`dangling_alias`），被拦的对
+全部来自 `sensteed` 族与 `grafana`/`lark` 的实现面变体。即：护栏把一个都没有漏，
+也没有误伤真重复。
+
+> 注：初版预演记的是 18 对，实现时把中文分词从"整段当一个词"改为**字符二元组**
+> （否则 T4 对中文技能永久失效，见 §3.1 分词说明），被拦数升到 24。
+> actionable 三组不变 —— 说明改动只增加了召回，没有放松护栏。
 
 另发现 **4 个死壳指向不存在的技能**：`lark-minutes`/`lark-note`/`lark-vc`/`lark-vc-agent`
 均声明"统一交由 `lark-meeting` 处理"，但库中**无 `lark-meeting` 目录**（含 meeting 的只有
@@ -89,6 +94,14 @@ lock 文件实际位置 `~/.agents/.skill-lock.json`，`skills` 段登记 **58 �
 | **T4 弱相似** | token Jaccard ≥ 0.6 **且**名称 token 对称差集**全部**落在噪声后缀集 | 需过词表关 |
 
 ### 3.1 两张词表（T4 的关卡，第二张优先）
+
+**分词口径**：拉丁词取 `>=3` 字母，**中文按字符二元组（bigram）切**。
+起初用 `[\u4e00-\u9fff]{2,}` 把整段中文收成一个 token，实测两段措辞略有出入的
+中文描述 Jaccard 只有 0.2（真实相似度约 0.8）——本库中文描述占多数，T4 对其
+**永久失效**。bigram 是无分词器时的标准做法。
+
+
+
 
 - **噪声后缀集（可合）**：`skill` `skills` `unified` `unifier` `manager` `pro` `max`
   `tools` `core` `suite` `helper` `common`

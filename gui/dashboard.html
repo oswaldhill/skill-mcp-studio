@@ -1306,9 +1306,10 @@
         <div class="hd"><h2>Skills</h2><div class="hint">技能清单与每客户端启用状态</div></div>
         <div class="page-actions">
           <button class="btn-soft" data-action="open-usage">使用统计</button>
+          <button class="btn-soft" data-action="open-advice">整理建议</button>
           <button class="btn-soft" data-action="open-market">技能市场</button>
           <button class="btn-soft" data-action="refresh-skills">刷新技能</button>
-          <button class="btn-soft" data-action="merge">一键合并技能</button>
+          <button class="btn-soft" data-action="merge" title="仅重建各客户端 skills 链接，不合并重复技能">修复链接</button>
         </div>
       </div>
       <div id="skills-summary" class="subline"></div>
@@ -1336,6 +1337,18 @@
         </div>
         <div id="usage-status" class="market-lines"></div>
         <div id="usage-results" class="market-results"></div>
+      </div>
+      <div id="advice-panel" class="hidden">
+        <div class="market-toolbar">
+          <span class="hint" style="color:var(--faint);font-size:var(--fs-xs)">统计窗口</span>
+          <button class="btn-soft" data-action="advice-window" data-win="30">近 30 天</button>
+          <button class="btn-soft" data-action="advice-window" data-win="90">近 90 天</button>
+          <button class="btn-soft" data-action="advice-window" data-win="0">全部</button>
+          <button class="btn-soft" data-action="advice-refresh">重新分析</button>
+          <button class="btn-soft" data-action="advice-close">收起</button>
+        </div>
+        <div id="advice-status" class="market-lines"></div>
+        <div id="advice-results" class="market-results"></div>
       </div>
       <div class="skill-search">
         <input type="text" id="skill-filter" placeholder="搜索技能名称" aria-label="搜索技能" />
@@ -1685,7 +1698,7 @@ function paletteItems() {
     { kind: "页面", label: "设置", sub: "目录、端点库、外观", run: () => switchPage("settings") },
     { kind: "操作", label: "刷新快照", sub: "重新读取管理快照", run: () => loadManagement() },
     { kind: "操作", label: "重新扫描", sub: "执行 discover 探测", run: () => doRescan() },
-    { kind: "操作", label: "一键合并技能", sub: "--fix-skills", run: () => openMergePreview() },
+    { kind: "操作", label: "修复链接", sub: "--fix-skills", run: () => openMergePreview() },
     { kind: "操作", label: "添加 IDE / API", sub: "纳入新客户端", run: () => renderAddPanel() },
     { kind: "操作", label: "管理 MCP 端点", sub: "打开设置页端点库", run: () => switchPage("settings") },
     { kind: "操作", label: "修改统一技能目录", sub: "--set-unified-dir", run: () => openUnifiedDirModal() },
@@ -1894,7 +1907,7 @@ function renderOverview() {
     "</div>" +
     '<div class="quickbox"><span class="quickbox-label">快捷操作</span>' +
     '<button class="btn-soft" data-action="add-agent">添加 IDE / API</button>' +
-    '<button class="btn-soft" data-action="merge">一键合并技能</button>' +
+    '<button class="btn-soft" data-action="merge">修复链接</button>' +
     '<button class="btn-soft" data-action="reprobe">重新探活</button>' +
     '<button class="btn-soft" data-goto="settings">管理 MCP 端点</button>' +
     "</div>";
@@ -2466,7 +2479,7 @@ function renderSkillList() {
   const pageItems = shown.slice(pageStart, pageStart + SKILL_PAGE_SIZE);
 
   if (!shown.length) {
-    lel.innerHTML = '<div class="empty">无匹配技能<div class="empty-cta"><button class="primary sm" data-action="merge">一键合并技能</button></div></div>';
+    lel.innerHTML = '<div class="empty">无匹配技能<div class="empty-cta"><button class="primary sm" data-action="merge">修复链接</button></div></div>';
     renderSkillPager(0, 0, 0);
     return;
   }
@@ -3669,6 +3682,114 @@ async function reprobeEndpoints(btnEl) {
         `零触达 ${never.length} 个（日志里从未被加载，合并/清理优先观察）：` +
         never.slice(0, 24).join("、") + (never.length > 24 ? " …" : ""), "warn"));
     }
+  }
+
+  // ---------------- 技能整理建议（FEAT-11） ----------------
+  // 只读判据：本面板不删除、不移动、不改写任何技能目录（执行能力属 FEAT-12）。
+  let ADVICE_DATA = null;
+  let ADVICE_DAYS = 30;
+
+  function setAdviceStatus(text) {
+    const el = $("advice-status");
+    if (el) { el.innerHTML = ""; el.appendChild(usageLine(text || "")); }
+  }
+
+  function toggleAdvicePanel(show) {
+    const el = $("advice-panel");
+    if (!el) return;
+    const open = show === undefined ? el.classList.contains("hidden") : show;
+    el.classList.toggle("hidden", !open);
+    if (open && !ADVICE_DATA) runMergeAdvice();
+  }
+
+  async function runMergeAdvice(btn) {
+    const out = $("advice-results");
+    if (!out) return;
+    if (btn) btn.disabled = true;
+    setAdviceStatus("分析中… 需通读全部会话日志再按判据配对，约 35 秒");
+    out.innerHTML = "";
+    const args = ["--merge-advice", "--format", "json"];
+    const since = usageSince(ADVICE_DAYS);
+    if (since) args.push("--usage-since", since);
+    const res = await runCli(args);
+    if (btn) btn.disabled = false;
+    if (!res || res.code !== 0) {
+      setAdviceStatus("");
+      out.appendChild(usageLine("分析失败：" + ((res && res.stderr) || "无返回").slice(0, 200), "err"));
+      return;
+    }
+    let data = null;
+    try { data = JSON.parse(res.stdout || "{}"); }
+    catch (e) { data = null; }
+    if (!data || data.error) {
+      setAdviceStatus("");
+      out.appendChild(usageLine("分析失败：" + ((data && data.error) || "返回数据无法解析"), "err"));
+      return;
+    }
+    ADVICE_DATA = data;
+    renderAdvice(data);
+  }
+
+  function memberLine(d) {
+    const marks = [];
+    if (d.has_scripts) marks.push("含脚本");
+    if (d.has_license) marks.push("含 LICENSE 但无 lock 登记");
+    if (!d.load) marks.push("零触达");
+    const when = (d.last_used || "").slice(0, 10) || "未记录";
+    return usageLine(
+      `        · ${d.name}　加载 ${d.load}｜会话 ${d.sessions}｜最近 ${when}` +
+      (marks.length ? `（${marks.join("、")}）` : ""), null);
+  }
+
+  function renderAdvice(data) {
+    const sum = data.summary || {};
+    const win = data.since ? `窗口 ${data.since} 起` : "全部时间";
+    setAdviceStatus(
+      `${win}｜扫描 ${sum.scanned || 0} 个技能｜可执行合并 ${sum.actionable_groups || 0} 组` +
+      `｜上游仅标注 ${sum.upstream_only_groups || 0} 组｜已否决 ${sum.rejected_entries || 0} 条`);
+    const out = $("advice-results");
+    out.innerHTML = "";
+
+    const act = data.actionable || [];
+    if (act.length) {
+      out.appendChild(usageLine(`可执行合并（${act.length} 组，本面板不会替你执行）：`));
+      act.forEach((g) => {
+        out.appendChild(usageLine(
+          `  [${g.rule}] 保留 ${g.keep} ← 归并 ${(g.fold || []).join("、")}` +
+          ((g.rules_hit || []).length > 1 ? `　（同时命中 ${g.rules_hit.join("/")}）` : ""), "ok"));
+        out.appendChild(usageLine(`        依据：${g.evidence || ""}`));
+        (g.detail || []).forEach((d) => out.appendChild(memberLine(d)));
+      });
+    } else {
+      out.appendChild(usageLine("没有发现可安全合并的重复技能：高相似对都被实质限定词护栏判为有意变体。", "ok"));
+    }
+
+    const ups = data.upstream_only || [];
+    if (ups.length) {
+      out.appendChild(usageLine(""));
+      out.appendChild(usageLine(`上游技能（${ups.length} 组）：仅标注，升级会覆盖本地改动，合并应回到上游仓库处理`));
+      ups.slice(0, 12).forEach((g) => {
+        const src = Array.from(new Set(Object.values(g.sources || {}).filter(Boolean))).join("、") || "未知来源";
+        out.appendChild(usageLine(`  [${g.rule}] ${(g.members || []).join("、")}　来源 ${src}`, "warn"));
+      });
+    }
+
+    const rej = data.rejected || [];
+    if (rej.length) {
+      out.appendChild(usageLine(""));
+      out.appendChild(usageLine(`判据已否决（${rej.length} 条，留痕以免日后重复提议合并）：`));
+      rej.slice(0, 18).forEach((r) => {
+        const gate = (r.blocked_by || []).join("、");
+        out.appendChild(usageLine(
+          `  · ${(r.members || []).join(" × ")}　${r.verdict || ""}` +
+          (gate ? `（${gate}）` : ""), "warn"));
+      });
+      if (rej.length > 18) {
+        out.appendChild(usageLine(`  …另有 ${rej.length - 18} 条，命令行 scan.py --merge-advice --format json 可看全部`));
+      }
+    }
+    out.appendChild(usageLine(""));
+    out.appendChild(usageLine("本面板全程只读：不删除、不移动、不改写任何技能目录。"));
   }
 
   // ---------------- 技能市场（FEAT-9） ----------------
@@ -4916,6 +5037,14 @@ document.addEventListener("click", (e) => {
       USAGE_DAYS = parseInt(act.dataset.win || "30", 10);
       USAGE_DATA = null;
       runSkillUsage(act);
+    }
+    else if (a === "open-advice") toggleAdvicePanel();
+    else if (a === "advice-close") toggleAdvicePanel(false);
+    else if (a === "advice-refresh") runMergeAdvice(act);
+    else if (a === "advice-window") {
+      ADVICE_DAYS = parseInt(act.dataset.win || "30", 10);
+      ADVICE_DATA = null;
+      runMergeAdvice(act);
     }
     else if (a === "open-market") toggleMarketPanel();
     else if (a === "market-close") toggleMarketPanel(false);
