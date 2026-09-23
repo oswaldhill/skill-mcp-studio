@@ -89,5 +89,43 @@ class MarketCliHumanOutputTest(unittest.TestCase):
         self.assertIn("有更新", proc.stdout)
 
 
+class MarketWriteCliTest(unittest.TestCase):
+    """写操作 CLI：必须 --yes 门禁，且测试期绝不真的执行。"""
+
+    def _run(self, *args):
+        return subprocess.run(
+            [sys.executable, str(SCAN), *args],
+            capture_output=True, text=True, timeout=120, cwd=str(ROOT),
+        )
+
+    def test_install_without_yes_is_refused(self):
+        proc = self._run("--market-install", "a/b@c")
+        self.assertEqual(proc.returncode, 2, "未加 --yes 必须拒绝")
+        self.assertIn("--yes", proc.stdout)
+        self.assertIn("add a/b@c -g", proc.stdout)
+
+    def test_upgrade_without_yes_is_refused(self):
+        proc = self._run("--market-upgrade", "some-skill")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("--yes", proc.stdout)
+
+    def test_install_and_upgrade_are_mutually_exclusive(self):
+        proc = self._run("--market-install", "a/b", "--market-upgrade", "x", "--yes")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("互斥", proc.stdout)
+
+    def test_empty_upgrade_name_is_refused(self):
+        proc = self._run("--market-upgrade", "  ", "--yes")
+        self.assertEqual(proc.returncode, 2)
+
+    def test_dry_run_path_did_not_touch_skills(self):
+        """未加 --yes 的调用绝不能碰到技能库。"""
+        skills = Path.home() / ".skills-manager" / "skills"
+        before = {p.name: p.stat().st_mtime_ns for p in skills.iterdir()}
+        self._run("--market-install", "zzz/no-such-skill@nope")
+        after = {p.name: p.stat().st_mtime_ns for p in skills.iterdir()}
+        self.assertEqual(before, after)
+
+
 if __name__ == "__main__":
     unittest.main()

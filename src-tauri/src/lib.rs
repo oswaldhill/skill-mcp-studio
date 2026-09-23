@@ -194,6 +194,9 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
         "--export-skill",
         "--rename-skill",
         "--delete-skill",
+        // 技能市场（FEAT-9）：只读出口（sources/list/search/check）。
+        // 安装与升级不经此通道：它们需要二次确认，且属于写操作。
+        "--market",
     ];
     // Reject redirection-class flags outright (they re-point the engine at an
     // arbitrary config/profile file, a privilege escalation vector).

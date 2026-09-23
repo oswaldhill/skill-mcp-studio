@@ -987,6 +987,51 @@ def _run_market(args) -> int:
     return 0
 
 
+def _run_market_write(args) -> int:
+    """市场写操作出口（安装 / 升级）。
+
+    必须先 --yes：市场技能来自第三方仓库，静默安装是供应链风险。
+    """
+    from skill_market_ops import execute_plan, plan_install, plan_upgrade
+
+    if args.market_install and args.market_upgrade:
+        print("  ❌ --market-install 与 --market-upgrade 互斥")
+        return 2
+
+    if args.market_install:
+        plan = plan_install(args.market_install)
+        what = f"安装 {args.market_install}"
+    else:
+        names = [n for n in str(args.market_upgrade).split(",") if n.strip()]
+        plan = plan_upgrade(names)
+        what = "升级 " + "、".join(plan.get("names") or names)
+
+    if not plan.get("ok"):
+        print(f"  ❌ {plan.get('reason')}")
+        return 2
+
+    if not getattr(args, "yes", False):
+        print(f"  待执行：{what}")
+        print(f"  命令：npx skills {' '.join(plan['argv'])}")
+        print("  这是写操作，确认后请加 --yes 重跑。")
+        return 2  # 非 0：本次未执行任何写操作
+
+    result = execute_plan(plan)
+    want_json = getattr(args, "format", None) == "json"
+    if want_json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        mark = "完成" if result["ok"] else "失败"
+        print(f"  {what} {mark}")
+        if result.get("verify"):
+            v = result["verify"]
+            print(f"  已确认在统一库: {len(v.get('present') or [])} 个"
+                  f"，缺失 {len(v.get('missing') or [])} 个")
+        if not result["ok"] and result.get("stderr"):
+            print(f"  {result['stderr'][:300]}")
+    return 0 if result["ok"] else 1
+
+
 def _print_market(payload: dict, kind: str) -> None:
     """人读输出。与 --format json 同源，避免两套口径。"""
     if payload.get("error"):
@@ -1392,6 +1437,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="配合 --market search：搜索词",
     )
     parser.add_argument(
+        "--market-install", type=str, default=None, metavar="PKG",
+        help="从技能市场安装（写操作，需 --yes）：包名形如 owner/repo@skill",
+    )
+    parser.add_argument(
+        "--market-upgrade", type=str, default=None, metavar="NAME",
+        help="升级已装技能（写操作，需 --yes）：可按逗号分隔多个技能名",
+    )
+    parser.add_argument(
+        "--yes", action="store_true",
+        help="配合 --market-install/--market-upgrade：确认执行写操作",
+    )
+    parser.add_argument(
         "--client-command", type=str, default=None,
         help="配合 --add-client：安装检测用的 CLI 命令（如 foo）",
     )
@@ -1589,6 +1646,8 @@ def main() -> int:
     # 只读；安装/升级不在 CLI 出口内。
     if getattr(args, "market", None):
         return _run_market(args)
+    if getattr(args, "market_install", None) or getattr(args, "market_upgrade", None):
+        return _run_market_write(args)
 
     # 阶段二：--all-profiles 一次遍历全部 profile，输出跨 profile 汇总报告。
     if getattr(args, "all_profiles", False):

@@ -1305,11 +1305,24 @@
       <div class="page-head">
         <div class="hd"><h2>Skills</h2><div class="hint">技能清单与每客户端启用状态</div></div>
         <div class="page-actions">
+          <button class="btn-soft" data-action="open-market">技能市场</button>
           <button class="btn-soft" data-action="refresh-skills">刷新技能</button>
           <button class="btn-soft" data-action="merge">一键合并技能</button>
         </div>
       </div>
       <div id="skills-summary" class="subline"></div>
+
+      <div id="market-panel" class="hidden">
+        <div class="market-toolbar">
+          <input type="text" id="market-query" placeholder="搜索技能市场" aria-label="搜索技能市场" />
+          <button class="btn-soft" data-action="market-search">搜索</button>
+          <button class="btn-soft" data-action="market-check">检查更新</button>
+          <button class="btn-soft" data-action="market-close">收起</button>
+        </div>
+        <div id="market-sources" class="market-lines"></div>
+        <div id="market-progress" class="market-lines"></div>
+        <div id="market-results" class="market-results"></div>
+      </div>
       <div class="skill-search">
         <input type="text" id="skill-filter" placeholder="搜索技能名称" aria-label="搜索技能" />
         <span class="hint" id="skill-filter-count" style="color:var(--faint);font-size:var(--fs-xs)"></span>
@@ -3551,6 +3564,210 @@ async function reprobeEndpoints(btnEl) {
     LOADING = false;
     if (btn) { btn.disabled = false; btn.textContent = orig; }
   }
+
+  // ---------------- 技能市场（FEAT-9） ----------------
+  // 数据一律经 CLI 的只读出口取得（scan.py --market ...），前端不解析 npx 输出。
+  // 检查更新绝不用 npx skills check（该命令名为检查、实为升级），后端已改为只读比对。
+
+  function toggleMarketPanel(show) {
+    const el = $("market-panel");
+    if (!el) return;
+    const open = show === undefined ? el.classList.contains("hidden") : show;
+    el.classList.toggle("hidden", !open);
+    if (open && !MARKET_DATA.sources) loadMarketSources();
+  }
+
+  async function loadMarketSources() {
+    const res = await runCli(["--market", "sources", "--format", "json"]);
+    if (!res || res.code !== 0) {
+      renderMarketSources(null, (res && res.stderr) || "读取失败");
+      return;
+    }
+    try {
+      renderMarketSources(JSON.parse(res.stdout || "{}"), "");
+    } catch (e) {
+      renderMarketSources(null, "返回数据无法解析");
+    }
+  }
+
+  function renderMarketSources(data, err) {
+    const el = $("market-sources");
+    if (!el) return;
+    el.innerHTML = "";
+    if (err || !data) { el.appendChild(marketLine(err || "无数据", "err")); return; }
+    Object.values(data.sources || {}).forEach((s) => {
+      const text = `${s.label}：${s.available ? "可用" : "未检测到"}`;
+      el.appendChild(marketLine(s.reason ? `${text}，${s.reason}` : text,
+                                s.available ? "ok" : "warn"));
+    });
+  }
+
+  function marketLine(text, kind) {
+    const div = document.createElement("div");
+    div.className = "market-line" + (kind ? " " + kind : "");
+    div.textContent = text;
+    return div;
+  }
+
+  // 逐技能进度：每行独立追加，长任务期间用户能看到逐项结果而不是只等一个汇总。
+  function renderMarketProgress(lines) {
+    const el = $("market-progress");
+    if (!el) return;
+    el.innerHTML = "";
+    (lines || []).forEach((ln) => {
+      el.appendChild(marketLine(ln.text, ln.kind));
+    });
+  }
+
+  function appendMarketProgress(text, kind) {
+    const el = $("market-progress");
+    if (!el) return;
+    el.appendChild(marketLine(text, kind));
+  }
+
+  async function runMarketSearch(btn) {
+    const input = $("market-query");
+    const q = ((input && input.value) || "").trim();
+    if (!q) { showToast("err", "请输入搜索词"); return; }
+    if (btn) { btn.disabled = true; btn.textContent = "搜索中…"; }
+    renderMarketProgress([{ text: `正在搜索「${q}」`, kind: "info" }]);
+    try {
+      const res = await runCli(["--market", "search", "--market-query", q,
+                                "--format", "json"]);
+      if (!res || res.code !== 0) {
+        appendMarketProgress((res && res.stderr) || "搜索失败", "err");
+        return;
+      }
+      renderMarketResults(JSON.parse(res.stdout || "{}"));
+    } catch (e) {
+      appendMarketProgress("搜索返回无法解析", "err");
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = "搜索"; }
+    }
+  }
+
+  function renderMarketResults(data) {
+    renderMarketProgress([]);
+    const results = data.results || [];
+    const el = $("market-results");
+    if (el) el.innerHTML = "";
+    if (!results.length) {
+      appendMarketProgress(data.reason || "未找到匹配技能", "warn");
+      return;
+    }
+    results.forEach((r) => {
+      appendMarketProgress(`${r.package}　${r.installs}`, "ok");
+      if (!el) return;
+      const row = document.createElement("div");
+      row.className = "market-result";
+      const label = document.createElement("span");
+      label.textContent = r.package;
+      if (r.url) label.title = r.url;
+      const btn = document.createElement("button");
+      btn.className = "btn-soft";
+      btn.dataset.action = "market-install";
+      btn.dataset.pkg = r.package;
+      btn.textContent = "安装";
+      row.appendChild(label);
+      row.appendChild(btn);
+      el.appendChild(row);
+    });
+  }
+
+  async function runMarketCheck(btn) {
+    if (btn) { btn.disabled = true; btn.textContent = "检查中…"; }
+    renderMarketProgress([{ text: "正在检查更新（只读，不会修改任何技能）", kind: "info" }]);
+    try {
+      const res = await runCli(["--market", "check", "--format", "json"]);
+      if (!res || res.code !== 0) {
+        appendMarketProgress((res && res.stderr) || "检查失败", "err");
+        return;
+      }
+      renderMarketUpdates(JSON.parse(res.stdout || "{}"));
+    } catch (e) {
+      appendMarketProgress("检查返回无法解析", "err");
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = "检查更新"; }
+    }
+  }
+
+  // 逐技能渲染检查结果。限流时明确说明，避免用户以为技能来源失效。
+  function renderMarketUpdates(data) {
+    renderMarketProgress([]);
+    const s = data.summary || {};
+    appendMarketProgress(
+      `共 ${s.total || 0}：有更新 ${s.outdated || 0}，已最新 ${s.current || 0}，无法检测 ${s.unknown || 0}`,
+      "info");
+    if (s.rate_limited) {
+      appendMarketProgress(s.hint || "GitHub 配额已用尽", "warn");
+    }
+    const el = $("market-results");
+    if (el) el.innerHTML = "";
+    (data.updates || []).forEach((u) => {
+      const tag = u.state === "outdated" ? "有更新"
+                : u.state === "current" ? "已最新" : "无法检测";
+      const kind = u.state === "outdated" ? "warn"
+                 : u.state === "current" ? "ok" : "info";
+      const when = u.remote_commit ? `，远端 ${u.remote_commit}` : (u.note ? `，${u.note}` : "");
+      appendMarketProgress(`${u.name}：${tag}${when}`, kind);
+      if (u.state === "outdated" && el) {
+        const btn = document.createElement("button");
+        btn.className = "btn-soft";
+        btn.dataset.action = "market-upgrade";
+        btn.dataset.name = u.name;
+        btn.textContent = `升级 ${u.name}`;
+        el.appendChild(btn);
+      }
+    });
+  }
+
+  // 安装与升级必须二次确认：市场技能来自第三方仓库，存在供应链风险。
+  function confirmMarketInstall(pkg) {
+    if (!pkg) return;
+    const msg = "确定要安装「" + pkg + "」吗？\n\n来源为第三方仓库，安装前请确认可信。";
+    if (!window.confirm(msg)) {
+      appendMarketProgress(`已取消安装 ${pkg}`, "info");
+      return;
+    }
+    executeMarketInstall(pkg);
+  }
+
+  function confirmMarketUpgrade(name) {
+    if (!name) return;
+    const msg = "确定要升级「" + name + "」吗？\n\n将拉取上游最新版本并覆盖本地内容。";
+    if (!window.confirm(msg)) {
+      appendMarketProgress(`已取消升级 ${name}`, "info");
+      return;
+    }
+    executeMarketUpgrade(name);
+  }
+
+  async function executeMarketInstall(pkg) {
+    appendMarketProgress(`正在安装 ${pkg}`, "info");
+    const res = await runCli(["--market-install", pkg, "--yes", "--format", "json"]);
+    reportMarketExec(res, `安装 ${pkg}`);
+  }
+
+  async function executeMarketUpgrade(name) {
+    appendMarketProgress(`正在升级 ${name}`, "info");
+    const res = await runCli(["--market-upgrade", name, "--yes", "--format", "json"]);
+    reportMarketExec(res, `升级 ${name}`);
+  }
+
+  function reportMarketExec(res, what) {
+    if (!res || res.code !== 0) {
+      appendMarketProgress(`${what} 失败：${(res && res.stderr) || "无输出"}`, "err");
+      showToast("err", `${what} 失败`);
+      return;
+    }
+    let ok = true;
+    try {
+      ok = JSON.parse(res.stdout || "{}").ok !== false;
+    } catch (e) { ok = false; }
+    appendMarketProgress(ok ? `${what} 完成` : `${what} 未生效（请在技能库中核对）`,
+                         ok ? "ok" : "warn");
+    showToast(ok ? "ok" : "err", ok ? `${what} 完成` : `${what} 未生效`);
+  }
   showToast(ok ? "ok" : "err", ok ? "探活完成" : "探活失败");
 }
 
@@ -4578,6 +4795,12 @@ document.addEventListener("click", (e) => {
     else if (a === "rescan") doRescan(act);
     else if (a === "refresh") refreshWithBtn(act);
     else if (a === "refresh-skills") refreshWithBtn(act);
+    else if (a === "open-market") toggleMarketPanel();
+    else if (a === "market-close") toggleMarketPanel(false);
+    else if (a === "market-search") runMarketSearch(act);
+    else if (a === "market-check") runMarketCheck(act);
+    else if (a === "market-install") confirmMarketInstall(act.dataset.pkg);
+    else if (a === "market-upgrade") confirmMarketUpgrade(act.dataset.name);
     else if (a === "reprobe") reprobeEndpoints(act);
     else if (a === "fix-all") fixAllSkillsMcp();
     else if (a === "set-dir") openUnifiedDirModal();
