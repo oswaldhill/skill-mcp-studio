@@ -1063,6 +1063,30 @@ def _print_market(payload: dict, kind: str) -> None:
                 print(f"    {r['name']:32} 远端 {r.get('remote_commit')}")
 
 
+def _run_skill_usage(args) -> int:
+    """`--skill-usage` 只读出口：技能使用统计。
+
+    数据源是各客户端落盘的会话日志（当前仅 Codex 可靠），全程只读、不写盘。
+    判据只认工具调用记录（function_call / custom_tool_call）里的技能路径，
+    会话注入的技能清单与工具返回内容都不算使用，否则命中数会虚高到全量误报。
+    """
+    from skill_usage import scan_usage, summarize_text
+
+    want_json = getattr(args, "format", None) == "json"
+    try:
+        payload = scan_usage(since=getattr(args, "usage_since", None))
+    except Exception as exc:                      # 日志缺失/损坏不应中断其他流程
+        payload = {"error": str(exc)}
+
+    if want_json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    elif payload.get("error"):
+        print(f"  ❌ {payload['error']}")
+    else:
+        print(summarize_text(payload))
+    return 0
+
+
 def _run_skill_migrate(args, config, config_path) -> int:
     """Migrate root-form clients to per-skill symlinks (design §14.1 P2).
 
@@ -1448,6 +1472,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--yes", action="store_true",
         help="配合 --market-install/--market-upgrade：确认执行写操作",
     )
+    # === 技能使用统计（FEAT-10，只读、零侵入）===
+    parser.add_argument(
+        "--skill-usage", action="store_true",
+        help="统计各技能的真实使用情况（读 Codex 会话日志）：加载/浏览/编辑 + 最近使用时间",
+    )
+    parser.add_argument(
+        "--usage-since", type=str, default=None, metavar="ISO_DATE",
+        help="配合 --skill-usage：只统计该日期之后的动作（如 2026-08-24）",
+    )
     parser.add_argument(
         "--client-command", type=str, default=None,
         help="配合 --add-client：安装检测用的 CLI 命令（如 foo）",
@@ -1648,6 +1681,11 @@ def main() -> int:
         return _run_market(args)
     if getattr(args, "market_install", None) or getattr(args, "market_upgrade", None):
         return _run_market_write(args)
+
+    # 技能使用统计（FEAT-10）同上：只读，且带 --format json 供 GUI 直接
+    # JSON.parse，必须排在通用快照路由之前。
+    if getattr(args, "skill_usage", False):
+        return _run_skill_usage(args)
 
     # 阶段二：--all-profiles 一次遍历全部 profile，输出跨 profile 汇总报告。
     if getattr(args, "all_profiles", False):

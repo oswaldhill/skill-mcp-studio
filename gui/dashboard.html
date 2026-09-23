@@ -1305,6 +1305,7 @@
       <div class="page-head">
         <div class="hd"><h2>Skills</h2><div class="hint">技能清单与每客户端启用状态</div></div>
         <div class="page-actions">
+          <button class="btn-soft" data-action="open-usage">使用统计</button>
           <button class="btn-soft" data-action="open-market">技能市场</button>
           <button class="btn-soft" data-action="refresh-skills">刷新技能</button>
           <button class="btn-soft" data-action="merge">一键合并技能</button>
@@ -1322,6 +1323,19 @@
         <div id="market-sources" class="market-lines"></div>
         <div id="market-progress" class="market-lines"></div>
         <div id="market-results" class="market-results"></div>
+      </div>
+
+      <div id="usage-panel" class="hidden">
+        <div class="market-toolbar">
+          <span class="hint" style="color:var(--faint);font-size:var(--fs-xs)">统计窗口</span>
+          <button class="btn-soft" data-action="usage-window" data-win="30">近 30 天</button>
+          <button class="btn-soft" data-action="usage-window" data-win="90">近 90 天</button>
+          <button class="btn-soft" data-action="usage-window" data-win="0">全部</button>
+          <button class="btn-soft" data-action="usage-refresh">重新统计</button>
+          <button class="btn-soft" data-action="usage-close">收起</button>
+        </div>
+        <div id="usage-status" class="market-lines"></div>
+        <div id="usage-results" class="market-results"></div>
       </div>
       <div class="skill-search">
         <input type="text" id="skill-filter" placeholder="搜索技能名称" aria-label="搜索技能" />
@@ -3565,7 +3579,103 @@ async function reprobeEndpoints(btnEl) {
     if (btn) { btn.disabled = false; btn.textContent = orig; }
   }
 
+  // ---------------- 技能使用统计（FEAT-10） ----------------
+  // 判据全部在后端（core/skill_usage.py）：只认工具调用记录里的技能路径。
+  // 前端只负责窗口选择与渲染，不重复实现任何判定逻辑。
+  let USAGE_DATA = null;
+  let USAGE_DAYS = 30;
+
+  function usageSince(days) {
+    if (!days) return null;
+    const d = new Date(Date.now() - days * 86400000);
+    return d.toISOString().slice(0, 10);
+  }
+
+  function toggleUsagePanel(show) {
+    const el = $("usage-panel");
+    if (!el) return;
+    const open = show === undefined ? el.classList.contains("hidden") : show;
+    el.classList.toggle("hidden", !open);
+    if (open && !USAGE_DATA) runSkillUsage();
+  }
+
+  function usageLine(text, kind) {
+    const div = document.createElement("div");
+    div.className = "market-line" + (kind ? " " + kind : "");
+    div.textContent = text;
+    return div;
+  }
+
+  function setUsageStatus(text) {
+    const el = $("usage-status");
+    if (el) { el.innerHTML = ""; el.appendChild(usageLine(text || "")); }
+  }
+
+  async function runSkillUsage(btn) {
+    const out = $("usage-results");
+    if (!out) return;
+    if (btn) btn.disabled = true;
+    setUsageStatus("统计中… 需通读全部会话日志，约 30 秒");
+    out.innerHTML = "";
+    const args = ["--skill-usage", "--format", "json"];
+    const since = usageSince(USAGE_DAYS);
+    if (since) args.push("--usage-since", since);
+    const res = await runCli(args);
+    if (btn) btn.disabled = false;
+    if (!res || res.code !== 0) {
+      setUsageStatus("");
+      out.appendChild(usageLine("统计失败：" + ((res && res.stderr) || "无返回").slice(0, 200), "err"));
+      return;
+    }
+    let data = null;
+    try { data = JSON.parse(res.stdout || "{}"); }
+    catch (e) { data = null; }
+    if (!data || data.error) {
+      setUsageStatus("");
+      out.appendChild(usageLine("统计失败：" + ((data && data.error) || "返回数据无法解析"), "err"));
+      return;
+    }
+    USAGE_DATA = data;
+    renderUsage(data);
+  }
+
+  function renderUsage(data) {
+    const s = data.summary || {};
+    const win = data.since ? `窗口 ${data.since} 起` : "全部时间";
+    setUsageStatus(
+      `${win}｜通读 ${data.scanned_files} 个会话文件｜技能相关调用 ${data.tool_calls} 次` +
+      `｜已装 ${s.installed || 0}｜被加载 ${s.loaded || 0}｜零触达 ${(s.never_used || []).length}`
+    );
+    const out = $("usage-results");
+    out.innerHTML = "";
+
+    const rows = data.ranking || [];
+    if (!rows.length) {
+      out.appendChild(usageLine("窗口内没有任何技能被调用记录。", "warn"));
+      return;
+    }
+    rows.slice(0, 30).forEach((r, i) => {
+      const when = (r.last_used || "").slice(0, 10) || "未记录";
+      const kind = r.load > 0 ? "ok" : "warn";
+      out.appendChild(usageLine(
+        `${String(i + 1).padStart(2, " ")}. ${r.name}　加载 ${r.load}｜浏览 ${r.browse}` +
+        `｜改写 ${r.edit}｜最近 ${when}`, kind));
+    });
+
+    const never = s.never_used || [];
+    if (never.length) {
+      out.appendChild(usageLine("", null));
+      out.appendChild(usageLine(
+        `零触达 ${never.length} 个（日志里从未被加载，合并/清理优先观察）：` +
+        never.slice(0, 24).join("、") + (never.length > 24 ? " …" : ""), "warn"));
+    }
+  }
+
   // ---------------- 技能市场（FEAT-9） ----------------
+  // 已加载的源状态。缺这行声明时 toggleMarketPanel 会抛 ReferenceError，
+  // 面板打开后源可用性永远不会加载（实测踩到过，故显式声明并加静态守卫）。
+  const MARKET_DATA = { sources: null };
+
   // 数据一律经 CLI 的只读出口取得（scan.py --market ...），前端不解析 npx 输出。
   // 检查更新绝不用 npx skills check（该命令名为检查、实为升级），后端已改为只读比对。
 
@@ -3583,11 +3693,15 @@ async function reprobeEndpoints(btnEl) {
       renderMarketSources(null, (res && res.stderr) || "读取失败");
       return;
     }
+    let data = null;
     try {
-      renderMarketSources(JSON.parse(res.stdout || "{}"), "");
+      data = JSON.parse(res.stdout || "{}");
     } catch (e) {
       renderMarketSources(null, "返回数据无法解析");
+      return;
     }
+    MARKET_DATA.sources = data.sources || {};
+    renderMarketSources(data, "");
   }
 
   function renderMarketSources(data, err) {
@@ -4795,6 +4909,14 @@ document.addEventListener("click", (e) => {
     else if (a === "rescan") doRescan(act);
     else if (a === "refresh") refreshWithBtn(act);
     else if (a === "refresh-skills") refreshWithBtn(act);
+    else if (a === "open-usage") toggleUsagePanel();
+    else if (a === "usage-close") toggleUsagePanel(false);
+    else if (a === "usage-refresh") runSkillUsage(act);
+    else if (a === "usage-window") {
+      USAGE_DAYS = parseInt(act.dataset.win || "30", 10);
+      USAGE_DATA = null;
+      runSkillUsage(act);
+    }
     else if (a === "open-market") toggleMarketPanel();
     else if (a === "market-close") toggleMarketPanel(false);
     else if (a === "market-search") runMarketSearch(act);

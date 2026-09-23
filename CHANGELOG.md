@@ -20,7 +20,29 @@
   **归一无须额外机制**：装到 `~/.agents/skills` 即已落在统一库，因为它是
   `~/.skills-manager/skills` 的符号链接（`ls -ldi` 实测），四项客户端目录同理。
 
+- **技能使用统计（FEAT-10）**：Skills 页新增「使用统计」面板，回答「这个技能到底有没有被
+  用过、最近一次是什么时候」，为后续的合并与清理提供事实依据。数据取自各客户端落盘的
+  会话日志（当前唯一可靠通路是 Codex：`~/.codex/archived_sessions` 与按日期嵌套的
+  `~/.codex/sessions`，实测后者比前者还多 500+ 个文件，必须递归收集）。全程只读、不写盘。
+  **判据只认工具调用记录**（`response_item.payload.type ∈ {function_call, custom_tool_call}`）
+  里出现的技能路径：每个会话都会把全量技能清单注入 developer message（`host_skills`），
+  工具返回内容也会回显别家技能的 `SKILL.md` 路径，若按技能名直接 grep，命中数会虚高到
+  **100% 误报**。按动作强度分三档：`load`=触达 `<skill>/` 下具体文件（读取或被 `spawn_agent`
+  显式派给子 agent，是「在用」的强信号）、`browse`=仅目录级引用（`ls` 浏览）、
+  `edit`=`apply_patch`/`write` 改写（维护动作，不计入使用）。
+  两个实测踩过的解析坑：`arguments` 是**二次编码的 JSON 字符串**，匹配前须把 `\/` 还原成
+  `/`；`skills/hermes/`（带尾斜杠但无后续段）是浏览而非加载，早期用 `(\/)?` 前瞻会把
+  `ls skills/hermes/` 误判成 `load`。CLI 出口 `scan.py --skill-usage [--usage-since ISO_DATE]
+  [--format json]`。**本机实测结论**：202 个已装技能中，全时段仅 74 个被真正加载过，
+  127 个零触达 —— 这是清理与合并的首要目标集。
+
 ### 修复
+
+- **市场面板打开后源状态永不加载**：`toggleMarketPanel()` 引用了全文件从未声明的
+  `MARKET_DATA`，一执行到该行就抛 `ReferenceError`，导致面板显示为空白。`node --check`
+  与全部单测都是绿的——因为没有任何测试真正执行这段 JS。补上声明与写入，并新增一条
+  **静态守卫**（`UndeclaredStateRefTest`）：剥离字符串/注释后，扫描「全大写对象被引用
+  却从未声明」的差集；配套一条植入样本的守卫自检，防止守卫本身空转。
 
 - **技能面板与 IDE/Agent 表口径统一（FEAT-7）**：技能面板列 7 个客户端、IDE/Agent 表
   列 6 个，同一界面里两个数字对不上——差异来自 CC Switch：它按 FEAT-6 标了

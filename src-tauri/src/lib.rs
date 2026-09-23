@@ -197,6 +197,8 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
         // 技能市场（FEAT-9）：只读出口（sources/list/search/check）。
         // 安装与升级不经此通道：它们需要二次确认，且属于写操作。
         "--market",
+        // 技能使用统计（FEAT-10）：只读，解析客户端会话日志，不写盘。
+        "--skill-usage",
     ];
     // Reject redirection-class flags outright (they re-point the engine at an
     // arbitrary config/profile file, a privilege escalation vector).
