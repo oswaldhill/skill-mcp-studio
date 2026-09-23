@@ -7,6 +7,19 @@
 
 ## [Unreleased]
 
+### 新增
+
+- **技能市场接入（FEAT-9）**：接入 skills.sh 社区技能库，Skills 页新增「技能市场」面板，
+  提供只读的源可用性、已装清单（含来源仓库与装/更新时间）、搜索与版本更新检测，以及
+  经二次确认的在线安装/升级；进度按**逐技能**粒度展示。
+  检查更新是纯只读实现——**不调用 `npx skills check`**：该命令名为检查、实为升级
+  （实测一次调用即更新 41 个技能，且未出现在 `--help` 中），`npx skills update` 亦无
+  `--dry-run`。改为 GitHub API 按 `skillPath` 取最新提交时间与 `.skill-lock.json` 的
+  `updatedAt` 比对，纯 HTTP GET，不写盘；命中限流（未鉴权每小时 60 次）时区分于
+  「仓库不存在」并立即短路，提示设 `GITHUB_TOKEN`。
+  **归一无须额外机制**：装到 `~/.agents/skills` 即已落在统一库，因为它是
+  `~/.skills-manager/skills` 的符号链接（`ls -ldi` 实测），四项客户端目录同理。
+
 ### 修复
 
 - **技能面板与 IDE/Agent 表口径统一（FEAT-7）**：技能面板列 7 个客户端、IDE/Agent 表
