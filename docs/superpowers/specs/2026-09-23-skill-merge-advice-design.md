@@ -43,6 +43,17 @@
   `grafana-dashboard` / `grafana-dashboards` / `grafana-dashboarding`
 - **描述 token Jaccard ≥ 0.6**：26 对，其中约 **14 对是假阳性**
 
+**判据预演（把四规则套到 202 个技能上的真实产出，作为实现验收基准）**：
+`actionable` **3 组** —— `ima`+`ima-skill`（T1，保留 load=21 的 `ima`）、
+`skills-mcp-unifier`+`skills-unifier`（T1）、`grafana-dashboard`+`-dashboards`+
+`-dashboarding`（T3，三合一组而非三对）；`upstream_only` 0 组；
+词表拦截 **18 对**，**全部**来自 `sensteed` 族（`*-review` 两两 × 语言限定词）。
+即：护栏把一个都没有漏，也没有误伤真重复。
+
+另发现 **4 个死壳指向不存在的技能**：`lark-minutes`/`lark-note`/`lark-vc`/`lark-vc-agent`
+均声明"统一交由 `lark-meeting` 处理"，但库中**无 `lark-meeting` 目录**（含 meeting 的只有
+`lark-workflow-meeting-summary`、`wecomcli-meeting`），且四者在 FEAT-10 中全部零触达。
+
 ### 2.3 决定性反例（决定了判据不能只看相似度）
 
 `sensteed-java17-standard` × `sensteed-java8-standard` 的 **Jaccard = 1.00**（全库最高分之一），
@@ -109,6 +120,16 @@ lock 文件实际位置 `~/.agents/.skill-lock.json`，`skills` 段登记 **58 �
 | 混合（上游 × 自持） | 进 `rejected`，`verdict="跨来源并存，需选边：改用上游版或自持一份，不归并"` |
 
 混合对不放第四张清单，避免界面复杂度上升。
+
+**T2 的悬空目标特例（真实数据回灌）**：`lark-minutes` / `lark-note` / `lark-vc` /
+`lark-vc-agent` 四个壳都写着"统一交由 **lark-meeting** 技能处理"，但实测
+`~/.skills-manager/skills/` 下**没有 `lark-meeting` 目录**（含 meeting 的只有
+`lark-workflow-meeting-summary` 与 `wecomcli-meeting`）。这类不是合并机会，而是
+**悬空转发缺陷**：壳在把请求交给一个不存在的地方。故规定：T2 命中但 `fold_into`
+目标目录不存在时，**不进 `actionable`**，落 `rejected`，
+`verdict="转发目标缺失（悬空引用），不构成合并建议"`，并透出 `fold_into_exists: false`。
+成员只要有一个"有上游"就整组按上游处理，故这 4 个壳同时满足 `upstream_only` 条件；
+**悬空判定优先于上游分流**（它更接近缺陷而非归属问题）。
 
 **「有上游」是运维口径，不是作者归属**（已确认的取舍）：定义 = **在 `.skill-lock.json`
 有登记**，因为只有登记项会被 `npx skills update` 复原。实测有 10 个技能带 `LICENSE`
@@ -221,6 +242,10 @@ T1–T4、两张词表、上游分流全在这一个纯函数内。判据测试�
 - `keep` 打分：四条组内 tiebreak 逐项断言（load/描述长度/scripts/字典序），
   另断言「无上游」是**组级准入**：构造含上游成员的组，它必须落 `upstream_only` 而非 `actionable`
 - 三清单互斥；输出确定性（两次调用逐字节一致）
+- **悬空转发**：合成一个 `fold_into` 指向不存在的目录，断言它落 `rejected` 且
+  `fold_into_exists=false`，**不得**因"全组有上游"被判进 `upstream_only`（悬空优先于分流）
+- **预演基准**：断言真实数据的规则实现在合成语料上能复现 3 组 actionable 的形状
+  （同描述对、同词干三兄弟合成 1 组），把上面 §2.2 的预演结果固化成回归
 - **证据字段完整性**：`actionable` 每个成员必须齐备 `load`/`last_used`/`clients`/
   `has_scripts`/`has_license`/`lock_coverage` 六项（缺一项就剥夺了人工核验能力）；
   `upstream_only` 必须带 `source`
