@@ -80,7 +80,7 @@ lock 文件实际位置 `~/.agents/.skill-lock.json`，`skills` 段登记 **58 �
 ### 3.1 两张词表（T4 的关卡，第二张优先）
 
 - **噪声后缀集（可合）**：`skill` `skills` `unified` `unifier` `manager` `pro` `max`
-  `v2` `tools` `core` `suite` `helper` `common`
+  `tools` `core` `suite` `helper` `common`
 - **实质限定词表（命中即否决，优先于上一条）**
   - 版本号：`\d+`、`java8` `java17` `java25`、`v1` `v2` `v3`
   - 语言/平台：`android` `ios` `vue` `react` `nodejs` `python` `frontend` `java` `kotlin` `swift` `web`
@@ -110,6 +110,15 @@ lock 文件实际位置 `~/.agents/.skill-lock.json`，`skills` 段登记 **58 �
 
 混合对不放第四张清单，避免界面复杂度上升。
 
+**「有上游」是运维口径，不是作者归属**（已确认的取舍）：定义 = **在 `.skill-lock.json`
+有登记**，因为只有登记项会被 `npx skills update` 复原。实测有 10 个技能带 `LICENSE`
+文件（`byted-seedance-video-generate`、`byted-seedream-image-generate`、`figma`、
+`archify`、`dws`、`qclaw-skill-creator`、`frontend-skill` 等）明显是第三方整包，
+却**不在 lock 里**；`grafana`/`wecomcli`/`sensteed` 三族 lock 覆盖均为 0%。
+它们仍归 `actionable`，因为**归并它们不会被升级拉回，操作是安全的**。
+为免误读，`actionable` 的每个成员透出 `has_license` 与族级 `lock_coverage`，
+让人一眼看出"这个建议针对的是第三方整包但未被 lock 纳管"。
+
 ### 3.4 `keep`（推荐保留者）打分
 
 **「无上游」是组级准入门槛，不是成员级 tiebreak**：按 §3.3，能进 `actionable` 的组成员
@@ -126,6 +135,14 @@ lock 文件实际位置 `~/.agents/.skill-lock.json`，`skills` 段登记 **58 �
 lock `updatedAt` 不参与 `actionable` 打分（组内无 lock 可比），只用于 `upstream_only`
 清单的展示排序：最近被上游升级的排前面，便于判断哪个还在活跃维护。
 
+### 3.5 输出证据字段（供人工核验，缺一不可判断）
+
+`actionable` 每个成员至少透出：`name`、`load`、`last_used`、`clients`、
+`has_scripts`、`has_license`、`lock_coverage`（该技能前缀族的 lock 覆盖率，
+`0.0` 即"全族无上游登记"）。理由：判据是启发式，**看建议的人必须能凭字段自己判断
+这条建议可不可信**；只给"建议合并 X 和 Y"而不给依据，等于把误判风险转移给人却不让
+他复核。`upstream_only` 额外透出 `source`（仓库地址），因为它的作用就是"告诉你去找谁"。
+
 ## 4. 输出契约
 
 ```jsonc
@@ -139,7 +156,8 @@ lock `updatedAt` 不参与 `actionable` 打分（组内无 lock 可比），只�
       "evidence": "描述归一后逐字相同（412 字）",
       "members": [ { "name": "ima", "upstream": false, "load": 0,
                      "last_used": null, "clients": ["codex","agents"],
-                     "has_scripts": false } ] }
+                     "has_scripts": false, "has_license": false,
+                     "lock_coverage": 0.0 } ] }
   ],
   "upstream_only": [ { "rule": "T4", "members": ["lark-vc","lark-vc-agent"],
                        "sources": {"lark-vc":"...","lark-vc-agent":"..."},
@@ -183,7 +201,8 @@ T1–T4、两张词表、上游分流全在这一个纯函数内。判据测试�
 - **沿用 `market-*` 样式类，不新增 CSS**
 - 内含全量会话扫描，点击后先显示"分析中…约 35 秒"
 - 顶部复用近 30/90 天/全部窗口选择（`load` 参与 `keep` 打分）
-- 渲染三段：可执行合并组（keep/fold + 证据 + 涉及客户端）→ 上游仅标注 → 已否决变体
+- 渲染三段：可执行合并组（keep/fold + 命中规则 + 证据行 + 涉及客户端 + `has_license`
+  来源存疑标记）→ 上游仅标注（带 `source` 仓库地址）→ 已否决变体（带 `blocked_by`）
 - 组行**只读**，仅提示未来可用的 CLI；本期不放任何写操作按钮
 - 守卫：`UndeclaredStateRefTest` 自动覆盖新增 JS（该守卫曾抓出 `MARKET_DATA` 未声明缺陷）
 
@@ -202,6 +221,9 @@ T1–T4、两张词表、上游分流全在这一个纯函数内。判据测试�
 - `keep` 打分：四条组内 tiebreak 逐项断言（load/描述长度/scripts/字典序），
   另断言「无上游」是**组级准入**：构造含上游成员的组，它必须落 `upstream_only` 而非 `actionable`
 - 三清单互斥；输出确定性（两次调用逐字节一致）
+- **证据字段完整性**：`actionable` 每个成员必须齐备 `load`/`last_used`/`clients`/
+  `has_scripts`/`has_license`/`lock_coverage` 六项（缺一项就剥夺了人工核验能力）；
+  `upstream_only` 必须带 `source`
 
 **② `scan_advice` 端到端**：临时目录造假技能库 + 假 `.skill-lock.json` +
 假 `sessions/2026/09/01/*.jsonl`，断言三计数、`blocked_by` 透出、目录缺失时降级不抛异常
