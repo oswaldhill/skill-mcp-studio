@@ -158,11 +158,17 @@ lock `updatedAt` 不参与 `actionable` 打分（组内无 lock 可比），只�
 
 ### 3.5 输出证据字段（供人工核验，缺一不可判断）
 
-`actionable` 每个成员至少透出：`name`、`load`、`last_used`、`clients`、
+`actionable` 每个成员至少透出：`name`、`load`、`sessions`、`last_used`、
 `has_scripts`、`has_license`、`lock_coverage`（该技能前缀族的 lock 覆盖率，
 `0.0` 即"全族无上游登记"）。理由：判据是启发式，**看建议的人必须能凭字段自己判断
 这条建议可不可信**；只给"建议合并 X 和 Y"而不给依据，等于把误判风险转移给人却不让
 他复核。`upstream_only` 额外透出 `source`（仓库地址），因为它的作用就是"告诉你去找谁"。
+
+**`clients` 字段已被实测否决**（原计划透出"该技能被哪些客户端挂载"）：
+`~/.agents/skills`、`~/.codex/skills`、`~/.dsh/skills`、`~/.hermes/skills`、
+`~/.cc-switch/skills` **全部是指向统一库的符号链接**（`ls -l` 实测），因此每个技能的
+挂载客户端集合都完全相同，该字段零区分力，换成 `sessions`（触达会话数，FEAT-10 已产出、
+确有区分力）。教训：**放进输出契约的字段必须先证明它有方差**。
 
 ## 4. 输出契约
 
@@ -175,8 +181,8 @@ lock `updatedAt` 不参与 `actionable` 打分（组内无 lock 可比），只�
       "keep": "ima", "fold": ["ima-skill"],
       "fold_into": null,                // 仅 T2 有值：目标技能名（如 lark-meeting）
       "evidence": "描述归一后逐字相同（412 字）",
-      "members": [ { "name": "ima", "upstream": false, "load": 0,
-                     "last_used": null, "clients": ["codex","agents"],
+      "members": [ { "name": "ima", "upstream": false, "load": 21,
+                     "sessions": 12, "last_used": "2026-09-23T06:59:20.299Z",
                      "has_scripts": false, "has_license": false,
                      "lock_coverage": 0.0 } ] }
   ],
@@ -222,7 +228,7 @@ T1–T4、两张词表、上游分流全在这一个纯函数内。判据测试�
 - **沿用 `market-*` 样式类，不新增 CSS**
 - 内含全量会话扫描，点击后先显示"分析中…约 35 秒"
 - 顶部复用近 30/90 天/全部窗口选择（`load` 参与 `keep` 打分）
-- 渲染三段：可执行合并组（keep/fold + 命中规则 + 证据行 + 涉及客户端 + `has_license`
+- 渲染三段：可执行合并组（keep/fold + 命中规则 + 证据行 + `load`/`sessions` + `has_license`
   来源存疑标记）→ 上游仅标注（带 `source` 仓库地址）→ 已否决变体（带 `blocked_by`）
 - 组行**只读**，仅提示未来可用的 CLI；本期不放任何写操作按钮
 - 守卫：`UndeclaredStateRefTest` 自动覆盖新增 JS（该守卫曾抓出 `MARKET_DATA` 未声明缺陷）
@@ -246,9 +252,11 @@ T1–T4、两张词表、上游分流全在这一个纯函数内。判据测试�
   `fold_into_exists=false`，**不得**因"全组有上游"被判进 `upstream_only`（悬空优先于分流）
 - **预演基准**：断言真实数据的规则实现在合成语料上能复现 3 组 actionable 的形状
   （同描述对、同词干三兄弟合成 1 组），把上面 §2.2 的预演结果固化成回归
-- **证据字段完整性**：`actionable` 每个成员必须齐备 `load`/`last_used`/`clients`/
+- **证据字段完整性**：`actionable` 每个成员必须齐备 `load`/`sessions`/`last_used`/
   `has_scripts`/`has_license`/`lock_coverage` 六项（缺一项就剥夺了人工核验能力）；
   `upstream_only` 必须带 `source`
+- **字段方差守卫**：断言 `sessions` 在真实候选集上方差非零（防再次引入 `clients`
+  这类"每个技能取值都一样"的空字段）
 
 **② `scan_advice` 端到端**：临时目录造假技能库 + 假 `.skill-lock.json` +
 假 `sessions/2026/09/01/*.jsonl`，断言三计数、`blocked_by` 透出、目录缺失时降级不抛异常
