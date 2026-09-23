@@ -7,7 +7,18 @@
 
 ## [Unreleased]
 
-（暂无未发布变更）
+### 修复
+
+- **技能面板与 IDE/Agent 表口径统一（FEAT-7）**：技能面板列 7 个客户端、IDE/Agent 表
+  列 6 个，同一界面里两个数字对不上——差异来自 CC Switch：它按 FEAT-6 标了
+  `non_agent`，前端 IDE/Agent 面板经 `_agentsForPanel()` 排除了它，但它同时在
+  `config.yaml` 注册了 `skills_paths`，于是仍然出现在技能面板里。用户无从判断该信哪个。
+  现让非 IDE/Agent 客户端（`non_agent`）不再进入技能面板的 `clients_states`，两处统一为
+  「本机安装的 IDE/Agent」这同一批 6 个。
+  **边界**：只改 GUI 渲染数据源，技能**审计**不减弱——审计走
+  `combined_checker` → `run_scan` 的 `managed_names`，与 `clients_states` 是两条
+  独立数据链，故 CC Switch 的技能行（`~/.cc-switch/skills`，`status=correct`）照常
+  被检查，186 个技能的监督不丢。已用测试分别锁定「不进面板」与「审计仍覆盖」两侧。
 
 ## [v0.22.0] - 2026-09
 
