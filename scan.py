@@ -953,6 +953,71 @@ def _run_skill_toggle(args, config, config_path) -> int:
     return exit_code
 
 
+def _run_market(args) -> int:
+    """`--market` 只读出口。
+
+    全量禁止写操作：安装/升级由 core/skill_market_ops.py 另行处理。
+    **不调用 `npx skills check`** —— 该命令名为检查、实为升级。
+    """
+    from skill_market import check_updates, list_installed, read_sources, search
+
+    want_json = getattr(args, "format", None) == "json"
+    try:
+        if args.market == "sources":
+            payload = read_sources()
+        elif args.market == "list":
+            payload = list_installed()
+        elif args.market == "search":
+            if not args.market_query:
+                print("  ❌ --market search 需要 --market-query <词>")
+                return 2
+            payload = search(args.market_query)
+        elif args.market == "check":
+            payload = check_updates()
+        else:
+            print(f"  ❌ 未知的 --market 子命令: {args.market}")
+            return 2
+    except Exception as exc:                      # 市场不可用不应中断其他流程
+        payload = {"error": str(exc)}
+
+    if want_json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        _print_market(payload, args.market)
+    return 0
+
+
+def _print_market(payload: dict, kind: str) -> None:
+    """人读输出。与 --format json 同源，避免两套口径。"""
+    if payload.get("error"):
+        print(f"  ❌ {payload['error']}")
+        return
+    if kind == "sources":
+        for _sid, s in (payload.get("sources") or {}).items():
+            mark = "可用" if s["available"] else "不可用"
+            line = f"  {s['label']}: {mark}"
+            if s["reason"]:
+                line += f" —— {s['reason']}"
+            print(line)
+    elif kind == "list":
+        rows = payload.get("installed") or []
+        print(f"  已装 {len(rows)} 个技能")
+        for r in rows:
+            print(f"    {r['name']:32} {r.get('source') or '-'}")
+    elif kind == "search":
+        for r in payload.get("results") or []:
+            print(f"    {r['package']:56} {r['installs']}")
+        if not payload.get("results"):
+            print(f"  {payload.get('reason') or '无结果'}")
+    elif kind == "check":
+        s = payload.get("summary") or {}
+        print(f"  共 {s.get('total', 0)}：有更新 {s.get('outdated', 0)} / "
+              f"已最新 {s.get('current', 0)} / 无法检测 {s.get('unknown', 0)}")
+        for r in payload.get("updates") or []:
+            if r["state"] == "outdated":
+                print(f"    {r['name']:32} 远端 {r.get('remote_commit')}")
+
+
 def _run_skill_migrate(args, config, config_path) -> int:
     """Migrate root-form clients to per-skill symlinks (design §14.1 P2).
 
@@ -1317,6 +1382,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="配合 --add-client：安装检测用的 App Bundle 路径（如 /Applications/Foo.app）",
     )
     parser.add_argument(
+        "--market", type=str, default=None,
+        choices=["sources", "list", "search", "check"],
+        help="技能市场（只读）：sources=源可用性 list=已装清单 "
+             "search=搜索（需 --market-query）check=检查更新",
+    )
+    parser.add_argument(
+        "--market-query", type=str, default=None,
+        help="配合 --market search：搜索词",
+    )
+    parser.add_argument(
         "--client-command", type=str, default=None,
         help="配合 --add-client：安装检测用的 CLI 命令（如 foo）",
     )
@@ -1508,6 +1583,12 @@ def main() -> int:
         return _run_skill_rename(args, config, config_path)
     if getattr(args, "delete_skill", None):
         return _run_skill_delete(args, config, config_path)
+
+    # 技能市场（FEAT-9）同属这一组：它带 --format json，且 GUI 直接
+    # JSON.parse 整个 stdout，若排在通用快照路由之后会被截走。
+    # 只读；安装/升级不在 CLI 出口内。
+    if getattr(args, "market", None):
+        return _run_market(args)
 
     # 阶段二：--all-profiles 一次遍历全部 profile，输出跨 profile 汇总报告。
     if getattr(args, "all_profiles", False):

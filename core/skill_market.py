@@ -248,14 +248,26 @@ def _http_get_json(url: str, timeout: int = 20):
     if curl:
         try:
             proc = subprocess.run(
-                [curl, "-sS", "--max-time", str(timeout), *headers, url],
+                [curl, "-sS", "-w", "\n%{http_code}", "--max-time", str(timeout),
+                 *headers, url],
                 capture_output=True, text=True, timeout=timeout + 10,
             )
-            if proc.returncode == 0 and proc.stdout.strip():
-                return json.loads(proc.stdout)
-        except (subprocess.TimeoutExpired, OSError, ValueError):
+            body, _, code = proc.stdout.rpartition("\n")
+            try:
+                status = int(code.strip())
+            except ValueError:
+                status = 0
+            if proc.returncode == 0 and body.strip() and status == 200:
+                try:
+                    return json.loads(body), status
+                except ValueError:
+                    # 200 但正文不是 JSON：状态码已知，保留它，
+                    # 不要与「连不上」混为一谈。
+                    return None, status
+            return None, status
+        except (subprocess.TimeoutExpired, OSError):
             pass
-        return None
+        return None, 0
     # 回退：无 curl 时试 urllib（可能因根证书而失败）。
     try:
         req = urllib.request.Request(url, headers={
@@ -264,28 +276,40 @@ def _http_get_json(url: str, timeout: int = 20):
         if token:
             req.add_header("Authorization", f"Bearer {token}")
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return json.loads(resp.read().decode("utf-8"))
-    except (urllib.error.URLError, urllib.error.HTTPError, OSError, ValueError):
-        return None
+            return json.loads(resp.read().decode("utf-8")), resp.status
+    except urllib.error.HTTPError as exc:
+        return None, exc.code
+    except (urllib.error.URLError, OSError, ValueError):
+        return None, 0
 
 
 def _remote_commit_time(owner: str, repo: str, path: Optional[str],
                         timeout: int = 20) -> Optional[str]:
-    """主通道：GitHub API 取该路径最新提交时间（ISO8601）。只读，失败返回 None。"""
+    """主通道：GitHub API 取该路径最新提交时间。
+
+    返回 (ISO8601 时间或 None, 状态)。状态取值 ok / rate_limited /
+    no_commits / unavailable —— 限流必须与「仓库不存在」区分。
+    """
     from urllib.parse import urlencode
 
     q = {"per_page": "1"}
     if path:
         q["path"] = path
-    data = _http_get_json(
+    data, status = _http_get_json(
         _API.format(owner=owner, repo=repo) + "?" + urlencode(q), timeout
     )
+    if status in (403, 429):
+        # 未鉴权 GitHub API 每小时 60 次；命中限流时明确区分于「仓库不存在」，
+        # 否则用户会把配额问题误读成技能来源失效。
+        return None, "rate_limited"
+    if data is None:
+        return None, "unavailable"
     if not isinstance(data, list) or not data:
-        return None
+        return None, "no_commits"
     try:
-        return data[0]["commit"]["committer"]["date"]
+        return data[0]["commit"]["committer"]["date"], "ok"
     except (KeyError, TypeError, IndexError):
-        return None
+        return None, "unavailable"
 
 
 def _iso_lt(a: Optional[str], b: Optional[str]) -> bool:
@@ -308,20 +332,36 @@ def check_updates(only: Optional[List[str]] = None) -> Dict[str, Any]:
 
     counts = {"outdated": 0, "current": 0, "unknown": 0}
     rows: List[Dict[str, Any]] = []
+    rate_limited = False
     for row in judged:
         owner_repo = parse_github_source(row.get("source_url"))
+        remote, reason = None, ""
         if not owner_repo:
-            state, remote = "unknown", None
-            note = "非 GitHub 来源或缺少来源信息，无法比对"
+            reason = "非 GitHub 来源或缺少来源信息，无法比对"
+        elif rate_limited:
+            # 已确认限流就不再逐条重试：未鉴权时每小时仅 60 次，
+            # 继续请求只会把剩余配额也烧掉并拖慢整轮检查。
+            reason = "GitHub API 配额已用尽，本轮跳过（可设 GITHUB_TOKEN 提升配额）"
         else:
-            remote = _remote_commit_time(owner_repo[0], owner_repo[1], row.get("skill_path"))
-            if remote is None:
-                state, note = "unknown", "远端查询失败（私有/已删除仓库，或 API 限流）"
-            elif _iso_lt(row.get("updated_at"), remote):
-                state, note = "outdated", ""
-            else:
-                state, note = "current", ""
-        counts[state] += 1
-        rows.append(dict(row, state=state, remote_commit=remote, note=note))
+            remote, status = _remote_commit_time(
+                owner_repo[0], owner_repo[1], row.get("skill_path"))
+            if status == "rate_limited":
+                rate_limited = True
+                reason = "GitHub API 配额已用尽（可设 GITHUB_TOKEN 提升配额）"
+            elif remote is None:
+                reason = "远端查询失败（私有或已删除仓库）"
 
-    return {"updates": rows, "summary": {"total": len(rows), **counts}}
+        if remote is None:
+            state = "unknown"
+        elif _iso_lt(row.get("updated_at"), remote):
+            state = "outdated"
+        else:
+            state = "current"
+        counts[state] += 1
+        rows.append(dict(row, state=state, remote_commit=remote, note=reason))
+
+    summary = {"total": len(rows), **counts}
+    if rate_limited:
+        summary["rate_limited"] = True
+        summary["hint"] = "GitHub 未鉴权查询每小时 60 次；设 GITHUB_TOKEN 可提升配额"
+    return {"updates": rows, "summary": summary}

@@ -235,7 +235,7 @@ class CheckUpdatesTest(unittest.TestCase):
     def test_three_states(self):
         with mock.patch("skill_market.list_installed", return_value=self._installed()), \
              mock.patch("skill_market._remote_commit_time",
-                        return_value="2026-09-01T00:00:00Z"):
+                        return_value=("2026-09-01T00:00:00Z", "ok")):
             out = check_updates()
         by = {r["name"]: r["state"] for r in out["updates"]}
         self.assertEqual(by["a"], "outdated")
@@ -244,14 +244,15 @@ class CheckUpdatesTest(unittest.TestCase):
     def test_up_to_date_state(self):
         with mock.patch("skill_market.list_installed", return_value=self._installed()), \
              mock.patch("skill_market._remote_commit_time",
-                        return_value="2025-12-01T00:00:00Z"):
+                        return_value=("2025-12-01T00:00:00Z", "ok")):
             out = check_updates()
         by = {r["name"]: r["state"] for r in out["updates"]}
         self.assertEqual(by["a"], "current")
 
     def test_remote_failure_is_unknown_not_error(self):
         with mock.patch("skill_market.list_installed", return_value=self._installed()), \
-             mock.patch("skill_market._remote_commit_time", return_value=None):
+             mock.patch("skill_market._remote_commit_time",
+                        return_value=(None, "unavailable")):
             out = check_updates()
         by = {r["name"]: r["state"] for r in out["updates"]}
         self.assertEqual(by["a"], "unknown")
@@ -259,14 +260,16 @@ class CheckUpdatesTest(unittest.TestCase):
 
     def test_counts_reported(self):
         with mock.patch("skill_market.list_installed", return_value=self._installed()), \
-             mock.patch("skill_market._remote_commit_time", return_value=None):
+             mock.patch("skill_market._remote_commit_time",
+                        return_value=(None, "unavailable")):
             out = check_updates()
         self.assertEqual(out["summary"]["total"], 2)
         self.assertEqual(out["summary"]["unknown"], 2)
 
     def test_only_filters_to_requested_names(self):
         with mock.patch("skill_market.list_installed", return_value=self._installed()), \
-             mock.patch("skill_market._remote_commit_time", return_value=None):
+             mock.patch("skill_market._remote_commit_time",
+                        return_value=(None, "unavailable")):
             out = check_updates(only=["b"])
         self.assertEqual([r["name"] for r in out["updates"]], ["b"])
 
@@ -317,37 +320,76 @@ class NoDestructiveCommandTest(unittest.TestCase):
         self.assertIn("禁止", src)
 
 class HttpGetJsonTest(unittest.TestCase):
-    """HTTP 传输的护栏：必须只读、且不依赖 Python 根证书。"""
+    """HTTP 传输护栏：只读、区分状态码、不依赖 Python 根证书。"""
 
-    def test_uses_curl_when_available(self):
-        from skill_market import _http_get_json
+    def _run(self, stdout, returncode=0):
         with mock.patch("skill_market.shutil.which", return_value="/usr/bin/curl"), \
              mock.patch("skill_market.subprocess.run") as m:
-            m.return_value = mock.Mock(returncode=0, stdout='{"ok":1}', stderr="")
-            data = _http_get_json("https://example.com/x")
+            m.return_value = mock.Mock(returncode=returncode, stdout=stdout, stderr="")
+            from skill_market import _http_get_json
+            return _http_get_json("https://example.com/x"), m
+
+    def test_success_returns_data_and_200(self):
+        (data, status), m = self._run('{"ok":1}\n200')
         self.assertEqual(data, {"ok": 1})
+        self.assertEqual(status, 200)
         argv = m.call_args[0][0]
         self.assertEqual(argv[0], "/usr/bin/curl")
         self.assertIn("-sS", argv)
         self.assertIn("--max-time", argv)
         # 只读：绝不能出现写方法
         joined = " ".join(argv)
-        for bad in ("-X POST", "-X PUT", "-X DELETE", "--data", "-d "):
+        for bad in ("-X POST", "-X PUT", "-X DELETE", "--data"):
             self.assertNotIn(bad, joined)
 
-    def test_returns_none_on_failure_not_raise(self):
-        from skill_market import _http_get_json
-        with mock.patch("skill_market.shutil.which", return_value="/usr/bin/curl"), \
-             mock.patch("skill_market.subprocess.run") as m:
-            m.return_value = mock.Mock(returncode=6, stdout="", stderr="could not resolve")
-            self.assertIsNone(_http_get_json("https://example.com/x"))
+    def test_rate_limit_status_is_surfaced(self):
+        """403 必须透出，否则会被误读成「仓库不存在」。"""
+        (data, status), _ = self._run('{"message":"API rate limit exceeded"}\n403')
+        self.assertIsNone(data)
+        self.assertEqual(status, 403)
 
-    def test_returns_none_on_bad_json(self):
-        from skill_market import _http_get_json
-        with mock.patch("skill_market.shutil.which", return_value="/usr/bin/curl"), \
-             mock.patch("skill_market.subprocess.run") as m:
-            m.return_value = mock.Mock(returncode=0, stdout="not json", stderr="")
-            self.assertIsNone(_http_get_json("https://example.com/x"))
+    def test_missing_repo_status_is_surfaced(self):
+        (data, status), _ = self._run('{"message":"Not Found"}\n404')
+        self.assertIsNone(data)
+        self.assertEqual(status, 404)
+
+    def test_curl_failure_returns_zero_status(self):
+        (data, status), _ = self._run("", returncode=6)
+        self.assertIsNone(data)
+        self.assertEqual(status, 0)
+
+    def test_bad_json_with_200_returns_none(self):
+        (data, status), _ = self._run("not json\n200")
+        self.assertIsNone(data)
+        self.assertEqual(status, 200)
+
+
+class RemoteCommitTimeStatusTest(unittest.TestCase):
+    def _call(self, body, code=200):
+        with mock.patch("skill_market._http_get_json",
+                        return_value=(body, code)):
+            from skill_market import _remote_commit_time
+            return _remote_commit_time("o", "r", "p")
+
+    def test_ok_returns_time(self):
+        time, status = self._call(
+            [{"commit": {"committer": {"date": "2026-08-11T18:57:14Z"}}}])
+        self.assertEqual(time, "2026-08-11T18:57:14Z")
+        self.assertEqual(status, "ok")
+
+    def test_403_maps_to_rate_limited(self):
+        time, status = self._call({"message": "rate limit"}, 403)
+        self.assertIsNone(time)
+        self.assertEqual(status, "rate_limited")
+
+    def test_429_also_maps_to_rate_limited(self):
+        time, status = self._call({"message": "too many"}, 429)
+        self.assertEqual(status, "rate_limited")
+
+    def test_empty_list_is_no_commits(self):
+        time, status = self._call([])
+        self.assertIsNone(time)
+        self.assertEqual(status, "no_commits")
 
 
 if __name__ == "__main__":
