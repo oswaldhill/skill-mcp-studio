@@ -11,8 +11,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "core"))
 
 from skill_market import (  # noqa: E402
+    check_updates,
     detect_backend,
     list_installed,
+    parse_github_source,
     read_sources,
     search,
     strip_ansi,
@@ -202,6 +204,150 @@ class SearchTest(unittest.TestCase):
             out = search("zzz")
         self.assertEqual(out["results"], [])
         self.assertIn("No skills found", out["reason"])
+
+
+class ParseGithubSourceTest(unittest.TestCase):
+    def test_ssh_and_https_forms(self):
+        for url in ("https://github.com/vercel-labs/skills.git",
+                    "git@github.com:vercel-labs/skills.git",
+                    "https://github.com/vercel-labs/skills"):
+            owner, repo = parse_github_source(url)
+            self.assertEqual((owner, repo), ("vercel-labs", "skills"), url)
+
+    def test_non_github_returns_none(self):
+        self.assertIsNone(parse_github_source("https://gitlab.com/a/b.git"))
+
+    def test_garbage_returns_none(self):
+        self.assertIsNone(parse_github_source(""))
+        self.assertIsNone(parse_github_source(None))
+
+
+class CheckUpdatesTest(unittest.TestCase):
+    def _installed(self):
+        return {"installed": [
+            {"name": "a", "source_url": "https://github.com/o/r.git",
+             "skill_path": "skills/a/SKILL.md", "updated_at": "2026-01-01T00:00:00.000Z",
+             "registered": True},
+            {"name": "b", "source_url": None, "skill_path": None,
+             "updated_at": None, "registered": True},
+        ]}
+
+    def test_three_states(self):
+        with mock.patch("skill_market.list_installed", return_value=self._installed()), \
+             mock.patch("skill_market._remote_commit_time",
+                        return_value="2026-09-01T00:00:00Z"):
+            out = check_updates()
+        by = {r["name"]: r["state"] for r in out["updates"]}
+        self.assertEqual(by["a"], "outdated")
+        self.assertEqual(by["b"], "unknown")
+
+    def test_up_to_date_state(self):
+        with mock.patch("skill_market.list_installed", return_value=self._installed()), \
+             mock.patch("skill_market._remote_commit_time",
+                        return_value="2025-12-01T00:00:00Z"):
+            out = check_updates()
+        by = {r["name"]: r["state"] for r in out["updates"]}
+        self.assertEqual(by["a"], "current")
+
+    def test_remote_failure_is_unknown_not_error(self):
+        with mock.patch("skill_market.list_installed", return_value=self._installed()), \
+             mock.patch("skill_market._remote_commit_time", return_value=None):
+            out = check_updates()
+        by = {r["name"]: r["state"] for r in out["updates"]}
+        self.assertEqual(by["a"], "unknown")
+        self.assertTrue(next(r for r in out["updates"] if r["name"] == "a")["note"])
+
+    def test_counts_reported(self):
+        with mock.patch("skill_market.list_installed", return_value=self._installed()), \
+             mock.patch("skill_market._remote_commit_time", return_value=None):
+            out = check_updates()
+        self.assertEqual(out["summary"]["total"], 2)
+        self.assertEqual(out["summary"]["unknown"], 2)
+
+    def test_only_filters_to_requested_names(self):
+        with mock.patch("skill_market.list_installed", return_value=self._installed()), \
+             mock.patch("skill_market._remote_commit_time", return_value=None):
+            out = check_updates(only=["b"])
+        self.assertEqual([r["name"] for r in out["updates"]], ["b"])
+
+    def test_unregistered_skills_are_skipped(self):
+        """没有来源登记就无法比对版本，不进更新清单。"""
+        payload = {"installed": [{"name": "z", "registered": False,
+                                  "source_url": None, "updated_at": None}]}
+        with mock.patch("skill_market.list_installed", return_value=payload):
+            out = check_updates()
+        self.assertEqual(out["updates"], [])
+
+
+class NoDestructiveCommandTest(unittest.TestCase):
+    """护栏：只读模块不得把破坏性子命令当作参数传给 npx。
+
+    只审计代码本身（剔除注释与文档字符串）—— 文档里必须保留对这两个命令的
+    警告文字，否则后来者不知道为何不能用，那才是真正危险的。
+    """
+
+    @staticmethod
+    def _code_only() -> str:
+        import ast
+        path = ROOT / "core" / "skill_market.py"
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            # 清空所有文档字符串，使其不参与审计
+            if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef,
+                                 ast.ClassDef)) and node.body:
+                first = node.body[0]
+                if (isinstance(first, ast.Expr)
+                        and isinstance(first.value, ast.Constant)
+                        and isinstance(first.value.value, str)):
+                    first.value.value = ""
+        return ast.unparse(tree)
+
+    def test_no_check_or_update_subcommand_in_code(self):
+        code = self._code_only()
+        for bad in ('"check"', "'check'", '"update"', "'update'"):
+            self.assertNotIn(
+                bad, code,
+                "只读模块把破坏性子命令 " + bad + " 用作参数；"
+                "npx skills check 实为升级（实测一次更新 41 个技能），禁止调用")
+
+    def test_documented_warning_is_retained(self):
+        """反向护栏：警告文字不能被删掉。"""
+        src = (ROOT / "core" / "skill_market.py").read_text(encoding="utf-8")
+        self.assertIn("npx skills check", src)
+        self.assertIn("禁止", src)
+
+class HttpGetJsonTest(unittest.TestCase):
+    """HTTP 传输的护栏：必须只读、且不依赖 Python 根证书。"""
+
+    def test_uses_curl_when_available(self):
+        from skill_market import _http_get_json
+        with mock.patch("skill_market.shutil.which", return_value="/usr/bin/curl"), \
+             mock.patch("skill_market.subprocess.run") as m:
+            m.return_value = mock.Mock(returncode=0, stdout='{"ok":1}', stderr="")
+            data = _http_get_json("https://example.com/x")
+        self.assertEqual(data, {"ok": 1})
+        argv = m.call_args[0][0]
+        self.assertEqual(argv[0], "/usr/bin/curl")
+        self.assertIn("-sS", argv)
+        self.assertIn("--max-time", argv)
+        # 只读：绝不能出现写方法
+        joined = " ".join(argv)
+        for bad in ("-X POST", "-X PUT", "-X DELETE", "--data", "-d "):
+            self.assertNotIn(bad, joined)
+
+    def test_returns_none_on_failure_not_raise(self):
+        from skill_market import _http_get_json
+        with mock.patch("skill_market.shutil.which", return_value="/usr/bin/curl"), \
+             mock.patch("skill_market.subprocess.run") as m:
+            m.return_value = mock.Mock(returncode=6, stdout="", stderr="could not resolve")
+            self.assertIsNone(_http_get_json("https://example.com/x"))
+
+    def test_returns_none_on_bad_json(self):
+        from skill_market import _http_get_json
+        with mock.patch("skill_market.shutil.which", return_value="/usr/bin/curl"), \
+             mock.patch("skill_market.subprocess.run") as m:
+            m.return_value = mock.Mock(returncode=0, stdout="not json", stderr="")
+            self.assertIsNone(_http_get_json("https://example.com/x"))
 
 
 if __name__ == "__main__":

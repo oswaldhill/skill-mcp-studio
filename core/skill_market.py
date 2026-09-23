@@ -13,9 +13,12 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -216,3 +219,109 @@ def search(query: str, owner: Optional[str] = None) -> Dict[str, Any]:
         "results": [],
         "reason": m.group(0).strip() if m else "未找到匹配技能",
     }
+
+
+# GitHub API：按 path 取最新提交时间，与 lock 的 updatedAt 比较。
+# 未鉴权会限流（实测 `API rate limit exceeded`），支持 GITHUB_TOKEN 提升配额。
+_GITHUB_RE = re.compile(r"github\.com[:/]+([^/]+)/([^/.]+?)(?:\.git)?/?$")
+_API = "https://api.github.com/repos/{owner}/{repo}/commits"
+_UA = "skill-mcp-studio"
+
+
+def parse_github_source(url: Optional[str]):
+    """从 sourceUrl 解析 (owner, repo)。非 GitHub 或无法解析时返回 None。"""
+    if not url:
+        return None
+    m = _GITHUB_RE.search(url.strip())
+    return (m.group(1), m.group(2)) if m else None
+
+
+def _http_get_json(url: str, timeout: int = 20):
+    """只读 GET。优先用 curl：本机 Python 的 urllib 拿不到根证书（实测
+    CERTIFICATE_VERIFY_FAILED），而 curl 走系统钥匙串可用。失败返回 None。
+    """
+    token = os.environ.get("GITHUB_TOKEN")
+    headers = ["-H", f"User-Agent: {_UA}", "-H", "Accept: application/vnd.github+json"]
+    if token:
+        headers += ["-H", f"Authorization: Bearer {token}"]
+    curl = shutil.which("curl")
+    if curl:
+        try:
+            proc = subprocess.run(
+                [curl, "-sS", "--max-time", str(timeout), *headers, url],
+                capture_output=True, text=True, timeout=timeout + 10,
+            )
+            if proc.returncode == 0 and proc.stdout.strip():
+                return json.loads(proc.stdout)
+        except (subprocess.TimeoutExpired, OSError, ValueError):
+            pass
+        return None
+    # 回退：无 curl 时试 urllib（可能因根证书而失败）。
+    try:
+        req = urllib.request.Request(url, headers={
+            "User-Agent": _UA, "Accept": "application/vnd.github+json",
+        })
+        if token:
+            req.add_header("Authorization", f"Bearer {token}")
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except (urllib.error.URLError, urllib.error.HTTPError, OSError, ValueError):
+        return None
+
+
+def _remote_commit_time(owner: str, repo: str, path: Optional[str],
+                        timeout: int = 20) -> Optional[str]:
+    """主通道：GitHub API 取该路径最新提交时间（ISO8601）。只读，失败返回 None。"""
+    from urllib.parse import urlencode
+
+    q = {"per_page": "1"}
+    if path:
+        q["path"] = path
+    data = _http_get_json(
+        _API.format(owner=owner, repo=repo) + "?" + urlencode(q), timeout
+    )
+    if not isinstance(data, list) or not data:
+        return None
+    try:
+        return data[0]["commit"]["committer"]["date"]
+    except (KeyError, TypeError, IndexError):
+        return None
+
+
+def _iso_lt(a: Optional[str], b: Optional[str]) -> bool:
+    """字符串化的 ISO8601 可直接比较（同格式同长度）。"""
+    return bool(a and b and a < b)
+
+
+def check_updates(only: Optional[List[str]] = None) -> Dict[str, Any]:
+    """只读更新检测。三态：outdated / current / unknown。
+
+    **绝不调用 `npx skills check` 或 `npx skills update`** —— 前者名为检查、
+    实为升级（实测一次调用即更新 41 个技能，且未出现在 `--help` 中）。
+    本函数只发起 HTTP GET，不写盘、不改动技能库。
+    """
+    listing = list_installed()
+    judged = [r for r in listing["installed"] if r.get("registered")]
+    if only:
+        wanted = set(only)
+        judged = [r for r in judged if r["name"] in wanted]
+
+    counts = {"outdated": 0, "current": 0, "unknown": 0}
+    rows: List[Dict[str, Any]] = []
+    for row in judged:
+        owner_repo = parse_github_source(row.get("source_url"))
+        if not owner_repo:
+            state, remote = "unknown", None
+            note = "非 GitHub 来源或缺少来源信息，无法比对"
+        else:
+            remote = _remote_commit_time(owner_repo[0], owner_repo[1], row.get("skill_path"))
+            if remote is None:
+                state, note = "unknown", "远端查询失败（私有/已删除仓库，或 API 限流）"
+            elif _iso_lt(row.get("updated_at"), remote):
+                state, note = "outdated", ""
+            else:
+                state, note = "current", ""
+        counts[state] += 1
+        rows.append(dict(row, state=state, remote_commit=remote, note=note))
+
+    return {"updates": rows, "summary": {"total": len(rows), **counts}}
