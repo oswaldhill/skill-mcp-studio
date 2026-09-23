@@ -10,7 +10,13 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "core"))
 
-from skill_market import detect_backend, list_installed, read_sources  # noqa: E402
+from skill_market import (  # noqa: E402
+    detect_backend,
+    list_installed,
+    read_sources,
+    search,
+    strip_ansi,
+)
 
 
 class DetectBackendTest(unittest.TestCase):
@@ -101,6 +107,65 @@ class ListInstalledTest(unittest.TestCase):
             out = list_installed(lock_path=lock, skills_dir=skills)
         names = [r["name"] for r in out["installed"]]
         self.assertEqual(names, ["real-skill"])
+
+
+class StripAnsiTest(unittest.TestCase):
+    def test_removes_color_codes(self):
+        raw = "\x1b[38;5;145mvercel-labs/x@y\x1b[0m  736.1K installs"
+        self.assertEqual(strip_ansi(raw), "vercel-labs/x@y  736.1K installs")
+
+    def test_removes_progress_refresh_lines(self):
+        """`◐ Fetching skills…` 这类原地刷新行必须清掉，否则解析出的条目是脏的。"""
+        raw = "◐  Fetching skills…\x1b[1G\x1b[Jvercel-labs/x@y\n"
+        out = strip_ansi(raw)
+        self.assertNotIn("Fetching", out)
+        self.assertIn("vercel-labs/x@y", out)
+
+    def test_plain_text_unchanged(self):
+        self.assertEqual(strip_ansi("hello world"), "hello world")
+
+
+class SearchTest(unittest.TestCase):
+    def test_parses_find_output(self):
+        sample = (
+            "\x1b[38;5;102mInstall with\x1b[0m npx skills add <owner/repo@skill>\n\n"
+            "\x1b[38;5;145mvercel-labs/agent-skills@vercel-react-best-practices\x1b[0m"
+            " \x1b[36m736.1K installs\x1b[0m\n"
+            "\x1b[38;5;102m└ https://skills.sh/vercel-labs/agent-skills/vercel-react-best-practices\x1b[0m\n"
+        )
+        with mock.patch("skill_market._run_npx",
+                        return_value={"code": 0, "stdout": sample, "stderr": ""}):
+            out = search("react")
+        self.assertEqual(len(out["results"]), 1)
+        r = out["results"][0]
+        self.assertEqual(r["package"], "vercel-labs/agent-skills@vercel-react-best-practices")
+        self.assertIn("736.1K", r["installs"])
+        self.assertEqual(r["url"],
+                         "https://skills.sh/vercel-labs/agent-skills/vercel-react-best-practices")
+
+    def test_backend_failure_returns_empty_with_reason(self):
+        with mock.patch("skill_market._run_npx",
+                        return_value={"code": 1, "stdout": "", "stderr": "boom"}):
+            out = search("x")
+        self.assertEqual(out["results"], [])
+        self.assertTrue(out["reason"])
+
+    def test_empty_query_is_rejected_without_calling_npx(self):
+        with mock.patch("skill_market._run_npx") as m:
+            out = search("   ")
+        self.assertEqual(out["results"], [])
+        self.assertTrue(out["reason"])
+        m.assert_not_called()
+
+    def test_search_never_invokes_destructive_subcommands(self):
+        """护栏：search 只允许 find。"""
+        with mock.patch("skill_market._run_npx",
+                        return_value={"code": 0, "stdout": "", "stderr": ""}) as m:
+            search("react")
+        called = m.call_args[0][0]
+        self.assertEqual(called[0], "find")
+        self.assertNotIn("check", called)
+        self.assertNotIn("update", called)
 
 
 if __name__ == "__main__":

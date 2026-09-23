@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -148,3 +149,60 @@ def list_installed(
     if not lock_path.exists():
         reason = f"未找到来源登记 {lock_path}；仅列出磁盘上的技能"
     return {"installed": installed, "reason": reason, "lock_path": str(lock_path)}
+
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+# `\x1b[1G` 是光标回行首重绘：该行已输出内容被覆盖，应丢弃，而不是连
+# 其后被重绘出的真实内容一起删掉。
+_CARRIAGE_RE = re.compile(r"[^\n]*\x1b\[1G")
+# 独立进度行（以 spinner 开头）才是纯噪声；不含 spinner 前缀的行可能是
+# 真实内容，不能按关键词整行删除。
+_SPINNER = "\u25d0\u25d3\u25d1\u25d2\u280b\u2819\u2839\u2838\u283c\u2834\u2826\u2827\u2807\u280f"
+_PROGRESS_RE = re.compile(
+    rf"^[{_SPINNER}\s]*(?:Fetching|Cloning|Updating)[^\n]*\n?", re.M
+)
+_ENTRY_RE = re.compile(r"^([\w.\-]+/[\w.\-]+@[\w.\-]+)\s+(.*?installs?)\s*$", re.M)
+_URL_RE = re.compile(r"^\s*\u2514\s+(https?://\S+)\s*$", re.M)
+
+
+def strip_ansi(text: str) -> str:
+    """剥离 ANSI 颜色码与原地刷新进度行。
+
+    必须先处理 `\x1b[1G` 重绘边界再删 ANSI 码：顺序颠倒时边界信息会随
+    ANSI 码一起丢失，导致 spinner 与被重绘出的真实内容被当作同一行删除。
+    """
+    if not text:
+        return ""
+    out = _CARRIAGE_RE.sub("", text)
+    out = _ANSI_RE.sub("", out)
+    out = _PROGRESS_RE.sub("", out)
+    return out
+
+
+
+def search(query: str, owner: Optional[str] = None) -> Dict[str, Any]:
+    """搜索 skills.sh 社区库。只调用 `npx skills find`。"""
+    if not query or not query.strip():
+        return {"results": [], "reason": "搜索词为空"}
+
+    args = ["find", query.strip()]
+    if owner:
+        args += ["--owner", owner]
+
+    res = _run_npx(args, timeout=180)
+    if res["code"] != 0:
+        return {
+            "results": [],
+            "reason": res["stderr"].strip()[:300] or f"npx skills find 退出码 {res['code']}",
+        }
+
+    clean = strip_ansi(res["stdout"])
+    urls = _URL_RE.findall(clean)
+    results = []
+    for idx, (pkg, installs) in enumerate(_ENTRY_RE.findall(clean)):
+        results.append({
+            "package": pkg,
+            "installs": installs.strip(),
+            "url": urls[idx] if idx < len(urls) else None,
+        })
+    return {"results": results, "reason": "" if results else "未找到匹配技能"}
