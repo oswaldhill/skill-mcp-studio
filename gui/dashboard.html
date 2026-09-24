@@ -4316,7 +4316,9 @@ async function reprobeEndpoints(btnEl) {
     }, async () => {
       // 执行后重新统计并核对：该组应从 actionable 里消失，且组数确实减少。
       await verifyMerge(beforeCount, keep, fold);
-    }, ["复核判据后才执行", "备份到 _backup/", "移入 _trash/ 回收目录", "重跑建议核对"]);
+      // 阶段只描述"归并"这一步：重跑建议发生在结果之后，且有自己的进度框，
+      // 放进这里会让最后一项一直停在原地，看着像卡死。
+    }, ["复核判据后才执行", "备份到 _backup/", "移入 _trash/ 回收目录"]);
 
     if (btn) btn.disabled = false;
     return res;
@@ -4354,7 +4356,8 @@ async function reprobeEndpoints(btnEl) {
         return { ok: true, message: d.message, detail: (d.steps || []).map((x) => x.message).join("\n") };
       }
       return { ok: false, message: d.message || "执行失败", detail: (d.steps || []).map((x) => x.message).join("\n") };
-    }, async () => { await verifyMergeAll(); }, ["逐组复核判据", "备份到 _backup/", "移入 _trash/ 回收目录", "重跑建议核对"]);
+          // 同 runMergeGroup：阶段只描述归并本身，重跑由它自己的进度框承担。
+    }, async () => { await verifyMergeAll(); }, ["逐组复核判据", "备份到 _backup/", "移入 _trash/ 回收目录"]);
 
     if (btn) btn.disabled = false;
   }
@@ -4387,15 +4390,14 @@ async function reprobeEndpoints(btnEl) {
     }
   }
 
-  /** 写操作后重跑建议：绕过缓存，强制取新判据。 */
+  /** 写操作后重跑建议：绕过缓存，强制取新判据。
+   *
+   *  必须走 runSkillInsight 而不是自己调 runCli：重跑同样要通读会话日志（约一分钟），
+   *  自己调不传进度参数就是整整一分钟的静默等待，用户看到的是"卡住了"。
+   *  runSkillInsight 带的是与「强制重新统计」完全相同的标准进度：可取消进度框、
+   *  真实扫描进度与已用时间，并在成功后写入缓存、刷新两个视图。 */
   async function refreshAdviceAfterWrite() {
-    const res = await runCli(["--skill-insight", "--format", "json", "--usage-since", usageSince(USAGE_DAYS)]);
-    if (!res || res.code !== 0) return;
-    let data = null;
-    try { data = JSON.parse(res.stdout || "{}"); } catch (e) { data = null; }
-    if (!data || data.error) return;
-    saveInsightCache(USAGE_DAYS, data);
-    applyInsight(data, Date.now());
+    await runSkillInsight(null, { busy: true });
   }
 
   function renderAdvice(data) {

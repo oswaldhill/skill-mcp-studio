@@ -70,8 +70,13 @@ class MergeUiTest(unittest.TestCase):
         s = _src()
         self.assertIn("refreshAdviceAfterWrite", s, "缺少写后重跑判据")
         self.assertIn("verifyMerge", s, "缺少执行后核对")
-        self.assertIn('"--skill-insight"', _fn("refreshAdviceAfterWrite"),
-                      "重跑应复用合并出口，而不是直接调 --merge-advice")
+        # 重跑必须复用同一个统计出口（--skill-insight），且要走带进度的标准路径：
+        # 合并入口与统计入口共用一次扫描，另起一条通道就会重复通读会话日志。
+        self.assertIn("runSkillInsight", _fn("refreshAdviceAfterWrite"),
+                      "重跑应复用 runSkillInsight（同一出口 + 标准进度），"
+                      "而不是自己调 runCli 静默等待")
+        self.assertNotIn('"--merge-advice"', _fn("refreshAdviceAfterWrite"),
+                         "重跑不该另调 --merge-advice")
         body = _fn("verifyMerge")
         self.assertIn("actionable", body, "核对必须看新的 actionable")
         self.assertIn("showToast", body, "核对结果要反馈给用户")
