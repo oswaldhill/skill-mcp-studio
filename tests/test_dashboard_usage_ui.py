@@ -175,38 +175,38 @@ class UndeclaredStateRefTest(unittest.TestCase):
 
 class UsageUiTest(unittest.TestCase):
     def test_skills_page_has_usage_entry(self):
-        self.assertIn('data-action="open-usage"', _section("page-skills"))
+        self.assertIn('data-action="open-insight"', _section("page-skills"))
 
     def test_panel_containers_exist(self):
         sect = _section("page-skills")
-        for el in ("usage-panel", "usage-status", "usage-results"):
+        for el in ("insight-panel", "insight-status", "usage-results"):
             self.assertIn(f'id="{el}"', sect, f"缺少容器 {el}")
 
     def test_actions_are_wired(self):
         src = _src()
-        for action in ("open-usage", "usage-close", "usage-refresh", "usage-window"):
+        for action in ("open-insight", "insight-close", "insight-force", "insight-window", "insight-tab"):
             self.assertIn(f'a === "{action}"', src, f"{action} 未接线")
 
     def test_window_buttons_present(self):
         sect = _section("page-skills")
-        self.assertIn('data-action="usage-window"', sect)
+        self.assertIn('data-action="insight-window"', sect)
         for win in ('data-win="30"', 'data-win="90"', 'data-win="0"'):
             self.assertIn(win, sect, f"缺少统计窗口按钮 {win}")
 
     def test_uses_read_only_cli_flag(self):
         src = _src()
-        self.assertIn('"--skill-usage"', src)
+        self.assertIn('"--skill-insight"', src)
         self.assertIn('"--usage-since"', src)
 
     def test_judgement_stays_in_backend(self):
         """前端不得自己解析会话日志或复刻判据（口径必须唯一）。"""
-        body = _fn("renderUsage") + _fn("runSkillUsage")
+        body = _fn("renderUsage") + _fn("runSkillInsight")
         for token in ("archived_sessions", ".jsonl", "host_skills", "SKILL.md"):
             self.assertNotIn(token, body, f"前端越界实现了判据片段 {token}")
 
     def test_long_task_gives_progress_hint(self):
         """全量扫描约 30 秒，必须先给出「统计中」提示，不能让界面看似卡死。"""
-        body = _fn("runSkillUsage")
+        body = _fn("runSkillInsight")
         self.assertIn("统计中", body)
 
     def test_zero_touch_list_rendered(self):
@@ -217,8 +217,8 @@ class UsageUiTest(unittest.TestCase):
 
     def test_no_forbidden_glyphs(self):
         """与既有 taste 护栏一致：不用 em-dash / ⚠ / ✓。"""
-        for name in ("usageSince", "toggleUsagePanel", "usageLine",
-                     "runSkillUsage", "renderUsage"):
+        for name in ("usageSince", "toggleInsightPanel", "usageLine",
+                     "runSkillInsight", "renderUsage"):
             body = _fn(name)
             self.assertNotIn("—", body, f"{name} 含 em-dash")
             self.assertNotIn("⚠", body, f"{name} 含 ⚠")
@@ -230,7 +230,7 @@ class UsageCliContractTest(unittest.TestCase):
 
     def test_argparse_declares_flags(self):
         src = SCAN.read_text(encoding="utf-8")
-        self.assertIn('"--skill-usage"', src)
+        self.assertIn('"--skill-insight"', src)
         self.assertIn('"--usage-since"', src)
 
     def test_dispatched_before_generic_snapshot(self):

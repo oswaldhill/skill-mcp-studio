@@ -76,7 +76,7 @@ class ScopeRegressionTest(unittest.TestCase):
         # 真正的端到端防线在 HarnessE2ETest，这里只保证函数可截取）。
         # 三个浮层（统计 / 建议 / 市场）都走 openOverlay/closeOverlay 进 top layer，
         # 不再用 class 切换显隐。市场是 2026-09 从页内嵌区域改成独立弹窗的。
-        for fn in ("toggleUsagePanel", "toggleAdvicePanel", "toggleMarketPanel"):
+        for fn in ("toggleInsightPanel", "toggleInsightPanel", "toggleMarketPanel"):
             body = _body(fn)
             self.assertIn("openOverlay(el)", body)
             self.assertIn("closeOverlay(el)", body)
@@ -113,8 +113,8 @@ class BusyOverlayTest(unittest.TestCase):
     def test_slow_callers_pass_labels(self):
         expect = {
             "loadInternal": "更新审计",
-            "runSkillUsage": "统计技能使用",
-            "runMergeAdvice": "分析整理建议",
+            # 统计与建议已合并为一次扫描，进度标签也合并成一句。
+            "runSkillInsight": "重新统计技能使用与整理建议",
             "openMergePreview": "生成链接修复预览",
         }
         for fn, label in expect.items():
@@ -129,7 +129,7 @@ class BusyOverlayTest(unittest.TestCase):
         # 原断言要求展开后 scrollIntoView 滚入视野，那是「面板内嵌在长页面里」的补丁。
         # 三个面板现已改为 <dialog> + showModal()，由 top layer 保证覆盖视口，
         # 不再依赖滚动，故断言随之改为「必须走 top layer 开关」。
-        for fn in ("toggleUsagePanel", "toggleAdvicePanel", "toggleMarketPanel"):
+        for fn in ("toggleInsightPanel", "toggleInsightPanel", "toggleMarketPanel"):
             body = _body(fn)
             self.assertIn("openOverlay(el)", body, f"{fn}: 未走 top layer 打开")
             self.assertIn("closeOverlay(el)", body, f"{fn}: 未走 top layer 关闭")
@@ -148,7 +148,7 @@ class HarnessE2ETest(unittest.TestCase):
             cwd=ROOT, capture_output=True, text=True, timeout=90)
         report = out.read_text(encoding="utf-8") if out.exists() else (r.stdout + r.stderr)
         self.assertIn("顶层执行未抛错", report, "顶层脚本执行抛错：\n" + report)
-        for action in ("open-usage", "open-advice", "open-market"):
+        for action in ("open-insight", "open-market"):
             self.assertIn(f"✅ {action}", report, f"{action} 点击链路断裂：\n{report}")
         self.assertIn("全部按钮点击链路端到端通过", report, "e2e 汇总失败：\n" + report)
 

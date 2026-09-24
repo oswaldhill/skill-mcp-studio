@@ -43,36 +43,36 @@ def _fn(name: str) -> str:
 
 class AdviceUiTest(unittest.TestCase):
     def test_skills_page_has_advice_entry(self):
-        self.assertIn('data-action="open-advice"', _section("page-skills"))
+        self.assertIn('data-action="open-insight"', _section("page-skills"))
 
     def test_panel_containers_exist(self):
         sect = _section("page-skills")
-        for el in ("advice-panel", "advice-status", "advice-results"):
+        for el in ("insight-panel", "insight-status", "advice-results"):
             self.assertIn(f'id="{el}"', sect, f"缺少容器 {el}")
 
     def test_actions_are_wired(self):
         src = _src()
-        for action in ("open-advice", "advice-close", "advice-refresh", "advice-window"):
+        for action in ("open-insight", "insight-close", "insight-force", "insight-window", "insight-tab"):
             self.assertIn(f'a === "{action}"', src, f"{action} 未接线")
 
     def test_window_buttons_present(self):
         sect = _section("page-skills")
-        self.assertIn('data-action="advice-window"', sect)
+        self.assertIn('data-action="insight-window"', sect)
         for win in ('data-win="30"', 'data-win="90"', 'data-win="0"'):
             self.assertIn(win, sect, f"缺少窗口按钮 {win}")
 
     def test_uses_read_only_cli_flag(self):
-        body = _fn("runMergeAdvice")
-        self.assertIn('"--merge-advice"', body)
+        body = _fn("runSkillInsight")
+        self.assertIn('"--skill-insight"', body)
         self.assertIn('"--usage-since"', body)
 
     def test_reuses_usage_window_helper(self):
         """DRY：窗口计算只该有一处实现。"""
-        self.assertIn("usageSince(ADVICE_DAYS)", _fn("runMergeAdvice"))
+        self.assertIn("usageSince(USAGE_DAYS)", _fn("runSkillInsight"))
 
     def test_long_task_gives_progress_hint(self):
         """内含全量会话扫描（约 35 秒），必须提示，不能让界面看似卡死。"""
-        self.assertIn("分析中", _fn("runMergeAdvice"))
+        self.assertIn("统计中", _fn("runSkillInsight"))
 
     def test_renders_all_three_sections(self):
         """三段都要有渲染路径：可执行、上游标注、已否决。"""
@@ -101,13 +101,13 @@ class AdviceUiTest(unittest.TestCase):
 
     def test_no_judgement_leaked_into_frontend(self):
         """判据必须留在 Python 侧，前端不得复刻分词/相似度或读会话日志。"""
-        body = _fn("renderAdvice") + _fn("runMergeAdvice") + _fn("memberRow")
+        body = _fn("renderAdvice") + _fn("runSkillInsight") + _fn("memberRow")
         for token in ("archived_sessions", ".jsonl", "host_skills", "jaccard >=",
                       "function_call"):
             self.assertNotIn(token, body, f"前端越界实现判据片段 {token}")
 
     def test_no_forbidden_glyphs(self):
-        for name in ("setAdviceStatus", "toggleAdvicePanel", "runMergeAdvice",
+        for name in ("setInsightStatus", "toggleInsightPanel", "runSkillInsight",
                      "memberRow", "renderAdvice"):
             body = _fn(name)
             for glyph in ("—", "⚠", "✓"):
@@ -115,13 +115,17 @@ class AdviceUiTest(unittest.TestCase):
 
     def test_advice_state_declared_and_used(self):
         js = _js()
-        body = (_fn("toggleAdvicePanel") + _fn("runMergeAdvice")
+        body = (_fn("toggleInsightPanel") + _fn("runSkillInsight")
                 + _fn("memberRow") + _fn("renderAdvice"))
-        for var in ("ADVICE_DATA", "ADVICE_DAYS"):
-            self.assertRegex(js, r"(const|let|var)\s+" + var + r"\b",
-                             f"{var} 未声明：点击整理建议会抛 ReferenceError")
-            self.assertIn(var, body,
-                          f"{var} 声明了但面板逻辑里没用到（窗口或缓存失效）")
+        # ADVICE_DATA 仍是建议视图的状态；窗口口径已合并到 USAGE_DAYS
+        # （统计与建议共用同一次扫描），不再保留第二个窗口变量。
+        self.assertRegex(js, r"(const|let|var)\s+ADVICE_DATA\b",
+                         "ADVICE_DATA 未声明：点击整理建议会抛 ReferenceError")
+        # ADVICE_DATA 由 applyInsight 统一落位（合并后没有独立的取数函数）
+        self.assertIn("ADVICE_DATA", _fn("applyInsight"),
+                      "ADVICE_DATA 声明了但没有任何落位路径")
+        self.assertIn("usageSince(USAGE_DAYS)", body, "取数必须用唯一的窗口口径")
+        self.assertNotIn("ADVICE_DAYS", body, "窗口口径应唯一，不应残留第二个变量")
 
 
 class LegacyButtonRenameTest(unittest.TestCase):
@@ -150,7 +154,7 @@ class LegacyButtonRenameTest(unittest.TestCase):
 
 class AdviceCliContractTest(unittest.TestCase):
     def test_argparse_declares_flag(self):
-        self.assertIn('"--merge-advice"', SCAN.read_text(encoding="utf-8"))
+        self.assertIn('"--skill-insight"', SCAN.read_text(encoding="utf-8"))
 
     def test_dispatched_before_generic_snapshot(self):
         src = SCAN.read_text(encoding="utf-8")

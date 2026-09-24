@@ -139,22 +139,22 @@ class UsageCacheTest(unittest.TestCase):
 
     def test_cache_helpers_exist(self):
         src = _src()
-        for token in ("USAGE_CACHE_KEY", "loadUsageCache", "saveUsageCache",
-                      "readUsageCache", "usageCacheFresh"):
+        for token in ("INSIGHT_CACHE_KEY", "saveInsightCache",
+                      "readInsightCache", "insightCacheFresh"):
             self.assertIn(token, src, f"缺少缓存件 {token}")
 
     def test_open_prefers_cache_then_refreshes_in_background(self):
-        body = _fn("toggleUsagePanel")
-        self.assertIn("readUsageCache", body, "打开弹窗必须先读缓存")
-        self.assertIn("usageCacheFresh", body,
+        body = _fn("toggleInsightPanel")
+        self.assertIn("readInsightCache", body, "打开弹窗必须先读缓存")
+        self.assertIn("insightCacheFresh", body,
                       "缓存过期要在后台静默刷新，而不是又弹一次统计中")
 
     def test_scan_result_is_cached(self):
-        body = _fn("runSkillUsage")
-        self.assertIn("saveUsageCache", body, "扫描结果必须写回缓存")
+        body = _fn("runSkillInsight")
+        self.assertIn("saveInsightCache", body, "扫描结果必须写回缓存")
 
     def test_cancel_keeps_cached_view(self):
-        body = _fn("runSkillUsage")
+        body = _fn("runSkillInsight")
         self.assertIn("cancelled", body,
                       "用户取消不是失败：不得把已有结果替换成报错")
 

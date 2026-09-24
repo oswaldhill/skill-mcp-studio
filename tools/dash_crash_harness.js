@@ -144,7 +144,7 @@ function statefulEl(id, initialHidden) {
   return el;
 }
 const elCache = {};
-const HIDDEN_INIT = new Set(["advice-panel", "busy-root", "usage-panel", "market-panel"]);
+const HIDDEN_INIT = new Set(["busy-root", "insight-panel", "market-panel"]);
 const origById = global.document.getElementById;
 global.document.getElementById = function (id) {
   if (!realIds.has(id)) { missingIds.add(id); return null; }
@@ -156,11 +156,11 @@ global.document.getElementById = function (id) {
   return elCache[id];
 };
 const clickHandler = (listeners.click || []).find((fn) => /\[data-action\]/.test(String(fn)));
-  // open-usage 的 busy 期望值为 false：统计已改成后台定时任务，
-  // 打开弹窗只呈现当前结果，不再弹「正在计算」全屏框（用户明确要求）。
+  // open-insight 的 busy 期望值为 false：统计与整理建议已合并成一次后台扫描，
+  // 打开面板只呈现缓存结果，不再弹「正在计算」全屏框（用户明确要求）。
+  // 只有面板内的「强制重新统计」才会弹可取消的进度框。
 const CASES = [
-  { action: "open-usage", panel: "usage-panel", busy: false },
-  { action: "open-advice", panel: "advice-panel", busy: true },
+  { action: "open-insight", panel: "insight-panel", busy: false },
   { action: "open-market", panel: "market-panel", busy: false },
 ];
 function dispatch(action) {
@@ -174,10 +174,10 @@ function dispatch(action) {
 function reportCase(c, elCache) {
   const panel = elCache[c.panel];
   const busy = elCache["busy-root"];
-  const okPanel = panel && !panel.classList._st.hidden;
-  const bLog = busy ? busy.classList._st.log : [];
+  const okPanel = !!(panel && panel.classList && panel.classList._st && !panel.classList._st.hidden);
+  const bLog = (busy && busy.classList && busy.classList._st) ? busy.classList._st.log : [];
   const okBusy = !c.busy || (bLog.includes("-hidden") && bLog.includes("+hidden"));
-  const okBusyClosed = !busy || busy.classList._st.hidden;
+  const okBusyClosed = !busy || !busy.classList._st || busy.classList._st.hidden;
   const verdict = okPanel && okBusy && okBusyClosed ? "✅" : "❌";
   log(`   ${verdict} ${c.action}: 面板打开=${!!okPanel}` +
       (c.busy ? `｜进度框出现+收掉=${okBusy}` : "") +

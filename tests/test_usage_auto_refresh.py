@@ -92,25 +92,25 @@ class OpenPanelNoBusyTest(unittest.TestCase):
     """打开统计弹窗只呈现当前结果，不弹「正在计算」。"""
 
     def test_open_usage_passes_busy_false(self):
-        body = _body("toggleUsagePanel")
-        self.assertNotIn("runSkillUsage(null, true)", body,
+        body = _body("toggleInsightPanel")
+        self.assertNotIn("runSkillInsight(null, true)", body,
                          "旧的 silent-only 调用会被误判为需要弹框")
-        self.assertRegex(body, r"runSkillUsage\(null,\s*\{\s*silent:\s*(true|false),\s*busy:\s*false\s*\}\)",
+        self.assertRegex(body, r"runSkillInsight\(null,\s*\{\s*silent:\s*(true|false),\s*busy:\s*false\s*\}\)",
                          "打开弹窗必须显式 busy:false")
 
     def test_window_switch_is_silent(self):
         s = _script()
-        i = s.index('a === "usage-window"')
-        seg = s[i:i + 700]
+        i = s.index('a === "insight-window"')
+        seg = s[i:i + 900]
         self.assertIn("busy: false", seg, "切换窗口也不该弹进度框")
 
     def test_manual_refresh_still_shows_busy(self):
-        # 用户确认：手动点「重新统计」仍要显示可取消的进度框。
-        body = _body("runSkillUsage")
-        self.assertRegex(body, r"withBusy\s*=", "runSkillUsage 需要区分弹框与静默")
-        self.assertIn('o.busy === undefined ? !silent', body,
-                      "默认行为：非静默（手动点）才弹框")
-        self.assertIn("withBusy ?", body, "进度框文案必须按 withBusy 决定是否传")
+        # 用户确认：手动点「强制重新统计」仍要显示可取消的进度框。
+        body = _body("runSkillInsight")
+        self.assertRegex(body, r"withBusy\s*=", "runSkillInsight 需要区分弹框与静默")
+        self.assertIn("o.busy === undefined ? (force && !silent)", body,
+                      "默认行为：仅强制重算才弹框")
+        self.assertIn("runCli(args, withBusy", body, "进度框文案必须按 withBusy 决定是否传")
 
 
 class SettingsIntervalTest(unittest.TestCase):

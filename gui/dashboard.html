@@ -1262,6 +1262,8 @@
      建议内容原本是一整片等宽文本流（纯 usageLine 拼接），信息有列结构却读不出列。
      现在：指标条给规模，每组一张卡，成员信息落进表格（标识符用等宽、数字右对齐
      且 tabular-nums），已否决降为次级列表。视觉语言全部取自既有 token。 */
+  /* 数据年龄：让"直接看结果"可见，用户不必猜这是不是旧数据 */
+  .insight-age { font-size: var(--fs-xs); color: var(--faint); white-space: nowrap; font-variant-numeric: tabular-nums; }
   .adv-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(112px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r-card); overflow: hidden; margin-top: 8px; }
   .adv-strip .us-cell { background: var(--panel); padding: 11px 13px; min-width: 0; }
   .adv-sec { margin-top: 18px; }
@@ -1457,8 +1459,7 @@
       <div class="page-head">
         <div class="hd"><h2>Skills</h2><div class="hint">技能清单与每客户端启用状态</div></div>
         <div class="page-actions">
-          <button class="btn-soft" data-action="open-usage">使用统计</button>
-          <button class="btn-soft" data-action="open-advice">整理建议</button>
+          <button class="btn-soft" data-action="open-insight">使用分析</button>
           <button class="btn-soft" data-action="open-market">技能市场</button>
           <button class="btn-soft" data-action="refresh-skills">刷新技能</button>
           <button class="btn-soft" data-action="merge" title="仅重建各客户端 skills 链接，不合并重复技能">修复链接</button>
@@ -1484,40 +1485,28 @@
         </div>
       </dialog>
 
-      <dialog id="usage-panel" class="insight-backdrop hidden" aria-label="技能使用统计">
+      <dialog id="insight-panel" class="insight-backdrop hidden" aria-label="技能使用分析">
         <div class="insight-dialog">
         <div class="insight-toolbar">
-          <span class="insight-title">技能使用统计</span>
-          <span class="segmented" id="usage-seg" role="group" aria-label="统计窗口">
-            <button type="button" class="seg-btn" data-action="usage-window" data-win="7">7 天</button>
-            <button type="button" class="seg-btn" data-action="usage-window" data-win="30">30 天</button>
-            <button type="button" class="seg-btn" data-action="usage-window" data-win="90">90 天</button>
-            <button type="button" class="seg-btn" data-action="usage-window" data-win="0">全部时间</button>
+          <span class="insight-title">技能使用分析</span>
+          <span class="segmented" id="insight-tab" role="group" aria-label="分析视图">
+            <button type="button" class="seg-btn" data-insight-tab="usage">使用统计</button>
+            <button type="button" class="seg-btn" data-insight-tab="advice">整理建议</button>
+          </span>
+          <span class="segmented" id="insight-seg" role="group" aria-label="统计窗口">
+            <button type="button" class="seg-btn" data-action="insight-window" data-win="7">7 天</button>
+            <button type="button" class="seg-btn" data-action="insight-window" data-win="30">30 天</button>
+            <button type="button" class="seg-btn" data-action="insight-window" data-win="90">90 天</button>
+            <button type="button" class="seg-btn" data-action="insight-window" data-win="0">全部时间</button>
           </span>
           <span class="insight-spacer"></span>
-          <button class="btn-soft" data-action="usage-refresh">重新统计</button>
-          <button class="btn-soft" data-action="usage-close">关闭</button>
+          <span id="insight-age" class="insight-age"></span>
+          <button class="btn-soft" data-action="insight-force">强制重新统计</button>
+          <button class="btn-soft" data-action="insight-close">关闭</button>
         </div>
-        <div id="usage-status" class="market-lines"></div>
+        <div id="insight-status" class="market-lines"></div>
         <div id="usage-results" class="market-results"></div>
-        </div>
-      </dialog>
-      <dialog id="advice-panel" class="insight-backdrop hidden" aria-label="技能整理建议">
-        <div class="insight-dialog">
-        <div class="insight-toolbar">
-          <span class="insight-title">技能整理建议</span>
-          <span class="segmented" id="advice-seg" role="group" aria-label="建议统计窗口">
-            <button type="button" class="seg-btn" data-action="advice-window" data-win="7">7 天</button>
-            <button type="button" class="seg-btn" data-action="advice-window" data-win="30">30 天</button>
-            <button type="button" class="seg-btn" data-action="advice-window" data-win="90">90 天</button>
-            <button type="button" class="seg-btn" data-action="advice-window" data-win="0">全部时间</button>
-          </span>
-          <span class="insight-spacer"></span>
-          <button class="btn-soft" data-action="advice-refresh">重新分析</button>
-          <button class="btn-soft" data-action="advice-close">关闭</button>
-        </div>
-        <div id="advice-status" class="market-lines"></div>
-        <div id="advice-results" class="market-results"></div>
+        <div id="advice-results" class="market-results hidden"></div>
         </div>
       </dialog>
       <div class="skill-search">
@@ -3785,7 +3774,7 @@ async function cancelBusy() {
       // 和用户正在等的操作抢 IO 只会让两边都变慢。
       const busyEl = $("busy-root");
       if (busyEl && !busyEl.classList.contains("hidden")) return;
-      runSkillUsage(null, { silent: true, busy: false });
+      runSkillInsight(null, { silent: true, busy: false });
     }, min * 60 * 1000);
   }
 
@@ -3793,7 +3782,7 @@ async function cancelBusy() {
   setTimeout(() => {
     const busyEl = $("busy-root");
     if (!(busyEl && !busyEl.classList.contains("hidden"))) {
-      runSkillUsage(null, { silent: true, busy: false });
+      runSkillInsight(null, { silent: true, busy: false });
     }
   }, 8000);
 
@@ -3929,42 +3918,49 @@ async function reprobeEndpoints(btnEl) {
   // 判据全部在后端（core/skill_usage.py）：只认工具调用记录里的技能路径。
   // 前端只负责窗口选择与渲染，不重复实现任何判定逻辑。
   let USAGE_DATA = null;
+  // 两份结论的状态必须一起声明在启动预热之前：预热会在顶层调用 applyInsight，
+  // 声明若在预热之后，有缓存的用户一开 APP 就命中 TDZ 抛 ReferenceError。
+  let ADVICE_DATA = null;
   let USAGE_DAYS = 30;
 
   // ---------------- 统计结果缓存 ----------------
   // 全量扫描要通读上千个会话文件（实测约 2400 个 / 30 秒）。每次打开弹窗都重扫
   // 是纯浪费，所以结果按「窗口天数」缓存：打开先秒出上次结果，后台再静默刷新，
   // 只有缓存过期（或用户点「重新统计」）才真的重新跑一遍。
-  const USAGE_CACHE_KEY = "sms.usage.cache.v1";
+  // 一次扫描的两份结论存在同一条缓存里：分开存会出现"统计是新的、建议是旧的"
+  // 这种自相矛盾的状态，而它们本来就来自同一份会话日志汇总。
+  const INSIGHT_CACHE_KEY = "sms.insight.cache.v1";
   const USAGE_TTL_MS = 10 * 60 * 1000;
-  let USAGE_CACHE = {};
+  let INSIGHT_TAB = "usage";
 
-  function loadUsageCache() {
+  function readInsightCache(days) {
     try {
-      const raw = window.localStorage && window.localStorage.getItem(USAGE_CACHE_KEY);
-      const obj = raw ? JSON.parse(raw) : null;
-      USAGE_CACHE = obj && typeof obj === "object" ? obj : {};
-    } catch (e) { USAGE_CACHE = {}; }
-    return USAGE_CACHE;
+      const raw = window.localStorage && window.localStorage.getItem(INSIGHT_CACHE_KEY);
+      if (!raw) return null;
+      const all = JSON.parse(raw);
+      const hit = all && all[String(days)];
+      if (!hit || !hit.data) return null;
+      return hit;
+    } catch (e) { return null; }
   }
 
-  function saveUsageCache(days, data) {
-    USAGE_CACHE[String(days)] = { ts: Date.now(), data: data };
+  function saveInsightCache(days, data) {
     try {
-      if (window.localStorage) window.localStorage.setItem(USAGE_CACHE_KEY, JSON.stringify(USAGE_CACHE));
-    } catch (e) { /* 隐私模式/配额满：缓存降级为内存，不影响功能 */ }
+      if (!window.localStorage) return;
+      const raw = window.localStorage.getItem(INSIGHT_CACHE_KEY);
+      const all = raw ? JSON.parse(raw) : {};
+      all[String(days)] = { ts: Date.now(), data: data };
+      window.localStorage.setItem(INSIGHT_CACHE_KEY, JSON.stringify(all));
+    } catch (e) { /* 隐私模式/超配额：缓存失败不影响本次展示 */ }
   }
 
-  function readUsageCache(days) {
-    const hit = USAGE_CACHE[String(days)];
-    return hit && hit.data ? hit : null;
-  }
-
-  function usageCacheFresh(hit) {
+  function insightCacheFresh(hit) {
     return !!hit && (Date.now() - (hit.ts || 0)) < USAGE_TTL_MS;
   }
 
-  loadUsageCache();
+  // 启动时预热内存缓存：面板打开就能立刻渲染，不必等 localStorage 读盘。
+  const _bootHit = readInsightCache(USAGE_DAYS);
+  if (_bootHit) applyInsight(_bootHit.data, _bootHit.ts);
 
   function usageSince(days) {
     if (!days) return null;
@@ -3987,27 +3983,119 @@ async function reprobeEndpoints(btnEl) {
     if (typeof el.close === "function" && el.open) el.close();
   }
 
-  function toggleUsagePanel(show) {
-    const el = $("usage-panel");
+  // 使用统计与整理建议合并为一个面板：两者的结论共用同一份会话日志汇总
+  // （整理建议的保留者打分与零触达判定都来自它），拆成两个按钮等于把同一份
+  // 上千个日志文件的扫描做两遍。现在只有一个入口、一个出口、一次扫描。
+  function toggleInsightPanel(show) {
+    const el = $("insight-panel");
     if (!el) return;
     const open = show === undefined ? el.classList.contains("hidden") : show;
     if (open) openOverlay(el); else closeOverlay(el);
-    setSegActive($("usage-seg"), USAGE_DAYS);
-    if (open) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
     if (!open) return;
-    // 打开即出结果：有缓存先渲染缓存（"每次打开只是获取最新情况"），
-    // 只有缓存缺失或过期才发起扫描；未过期时后台也不打扰用户。
-    const hit = readUsageCache(USAGE_DAYS);
+    setInsightTab(INSIGHT_TAB);
+    setSegActive($("insight-seg"), USAGE_DAYS);
+    // 打开即出结果：有缓存直接渲染（含整理建议），不发起任何扫描，
+    // 用户点开就看得到，不需要先等 30 秒以上。
+    const hit = readInsightCache(USAGE_DAYS);
     if (hit) {
-      USAGE_DATA = hit.data;
-      renderUsage(hit.data);
-      // 过期则后台静默补一次，不弹框、不打断阅读。
-      if (!usageCacheFresh(hit)) runSkillUsage(null, { silent: true, busy: false });
+      applyInsight(hit.data, hit.ts);
+      // 过期只做后台静默补，不弹框、不打断阅读。
+      if (!insightCacheFresh(hit)) runSkillInsight(null, { silent: true, busy: false });
       return;
     }
-    // 首次没有缓存：行内提示"统计中"，同样不弹全屏框。统计是定时任务，
-    // 打开弹窗只是看结果，不该让用户先关掉一个对话框才能看数据。
-    runSkillUsage(null, { silent: false, busy: false });
+    // 首次无缓存：行内提示即可。这是后台定时任务负责的事，不该弹全屏框
+    // 让用户先关掉一个对话框才能看数据。
+    runSkillInsight(null, { silent: false, busy: false });
+  }
+
+  function setInsightTab(tab) {
+    INSIGHT_TAB = tab === "advice" ? "advice" : "usage";
+    const u = $("usage-results"), a = $("advice-results");
+    if (u) u.classList.toggle("hidden", INSIGHT_TAB !== "usage");
+    if (a) a.classList.toggle("hidden", INSIGHT_TAB !== "advice");
+    document.querySelectorAll("[data-insight-tab]").forEach((b) => {
+      b.classList.toggle("active", b.dataset.insightTab === INSIGHT_TAB);
+    });
+  }
+
+  // 把一次扫描的两份结论落到位：渲染 + 记时间戳（面板顶部显示数据年龄）。
+  function applyInsight(data, ts) {
+    if (!data) return;
+    const u = data.usage, a = data.advice;
+    if (u && !u.error) { USAGE_DATA = u; renderUsage(u); }
+    else if (u && u.error) {
+      const out = $("usage-results");
+      if (out) { out.innerHTML = ""; out.appendChild(usageLine("统计失败：" + u.error, "err")); }
+      setInsightStatus("");
+    }
+    if (a && !a.error) { ADVICE_DATA = a; renderAdvice(a); }
+    else if (a && a.error) {
+      const out = $("advice-results");
+      if (out) { out.innerHTML = ""; out.appendChild(usageLine("分析失败：" + a.error, "err")); }
+      setInsightStatus("");
+    }
+    setInsightAge(ts || Date.now());
+  }
+
+  // 面板顶部显示"数据是多久前的"，让"直接看结果"这件事对用户可见，
+  // 而不是让他怀疑看到的是不是旧的。
+  function setInsightAge(ts) {
+    const el = $("insight-age");
+    if (!el) return;
+    if (!ts) { el.textContent = ""; return; }
+    const mins = Math.floor((Date.now() - ts) / 60000);
+    el.textContent = mins < 1 ? "刚刚统计" : (mins < 60 ? mins + " 分钟前统计" : Math.floor(mins / 60) + " 小时前统计");
+  }
+
+  function setInsightStatus(text) {
+    const el = $("insight-status");
+    if (!el) return;
+    if (el.textContent === text) return;
+    el.textContent = text || "";
+  }
+
+  // 统一取数：一次 --skill-insight 同时拿到 usage 与 advice。
+  // opts.force 只有"强制重新统计"才为真：其余情况一律走缓存，
+  // 后台定时任务负责保持缓存新鲜。
+  async function runSkillInsight(btn, opts) {
+    const o = (typeof opts === "boolean") ? { silent: opts } : (opts || {});
+    const silent = !!o.silent;
+    const force = !!o.force;
+    // 强制重算才显示可取消的进度框（用户主动发起、愿意等）；
+    // 自动/打开面板时一律静默，避免"点开就要等 30 秒"。
+    const withBusy = o.busy === undefined ? (force && !silent) : !!o.busy;
+    if (btn) btn.disabled = true;
+    if (!silent) setInsightStatus(force ? "正在重新统计…" : "统计中… 首次需要通读会话日志");
+    const args = ["--skill-insight", "--format", "json"];
+    const since = usageSince(USAGE_DAYS);
+    if (since) args.push("--usage-since", since);
+    const res = await runCli(args, withBusy
+      ? "重新统计技能使用与整理建议：通读会话日志并配对（约 1 分钟）" : null);
+    if (btn) btn.disabled = false;
+    if (res && res.cancelled) {
+      if (!silent) setInsightStatus("已取消本次统计");
+      return;
+    }
+    if (!res || res.code !== 0) {
+      if (silent) return;
+      setInsightStatus("");
+      const out = $("usage-results");
+      if (out) out.appendChild(usageLine("统计失败：" + ((res && res.stderr) || "无返回").slice(0, 200), "err"));
+      return;
+    }
+    let data = null;
+    try { data = JSON.parse(res.stdout || "{}"); }
+    catch (e) { data = null; }
+    if (!data || data.error) {
+      if (silent) return;
+      setInsightStatus("");
+      const out = $("usage-results");
+      if (out) out.appendChild(usageLine("统计失败：" + ((data && data.error) || "返回数据无法解析"), "err"));
+      return;
+    }
+    setInsightStatus("");
+    saveInsightCache(USAGE_DAYS, data);
+    applyInsight(data, Date.now());
   }
 
   function usageLine(text, kind) {
@@ -4037,58 +4125,12 @@ async function reprobeEndpoints(btnEl) {
     });
   }
 
-  function setUsageStatus(text) {
-    const el = $("usage-status");
-    if (el) { el.innerHTML = ""; el.appendChild(usageLine(text || "")); }
-  }
-
-  // opts.silent = 后台刷新：缓存已在屏幕上，不该再闪"统计中"打扰阅读。
-  // opts.busy   = 是否显示全屏进度框。统计本质是后台定时任务，自动触发时
-  //               一律不弹框（打开弹窗只是为了看当前结果）；只有用户主动点
-  //               "重新统计"才弹，因为那是他发起的、需要能取消的长任务。
-  async function runSkillUsage(btn, opts) {
-    const o = (typeof opts === "boolean") ? { silent: opts } : (opts || {});
-    const silent = !!o.silent;
-    const withBusy = o.busy === undefined ? !silent : !!o.busy;
-    const out = $("usage-results");
-    if (!out) return;
-    if (btn) btn.disabled = true;
-    if (!silent) setUsageStatus("统计中… 需通读全部会话日志，约 30 秒");
-    const args = ["--skill-usage", "--format", "json"];
-    const since = usageSince(USAGE_DAYS);
-    if (since) args.push("--usage-since", since);
-    const res = await runCli(args, withBusy ? "统计技能使用：通读全部会话日志（约 30 秒）" : null);
-    if (btn) btn.disabled = false;
-    if (res && res.cancelled) {
-      // 用户主动取消：不是失败，保留屏幕上已有的缓存结果。
-      if (!silent) setUsageStatus("已取消本次统计");
-      return;
-    }
-    if (!res || res.code !== 0) {
-      if (silent) return;
-      setUsageStatus("");
-      out.appendChild(usageLine("统计失败：" + ((res && res.stderr) || "无返回").slice(0, 200), "err"));
-      return;
-    }
-    let data = null;
-    try { data = JSON.parse(res.stdout || "{}"); }
-    catch (e) { data = null; }
-    if (!data || data.error) {
-      if (silent) return;
-      setUsageStatus("");
-      out.appendChild(usageLine("统计失败：" + ((data && data.error) || "返回数据无法解析"), "err"));
-      return;
-    }
-    USAGE_DATA = data;
-    saveUsageCache(USAGE_DAYS, data);
-    renderUsage(data);
-  }
-
   function renderUsage(data) {
     const summary = data.summary || {};
     const out = $("usage-results");
+    if (!out) return;
     out.innerHTML = "";
-    setUsageStatus("");
+    setInsightStatus("");
     const installed = summary.installed || 0;
     const loaded = summary.loaded || 0;
     const never = summary.never_used || [];
@@ -4176,53 +4218,11 @@ async function reprobeEndpoints(btnEl) {
 
   // ---------------- 技能整理建议（FEAT-11） ----------------
   // 只读判据：本面板不删除、不移动、不改写任何技能目录（执行能力属 FEAT-12）。
-  let ADVICE_DATA = null;
-  let ADVICE_DAYS = 30;
+  // ADVICE_DATA 的声明已上移到 USAGE_DATA 旁：启动预热会在顶层调用
+  // applyInsight，声明留在下面会命中 TDZ（实测直接抛 ReferenceError）。
+  // 窗口口径只有 USAGE_DAYS 一个来源：统计与建议共用同一次扫描，
+  // 再留一个 ADVICE_DAYS 会出现两处赋值、零处读取的冗余状态。
 
-  function setAdviceStatus(text) {
-    const el = $("advice-status");
-    if (el) { el.innerHTML = ""; el.appendChild(usageLine(text || "")); }
-  }
-
-  function toggleAdvicePanel(show) {
-    const el = $("advice-panel");
-    if (!el) return;
-    const open = show === undefined ? el.classList.contains("hidden") : show;
-    if (open) openOverlay(el); else closeOverlay(el);
-    setSegActive($("advice-seg"), ADVICE_DAYS);
-    if (open) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    if (open && !ADVICE_DATA) runMergeAdvice();
-  }
-
-  async function runMergeAdvice(btn) {
-    const out = $("advice-results");
-    if (!out) return;
-    if (btn) btn.disabled = true;
-    setAdviceStatus("分析中… 需通读全部会话日志再按判据配对，约 35 秒");
-    out.innerHTML = "";
-    const args = ["--merge-advice", "--format", "json"];
-    const since = usageSince(ADVICE_DAYS);
-    if (since) args.push("--usage-since", since);
-    const res = await runCli(args, "分析整理建议：汇总使用数据并按判据配对（约 35 秒）");
-    if (btn) btn.disabled = false;
-    if (!res || res.code !== 0) {
-      setAdviceStatus("");
-      out.appendChild(usageLine("分析失败：" + ((res && res.stderr) || "无返回").slice(0, 200), "err"));
-      return;
-    }
-    let data = null;
-    try { data = JSON.parse(res.stdout || "{}"); }
-    catch (e) { data = null; }
-    if (!data || data.error) {
-      setAdviceStatus("");
-      out.appendChild(usageLine("分析失败：" + ((data && data.error) || "返回数据无法解析"), "err"));
-      return;
-    }
-    ADVICE_DATA = data;
-    renderAdvice(data);
-  }
-
-  // 成员 = 表格行。加载/会话/最近/状态本来就是四列，原先拼成一句话读不出列。
   function memberRow(d, keepName) {
     const tr = document.createElement("tr");
     const isKeep = keepName && d.name === keepName;
@@ -4254,8 +4254,9 @@ async function reprobeEndpoints(btnEl) {
     const sum = data.summary || {};
     const win = data.since ? `自 ${data.since}` : "全部时间";
     const out = $("advice-results");
+    if (!out) return;
     out.innerHTML = "";
-    setAdviceStatus("");
+    setInsightStatus("");
 
     const act = data.actionable || [];
     const ups = data.upstream_only || [];
@@ -5591,8 +5592,7 @@ document.addEventListener("click", (e) => {
   // 点弹窗的遮罩（而不是弹窗卡片本身）即关闭：这是弹窗最基础的肌肉记忆。
   // 只能在这里判 id，不能给遮罩挂 data-action —— 那样卡片内部的普通点击
   // 也会 closest 到遮罩，导致"点哪都关"。
-  if (e.target.id === "usage-panel") { toggleUsagePanel(false); return; }
-  if (e.target.id === "advice-panel") { toggleAdvicePanel(false); return; }
+  if (e.target.id === "insight-panel") { toggleInsightPanel(false); return; }
   const goto = e.target.closest("[data-goto]");
   if (goto) { switchPage(goto.dataset.goto); return; }
   const act = e.target.closest("[data-action]");
@@ -5603,22 +5603,23 @@ document.addEventListener("click", (e) => {
     else if (a === "rescan") doRescan(act);
     else if (a === "refresh") refreshWithBtn(act);
     else if (a === "refresh-skills") refreshWithBtn(act);
-    else if (a === "open-usage") toggleUsagePanel();
-    else if (a === "usage-close") toggleUsagePanel(false);
-    else if (a === "usage-refresh") runSkillUsage(act);
-    else if (a === "usage-window") {
+    else if (a === "open-insight") toggleInsightPanel();
+    else if (a === "insight-close") toggleInsightPanel(false);
+    // 只有这一个按钮会绕过缓存重跑；面板打开与定时任务一律用缓存结果。
+    else if (a === "insight-force") runSkillInsight(act, { force: true });
+    else if (a === "insight-window") {
+      // 窗口是统计与建议共同的口径，切一次两份结论一起换。
       USAGE_DAYS = parseInt(act.dataset.win || "30", 10);
-      setSegActive($("usage-seg"), USAGE_DAYS);
-      // 切换窗口同样先吃缓存：换窗口不该再等 30 秒。
-      const hit = readUsageCache(USAGE_DAYS);
+      setSegActive($("insight-seg"), USAGE_DAYS);
+      // 换窗口同样先吃缓存：看另一个窗口不该再等一分钟。
+      const hit = readInsightCache(USAGE_DAYS);
       if (hit) {
-        USAGE_DATA = hit.data;
-        renderUsage(hit.data);
-        if (!usageCacheFresh(hit)) runSkillUsage(null, { silent: true, busy: false });
+        applyInsight(hit.data, hit.ts);
+        if (!insightCacheFresh(hit)) runSkillInsight(null, { silent: true, busy: false });
       } else {
-        // 切到没有缓存的窗口：同样后台静默，用户仍能自由切回去。
         USAGE_DATA = null;
-        runSkillUsage(act, { silent: false, busy: false });
+        ADVICE_DATA = null;
+        runSkillInsight(null, { silent: false, busy: false });
       }
     }
     else if (a === "usage-expand") {
@@ -5628,15 +5629,7 @@ document.addEventListener("click", (e) => {
         act.textContent = folded ? act.dataset.more : act.dataset.less;
       }
     }
-    else if (a === "open-advice") toggleAdvicePanel();
-    else if (a === "advice-close") toggleAdvicePanel(false);
-    else if (a === "advice-refresh") runMergeAdvice(act);
-    else if (a === "advice-window") {
-      ADVICE_DAYS = parseInt(act.dataset.win || "30", 10);
-      ADVICE_DATA = null;
-      setSegActive($("advice-seg"), ADVICE_DAYS);
-      runMergeAdvice(act);
-    }
+    else if (a === "insight-tab") setInsightTab(act.dataset.insightTab)
     else if (a === "open-market") toggleMarketPanel();
     else if (a === "market-close") toggleMarketPanel(false);
     else if (a === "market-search") runMarketSearch(act);

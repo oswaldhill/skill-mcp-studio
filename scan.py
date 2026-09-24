@@ -18,7 +18,7 @@ import sys
 import os
 import json
 import argparse
-from typing import Dict, List
+from typing import Any, Dict, List
 
 # 添加 core/ 到 sys.path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "core"))
@@ -1144,6 +1144,60 @@ def _run_merge_advice(args) -> int:
     return 0
 
 
+def _run_skill_insight(args) -> int:
+    """`--skill-insight` 只读出口：一次扫描同时产出使用统计与整理建议。
+
+    这两个结论共用同一份会话日志汇总（整理建议的保留者打分依赖 load/sessions，
+    零触达判定也来自它），拆成两次调用等于把同一份上千个日志文件的扫描做两遍。
+    这里只扫一次 `scan_usage`，把结果注入 `scan_advice`（该参数本就是为此预留的），
+    两份结论一起返回，GUI 打开面板即可直接展示，不需要用户等待重算。
+    """
+    from skill_usage import scan_usage
+    from skill_merge_advisor import scan_advice
+
+    want_json = getattr(args, "format", None) == "json"
+    since = getattr(args, "usage_since", None)
+    payload: Dict[str, Any] = {}
+    try:
+        usage = scan_usage(
+            since=since,
+            progress_path=getattr(args, "progress_file", None),
+        )
+        payload["usage"] = usage
+        if usage.get("error"):
+            # 会话日志读不了时，整理建议也拿不到触达数据，如实透出而不是给空结论。
+            payload["advice"] = {"error": usage["error"]}
+        else:
+            payload["advice"] = scan_advice(since=since, usage=usage)
+    except Exception as exc:                      # 库缺失等异常不中断其他流程
+        payload = {"error": str(exc)}
+
+    if want_json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    elif payload.get("error"):
+        print(f"  ❌ {payload['error']}")
+    else:
+        print(summarize_insight_text(payload))
+    return 0
+
+
+def summarize_insight_text(payload: Dict[str, Any]) -> str:
+    """文本出口：两段结论拼在一起，保持各自的原有摘要格式。"""
+    from skill_usage import summarize_text as usage_text
+    from skill_merge_advisor import summarize_text as advice_text
+
+    usage = payload.get("usage") or {}
+    advice = payload.get("advice") or {}
+    lines = []
+    if usage.get("error") or advice.get("error"):
+        lines.append(f"  ❌ {usage.get('error') or advice.get('error')}")
+        return "\n".join(lines)
+    lines.append(usage_text(usage))
+    lines.append("")
+    lines.append(advice_text(advice).rstrip())
+    return "\n".join(lines)
+
+
 def _run_skill_migrate(args, config, config_path) -> int:
     """Migrate root-form clients to per-skill symlinks (design §14.1 P2).
 
@@ -1539,6 +1593,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="配合 --skill-usage：只统计该日期之后的动作（如 2026-08-24）",
     )
     parser.add_argument(
+        "--skill-insight", action="store_true",
+        help="一次扫描同时产出使用统计与整理建议（两者共用会话日志汇总，避免重扫）",
+    )
+    parser.add_argument(
         "--progress-file", type=str, default=None, metavar="PATH",
         help="配合 --skill-usage/--merge-advice：把扫描进度原子写入该文件（GUI 轮询用，只写进度不写结论）",
     )
@@ -1750,6 +1808,9 @@ def main() -> int:
 
     # 技能使用统计（FEAT-10）同上：只读，且带 --format json 供 GUI 直接
     # JSON.parse，必须排在通用快照路由之前。
+    if getattr(args, "skill_insight", False):
+        return _run_skill_insight(args)
+
     if getattr(args, "skill_usage", False):
         return _run_skill_usage(args)
 
