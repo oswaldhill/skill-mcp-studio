@@ -156,8 +156,10 @@ global.document.getElementById = function (id) {
   return elCache[id];
 };
 const clickHandler = (listeners.click || []).find((fn) => /\[data-action\]/.test(String(fn)));
+  // open-usage 的 busy 期望值为 false：统计已改成后台定时任务，
+  // 打开弹窗只呈现当前结果，不再弹「正在计算」全屏框（用户明确要求）。
 const CASES = [
-  { action: "open-usage", panel: "usage-panel", busy: true },
+  { action: "open-usage", panel: "usage-panel", busy: false },
   { action: "open-advice", panel: "advice-panel", busy: true },
   { action: "open-market", panel: "market-panel", busy: false },
 ];
@@ -198,7 +200,11 @@ if (clickHandler) {
     }
     log(allOk ? "\n✅ 全部按钮点击链路端到端通过" : "\n❌ 存在断链按钮（多为作用域/未定义函数）");
     fs.writeFileSync(process.argv[3], out.join("\n") + "\n", "utf8");
+    process.exit(allOk ? 0 : 1);   // 同上：清掉页面注册的定时器，跑完即退
   })();
 } else {
   fs.writeFileSync(process.argv[3], out.join("\n") + "\n", "utf8");
+  // 仪表盘脚本会在顶层注册自动统计的 setInterval。真实定时器持有事件循环，
+  // 不显式退出的话进程会一直挂着（测试表现为超时）。哨兵跑完就该收工。
+  process.exit(0);
 }

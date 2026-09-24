@@ -1317,6 +1317,7 @@
      dialog:not([open]) 特异性相同，作者样式会赢，所以要显式覆盖。 */
   dialog.insight-backdrop:not([open]) { display: none; }
   .insight-dialog > .insight-toolbar,
+  .insight-dialog > .market-toolbar,
   .insight-dialog > .market-lines { flex: 0 0 auto; }
   /* 结果区是唯一的滚动容器，表头 sticky 相对它定位。 */
   .insight-dialog > .market-results {
@@ -1424,17 +1425,23 @@
       </div>
       <div id="skills-summary" class="subline"></div>
 
-      <div id="market-panel" class="hidden">
+      <dialog id="market-panel" class="insight-backdrop hidden" aria-label="技能市场">
+        <div class="insight-dialog">
+        <div class="insight-toolbar">
+          <span class="insight-title">技能市场</span>
+          <span class="insight-spacer"></span>
+          <button class="btn-soft" data-action="market-close">关闭</button>
+        </div>
         <div class="market-toolbar">
           <input type="text" id="market-query" placeholder="搜索技能市场" aria-label="搜索技能市场" />
           <button class="btn-soft" data-action="market-search">搜索</button>
           <button class="btn-soft" data-action="market-check">检查更新</button>
-          <button class="btn-soft" data-action="market-close">收起</button>
         </div>
         <div id="market-sources" class="market-lines"></div>
         <div id="market-progress" class="market-lines"></div>
         <div id="market-results" class="market-results"></div>
-      </div>
+        </div>
+      </dialog>
 
       <dialog id="usage-panel" class="insight-backdrop hidden" aria-label="技能使用统计">
         <div class="insight-dialog">
@@ -3489,6 +3496,11 @@ function openAgentSettings(name) {
   };
 }
 
+// 自动统计配置：声明必须在 renderSettings（会读它渲染设置项）之前。
+const USAGE_AUTO_KEY = "skill-mcp-usage-auto-min";
+const USAGE_AUTO_DEFAULT = 15;          // 分钟；0 = 关闭自动统计
+const USAGE_AUTO_OPTS = [0, 5, 15, 30, 60];
+
 function renderSettings() {
   const el = $("settings-body");
   if (!el) return;
@@ -3518,6 +3530,22 @@ function renderSettings() {
     kv("统一技能目录", `<code class="mono">${escapeHtml(sk.unified_dir || "未设置")}</code>`),
     '<div class="card-link"><div class="grow note">修改后所有客户端将统一指向新目录。</div><button class="ghost" data-action="set-dir">更改目录</button></div>');
 
+  // 「Skill」：统计是后台定时任务，间隔可配（0 = 关闭，只在手动点重新统计时跑）
+  // 按钮先算好再插值（与上面 scaleBtns 同一写法）：模板里嵌 .map() 会让
+  // tests 的「字符串/注释剥离」失准，连带把后续真实声明也当成模板内容剥掉。
+  const usageAutoBtns = USAGE_AUTO_OPTS
+    .map(m => `<button type="button" class="seg-btn${m === usageAutoMinutes() ? " active" : ""}" data-usage-auto="${m}">${m === 0 ? "关闭" : m + " 分钟"}</button>`)
+    .join("");
+  const usageCard = `<div class="settings-card">
+    <h4>技能使用统计</h4>
+    <div class="rows" style="font-size:var(--fs-sm)">
+      <div class="row"><span class="k">自动统计间隔</span><span class="v"><span class="segmented" id="usage-auto-seg" role="group" aria-label="自动统计间隔">
+        ${usageAutoBtns}
+      </span></span></div>
+    </div>
+    <div class="note" style="margin-top:10px">统计会通读全部会话日志（约 30 秒），在后台静默进行，打开弹窗时直接看最近一次结果，不会弹出"正在计算"。选「关闭」后只有手动点「重新统计」才执行。</div>
+  </div>`;
+
   // 「IDE / Agent」：内置注册表清单（数据来自内置数据库），支持卡片/列表视图
   const agentsCard = `<div class="settings-card">
     <h4>IDE / Agent 默认路径</h4>
@@ -3536,7 +3564,7 @@ function renderSettings() {
 
   el.innerHTML =
     `<div class="settings-tab-panel" data-panel="appearance">${appearanceCard}</div>` +
-    `<div class="settings-tab-panel hidden" data-panel="general">${skillsCard}</div>` +
+    `<div class="settings-tab-panel hidden" data-panel="general">${skillsCard}${usageCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="agents">${agentsCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="mcp">${mcpCard}</div>`;
 
@@ -3546,6 +3574,9 @@ function renderSettings() {
   applyTheme(currentThemeMode(), false);
   el.querySelectorAll("[data-scale-btn]").forEach((b) => {
     b.addEventListener("click", () => applyScale(parseFloat(b.dataset.scaleBtn), true));
+  });
+  el.querySelectorAll("[data-usage-auto]").forEach((b) => {
+    b.addEventListener("click", () => setUsageAutoMinutes(b.dataset.usageAuto));
   });
   applyScale(currentScale(), false);
   renderAgentsTable(0);
@@ -3686,7 +3717,46 @@ async function cancelBusy() {
   }
 })();
 
-// progress：给长耗时调用挂进度对话框。hideBusy 放 finally —— 异常路径也必须收，
+  // ---------------- 使用统计的定时自动刷新（后台任务） ----------------
+  // 统计要通读约 2400 个会话日志（实测 30 秒以上），所以它不该是"打开才跑"的
+  // 前台动作，而应是常驻后台的定时任务：APP 开着就按间隔静默刷新，
+  // 用户打开弹窗时看到的永远是最近一次结果。
+  function usageAutoMinutes() {
+    const n = parseInt(loadStore(USAGE_AUTO_KEY, String(USAGE_AUTO_DEFAULT)), 10);
+    return USAGE_AUTO_OPTS.indexOf(n) >= 0 ? n : USAGE_AUTO_DEFAULT;
+  }
+
+  function setUsageAutoMinutes(min) {
+    const v = parseInt(min, 10);
+    saveStore(USAGE_AUTO_KEY, String(USAGE_AUTO_OPTS.indexOf(v) >= 0 ? v : USAGE_AUTO_DEFAULT));
+    setSegActive($("usage-auto-seg"), usageAutoMinutes(), "usageAuto");
+    scheduleUsageAutoRefresh();
+  }
+
+  let _usageAutoTimer = null;
+
+  function scheduleUsageAutoRefresh() {
+    if (_usageAutoTimer) { clearInterval(_usageAutoTimer); _usageAutoTimer = null; }
+    const min = usageAutoMinutes();
+    if (!min) return;                     // 0 = 关闭
+    _usageAutoTimer = setInterval(() => {
+      // 有前台任务在跑（进度框开着）就跳过这一轮：统计要读上千个文件，
+      // 和用户正在等的操作抢 IO 只会让两边都变慢。
+      const busyEl = $("busy-root");
+      if (busyEl && !busyEl.classList.contains("hidden")) return;
+      runSkillUsage(null, { silent: true, busy: false });
+    }, min * 60 * 1000);
+  }
+
+  // 启动时先补一次，让"刚打开 APP"就有近数据；延迟避开启动扫描的 IO 高峰。
+  setTimeout(() => {
+    const busyEl = $("busy-root");
+    if (!(busyEl && !busyEl.classList.contains("hidden"))) {
+      runSkillUsage(null, { silent: true, busy: false });
+    }
+  }, 8000);
+
+  // progress：给长耗时调用挂进度对话框。hideBusy 放 finally —— 异常路径也必须收，
 // 否则对话框卡死全屏锁输入（没有比"关不掉的进度框"更糟的反馈）。
 async function runCli(args, progress) {
   if (!tauriInvoke) { showBanner("warn", "当前为浏览器预览模式：写操作不会执行（需在桌面 App 中运行）。"); return null; }
@@ -3890,10 +3960,13 @@ async function reprobeEndpoints(btnEl) {
     if (hit) {
       USAGE_DATA = hit.data;
       renderUsage(hit.data);
-      if (!usageCacheFresh(hit)) runSkillUsage(null, true);
+      // 过期则后台静默补一次，不弹框、不打断阅读。
+      if (!usageCacheFresh(hit)) runSkillUsage(null, { silent: true, busy: false });
       return;
     }
-    runSkillUsage();
+    // 首次没有缓存：行内提示"统计中"，同样不弹全屏框。统计是定时任务，
+    // 打开弹窗只是看结果，不该让用户先关掉一个对话框才能看数据。
+    runSkillUsage(null, { silent: false, busy: false });
   }
 
   function usageLine(text, kind) {
@@ -3911,11 +3984,14 @@ async function reprobeEndpoints(btnEl) {
     return `<div class="us-cell"><div class="us-num${cls ? " " + cls : ""}">${num}</div><div class="us-lbl">${lbl}</div></div>`;
   }
 
-  function setSegActive(container, days) {
+  // 分段控件高亮：按 data 属性名取值，默认 data-win（统计窗口）。
+  // 新增分段控件时传 attr，避免为了复用再去写第二个几乎相同的函数。
+  function setSegActive(container, value, attr) {
     if (!container) return;
+    const key = attr || "win";
     Array.prototype.forEach.call(container.children, (b) => {
-      const win = b.dataset ? b.dataset.win : "";
-      if (String(win) === String(days)) b.classList.add("active");
+      const v = b.dataset ? b.dataset[key] : "";
+      if (String(v) === String(value)) b.classList.add("active");
       else b.classList.remove("active");
     });
   }
@@ -3925,16 +4001,22 @@ async function reprobeEndpoints(btnEl) {
     if (el) { el.innerHTML = ""; el.appendChild(usageLine(text || "")); }
   }
 
-  async function runSkillUsage(btn, silent) {
+  // opts.silent = 后台刷新：缓存已在屏幕上，不该再闪"统计中"打扰阅读。
+  // opts.busy   = 是否显示全屏进度框。统计本质是后台定时任务，自动触发时
+  //               一律不弹框（打开弹窗只是为了看当前结果）；只有用户主动点
+  //               "重新统计"才弹，因为那是他发起的、需要能取消的长任务。
+  async function runSkillUsage(btn, opts) {
+    const o = (typeof opts === "boolean") ? { silent: opts } : (opts || {});
+    const silent = !!o.silent;
+    const withBusy = o.busy === undefined ? !silent : !!o.busy;
     const out = $("usage-results");
     if (!out) return;
     if (btn) btn.disabled = true;
-    // silent = 后台刷新：缓存已经在屏幕上，不该再闪一条"统计中"打扰阅读。
     if (!silent) setUsageStatus("统计中… 需通读全部会话日志，约 30 秒");
     const args = ["--skill-usage", "--format", "json"];
     const since = usageSince(USAGE_DAYS);
     if (since) args.push("--usage-since", since);
-    const res = await runCli(args, "统计技能使用：通读全部会话日志（约 30 秒）");
+    const res = await runCli(args, withBusy ? "统计技能使用：通读全部会话日志（约 30 秒）" : null);
     if (btn) btn.disabled = false;
     if (res && res.cancelled) {
       // 用户主动取消：不是失败，保留屏幕上已有的缓存结果。
@@ -4173,8 +4255,7 @@ async function reprobeEndpoints(btnEl) {
     const el = $("market-panel");
     if (!el) return;
     const open = show === undefined ? el.classList.contains("hidden") : show;
-    el.classList.toggle("hidden", !open);
-    if (open) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    if (open) openOverlay(el); else closeOverlay(el);
     if (open && !MARKET_DATA.sources) loadMarketSources();
   }
 
@@ -4200,10 +4281,16 @@ async function reprobeEndpoints(btnEl) {
     if (!el) return;
     el.innerHTML = "";
     if (err || !data) { el.appendChild(marketLine(err || "无数据", "err")); return; }
-    Object.values(data.sources || {}).forEach((s) => {
-      const text = `${s.label}：${s.available ? "可用" : "未检测到"}`;
-      el.appendChild(marketLine(s.reason ? `${text}，${s.reason}` : text,
-                                s.available ? "ok" : "warn"));
+    // 只列可用市场。可用性由后端判定（s.available），前端不做推测：
+    // 探测不到的源对本机用户是纯噪音（QwenWork / 企业市场都未接入），
+    // 列出来只会让人以为"这里能点"。全不可用时给一行兜底，避免顶部空白。
+    const usable = Object.values(data.sources || {}).filter((s) => s.available);
+    if (!usable.length) {
+      el.appendChild(marketLine("未检测到可用的技能市场", "warn"));
+      return;
+    }
+    usable.forEach((s) => {
+      el.appendChild(marketLine(s.reason ? `${s.label}：可用，${s.reason}` : `${s.label}：可用`, "ok"));
     });
   }
 
@@ -5413,10 +5500,11 @@ document.addEventListener("click", (e) => {
       if (hit) {
         USAGE_DATA = hit.data;
         renderUsage(hit.data);
-        if (!usageCacheFresh(hit)) runSkillUsage(null, true);
+        if (!usageCacheFresh(hit)) runSkillUsage(null, { silent: true, busy: false });
       } else {
+        // 切到没有缓存的窗口：同样后台静默，用户仍能自由切回去。
         USAGE_DATA = null;
-        runSkillUsage(act);
+        runSkillUsage(act, { silent: false, busy: false });
       }
     }
     else if (a === "usage-expand") {
@@ -5821,6 +5909,7 @@ const SAMPLE_MGMT = {
 // startup
 initNavGroups();
 initSkillToolbar();
+scheduleUsageAutoRefresh();
 loadManagement();
 </script>
 </body>

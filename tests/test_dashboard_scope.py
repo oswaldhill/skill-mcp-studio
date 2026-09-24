@@ -74,11 +74,12 @@ class ScopeRegressionTest(unittest.TestCase):
         # 额外锚定：三个 toggle 与 reprobe 的间距（若被嵌进 reprobe，_body 仍会截到
         # 但定义行前会出现 reprobeEndpoints 头——用源文件层级缩进变化不可靠，
         # 真正的端到端防线在 HarnessE2ETest，这里只保证函数可截取）。
-        for fn in ("toggleUsagePanel", "toggleAdvicePanel"):
+        # 三个浮层（统计 / 建议 / 市场）都走 openOverlay/closeOverlay 进 top layer，
+        # 不再用 class 切换显隐。市场是 2026-09 从页内嵌区域改成独立弹窗的。
+        for fn in ("toggleUsagePanel", "toggleAdvicePanel", "toggleMarketPanel"):
             body = _body(fn)
             self.assertIn("openOverlay(el)", body)
             self.assertIn("closeOverlay(el)", body)
-        self.assertIn('classList.toggle("hidden"', _body("toggleMarketPanel"))
 
 
 class BusyOverlayTest(unittest.TestCase):
@@ -124,10 +125,14 @@ class BusyOverlayTest(unittest.TestCase):
         for kw in ("检查技能更新", "搜索技能市场", "安装 ${pkg}", "升级 ${name}"):
             self.assertIn(kw, s, f"market 慢调用缺进度标签：{kw}")
 
-    def test_panels_scroll_into_view_when_opened(self):
+    def test_panels_open_as_top_layer_dialogs(self):
+        # 原断言要求展开后 scrollIntoView 滚入视野，那是「面板内嵌在长页面里」的补丁。
+        # 三个面板现已改为 <dialog> + showModal()，由 top layer 保证覆盖视口，
+        # 不再依赖滚动，故断言随之改为「必须走 top layer 开关」。
         for fn in ("toggleUsagePanel", "toggleAdvicePanel", "toggleMarketPanel"):
-            self.assertIn("scrollIntoView", _body(fn),
-                          f"{fn}: 面板在长页面底部，展开后必须滚入视野，否则像没反应")
+            body = _body(fn)
+            self.assertIn("openOverlay(el)", body, f"{fn}: 未走 top layer 打开")
+            self.assertIn("closeOverlay(el)", body, f"{fn}: 未走 top layer 关闭")
 
 
 @unittest.skipUnless(shutil.which("node"), "需要 node 运行时")
