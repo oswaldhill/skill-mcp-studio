@@ -149,11 +149,45 @@ def _iso_valid(ts: str) -> bool:
         return False
 
 
+def write_progress(
+    progress_path: str | None,
+    phase: str,
+    done: int,
+    total: int | None,
+    extra: dict | None = None,
+) -> None:
+    """把扫描进度原子写入 progress_path（供 GUI 轮询）。
+
+    进度是"过程信号"，不是结论：写失败一律吞掉，绝不影响统计本身。
+    total 为 None 表示总量未知（例如此时还在收集文件列表），前端会退回只显示
+    「已扫 N」而不是伪造一个百分比。
+    """
+    if not progress_path:
+        return
+    payload = {
+        "phase": phase,
+        "done": int(done),
+        "total": int(total) if total is not None else None,
+        "pct": int(round(done * 100 / total)) if total else None,
+        "ts": datetime.now().timestamp(),
+    }
+    if extra:
+        payload.update(extra)
+    try:
+        tmp = f"{progress_path}.tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, ensure_ascii=False)
+        os.replace(tmp, progress_path)
+    except OSError:
+        pass
+
+
 def scan_usage(
     session_dirs: list[str] | None = None,
     skills_dir: str | None = None,
     limit_files: int | None = None,
     since: str | None = None,
+    progress_path: str | None = None,
 ) -> dict:
     """扫描会话日志，返回每个技能的使用画像。
 
@@ -183,10 +217,14 @@ def scan_usage(
       }
     """
     dirs = session_dirs if session_dirs is not None else _default_session_dirs()
+    write_progress(progress_path, "收集会话文件", 0, None)
     files = _iter_session_files(dirs)
     scanned_dirs = sorted({os.path.dirname(f) for f in files})
     if limit_files is not None:
         files = files[:limit_files]
+
+    total_files = len(files)
+    write_progress(progress_path, "扫描会话文件", 0, total_files)
 
     since_prefix = since.strip() if isinstance(since, str) and since.strip() else None
 
@@ -194,7 +232,11 @@ def scan_usage(
     state: dict[str, dict] = {}
     tool_calls = 0
 
-    for path in files:
+    for idx, path in enumerate(files, 1):
+        # 进度按文件粒度汇报：total_files 已知，所以这里是"准确进度"而非估算。
+        # 每 5 个文件刷一次，避免把扫描拖慢在写盘上。
+        if idx % 5 == 0 or idx == total_files:
+            write_progress(progress_path, "扫描会话文件", idx, total_files)
         session_key = os.path.basename(path)
         try:
             fh = open(path, encoding="utf-8")
@@ -291,6 +333,8 @@ def scan_usage(
         n for n in installed_names
         if n in touched_set and n not in loaded_set
     ]
+
+    write_progress(progress_path, "完成", total_files, total_files)
 
     return {
         "source": "codex",

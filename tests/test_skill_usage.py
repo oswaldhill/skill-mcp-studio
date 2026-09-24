@@ -301,5 +301,53 @@ class SummarizeTextTest(SessionFixture):
         self.assertIn("never-used", text)
 
 
+class ScanProgressTest(SessionFixture):
+    """扫描进度：总量可算时必须给"准确进度"，不是估算。
+
+    会话文件是先收集完再逐个读的，所以 total 在扫描前就已知 —— 这正是
+    GUI 能显示 N/total 而不是只显示秒数的依据。
+    """
+
+    def _progress_path(self):
+        return str(Path(self._tmp.name) / "progress.json")
+
+    def _read(self, path):
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+
+    def test_reports_exact_total_and_finishes_at_100(self):
+        for i in range(6):
+            self.write(f"s{i}.jsonl",
+                       [rec(call("exec_command", {"cmd": f"cat {SKILLS_ROOT}/hermes/SKILL.md"}))])
+        p = self._progress_path()
+        self.scan(progress_path=p)
+        last = self._read(p)
+        self.assertEqual(last["phase"], "完成")
+        self.assertEqual(last["total"], 6)
+        self.assertEqual(last["done"], 6)
+        self.assertEqual(last["pct"], 100)
+
+    def test_first_progress_reports_total_before_reading(self):
+        """总量必须在开扫之初就报出来，否则前端只能一直显示秒数。"""
+        for i in range(4):
+            self.write(f"t{i}.jsonl", [rec(call("exec_command", {"cmd": f"cat {SKILLS_ROOT}/hermes/SKILL.md"}))])
+        p = self._progress_path()
+        self.scan(progress_path=p)
+        self.assertEqual(self._read(p)["total"], 4)
+
+    def test_no_progress_file_when_not_requested(self):
+        """不传 progress_path 时不得凭空写盘：统计是只读出口。"""
+        self.write("a.jsonl", [rec(call("exec_command", {"cmd": f"cat {SKILLS_ROOT}/hermes/SKILL.md"}))])
+        before = sorted(x.name for x in Path(self._tmp.name).iterdir())
+        self.scan()
+        after = sorted(x.name for x in Path(self._tmp.name).iterdir())
+        self.assertEqual(before, after)
+
+    def test_progress_write_failure_does_not_break_scan(self):
+        """进度只是过程信号：写不进去（如目录不存在）也必须照常出结论。"""
+        self.write("a.jsonl", [rec(call("exec_command", {"cmd": f"cat {SKILLS_ROOT}/hermes/SKILL.md"}))])
+        out = self.scan(progress_path=str(Path(self._tmp.name) / "no-such-dir" / "p.json"))
+        self.assertEqual(out["skills"]["hermes"]["load"], 1)
+
+
 if __name__ == "__main__":
     unittest.main()

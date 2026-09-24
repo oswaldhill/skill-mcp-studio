@@ -22,8 +22,11 @@
 //! bare name lookup can miss user-local wrappers.  We try the PATH name first,
 //! then common absolute locations per platform (see `cli_candidates`).
 
-use std::process::Command;
+use std::io::Read;
+use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
+use std::time::Duration;
 
 use tauri::{Manager, RunEvent, WindowEvent};
 
@@ -119,6 +122,135 @@ fn spawn(args: &[String]) -> Result<(Option<i32>, String, String), String> {
         "无法启动 skill-mcp-studio（已尝试 PATH 与常见安装位置）：{}。请先安装 CLI：pipx install skill-mcp-studio（或 pip3 install --user），安装后重试。",
         attempts.join("；")
     ))
+}
+
+/// 当前正在运行的 CLI 子进程 PID；`None` 表示空闲。
+///
+/// 存在的唯一理由是「关闭进度对话框 = 立即停止任务」：`run_cli` 把 PID 登记进来，
+/// 新命令 `cancel_cli` 据此终止子进程。没有它，长扫描一旦发起就只能干等到底。
+static RUNNING_PID: Mutex<Option<u32>> = Mutex::new(None);
+
+/// 本次运行是否被用户取消（用于把"被杀的进程"与"自己失败"区分开）。
+static CANCELLED: AtomicBool = AtomicBool::new(false);
+
+/// 扫描进度文件的固定位置。
+///
+/// **路径由 shell 独占决定，webview 不能指定**：否则 `--progress-file` 就变成
+/// 一个"往任意路径写 JSON"的写原语，越过了 ARCH-2 的写边界。两侧（Python 用
+/// `tempfile.gettempdir()`，这里用 `env::temp_dir()`）解析同一个 TMPDIR，
+/// 因此无需协商即可指向同一文件。
+fn progress_file_path() -> std::path::PathBuf {
+    std::env::temp_dir().join("skill-mcp-studio-progress.json")
+}
+
+/// 终止子进程（优先整个进程组，退回单 PID）。
+fn kill_child(pid: u32) {
+    // spawn 时已建独立进程组（PGID == PID），所以 `-pid` 能连子孙一起收掉。
+    #[cfg(unix)]
+    {
+        let grouped = Command::new("kill")
+            .arg("-TERM")
+            .arg(format!("-{pid}"))
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        if !grouped {
+            let _ = Command::new("kill").arg("-TERM").arg(pid.to_string()).status();
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let _ = Command::new("taskkill")
+            .args(["/PID", &pid.to_string(), "/T", "/F"])
+            .status();
+    }
+}
+
+/// 可取消的 `spawn`：与 [`spawn`] 相同的候选回退语义，但登记 PID 供取消，
+/// 并返回是否被取消。
+fn spawn_cancellable(args: &[String]) -> Result<(Option<i32>, String, String, bool), String> {
+    let mut attempts: Vec<String> = Vec::new();
+    for cli in cli_candidates() {
+        let mut cmd = Command::new(&cli);
+        cmd.args(args).stdout(Stdio::piped()).stderr(Stdio::piped());
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            cmd.process_group(0);
+        }
+        let mut child = match cmd.spawn() {
+            Ok(child) => child,
+            Err(e) => {
+                attempts.push(format!("{cli}: {e}"));
+                continue;
+            }
+        };
+        let pid = child.id();
+        let mut out_pipe = child.stdout.take();
+        let mut err_pipe = child.stderr.take();
+
+        CANCELLED.store(false, Ordering::SeqCst);
+        *RUNNING_PID.lock().unwrap() = Some(pid);
+
+        // 两个管道必须并发读：只 wait 不读，子进程写满 64KB 缓冲区就会卡死。
+        let out_reader = std::thread::spawn(move || {
+            let mut buf = String::new();
+            if let Some(pipe) = out_pipe.as_mut() {
+                let _ = pipe.read_to_string(&mut buf);
+            }
+            buf
+        });
+        let err_reader = std::thread::spawn(move || {
+            let mut buf = String::new();
+            if let Some(pipe) = err_pipe.as_mut() {
+                let _ = pipe.read_to_string(&mut buf);
+            }
+            buf
+        });
+
+        // 轮询 try_wait 而不是阻塞 wait：取消要走另一条命令，不能被 wait 独占。
+        let status = loop {
+            match child.try_wait() {
+                Ok(Some(st)) => break Some(st),
+                Ok(None) => std::thread::sleep(Duration::from_millis(80)),
+                Err(_) => break None,
+            }
+        };
+
+        let stdout = out_reader.join().unwrap_or_default();
+        let stderr = err_reader.join().unwrap_or_default();
+        let cancelled = CANCELLED.load(Ordering::SeqCst);
+        *RUNNING_PID.lock().unwrap() = None;
+        return Ok((status.and_then(|s| s.code()), stdout, stderr, cancelled));
+    }
+    Err(format!(
+        "无法启动 skill-mcp-studio（已尝试 PATH 与常见安装位置）：{}。请先安装 CLI：pipx install skill-mcp-studio（或 pip3 install --user），安装后重试。",
+        attempts.join("；")
+    ))
+}
+
+/// 取消正在运行的 CLI 任务（进度对话框上的「取消」）。
+///
+/// 返回是否真的杀掉了一个进程：`false` 表示调用时任务已自行结束。
+#[tauri::command]
+fn cancel_cli() -> Result<bool, String> {
+    let pid = *RUNNING_PID.lock().unwrap();
+    match pid {
+        Some(p) => {
+            CANCELLED.store(true, Ordering::SeqCst);
+            kill_child(p);
+            Ok(true)
+        }
+        None => Ok(false),
+    }
+}
+
+/// 读取扫描进度文件（CLI 原子写入，GUI 轮询）。
+///
+/// 文件不存在返回空串而非报错：进度是可选的过程信号，"还没有进度"不是故障。
+#[tauri::command]
+fn read_scan_progress() -> Result<String, String> {
+    Ok(std::fs::read_to_string(progress_file_path()).unwrap_or_default())
 }
 
 /// Aggregate snapshot across every profile (populates the profile dropdown too).
@@ -230,10 +362,22 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
         }
     }
 
+    // 扫描类子命令由 shell 挂上进度文件（路径固定，webview 不可指定），
+    // 并先清掉上次的残留，免得对话框一打开就显示上一个任务的 100%。
+    let mut argv: Vec<String> = args.clone();
+    let is_scan = argv
+        .iter()
+        .any(|a| a == "--skill-usage" || a == "--merge-advice");
+    if is_scan && !argv.iter().any(|a| a == "--progress-file") {
+        let _ = std::fs::remove_file(progress_file_path());
+        argv.push("--progress-file".to_string());
+        argv.push(progress_file_path().to_string_lossy().into_owned());
+    }
+
     // Route the blocking subprocess spawn onto the async blocking pool so the
     // webview main thread stays responsive while the CLI scans / probes.
     tauri::async_runtime::spawn_blocking(move || {
-        let (code, stdout, stderr) = spawn(&args)?;
+        let (code, stdout, stderr, cancelled) = spawn_cancellable(&argv)?;
         let code = code.unwrap_or(-1);
         // Bound stderr to avoid flooding the IPC channel with a full traceback.
         let stderr_bounded = if stderr.len() > 2000 { stderr.chars().take(2000).collect::<String>() } else { stderr };
@@ -241,6 +385,7 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
             "code": code,
             "stdout": stdout,
             "stderr": stderr_bounded,
+            "cancelled": cancelled,
         })
         .to_string())
     })
@@ -287,7 +432,13 @@ fn open_url(url: String) -> Result<(), String> {
 pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![run_audit, run_cli, open_url])
+        .invoke_handler(tauri::generate_handler![
+            run_audit,
+            run_cli,
+            cancel_cli,
+            read_scan_progress,
+            open_url
+        ])
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 // 单窗口常驻：Cmd+W / 红色关闭钮只隐藏窗口，不退出应用；

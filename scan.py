@@ -1105,7 +1105,10 @@ def _run_skill_usage(args) -> int:
 
     want_json = getattr(args, "format", None) == "json"
     try:
-        payload = scan_usage(since=getattr(args, "usage_since", None))
+        payload = scan_usage(
+            since=getattr(args, "usage_since", None),
+            progress_path=getattr(args, "progress_file", None),
+        )
     except Exception as exc:                      # 日志缺失/损坏不应中断其他流程
         payload = {"error": str(exc)}
 
@@ -1534,6 +1537,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--usage-since", type=str, default=None, metavar="ISO_DATE",
         help="配合 --skill-usage：只统计该日期之后的动作（如 2026-08-24）",
+    )
+    parser.add_argument(
+        "--progress-file", type=str, default=None, metavar="PATH",
+        help="配合 --skill-usage/--merge-advice：把扫描进度原子写入该文件（GUI 轮询用，只写进度不写结论）",
     )
     # === 技能整理建议（FEAT-11，只读，不删不改不移）===
     parser.add_argument(

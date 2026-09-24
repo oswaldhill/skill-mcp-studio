@@ -542,6 +542,13 @@
   }
   .busy-time { font-family: var(--mono, monospace); font-size: var(--fs-sm); color: var(--muted); margin-top: 10px; }
   .busy-note { font-size: var(--fs-xs); color: var(--faint); margin-top: 4px; }
+  /* 准确进度：总量可算时给 N/total + 百分比，取代"只看已用时间"。
+     宽度一律用 CSSOM 赋值（见 setBusyProgress）——style 属性会被 CSP 静默拦掉。 */
+  .busy-progress { margin-top: 12px; display: flex; align-items: center; gap: 10px; }
+  .busy-bar { flex: 1 1 auto; height: 6px; border-radius: 3px; background: var(--bg-elev); overflow: hidden; }
+  .busy-bar i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 3px; }
+  .busy-pct { font-family: var(--mono); font-size: var(--fs-2xs); color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .busy-actions { margin-top: 16px; display: flex; justify-content: center; }
   .task-spinner {
     width: 34px; height: 34px; border-radius: 50%;
     margin: 0 auto 16px; flex: none;
@@ -1278,6 +1285,24 @@
   .usage-empty { border: 1px dashed var(--line); border-radius: var(--r-card); padding: 18px 16px; text-align: center; color: var(--muted); font-size: var(--fs-sm); margin-top: 14px; }
   .usage-empty-sub { display: block; margin-top: 6px; color: var(--faint); font-size: var(--fs-2xs); }
 
+  /* ---------- 统计/建议弹窗 ----------
+     结果属于"临时内容"而非常驻内容：放在页面流里会把技能页撑得又长又吵，
+     所以改成弹窗承载，打开时从缓存直出，关闭即收起。z-index 60 低于进度框
+     的 70 —— 扫描进行中时，进度框必须压在弹窗之上。 */
+  .insight-backdrop {
+    position: fixed; inset: 0; z-index: 60;
+    display: flex; align-items: flex-start; justify-content: center;
+    padding: 40px 20px; background: rgba(0,0,0,.42);
+    backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+    overflow-y: auto;
+  }
+  .insight-dialog {
+    width: min(1040px, 100%); background: var(--panel);
+    border: 1px solid var(--line); border-radius: var(--r-card);
+    box-shadow: var(--shadow-card); padding: 16px 18px 18px;
+  }
+  .insight-dialog .insight-toolbar { position: sticky; top: 0; z-index: 1; background: var(--panel); }
+
   .empty .empty-cta { margin-top: 12px; display: flex; gap: 8px; justify-content: center; align-items: center; flex-wrap: wrap; }
 
   @media (prefers-reduced-motion: reduce) {
@@ -1382,7 +1407,8 @@
         <div id="market-results" class="market-results"></div>
       </div>
 
-      <div id="usage-panel" class="hidden">
+      <div id="usage-panel" class="insight-backdrop hidden" role="dialog" aria-modal="true" aria-label="技能使用统计">
+        <div class="insight-dialog">
         <div class="insight-toolbar">
           <span class="insight-title">技能使用统计</span>
           <span class="segmented" id="usage-seg" role="group" aria-label="统计窗口">
@@ -1393,12 +1419,14 @@
           </span>
           <span class="insight-spacer"></span>
           <button class="btn-soft" data-action="usage-refresh">重新统计</button>
-          <button class="btn-soft" data-action="usage-close">收起</button>
+          <button class="btn-soft" data-action="usage-close">关闭</button>
         </div>
         <div id="usage-status" class="market-lines"></div>
         <div id="usage-results" class="market-results"></div>
+        </div>
       </div>
-      <div id="advice-panel" class="hidden">
+      <div id="advice-panel" class="insight-backdrop hidden" role="dialog" aria-modal="true" aria-label="技能整理建议">
+        <div class="insight-dialog">
         <div class="insight-toolbar">
           <span class="insight-title">技能整理建议</span>
           <span class="segmented" id="advice-seg" role="group" aria-label="建议统计窗口">
@@ -1409,10 +1437,11 @@
           </span>
           <span class="insight-spacer"></span>
           <button class="btn-soft" data-action="advice-refresh">重新分析</button>
-          <button class="btn-soft" data-action="advice-close">收起</button>
+          <button class="btn-soft" data-action="advice-close">关闭</button>
         </div>
         <div id="advice-status" class="market-lines"></div>
         <div id="advice-results" class="market-results"></div>
+        </div>
       </div>
       <div class="skill-search">
         <input type="text" id="skill-filter" placeholder="搜索技能名称" aria-label="搜索技能" />
@@ -1472,7 +1501,12 @@
     <div class="task-spinner"></div>
     <div class="cfm-title" id="busy-label">执行中…</div>
     <div class="busy-time" id="busy-time">已用 0 秒</div>
-    <div class="busy-note">全量扫描需要 30 秒以上，对话框会在完成后自动关闭</div>
+    <div class="busy-progress hidden" id="busy-progress">
+      <div class="busy-bar"><i id="busy-bar-fill"></i></div>
+      <span class="busy-pct" id="busy-pct"></span>
+    </div>
+    <div class="busy-note" id="busy-note">长任务可以随时取消，取消会立刻终止正在运行的扫描</div>
+    <div class="busy-actions"><button type="button" class="btn-soft" id="busy-cancel">取消</button></div>
   </div>
 </div>
 <div id="toast-root" class="toast-root"></div>
@@ -3545,22 +3579,74 @@ const tauriInvoke = window.__TAURI__ && (
   (window.__TAURI__.core && window.__TAURI__.core.invoke) || window.__TAURI__.invoke
 );
 let _busyTimer = null;
+let _busyPoll = null;
+// 本次任务是否被「取消」按钮终止：runCli 的调用方据此给出"已取消"而不是"失败"。
+let _busyCancelled = false;
+
+// 进度条宽度一律走 CSSOM（el.style.width）：CSP 的 style-src 只管 HTML 里的
+// style 属性，不管 CSSOM 赋值。反过来写 style="width:.." 会被静默丢掉，
+// 表现就是"所有条一样长"——这个坑踩过一次，不再踩第二次。
+function setBusyProgress(p) {
+  const wrap = $("busy-progress");
+  const fill = $("busy-bar-fill");
+  const pctEl = $("busy-pct");
+  if (!wrap) return;
+  if (!p || !p.total) { wrap.classList.add("hidden"); return; }
+  wrap.classList.remove("hidden");
+  if (fill) fill.style.width = (p.pct || 0) + "%";
+  if (pctEl) pctEl.textContent = `${p.phase || "处理中"} ${p.done}/${p.total} · ${p.pct || 0}%`;
+}
+
+function pollScanProgress() {
+  if (!tauriInvoke) return;
+  Promise.resolve(tauriInvoke("read_scan_progress")).then((txt) => {
+    if (!txt) return;
+    let p = null;
+    try { p = JSON.parse(txt); } catch (e) { return; }
+    // 目录扫描阶段 total 未知：此时不伪造百分比，退回只显示已用时间。
+    if (!p || !p.total) return;
+    // 过期保护：上一次任务残留的进度不该冒充当前任务。
+    if (p.ts && (Date.now() / 1000) - p.ts > 15) return;
+    setBusyProgress(p);
+  }).catch(() => {});
+}
+
 function showBusy(label) {
   const el = $("busy-root"); if (!el) return;
   const t0 = Date.now();
+  _busyCancelled = false;
   const lb = $("busy-label"); if (lb) lb.textContent = label || "执行中…";
   const tm = $("busy-time"); if (tm) tm.textContent = "已用 0 秒";
+  setBusyProgress(null);
   el.classList.remove("hidden");
   clearInterval(_busyTimer);
   _busyTimer = setInterval(() => {
     const t = $("busy-time");
     if (t) t.textContent = "已用 " + Math.round((Date.now() - t0) / 1000) + " 秒";
   }, 1000);
+  clearInterval(_busyPoll);
+  _busyPoll = setInterval(pollScanProgress, 400);
+  pollScanProgress();
 }
 function hideBusy() {
   clearInterval(_busyTimer); _busyTimer = null;
+  clearInterval(_busyPoll); _busyPoll = null;
   const el = $("busy-root"); if (el) el.classList.add("hidden");
 }
+
+// 关闭/取消进度框 = 立刻终止正在运行的子进程（不是"眼不见为净"）。
+async function cancelBusy() {
+  _busyCancelled = true;
+  if (tauriInvoke) {
+    try { await tauriInvoke("cancel_cli"); } catch (e) { /* 无任务在跑，忽略 */ }
+  }
+  hideBusy();
+  showBanner("warn", "已取消当前任务，正在运行的扫描已被终止。");
+}
+(function bindBusyCancel() {
+  const bc = $("busy-cancel");
+  if (bc) bc.addEventListener("click", cancelBusy);
+})();
 
 // progress：给长耗时调用挂进度对话框。hideBusy 放 finally —— 异常路径也必须收，
 // 否则对话框卡死全屏锁输入（没有比"关不掉的进度框"更糟的反馈）。
@@ -3696,6 +3782,41 @@ async function reprobeEndpoints(btnEl) {
   let USAGE_DATA = null;
   let USAGE_DAYS = 30;
 
+  // ---------------- 统计结果缓存 ----------------
+  // 全量扫描要通读上千个会话文件（实测约 2400 个 / 30 秒）。每次打开弹窗都重扫
+  // 是纯浪费，所以结果按「窗口天数」缓存：打开先秒出上次结果，后台再静默刷新，
+  // 只有缓存过期（或用户点「重新统计」）才真的重新跑一遍。
+  const USAGE_CACHE_KEY = "sms.usage.cache.v1";
+  const USAGE_TTL_MS = 10 * 60 * 1000;
+  let USAGE_CACHE = {};
+
+  function loadUsageCache() {
+    try {
+      const raw = window.localStorage && window.localStorage.getItem(USAGE_CACHE_KEY);
+      const obj = raw ? JSON.parse(raw) : null;
+      USAGE_CACHE = obj && typeof obj === "object" ? obj : {};
+    } catch (e) { USAGE_CACHE = {}; }
+    return USAGE_CACHE;
+  }
+
+  function saveUsageCache(days, data) {
+    USAGE_CACHE[String(days)] = { ts: Date.now(), data: data };
+    try {
+      if (window.localStorage) window.localStorage.setItem(USAGE_CACHE_KEY, JSON.stringify(USAGE_CACHE));
+    } catch (e) { /* 隐私模式/配额满：缓存降级为内存，不影响功能 */ }
+  }
+
+  function readUsageCache(days) {
+    const hit = USAGE_CACHE[String(days)];
+    return hit && hit.data ? hit : null;
+  }
+
+  function usageCacheFresh(hit) {
+    return !!hit && (Date.now() - (hit.ts || 0)) < USAGE_TTL_MS;
+  }
+
+  loadUsageCache();
+
   function usageSince(days) {
     if (!days) return null;
     const d = new Date(Date.now() - days * 86400000);
@@ -3709,7 +3830,17 @@ async function reprobeEndpoints(btnEl) {
     el.classList.toggle("hidden", !open);
     setSegActive($("usage-seg"), USAGE_DAYS);
     if (open) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    if (open && !USAGE_DATA) runSkillUsage();
+    if (!open) return;
+    // 打开即出结果：有缓存先渲染缓存（"每次打开只是获取最新情况"），
+    // 只有缓存缺失或过期才发起扫描；未过期时后台也不打扰用户。
+    const hit = readUsageCache(USAGE_DAYS);
+    if (hit) {
+      USAGE_DATA = hit.data;
+      renderUsage(hit.data);
+      if (!usageCacheFresh(hit)) runSkillUsage(null, true);
+      return;
+    }
+    runSkillUsage();
   }
 
   function usageLine(text, kind) {
@@ -3741,18 +3872,24 @@ async function reprobeEndpoints(btnEl) {
     if (el) { el.innerHTML = ""; el.appendChild(usageLine(text || "")); }
   }
 
-  async function runSkillUsage(btn) {
+  async function runSkillUsage(btn, silent) {
     const out = $("usage-results");
     if (!out) return;
     if (btn) btn.disabled = true;
-    setUsageStatus("统计中… 需通读全部会话日志，约 30 秒");
-    out.innerHTML = "";
+    // silent = 后台刷新：缓存已经在屏幕上，不该再闪一条"统计中"打扰阅读。
+    if (!silent) setUsageStatus("统计中… 需通读全部会话日志，约 30 秒");
     const args = ["--skill-usage", "--format", "json"];
     const since = usageSince(USAGE_DAYS);
     if (since) args.push("--usage-since", since);
     const res = await runCli(args, "统计技能使用：通读全部会话日志（约 30 秒）");
     if (btn) btn.disabled = false;
+    if (res && res.cancelled) {
+      // 用户主动取消：不是失败，保留屏幕上已有的缓存结果。
+      if (!silent) setUsageStatus("已取消本次统计");
+      return;
+    }
     if (!res || res.code !== 0) {
+      if (silent) return;
       setUsageStatus("");
       out.appendChild(usageLine("统计失败：" + ((res && res.stderr) || "无返回").slice(0, 200), "err"));
       return;
@@ -3761,11 +3898,13 @@ async function reprobeEndpoints(btnEl) {
     try { data = JSON.parse(res.stdout || "{}"); }
     catch (e) { data = null; }
     if (!data || data.error) {
+      if (silent) return;
       setUsageStatus("");
       out.appendChild(usageLine("统计失败：" + ((data && data.error) || "返回数据无法解析"), "err"));
       return;
     }
     USAGE_DATA = data;
+    saveUsageCache(USAGE_DAYS, data);
     renderUsage(data);
   }
 
@@ -3821,7 +3960,10 @@ async function reprobeEndpoints(btnEl) {
       html += `<div class="usage-row">` +
         `<span class="ur-rank">${String(i + 1).padStart(2, "0")}</span>` +
         `<span class="ur-name" title="${escapeHtml(r.name)}">${escapeHtml(r.name)}</span>` +
-        `<span class="ur-bar" aria-hidden="true"><i style="width:${pct}%"></i></span>` +
+        // 宽度不写成 style 属性：CSP 的 style-src 会把 style 属性静默丢掉，
+        // 那样 <i> 退化成撑满整列，整列强度条就全长一个样（曾经的真实现象）。
+        // 这里只带 data-pct，真实的宽度在下面用 CSSOM 赋。
+        `<span class="ur-bar" aria-hidden="true"><i data-pct="${pct}"></i></span>` +
         `<span class="ur-num ok">${r.load || 0}</span>` +
         `<span class="ur-num">${r.browse || 0}</span>` +
         `<span class="ur-num dim">${r.edit || 0}</span>` +
@@ -3833,6 +3975,10 @@ async function reprobeEndpoints(btnEl) {
       html += `<button type="button" class="chip more usage-more" data-action="usage-expand" data-target="usage-list" data-more="展开全部 ${rows.length} 条" data-less="收起，只看前 30 条">展开全部 ${rows.length} 条</button>`;
     }
     blk.innerHTML = html;
+    // 强度条宽度在这里用 CSSOM 落地（见上面的注释：style 属性会被 CSP 丢掉）。
+    Array.prototype.forEach.call(blk.querySelectorAll(".ur-bar i"), (fill) => {
+      fill.style.width = (fill.dataset ? fill.dataset.pct : "0") + "%";
+    });
     out.appendChild(blk);
 
     if (never.length) {
@@ -5186,6 +5332,11 @@ document.addEventListener("click", (e) => {
   const skPopItem = e.target.closest(".pop-menu [data-spm]");
   if (skPopItem) { runSkillMenu(skPopItem.dataset.spm, skPopItem.dataset.skill); return; }
   if (e.target.closest(".pop-menu") || e.target.closest(".palette")) return;
+  // 点弹窗的遮罩（而不是弹窗卡片本身）即关闭：这是弹窗最基础的肌肉记忆。
+  // 只能在这里判 id，不能给遮罩挂 data-action —— 那样卡片内部的普通点击
+  // 也会 closest 到遮罩，导致"点哪都关"。
+  if (e.target.id === "usage-panel") { toggleUsagePanel(false); return; }
+  if (e.target.id === "advice-panel") { toggleAdvicePanel(false); return; }
   const goto = e.target.closest("[data-goto]");
   if (goto) { switchPage(goto.dataset.goto); return; }
   const act = e.target.closest("[data-action]");
@@ -5201,9 +5352,17 @@ document.addEventListener("click", (e) => {
     else if (a === "usage-refresh") runSkillUsage(act);
     else if (a === "usage-window") {
       USAGE_DAYS = parseInt(act.dataset.win || "30", 10);
-      USAGE_DATA = null;
       setSegActive($("usage-seg"), USAGE_DAYS);
-      runSkillUsage(act);
+      // 切换窗口同样先吃缓存：换窗口不该再等 30 秒。
+      const hit = readUsageCache(USAGE_DAYS);
+      if (hit) {
+        USAGE_DATA = hit.data;
+        renderUsage(hit.data);
+        if (!usageCacheFresh(hit)) runSkillUsage(null, true);
+      } else {
+        USAGE_DATA = null;
+        runSkillUsage(act);
+      }
     }
     else if (a === "usage-expand") {
       const box = act.dataset.target ? document.getElementById(act.dataset.target) : null;
