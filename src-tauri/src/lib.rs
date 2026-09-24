@@ -327,12 +327,19 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
         "--rename-skill",
         "--delete-skill",
         // 技能市场（FEAT-9）：只读出口（sources/list/search/check）。
-        // 安装与升级不经此通道：它们需要二次确认，且属于写操作。
         "--market",
+        // 市场的安装与升级：写操作，但确实由 GUI 的确认流程经 run_cli 调用
+        // （弹窗二次确认后执行）。此前只登记了 --market，导致这两个从界面
+        // 一点就被安全边界拦下；两者是独立 flag，不是 --market 的取值。
+        "--market-install",
+        "--market-upgrade",
         // 技能使用统计（FEAT-10）：只读，解析客户端会话日志，不写盘。
         "--skill-usage",
         // 技能整理建议（FEAT-11）：只读判据，不删、不改、不移动任何技能目录。
         "--merge-advice",
+        // 使用统计 + 整理建议的组合出口：两者共用同一份会话日志汇总，
+        // 合成一次扫描（只读，能力不超出上面两条之和）。
+        "--skill-insight",
     ];
     // Reject redirection-class flags outright (they re-point the engine at an
     // arbitrary config/profile file, a privilege escalation vector).
@@ -365,9 +372,9 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
     // 扫描类子命令由 shell 挂上进度文件（路径固定，webview 不可指定），
     // 并先清掉上次的残留，免得对话框一打开就显示上一个任务的 100%。
     let mut argv: Vec<String> = args.clone();
-    let is_scan = argv
-        .iter()
-        .any(|a| a == "--skill-usage" || a == "--merge-advice");
+    let is_scan = argv.iter().any(|a| {
+        a == "--skill-usage" || a == "--merge-advice" || a == "--skill-insight"
+    });
     if is_scan && !argv.iter().any(|a| a == "--progress-file") {
         let _ = std::fs::remove_file(progress_file_path());
         argv.push("--progress-file".to_string());
