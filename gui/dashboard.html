@@ -1349,6 +1349,19 @@
      都带 z-index）、overflow 裁剪或 transform/filter 包含块的影响，
      普通 position:fixed 浮层做不到这一点。遮罩交给 ::backdrop。
      层级仍按既有尺度声明（遮罩档 50；进度框 70，扫描中压在弹窗之上）。 */
+  /* 通用对话框层（确认框 / 任务框）。必须是 <dialog> + showModal()：
+     结果面板自己就在 top layer，top layer 内的元素一律绘制在所有普通浮层之上，
+     普通 position:fixed 的确认框会被它整个盖住——表现为"点了没反应"。
+     遮罩由内部 .modal-backdrop 承担，这里保持透明，避免双层遮罩。 */
+  dialog.modal-layer {
+    position: fixed; inset: 0; z-index: 60;
+    width: 100%; height: 100%; max-width: none; max-height: none; margin: 0;
+    padding: 0; border: none; background: transparent; color: var(--text);
+    overflow: visible;
+  }
+  dialog.modal-layer::backdrop { background: transparent; }
+  dialog.modal-layer.hidden { display: none; }
+
   dialog.insight-backdrop {
     position: fixed; inset: 0; z-index: 50;
     width: 100%; height: 100%; max-width: none; max-height: none; margin: 0;
@@ -1566,7 +1579,7 @@
   </main>
 </div>
 
-<div id="modal-root"></div>
+<dialog id="modal-root" class="modal-layer" aria-label="对话框"></dialog>
 <dialog id="busy-root" class="busy-backdrop hidden" aria-label="任务进行中">
   <div class="modal cfm-card task-card">
     <div class="task-spinner"></div>
@@ -1636,6 +1649,10 @@ function clearBanner() { const b = $("banner"); b.className = ""; b.textContent 
 function mountModal(html) {
   const modal = $("modal-root");
   modal.innerHTML = html;
+  // 必须走 showModal()：结果面板（使用分析）本身是 top layer 的 <dialog>，
+  // 而 top layer 内的元素一律绘制在所有普通浮层之上。确认框若还留在普通文档流里，
+  // 被面板整个盖住——用户点了按钮却"什么都没发生"。
+  openOverlay(modal);
   const focusEl = modal.querySelector("input, select, textarea, button");
   if (focusEl) focusEl.focus();
 }
@@ -1644,7 +1661,9 @@ function mountModal(html) {
 let _pendingConfirm = null;
 function closeModal() {
   if (_pendingConfirm) { const settle = _pendingConfirm; _pendingConfirm = null; settle(); }
-  $("modal-root").innerHTML = "";
+  const modal = $("modal-root");
+  modal.innerHTML = "";
+  closeOverlay(modal);
 }
 
 /**
@@ -1659,7 +1678,9 @@ function confirmModal(title, message, danger) {
     const iconHtml = danger
       ? '<div class="cfm-icon">!</div>'
       : '';
-    $("modal-root").innerHTML = `<div class="modal-backdrop"><div class="modal cfm-card" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}" tabindex="-1">
+    // 走 mountModal 而不是直接写 innerHTML：必须 showModal() 进入 top layer，
+    // 否则会被同为 top layer 的结果面板整个盖住（用户看不到确认框）。
+    mountModal(`<div class="modal-backdrop"><div class="modal cfm-card" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}" tabindex="-1">
       ${iconHtml}
       <div class="cfm-title">${escapeHtml(title)}</div>
       <div class="cfm-msg">${escapeHtml(message)}</div>
@@ -1667,7 +1688,7 @@ function confirmModal(title, message, danger) {
         <button class="cfm-btn-cancel" id="cfm-no">取消</button>
         <button class="cfm-btn-danger" id="cfm-yes">${danger ? '确认删除' : '确认'}</button>
       </div>
-    </div></div>`;
+    </div></div>`);
     $("cfm-no").onclick = () => { settle(false); closeModal(); };
     $("cfm-yes").onclick = () => { settle(true); closeModal(); };
   });
@@ -4262,7 +4283,12 @@ async function reprobeEndpoints(btnEl) {
    * 后端若认为该建议已不成立就拒绝，前端如实显示，不自行判断"应该能合"。
    */
   async function runMergeGroup(keep, fold, btn) {
-    if (!keep || !fold.length) return;
+    // 参数都来自按钮自身的数据属性，不读全局快照：即使面板状态被清空，
+    // 只要按钮还在，用户点它就应当得到明确回应，而不是静默无反应。
+    if (!keep || !fold.length) {
+      showToast("warn", "这个按钮缺少必要参数，请重新统计后再试");
+      return;
+    }
     const foldShow = fold.join("、");
     const ok = await confirmModal(
       "执行合并",
@@ -4300,8 +4326,14 @@ async function reprobeEndpoints(btnEl) {
    * 全部合并：交给后端的 merge-all（它在一次运行里对每组复核后执行）。
    */
   async function runMergeAll(btn) {
+    // 以**当前 DOM 里真实存在的按钮**为准，而不是可能已被清空的全局快照：
+    // 卡片还在就说明它对应的建议仍是用户看到的那些。
+    const domCount = document.querySelectorAll('[data-action="merge-group"]').length;
     const act = (ADVICE_DATA && ADVICE_DATA.actionable) || [];
-    if (!act.length) { showToast("info", "当前没有可执行合并组"); return; }
+    if (!act.length || !domCount) {
+      showToast("info", act.length ? "视图已过期，请重新统计后再合并" : "当前没有可执行合并组");
+      return;
+    }
     const total = act.reduce((n, g) => n + ((g.fold || []).length), 0);
     const ok = await confirmModal(
       "全部合并",
@@ -5758,6 +5790,12 @@ document.addEventListener("click", (e) => {
       } else {
         USAGE_DATA = null;
         ADVICE_DATA = null;
+        // 视图必须一起清空：只清数据会留下上一次渲染的卡片，
+        // 那些按钮点下去时数据已为 null，表现为"点了只闪一下没反应"。
+        const uo = $("usage-results"), ao = $("advice-results");
+        if (uo) uo.innerHTML = "";
+        if (ao) ao.innerHTML = "";
+        setInsightStatus("正在统计… 该窗口还没有数据，需要通读会话日志");
         runSkillInsight(null, { silent: false, busy: false });
       }
     }
