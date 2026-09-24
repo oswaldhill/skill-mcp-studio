@@ -90,9 +90,25 @@ class AdviceUiTest(unittest.TestCase):
         self.assertIn("blocked_by", body, "否决项必须说明被哪个关卡拦下")
         self.assertIn("留痕", body)
 
-    def test_declares_read_only(self):
-        """界面自己要讲明不改文件，避免用户以为点了就会动库。"""
-        self.assertIn("只读", _fn("renderAdvice"))
+    def test_states_consequence_of_actions(self):
+        """界面必须讲清操作的后果与可恢复性。
+
+        原意图是"避免用户以为点了就会动库"。FEAT-12 之后面板确实能执行合并了，
+        所以约束随之改为：既然能动手，就必须说明白动的是什么、能不能恢复。
+        """
+        body = _fn("renderAdvice")
+        self.assertIn("_trash", body, "要说明归并方去了哪里")
+        self.assertIn("_backup", body, "要说明留有备份")
+        self.assertIn("复核", body, "要说明执行前会重新复核判据")
+        self.assertIn("保留方不动", body, "要说明保留方不被改动")
+
+    def test_advisor_module_stays_read_only(self):
+        """判据模块本身必须只读：执行能力只存在于 skill_merge_exec。"""
+        advisor = (ROOT / "core" / "skill_merge_advisor.py").read_text(encoding="utf-8")
+        for writer in ("shutil.move", "shutil.rmtree", "os.remove", "os.rename",
+                       "copytree", "unlink("):
+            self.assertNotIn(writer, advisor,
+                             f"判据模块出现写操作 {writer}，只读约束被破坏")
 
     def test_member_row_surfaces_provenance_marks(self):
         body = _fn("memberRow")

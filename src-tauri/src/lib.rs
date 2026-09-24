@@ -340,6 +340,9 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
         // 使用统计 + 整理建议的组合出口：两者共用同一份会话日志汇总，
         // 合成一次扫描（只读，能力不超出上面两条之和）。
         "--skill-insight",
+        // 整理建议的执行（FEAT-12）：写操作。把归并方备份后移入 _trash/，
+        // 与 --delete-skill 同一条可恢复路径；执行前会重算判据拒绝过期建议。
+        "--merge-skills",
     ];
     // Reject redirection-class flags outright (they re-point the engine at an
     // arbitrary config/profile file, a privilege escalation vector).

@@ -476,6 +476,36 @@ def _run_skill_delete(args, config, config_path) -> int:
     return 0 if result["status"] in ("ok", "dry-run") else 2
 
 
+def _run_merge_skills(args, config, config_path) -> int:
+    """写操作：按整理建议执行合并（FEAT-12）。
+
+    执行前由 core.skill_merge_exec 重算判据，拒绝照过期建议动盘。
+    """
+    import json as _json
+
+    from skill_merge_exec import merge_all, merge_group
+
+    unified = _unified_dir_from(args, config)
+    fold_raw = (getattr(args, "merge_fold", None) or "").strip()
+
+    if fold_raw == "all":
+        result = merge_all(skills_dir=unified, dry_run=args.dry_run)
+    else:
+        fold = [x for x in fold_raw.split(",") if x.strip()]
+        result = merge_group(
+            getattr(args, "merge_keep", None) or "",
+            fold,
+            skills_dir=unified,
+            dry_run=args.dry_run,
+        )
+
+    if getattr(args, "format", None) == "json":
+        print(_json.dumps(result, ensure_ascii=False))
+    else:
+        _print_skill_op(result)
+    return 0 if result.get("status") in ("ok", "dry-run") else 2
+
+
 def _run_remove_client(args, config, config_path) -> int:
     """写操作：移除客户端（本机停用 + 残留配置 + skills 链接）。
 
@@ -1682,6 +1712,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--delete-skill", type=str, default=None, metavar="SKILL",
         help="软删除指定 skill：先备份再移入统一目录 _trash/（写操作，支持 --dry-run）",
     )
+    parser.add_argument(
+        "--merge-skills", action="store_true",
+        help="按整理建议执行合并（FEAT-12，写操作）：把 --merge-fold 的技能备份后"
+             "移入 _trash/，保留 --merge-keep 不动；执行前会重算判据确认建议仍成立",
+    )
+    parser.add_argument(
+        "--merge-keep", type=str, default=None, metavar="SKILL",
+        help="配合 --merge-skills：保留的技能（不被改动）",
+    )
+    parser.add_argument(
+        "--merge-fold", type=str, default=None, metavar="A,B",
+        help="配合 --merge-skills：要归并的技能，逗号分隔；传 all 表示全部可执行组",
+    )
 
     return parser
 
@@ -1797,6 +1840,8 @@ def main() -> int:
         return _run_skill_rename(args, config, config_path)
     if getattr(args, "delete_skill", None):
         return _run_skill_delete(args, config, config_path)
+    if getattr(args, "merge_skills", False):
+        return _run_merge_skills(args, config, config_path)
 
     # 技能市场（FEAT-9）同属这一组：它带 --format json，且 GUI 直接
     # JSON.parse 整个 stdout，若排在通用快照路由之后会被截走。

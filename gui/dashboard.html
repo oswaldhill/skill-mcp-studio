@@ -1267,6 +1267,11 @@
   .adv-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(112px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r-card); overflow: hidden; margin-top: 8px; }
   .adv-strip .us-cell { background: var(--panel); padding: 11px 13px; min-width: 0; }
   .adv-sec { margin-top: 18px; }
+  .adv-spacer { flex: 1 1 auto; }
+  .adv-all-btn { flex: 0 0 auto; margin-left: auto; }
+  .adv-merge-btn { flex: 0 0 auto; }
+  .adv-merged { padding: 9px 13px 10px; font-size: var(--fs-xs); color: var(--muted); border-top: 1px solid var(--line); }
+  .adv-merged b { color: var(--ok); font-weight: 600; }
   .adv-sec-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
   .adv-sec-title { font-size: var(--fs-sm); font-weight: 600; color: var(--text); }
   .adv-sec-note { font-size: var(--fs-xs); color: var(--faint); }
@@ -4250,6 +4255,117 @@ async function reprobeEndpoints(btnEl) {
     return el;
   }
 
+  /**
+   * 执行一条合并建议（FEAT-12）。
+   *
+   * 判定仍归后端：前端只把 keep/fold 交给 --merge-skills，由后端重算判据。
+   * 后端若认为该建议已不成立就拒绝，前端如实显示，不自行判断"应该能合"。
+   */
+  async function runMergeGroup(keep, fold, btn) {
+    if (!keep || !fold.length) return;
+    const foldShow = fold.join("、");
+    const ok = await confirmModal(
+      "执行合并",
+      `将把 ${foldShow} 备份后移入 _trash/ 回收目录，保留 ${keep} 不动。\n\n`
+      + "执行前会重新复核判据；若该建议此刻已不成立，将拒绝执行且不改动任何文件。确定继续？",
+      true);
+    if (!ok) return;
+    if (!tauriInvoke) { showToast("warn", "浏览器预览模式：写入需在桌面 App 内执行"); return; }
+
+    const before = (ADVICE_DATA && ADVICE_DATA.actionable) || [];
+    const beforeCount = before.length;
+    if (btn) btn.disabled = true;
+
+    const res = await runTaskModal(`合并 ${fold.length} 个技能到 ${keep}`, async () => {
+      const r = await runCli(["--merge-skills", "--merge-keep", keep,
+        "--merge-fold", fold.join(","), "--format", "json"]);
+      if (!r) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
+      let d = null;
+      try { d = JSON.parse(r.stdout || "{}"); } catch (e) { d = null; }
+      if (!d) return { ok: false, message: "返回无法解析", detail: cliErrDetail(r) };
+      if (d.status === "ok") {
+        return { ok: true, message: d.message, detail: (d.steps || []).map((x) => x.message).join("\n") };
+      }
+      return { ok: false, message: d.message || "执行失败", detail: (d.failed || []).map((f) => f.message).join("\n") };
+    }, async () => {
+      // 执行后重新统计并核对：该组应从 actionable 里消失，且组数确实减少。
+      await verifyMerge(beforeCount, keep, fold);
+    }, ["复核判据后才执行", "备份到 _backup/", "移入 _trash/ 回收目录", "重跑建议核对"]);
+
+    if (btn) btn.disabled = false;
+    return res;
+  }
+
+  /**
+   * 全部合并：交给后端的 merge-all（它在一次运行里对每组复核后执行）。
+   */
+  async function runMergeAll(btn) {
+    const act = (ADVICE_DATA && ADVICE_DATA.actionable) || [];
+    if (!act.length) { showToast("info", "当前没有可执行合并组"); return; }
+    const total = act.reduce((n, g) => n + ((g.fold || []).length), 0);
+    const ok = await confirmModal(
+      "全部合并",
+      `将执行全部 ${act.length} 组合并，共归并 ${total} 个技能（保留方各留一个不动）。\n\n`
+      + "每个归并方都会先备份再移入 _trash/，可恢复。执行前会逐组复核判据。确定继续？",
+      true);
+    if (!ok) return;
+    if (!tauriInvoke) { showToast("warn", "浏览器预览模式：写入需在桌面 App 内执行"); return; }
+    if (btn) btn.disabled = true;
+
+    await runTaskModal(`全部合并（${act.length} 组）`, async () => {
+      const r = await runCli(["--merge-skills", "--merge-fold", "all", "--format", "json"]);
+      if (!r) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
+      let d = null;
+      try { d = JSON.parse(r.stdout || "{}"); } catch (e) { d = null; }
+      if (!d) return { ok: false, message: "返回无法解析", detail: cliErrDetail(r) };
+      if (d.status === "ok") {
+        return { ok: true, message: d.message, detail: (d.steps || []).map((x) => x.message).join("\n") };
+      }
+      return { ok: false, message: d.message || "执行失败", detail: (d.steps || []).map((x) => x.message).join("\n") };
+    }, async () => { await verifyMergeAll(); }, ["逐组复核判据", "备份到 _backup/", "移入 _trash/ 回收目录", "重跑建议核对"]);
+
+    if (btn) btn.disabled = false;
+  }
+
+  /**
+   * 合并后核对：重跑一次建议，确认目标组确实消失。
+   *
+   * 这一步是用户要的"执行后自动重跑核对"：不能执行完就说成功，
+   * 要拿新一次的判据结果证明这组真的没了，否则提示需要人工介入。
+   */
+  async function verifyMerge(beforeCount, keep, fold) {
+    await refreshAdviceAfterWrite();
+    const after = (ADVICE_DATA && ADVICE_DATA.actionable) || [];
+    const still = after.find((g) => g.keep === keep
+      && (g.fold || []).some((f) => fold.indexOf(f) >= 0));
+    if (still) {
+      showToast("warn", `合并后该组仍被列为可合并（${keep}），请人工检查 _trash/ 与判据`);
+    } else {
+      showToast("ok", `已核对：该组不再出现在可执行合并里（合并前 ${beforeCount} 组，现 ${after.length} 组）`);
+    }
+  }
+
+  async function verifyMergeAll() {
+    await refreshAdviceAfterWrite();
+    const after = (ADVICE_DATA && ADVICE_DATA.actionable) || [];
+    if (after.length) {
+      showToast("warn", `全部合并后仍有 ${after.length} 组可执行，请人工复核`);
+    } else {
+      showToast("ok", "已核对：当前已无剩余的可执行合并组");
+    }
+  }
+
+  /** 写操作后重跑建议：绕过缓存，强制取新判据。 */
+  async function refreshAdviceAfterWrite() {
+    const res = await runCli(["--skill-insight", "--format", "json", "--usage-since", usageSince(USAGE_DAYS)]);
+    if (!res || res.code !== 0) return;
+    let data = null;
+    try { data = JSON.parse(res.stdout || "{}"); } catch (e) { data = null; }
+    if (!data || data.error) return;
+    saveInsightCache(USAGE_DAYS, data);
+    applyInsight(data, Date.now());
+  }
+
   function renderAdvice(data) {
     const sum = data.summary || {};
     const win = data.since ? `自 ${data.since}` : "全部时间";
@@ -4280,19 +4396,40 @@ async function reprobeEndpoints(btnEl) {
 
     // ---- 可执行合并：每组一张卡 ----
     const secAct = advEl("div", "adv-sec");
-    secAct.appendChild(advEl("div", "adv-sec-head",
+    const headRow = advEl("div", "adv-sec-head",
       `<span class="adv-sec-title">可执行合并</span>` +
-      `<span class="adv-sec-note">${act.length} 组，本面板不会替你执行，仅标注供人工复核</span>`));
+      `<span class="adv-sec-note">${act.length} 组，可逐组执行；归并方会先备份再移入 _trash/，随时可恢复</span>`);
+    if (act.length) {
+      const allBtn = document.createElement("button");
+      allBtn.type = "button";
+      allBtn.className = "btn-soft adv-all-btn";
+      allBtn.dataset.action = "merge-all";
+      allBtn.textContent = `全部合并（${act.length} 组）`;
+      headRow.appendChild(allBtn);
+    }
+    secAct.appendChild(headRow);
     if (act.length) {
       act.forEach((g) => {
         const card = advEl("div", "adv-card");
         const hit = (g.rules_hit || []).length > 1
           ? ` <span class="adv-sec-note">同时命中 ${escapeHtml(g.rules_hit.join(" / "))}</span>` : "";
+        const keepName = g.keep || "";
+        const foldList = (g.fold || []).join(",");
+        const foldShow = (g.fold || []).join("、");
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "btn-soft adv-merge-btn";
+        btn.dataset.action = "merge-group";
+        btn.dataset.keep = keepName;
+        btn.dataset.fold = foldList;
+        btn.textContent = "执行合并";
         card.appendChild(advEl("div", "adv-card-head",
           `<span class="adv-rule">${escapeHtml(g.rule || "")}</span>` +
-          `<span class="adv-keep">保留 ${escapeHtml(g.keep || "")}</span>` +
+          `<span class="adv-keep">保留 ${escapeHtml(keepName)}</span>` +
           `<span class="adv-arrow">←</span>` +
-          `<span class="adv-fold">归并 ${escapeHtml((g.fold || []).join("、"))}</span>` + hit));
+          `<span class="adv-fold">归并 ${escapeHtml(foldShow)}</span>` + hit +
+          `<span class="adv-spacer"></span>`));
+        card.querySelector(".adv-card-head").appendChild(btn);
         card.appendChild(advEl("div", "adv-evidence",
           `<b>依据</b>　${escapeHtml(g.evidence || "")}`));
 
@@ -4355,7 +4492,9 @@ async function reprobeEndpoints(btnEl) {
       out.appendChild(sec);
     }
 
-    out.appendChild(advEl("div", "adv-foot", "本面板全程只读：不删除、不移动、不改写任何技能目录。"));
+    out.appendChild(advEl("div", "adv-foot",
+      "判定仍由后端给出；执行前会重新复核判据，仅当建议此刻依然成立才动手。"
+      + "归并方先备份到 _backup/ 再移入 _trash/，保留方不动。"));
   }
 
   // ---------------- 技能市场（FEAT-9） ----------------
@@ -5630,6 +5769,10 @@ document.addEventListener("click", (e) => {
       }
     }
     else if (a === "insight-tab") setInsightTab(act.dataset.insightTab)
+    else if (a === "merge-group") {
+      runMergeGroup(act.dataset.keep, (act.dataset.fold || "").split(",").filter(Boolean), act);
+    }
+    else if (a === "merge-all") runMergeAll(act)
     else if (a === "open-market") toggleMarketPanel();
     else if (a === "market-close") toggleMarketPanel(false);
     else if (a === "market-search") runMarketSearch(act);
