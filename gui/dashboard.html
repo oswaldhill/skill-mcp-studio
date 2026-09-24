@@ -1234,11 +1234,56 @@
   /* 披露行 + 空态 CTA */
   .more-row { display: block; width: 100%; padding: 8px; border: none; background: transparent; color: var(--accent); cursor: pointer; font-size: var(--fs-xs); text-align: center; box-shadow: none; }
   .more-row:hover { background: var(--bg-elev); }
+  /* ---------- 使用统计 / 整理建议面板（FEAT-10/11 视觉体系） ---------- */
+  .market-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 2px 0 8px; }
+  .market-lines { margin: 4px 0; }
+  .market-line { padding: 4px 2px; font-size: var(--fs-sm); color: var(--muted); }
+  .market-line.ok { color: var(--ok); }
+  .market-line.warn { color: var(--warn); }
+  .market-line.err { color: var(--err); }
+  .market-results { margin-top: 8px; }
+  .insight-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 2px 0 8px; }
+  .insight-title { font-size: var(--fs-sm); font-weight: 600; color: var(--text); letter-spacing: .01em; }
+  .insight-spacer { flex: 1 1 auto; }
+  .usage-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r-card); overflow: hidden; margin-top: 8px; }
+  .us-cell { background: var(--panel); padding: 12px 14px; min-width: 0; }
+  .us-num { font-family: var(--display); font-size: 21px; font-weight: 600; line-height: 1.15; letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .us-num.ok { color: var(--ok); }
+  .us-num.err { color: var(--err); }
+  .us-lbl { color: var(--muted); font-size: var(--fs-2xs); margin-top: 4px; }
+  .usage-meta { color: var(--faint); font-size: var(--fs-2xs); margin: 8px 2px 0; }
+  .usage-block { margin-top: 16px; }
+  .usage-block-head { display: flex; align-items: baseline; gap: 8px; padding: 0 10px 4px; flex-wrap: wrap; }
+  .ub-title { font-size: var(--fs-sm); font-weight: 600; color: var(--text); }
+  .ub-note { color: var(--faint); font-size: var(--fs-2xs); }
+  .usage-head-row { display: grid; grid-template-columns: 26px minmax(120px, 1.6fr) minmax(52px, .9fr) 52px 52px 52px 56px; gap: 10px; padding: 0 10px 2px; font-size: var(--fs-2xs); color: var(--faint); }
+  .usage-head-row span:nth-child(n+4) { text-align: right; }
+  .usage-head-row span:last-child { text-align: center; }
+  .usage-row { display: grid; grid-template-columns: 26px minmax(120px, 1.6fr) minmax(52px, .9fr) 52px 52px 52px 56px; gap: 10px; align-items: center; padding: 6px 10px; border-radius: 8px; transition: background .12s ease; }
+  .usage-row:hover { background: var(--bg-elev); }
+  .ur-rank { font-family: var(--mono); font-size: var(--fs-2xs); color: var(--faint); font-variant-numeric: tabular-nums; }
+  .ur-name { font-family: var(--mono); font-size: var(--fs-sm); font-weight: 500; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ur-bar { height: 3px; border-radius: 2px; background: var(--bg-elev); overflow: hidden; }
+  .ur-bar i { display: block; height: 100%; background: var(--accent); border-radius: 2px; opacity: .8; }
+  .ur-num { font-size: var(--fs-sm); font-variant-numeric: tabular-nums; text-align: right; color: var(--muted); }
+  .ur-num.ok { color: var(--ok); font-weight: 600; }
+  .ur-num.dim { color: var(--faint); }
+  .ur-when { font-family: var(--mono); font-size: var(--fs-2xs); color: var(--faint); text-align: center; }
+  .usage-list.collapsed .usage-row:nth-child(n+31) { display: none; }
+  .usage-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 10px; }
+  .usage-chips.collapsed .chip.na:nth-child(n+25) { display: none; }
+  button.chip.more { cursor: pointer; font-family: var(--mono); transition: color .12s ease, border-color .12s ease; }
+  button.chip.more:hover { color: var(--text); border-color: var(--muted); }
+  .usage-more { margin: 8px 10px 0; }
+  .usage-empty { border: 1px dashed var(--line); border-radius: var(--r-card); padding: 18px 16px; text-align: center; color: var(--muted); font-size: var(--fs-sm); margin-top: 14px; }
+  .usage-empty-sub { display: block; margin-top: 6px; color: var(--faint); font-size: var(--fs-2xs); }
+
   .empty .empty-cta { margin-top: 12px; display: flex; gap: 8px; justify-content: center; align-items: center; flex-wrap: wrap; }
 
   @media (prefers-reduced-motion: reduce) {
     .sk-line, .sheet, .palette, .pop-menu, .toast, .switch .sw-knob { animation: none !important; }
     button, .card, .skill-card, .nav-item { transition: none; }
+    .usage-row, .chip.more { transition: none; }
   }
 </style>
 </head>
@@ -1338,11 +1383,15 @@
       </div>
 
       <div id="usage-panel" class="hidden">
-        <div class="market-toolbar">
-          <span class="hint" style="color:var(--faint);font-size:var(--fs-xs)">统计窗口</span>
-          <button class="btn-soft" data-action="usage-window" data-win="30">近 30 天</button>
-          <button class="btn-soft" data-action="usage-window" data-win="90">近 90 天</button>
-          <button class="btn-soft" data-action="usage-window" data-win="0">全部</button>
+        <div class="insight-toolbar">
+          <span class="insight-title">技能使用统计</span>
+          <span class="segmented" id="usage-seg" role="group" aria-label="统计窗口">
+            <button type="button" class="seg-btn" data-action="usage-window" data-win="7">7 天</button>
+            <button type="button" class="seg-btn" data-action="usage-window" data-win="30">30 天</button>
+            <button type="button" class="seg-btn" data-action="usage-window" data-win="90">90 天</button>
+            <button type="button" class="seg-btn" data-action="usage-window" data-win="0">全部时间</button>
+          </span>
+          <span class="insight-spacer"></span>
           <button class="btn-soft" data-action="usage-refresh">重新统计</button>
           <button class="btn-soft" data-action="usage-close">收起</button>
         </div>
@@ -1350,11 +1399,15 @@
         <div id="usage-results" class="market-results"></div>
       </div>
       <div id="advice-panel" class="hidden">
-        <div class="market-toolbar">
-          <span class="hint" style="color:var(--faint);font-size:var(--fs-xs)">统计窗口</span>
-          <button class="btn-soft" data-action="advice-window" data-win="30">近 30 天</button>
-          <button class="btn-soft" data-action="advice-window" data-win="90">近 90 天</button>
-          <button class="btn-soft" data-action="advice-window" data-win="0">全部</button>
+        <div class="insight-toolbar">
+          <span class="insight-title">技能整理建议</span>
+          <span class="segmented" id="advice-seg" role="group" aria-label="建议统计窗口">
+            <button type="button" class="seg-btn" data-action="advice-window" data-win="7">7 天</button>
+            <button type="button" class="seg-btn" data-action="advice-window" data-win="30">30 天</button>
+            <button type="button" class="seg-btn" data-action="advice-window" data-win="90">90 天</button>
+            <button type="button" class="seg-btn" data-action="advice-window" data-win="0">全部时间</button>
+          </span>
+          <span class="insight-spacer"></span>
           <button class="btn-soft" data-action="advice-refresh">重新分析</button>
           <button class="btn-soft" data-action="advice-close">收起</button>
         </div>
@@ -3654,6 +3707,7 @@ async function reprobeEndpoints(btnEl) {
     if (!el) return;
     const open = show === undefined ? el.classList.contains("hidden") : show;
     el.classList.toggle("hidden", !open);
+    setSegActive($("usage-seg"), USAGE_DAYS);
     if (open) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
     if (open && !USAGE_DATA) runSkillUsage();
   }
@@ -3663,6 +3717,23 @@ async function reprobeEndpoints(btnEl) {
     div.className = "market-line" + (kind ? " " + kind : "");
     div.textContent = text;
     return div;
+  }
+
+  function fmtNum(n) {
+    return (Number(n) || 0).toLocaleString("en-US");
+  }
+
+  function usageCell(num, lbl, cls) {
+    return `<div class="us-cell"><div class="us-num${cls ? " " + cls : ""}">${num}</div><div class="us-lbl">${lbl}</div></div>`;
+  }
+
+  function setSegActive(container, days) {
+    if (!container) return;
+    Array.prototype.forEach.call(container.children, (b) => {
+      const win = b.dataset ? b.dataset.win : "";
+      if (String(win) === String(days)) b.classList.add("active");
+      else b.classList.remove("active");
+    });
   }
 
   function setUsageStatus(text) {
@@ -3699,34 +3770,83 @@ async function reprobeEndpoints(btnEl) {
   }
 
   function renderUsage(data) {
-    const s = data.summary || {};
-    const win = data.since ? `窗口 ${data.since} 起` : "全部时间";
-    setUsageStatus(
-      `${win}｜通读 ${data.scanned_files} 个会话文件｜技能相关调用 ${data.tool_calls} 次` +
-      `｜已装 ${s.installed || 0}｜被加载 ${s.loaded || 0}｜零触达 ${(s.never_used || []).length}`
-    );
+    const summary = data.summary || {};
     const out = $("usage-results");
     out.innerHTML = "";
+    setUsageStatus("");
+    const installed = summary.installed || 0;
+    const loaded = summary.loaded || 0;
+    const never = summary.never_used || [];
+    const winLabel = data.since ? `自 ${data.since}` : "全部时间";
+
+    const strip = document.createElement("div");
+    strip.className = "usage-strip";
+    strip.innerHTML = [
+      usageCell(fmtNum(installed), "已装技能", ""),
+      usageCell(fmtNum(loaded), "被加载", "ok"),
+      usageCell(fmtNum(never.length), "零触达", never.length ? "err" : "ok"),
+      usageCell(fmtNum(data.tool_calls), "技能相关调用", ""),
+      usageCell(fmtNum(data.scanned_files), "通读会话文件", ""),
+    ].join("");
+    out.appendChild(strip);
+
+    const meta = document.createElement("div");
+    meta.className = "usage-meta";
+    meta.textContent = `统计窗口：${winLabel}｜判据由后端 core/skill_usage.py 给出，前端只呈现`;
+    out.appendChild(meta);
 
     const rows = data.ranking || [];
     if (!rows.length) {
-      out.appendChild(usageLine("窗口内没有任何技能被调用记录。", "warn"));
+      const e = document.createElement("div");
+      e.className = "usage-empty";
+      e.textContent = `统计窗口 ${winLabel} 内没有任何技能被调用的记录`;
+      const sub = document.createElement("span");
+      sub.className = "usage-empty-sub";
+      sub.textContent = "切换到更长的窗口（90 天 / 全部时间），或点「重新统计」再试";
+      e.appendChild(sub);
+      out.appendChild(e);
       return;
     }
-    rows.slice(0, 30).forEach((r, i) => {
-      const when = (r.last_used || "").slice(0, 10) || "未记录";
-      const kind = r.load > 0 ? "ok" : "warn";
-      out.appendChild(usageLine(
-        `${String(i + 1).padStart(2, " ")}. ${r.name}　加载 ${r.load}｜浏览 ${r.browse}` +
-        `｜改写 ${r.edit}｜最近 ${when}`, kind));
-    });
 
-    const never = s.never_used || [];
+    const maxLoad = rows.reduce((mx, r) => Math.max(mx, r.load || 0), 1);
+    const blk = document.createElement("div");
+    blk.className = "usage-block";
+    let html = `<div class="usage-block-head"><span class="ub-title">使用排行</span>` +
+      `<span class="ub-note">加载 = 技能文件被读进上下文；浏览 = 仅目录级提及；改写 = 维护动作</span></div>` +
+      `<div class="usage-head-row"><span>#</span><span>技能</span><span>强度</span><span>加载</span><span>浏览</span><span>改写</span><span>最近</span></div>` +
+      `<div class="usage-list${rows.length > 30 ? " collapsed" : ""}" id="usage-list">`;
+    rows.forEach((r, i) => {
+      const pct = r.load ? Math.max(4, Math.round((r.load / maxLoad) * 100)) : 0;
+      const when = (r.last_used || "").slice(5, 10) || "--";
+      html += `<div class="usage-row">` +
+        `<span class="ur-rank">${String(i + 1).padStart(2, "0")}</span>` +
+        `<span class="ur-name" title="${escapeHtml(r.name)}">${escapeHtml(r.name)}</span>` +
+        `<span class="ur-bar" aria-hidden="true"><i style="width:${pct}%"></i></span>` +
+        `<span class="ur-num ok">${r.load || 0}</span>` +
+        `<span class="ur-num">${r.browse || 0}</span>` +
+        `<span class="ur-num dim">${r.edit || 0}</span>` +
+        `<span class="ur-when">${when}</span>` +
+        `</div>`;
+    });
+    html += `</div>`;
+    if (rows.length > 30) {
+      html += `<button type="button" class="chip more usage-more" data-action="usage-expand" data-target="usage-list" data-more="展开全部 ${rows.length} 条" data-less="收起，只看前 30 条">展开全部 ${rows.length} 条</button>`;
+    }
+    blk.innerHTML = html;
+    out.appendChild(blk);
+
     if (never.length) {
-      out.appendChild(usageLine("", null));
-      out.appendChild(usageLine(
-        `零触达 ${never.length} 个（日志里从未被加载，合并/清理优先观察）：` +
-        never.slice(0, 24).join("、") + (never.length > 24 ? " …" : ""), "warn"));
+      const nb = document.createElement("div");
+      nb.className = "usage-block";
+      let nh = `<div class="usage-block-head"><span class="ub-title">零触达 ${fmtNum(never.length)}</span>` +
+        `<span class="ub-note">日志里从未被加载，合并 / 清理优先观察</span></div>` +
+        `<div class="usage-chips${never.length > 24 ? " collapsed" : ""}" id="usage-never">` +
+        never.map((n) => `<span class="chip na">${escapeHtml(n)}</span>`).join("") + `</div>`;
+      if (never.length > 24) {
+        nh += `<button type="button" class="chip more usage-more" data-action="usage-expand" data-target="usage-never" data-more="展开全部 ${never.length} 个" data-less="收起">展开全部 ${never.length} 个</button>`;
+      }
+      nb.innerHTML = nh;
+      out.appendChild(nb);
     }
   }
 
@@ -3745,6 +3865,7 @@ async function reprobeEndpoints(btnEl) {
     if (!el) return;
     const open = show === undefined ? el.classList.contains("hidden") : show;
     el.classList.toggle("hidden", !open);
+    setSegActive($("advice-seg"), ADVICE_DAYS);
     if (open) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
     if (open && !ADVICE_DATA) runMergeAdvice();
   }
@@ -5081,7 +5202,15 @@ document.addEventListener("click", (e) => {
     else if (a === "usage-window") {
       USAGE_DAYS = parseInt(act.dataset.win || "30", 10);
       USAGE_DATA = null;
+      setSegActive($("usage-seg"), USAGE_DAYS);
       runSkillUsage(act);
+    }
+    else if (a === "usage-expand") {
+      const box = act.dataset.target ? document.getElementById(act.dataset.target) : null;
+      if (box) {
+        const folded = box.classList.toggle("collapsed");
+        act.textContent = folded ? act.dataset.more : act.dataset.less;
+      }
     }
     else if (a === "open-advice") toggleAdvicePanel();
     else if (a === "advice-close") toggleAdvicePanel(false);
@@ -5089,6 +5218,7 @@ document.addEventListener("click", (e) => {
     else if (a === "advice-window") {
       ADVICE_DAYS = parseInt(act.dataset.win || "30", 10);
       ADVICE_DATA = null;
+      setSegActive($("advice-seg"), ADVICE_DAYS);
       runMergeAdvice(act);
     }
     else if (a === "open-market") toggleMarketPanel();
