@@ -1257,6 +1257,47 @@
   .market-line.warn { color: var(--warn); }
   .market-line.err { color: var(--err); }
   .market-results { margin-top: 8px; }
+
+  /* ---------------- 整理建议的排版 ----------------
+     建议内容原本是一整片等宽文本流（纯 usageLine 拼接），信息有列结构却读不出列。
+     现在：指标条给规模，每组一张卡，成员信息落进表格（标识符用等宽、数字右对齐
+     且 tabular-nums），已否决降为次级列表。视觉语言全部取自既有 token。 */
+  .adv-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(112px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r-card); overflow: hidden; margin-top: 8px; }
+  .adv-strip .us-cell { background: var(--panel); padding: 11px 13px; min-width: 0; }
+  .adv-sec { margin-top: 18px; }
+  .adv-sec-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+  .adv-sec-title { font-size: var(--fs-sm); font-weight: 600; color: var(--text); }
+  .adv-sec-note { font-size: var(--fs-xs); color: var(--faint); }
+  .adv-card { border: 1px solid var(--line); border-radius: var(--r-card); background: var(--panel); margin-top: 10px; overflow: hidden; }
+  .adv-card-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 13px 9px; background: var(--bg-elev); border-bottom: 1px solid var(--line); }
+  .adv-rule { font-family: var(--mono); font-size: var(--fs-2xs); font-weight: 600; color: var(--accent); background: var(--accent-bg); border: 1px solid var(--accent-border); border-radius: var(--r-pill); padding: 2px 7px; flex: 0 0 auto; }
+  .adv-keep { font-family: var(--mono); font-size: var(--fs-sm); font-weight: 600; color: var(--text); }
+  .adv-arrow { color: var(--faint); font-size: var(--fs-xs); }
+  .adv-fold { font-family: var(--mono); font-size: var(--fs-sm); color: var(--muted); }
+  .adv-evidence { padding: 8px 13px; font-size: var(--fs-xs); color: var(--muted); border-bottom: 1px solid var(--line); }
+  .adv-evidence b { color: var(--faint); font-weight: 500; }
+  .adv-members { width: 100%; border-collapse: collapse; font-size: var(--fs-xs); }
+  .adv-members th { text-align: left; font-family: var(--sans); font-size: var(--fs-2xs); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); padding: 7px 13px 5px; background: transparent; border-bottom: 1px solid var(--line); position: static; }
+  .adv-members td { padding: 6px 13px; border-bottom: 1px solid var(--line); color: var(--muted); vertical-align: middle; }
+  .adv-members tr:last-child td { border-bottom: none; }
+  .adv-members tbody tr:hover { background: var(--bg-elev); }
+  .adv-members .adv-name { font-family: var(--mono); color: var(--text); }
+  .adv-members .adv-keep-row .adv-name { font-weight: 600; }
+  .adv-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .adv-members th.adv-num { text-align: right; }  /* 数字列表头与列内数字同侧 */
+  .adv-when { white-space: nowrap; color: var(--faint); }
+  .adv-tag { display: inline-block; font-size: var(--fs-2xs); border-radius: var(--r-pill); padding: 1px 6px; border: 1px solid var(--line-strong); color: var(--muted); background: var(--panel-2); }
+  .adv-tag.zero { color: var(--err); background: var(--err-bg); border-color: var(--err-border); }
+  .adv-tag.keep { color: var(--ok); background: var(--ok-bg); border-color: var(--ok-border); }
+  .adv-tag.up { color: var(--warn); background: var(--warn-bg); border-color: var(--warn-border); }
+  .adv-rej { margin-top: 8px; }
+  .adv-rej-row { display: flex; align-items: baseline; gap: 8px; padding: 6px 2px; border-bottom: 1px solid var(--line); font-size: var(--fs-xs); color: var(--muted); }
+  .adv-rej-row:last-child { border-bottom: none; }
+  .adv-rej-row .adv-pair { font-family: var(--mono); color: var(--muted); flex: 0 0 auto; }
+  .adv-rej-row .adv-verdict { color: var(--faint); min-width: 0; }
+  .adv-rej-row .adv-gate { flex: 0 0 auto; }
+  .adv-foot { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); font-size: var(--fs-xs); color: var(--faint); }
+  .adv-empty { padding: 14px 2px; font-size: var(--fs-sm); color: var(--ok); }
   .insight-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 2px 0 8px; }
   .insight-title { font-size: var(--fs-sm); font-weight: 600; color: var(--text); letter-spacing: .01em; }
   .insight-spacer { flex: 1 1 auto; }
@@ -4181,66 +4222,139 @@ async function reprobeEndpoints(btnEl) {
     renderAdvice(data);
   }
 
-  function memberLine(d) {
-    const marks = [];
-    if (d.has_scripts) marks.push("含脚本");
-    if (d.has_license) marks.push("含 LICENSE 但无 lock 登记");
-    if (!d.load) marks.push("零触达");
+  // 成员 = 表格行。加载/会话/最近/状态本来就是四列，原先拼成一句话读不出列。
+  function memberRow(d, keepName) {
+    const tr = document.createElement("tr");
+    const isKeep = keepName && d.name === keepName;
+    if (isKeep) tr.className = "adv-keep-row";
+    const tags = [];
+    if (isKeep) tags.push('<span class="adv-tag keep">保留</span>');
+    if (!d.load) tags.push('<span class="adv-tag zero">零触达</span>');
+    if (d.has_scripts) tags.push('<span class="adv-tag">含脚本</span>');
+    if (d.has_license) tags.push('<span class="adv-tag">含 LICENSE 未登记</span>');
+    if (d.upstream) tags.push('<span class="adv-tag up">上游</span>');
     const when = (d.last_used || "").slice(0, 10) || "未记录";
-    return usageLine(
-      `        · ${d.name}　加载 ${d.load}｜会话 ${d.sessions}｜最近 ${when}` +
-      (marks.length ? `（${marks.join("、")}）` : ""), null);
+    tr.innerHTML =
+      `<td class="adv-name">${escapeHtml(d.name)}</td>` +
+      `<td class="adv-num">${fmtNum(d.load)}</td>` +
+      `<td class="adv-num">${fmtNum(d.sessions)}</td>` +
+      `<td class="adv-when">${escapeHtml(when)}</td>` +
+      `<td>${tags.join(" ")}</td>`;
+    return tr;
+  }
+
+  function advEl(tag, cls, html) {
+    const el = document.createElement(tag);
+    if (cls) el.className = cls;
+    if (html != null) el.innerHTML = html;
+    return el;
   }
 
   function renderAdvice(data) {
     const sum = data.summary || {};
-    const win = data.since ? `窗口 ${data.since} 起` : "全部时间";
-    setAdviceStatus(
-      `${win}｜扫描 ${sum.scanned || 0} 个技能｜可执行合并 ${sum.actionable_groups || 0} 组` +
-      `｜上游仅标注 ${sum.upstream_only_groups || 0} 组｜已否决 ${sum.rejected_entries || 0} 条`);
+    const win = data.since ? `自 ${data.since}` : "全部时间";
     const out = $("advice-results");
     out.innerHTML = "";
+    setAdviceStatus("");
 
     const act = data.actionable || [];
+    const ups = data.upstream_only || [];
+    const rej = data.rejected || [];
+
+    // 规模进指标条（与使用统计同一套 .us-cell，读法一致）；
+    // 窗口与判据来源退到说明行，避免和"组数/条数"混在一起读。
+    const strip = advEl("div", "adv-strip");
+    strip.innerHTML = [
+      usageCell(fmtNum(sum.scanned || 0), "扫描技能", ""),
+      usageCell(fmtNum(sum.actionable_groups || 0), "可合并组", act.length ? "ok" : ""),
+      usageCell(fmtNum(sum.actionable_skills || 0), "涉及技能", ""),
+      usageCell(fmtNum(sum.upstream_only_groups || 0), "上游仅标注", ups.length ? "warn" : ""),
+      usageCell(fmtNum(sum.rejected_entries || 0), "已否决", ""),
+    ].join("");
+    out.appendChild(strip);
+
+    const meta = advEl("div", "usage-meta");
+    meta.textContent = `统计窗口：${win}｜判据由后端 core/skill_merge_advisor.py 给出，前端只呈现`;
+    out.appendChild(meta);
+
+    // ---- 可执行合并：每组一张卡 ----
+    const secAct = advEl("div", "adv-sec");
+    secAct.appendChild(advEl("div", "adv-sec-head",
+      `<span class="adv-sec-title">可执行合并</span>` +
+      `<span class="adv-sec-note">${act.length} 组，本面板不会替你执行，仅标注供人工复核</span>`));
     if (act.length) {
-      out.appendChild(usageLine(`可执行合并（${act.length} 组，本面板不会替你执行）：`));
       act.forEach((g) => {
-        out.appendChild(usageLine(
-          `  [${g.rule}] 保留 ${g.keep} ← 归并 ${(g.fold || []).join("、")}` +
-          ((g.rules_hit || []).length > 1 ? `　（同时命中 ${g.rules_hit.join("/")}）` : ""), "ok"));
-        out.appendChild(usageLine(`        依据：${g.evidence || ""}`));
-        (g.detail || []).forEach((d) => out.appendChild(memberLine(d)));
+        const card = advEl("div", "adv-card");
+        const hit = (g.rules_hit || []).length > 1
+          ? ` <span class="adv-sec-note">同时命中 ${escapeHtml(g.rules_hit.join(" / "))}</span>` : "";
+        card.appendChild(advEl("div", "adv-card-head",
+          `<span class="adv-rule">${escapeHtml(g.rule || "")}</span>` +
+          `<span class="adv-keep">保留 ${escapeHtml(g.keep || "")}</span>` +
+          `<span class="adv-arrow">←</span>` +
+          `<span class="adv-fold">归并 ${escapeHtml((g.fold || []).join("、"))}</span>` + hit));
+        card.appendChild(advEl("div", "adv-evidence",
+          `<b>依据</b>　${escapeHtml(g.evidence || "")}`));
+
+        const table = advEl("table", "adv-members");
+        table.innerHTML =
+          "<thead><tr><th>技能</th><th class=\"adv-num\">加载</th><th class=\"adv-num\">会话</th>" +
+          "<th>最近</th><th>状态</th></tr></thead>";
+        const tb = document.createElement("tbody");
+        (g.detail || []).forEach((d) => tb.appendChild(memberRow(d, g.keep)));
+        table.appendChild(tb);
+        card.appendChild(table);
+        secAct.appendChild(card);
       });
     } else {
-      out.appendChild(usageLine("没有发现可安全合并的重复技能：高相似对都被实质限定词护栏判为有意变体。", "ok"));
+      secAct.appendChild(advEl("div", "adv-empty",
+        "没有发现可安全合并的重复技能：高相似对都被实质限定词护栏判为有意变体。"));
     }
+    out.appendChild(secAct);
 
-    const ups = data.upstream_only || [];
+    // ---- 上游技能：仅标注，次级视觉 ----
     if (ups.length) {
-      out.appendChild(usageLine(""));
-      out.appendChild(usageLine(`上游技能（${ups.length} 组）：仅标注，升级会覆盖本地改动，合并应回到上游仓库处理`));
+      const sec = advEl("div", "adv-sec");
+      sec.appendChild(advEl("div", "adv-sec-head",
+        `<span class="adv-sec-title">上游技能</span>` +
+        `<span class="adv-sec-note">${ups.length} 组，升级会覆盖本地改动，合并应回到上游仓库处理</span>`));
+      const box = advEl("div", "adv-rej");
       ups.slice(0, 12).forEach((g) => {
         const src = Array.from(new Set(Object.values(g.sources || {}).filter(Boolean))).join("、") || "未知来源";
-        out.appendChild(usageLine(`  [${g.rule}] ${(g.members || []).join("、")}　来源 ${src}`, "warn"));
+        box.appendChild(advEl("div", "adv-rej-row",
+          `<span class="adv-rule">${escapeHtml(g.rule || "")}</span>` +
+          `<span class="adv-pair">${escapeHtml((g.members || []).join("、"))}</span>` +
+          `<span class="adv-verdict">来源 ${escapeHtml(src)}</span>`));
       });
+      if (ups.length > 12) {
+        box.appendChild(advEl("div", "adv-foot", `另有 ${ups.length - 12} 组未展开`));
+      }
+      sec.appendChild(box);
+      out.appendChild(sec);
     }
 
-    const rej = data.rejected || [];
+    // ---- 已否决：留痕性质，降为次级列表（不占卡片视觉重量）----
     if (rej.length) {
-      out.appendChild(usageLine(""));
-      out.appendChild(usageLine(`判据已否决（${rej.length} 条，留痕以免日后重复提议合并）：`));
+      const sec = advEl("div", "adv-sec");
+      sec.appendChild(advEl("div", "adv-sec-head",
+        `<span class="adv-sec-title">判据已否决</span>` +
+        `<span class="adv-sec-note">${rej.length} 条，留痕以免日后重复提议合并</span>`));
+      const box = advEl("div", "adv-rej");
       rej.slice(0, 18).forEach((r) => {
         const gate = (r.blocked_by || []).join("、");
-        out.appendChild(usageLine(
-          `  · ${(r.members || []).join(" × ")}　${r.verdict || ""}` +
-          (gate ? `（${gate}）` : ""), "warn"));
+        box.appendChild(advEl("div", "adv-rej-row",
+          `<span class="adv-pair">${escapeHtml((r.members || []).join(" × "))}</span>` +
+          `<span class="adv-verdict">${escapeHtml(r.verdict || "")}</span>` +
+          (gate ? `<span class="adv-gate adv-tag">${escapeHtml(gate)}</span>` : "")));
       });
       if (rej.length > 18) {
-        out.appendChild(usageLine(`  …另有 ${rej.length - 18} 条，命令行 scan.py --merge-advice --format json 可看全部`));
+        box.appendChild(advEl("div", "adv-foot",
+          `另有 ${rej.length - 18} 条，命令行 scan.py --merge-advice --format json 可看全部`));
       }
+      sec.appendChild(box);
+      out.appendChild(sec);
     }
-    out.appendChild(usageLine(""));
-    out.appendChild(usageLine("本面板全程只读：不删除、不移动、不改写任何技能目录。"));
+
+    out.appendChild(advEl("div", "adv-foot", "本面板全程只读：不删除、不移动、不改写任何技能目录。"));
   }
 
   // ---------------- 技能市场（FEAT-9） ----------------

@@ -94,21 +94,21 @@ class AdviceUiTest(unittest.TestCase):
         """界面自己要讲明不改文件，避免用户以为点了就会动库。"""
         self.assertIn("只读", _fn("renderAdvice"))
 
-    def test_member_line_surfaces_provenance_marks(self):
-        body = _fn("memberLine")
+    def test_member_row_surfaces_provenance_marks(self):
+        body = _fn("memberRow")
         for token in ("has_scripts", "has_license", "零触达", "last_used", "sessions"):
             self.assertIn(token, body, f"成员行缺少证据 {token}")
 
     def test_no_judgement_leaked_into_frontend(self):
         """判据必须留在 Python 侧，前端不得复刻分词/相似度或读会话日志。"""
-        body = _fn("renderAdvice") + _fn("runMergeAdvice") + _fn("memberLine")
+        body = _fn("renderAdvice") + _fn("runMergeAdvice") + _fn("memberRow")
         for token in ("archived_sessions", ".jsonl", "host_skills", "jaccard >=",
                       "function_call"):
             self.assertNotIn(token, body, f"前端越界实现判据片段 {token}")
 
     def test_no_forbidden_glyphs(self):
         for name in ("setAdviceStatus", "toggleAdvicePanel", "runMergeAdvice",
-                     "memberLine", "renderAdvice"):
+                     "memberRow", "renderAdvice"):
             body = _fn(name)
             for glyph in ("—", "⚠", "✓"):
                 self.assertNotIn(glyph, body, f"{name} 含禁用字形 {glyph}")
@@ -116,7 +116,7 @@ class AdviceUiTest(unittest.TestCase):
     def test_advice_state_declared_and_used(self):
         js = _js()
         body = (_fn("toggleAdvicePanel") + _fn("runMergeAdvice")
-                + _fn("memberLine") + _fn("renderAdvice"))
+                + _fn("memberRow") + _fn("renderAdvice"))
         for var in ("ADVICE_DATA", "ADVICE_DAYS"):
             self.assertRegex(js, r"(const|let|var)\s+" + var + r"\b",
                              f"{var} 未声明：点击整理建议会抛 ReferenceError")
