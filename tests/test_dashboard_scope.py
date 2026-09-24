@@ -74,9 +74,11 @@ class ScopeRegressionTest(unittest.TestCase):
         # 额外锚定：三个 toggle 与 reprobe 的间距（若被嵌进 reprobe，_body 仍会截到
         # 但定义行前会出现 reprobeEndpoints 头——用源文件层级缩进变化不可靠，
         # 真正的端到端防线在 HarnessE2ETest，这里只保证函数可截取）。
-        for fn in ("toggleUsagePanel", "toggleAdvicePanel", "toggleMarketPanel"):
+        for fn in ("toggleUsagePanel", "toggleAdvicePanel"):
             body = _body(fn)
-            self.assertIn("classList.toggle(\"hidden\"", body)
+            self.assertIn("openOverlay(el)", body)
+            self.assertIn("closeOverlay(el)", body)
+        self.assertIn('classList.toggle("hidden"', _body("toggleMarketPanel"))
 
 
 class BusyOverlayTest(unittest.TestCase):
