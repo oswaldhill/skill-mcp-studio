@@ -41,13 +41,27 @@ class AdviceLayoutTest(unittest.TestCase):
             assert token in body, f"成员表缺少列 {token}"
         assert "tabular-nums" in HTML, "数字列未用等宽数字对齐"
 
-    def test_rejected_is_secondary_list(self):
+    def test_rejected_is_collapsed_by_default(self):
+        """已否决是整理的中间过程（判据依据），不该占主视图：默认收起，点击才展开。"""
         body = _advice_js()
-        # 已否决是留痕性质，用次级列表而非卡片（不占视觉重量）
-        for token in ("判据已否决", "adv-rej-row", "adv-pair", "adv-verdict", "adv-gate"):
-            assert token in body, f"已否决段缺少 {token}"
+        for token in ("adv-rej-fold", "adv-rej-fold-head", "判据已否决"):
+            assert token in body, f"已否决收起段缺少 {token}"
+        # 用原生 details/summary 承载折叠状态，不另造 JS 开关变量
+        assert 'advEl("details"' in body, "折叠容器应为 details"
+        assert 'advEl("summary"' in body, "折叠标题应为 summary"
+        # 默认收起：渲染时不得预置 open
+        assert "det.open" not in body, "不得在渲染时强制展开已否决段"
+        # 明细仍在 DOM 内，展开后可见
+        for token in ("adv-rej-row", "adv-pair", "adv-verdict", "adv-gate"):
+            assert token in body, f"展开后的明细缺少 {token}"
         assert "adv-card" not in body.split("判据已否决")[1].split("adv-foot")[0], \
             "已否决段不应使用卡片"
+
+    def test_rejected_count_not_in_metric_strip(self):
+        """指标条只留需要动作的口径；已否决条数是中间过程，不进指标条。"""
+        strip = _advice_js().split("adv-strip")[1].split("out.appendChild(strip)")[0]
+        assert "已否决" not in strip, "指标条不应再出现「已否决」格"
+        assert "rejected_entries" not in strip, "指标条不应再读 rejected_entries"
 
     def test_css_rules_exist_for_every_class(self):
         """用到 class 就必须有对应规则，否则等于没排版。"""

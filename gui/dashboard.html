@@ -1335,6 +1335,12 @@
   .adv-tag.zero { color: var(--err); background: var(--err-bg); border-color: var(--err-border); }
   .adv-tag.keep { color: var(--ok); background: var(--ok-bg); border-color: var(--ok-border); }
   .adv-tag.up { color: var(--warn); background: var(--warn-bg); border-color: var(--warn-border); }
+  /* 已否决收成一行：整理中间过程不占主视图，点击才展开 */
+  .adv-rej-fold { margin-top: 10px; }
+  .adv-rej-fold-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; padding-bottom: 8px; border-bottom: 1px solid var(--line); cursor: pointer; list-style: none; }
+  .adv-rej-fold-head::-webkit-details-marker { display: none; }
+  .adv-rej-fold-head::before { content: "\25B8"; color: var(--faint); font-size: var(--fs-xs); }
+  .adv-rej-fold[open] .adv-rej-fold-head::before { content: "\25BE"; }
   .adv-rej { margin-top: 8px; }
   .adv-rej-row { display: flex; align-items: baseline; gap: 8px; padding: 6px 2px; border-bottom: 1px solid var(--line); font-size: var(--fs-xs); color: var(--muted); }
   .adv-rej-row:last-child { border-bottom: none; }
@@ -4458,7 +4464,6 @@ async function reprobeEndpoints(btnEl) {
       usageCell(fmtNum(sum.actionable_groups || 0), "可合并组", act.length ? "ok" : ""),
       usageCell(fmtNum(sum.actionable_skills || 0), "涉及技能", ""),
       usageCell(fmtNum(sum.upstream_only_groups || 0), "上游仅标注", ups.length ? "warn" : ""),
-      usageCell(fmtNum(sum.rejected_entries || 0), "已否决", ""),
     ].join("");
     out.appendChild(strip);
 
@@ -4542,12 +4547,14 @@ async function reprobeEndpoints(btnEl) {
       out.appendChild(sec);
     }
 
-    // ---- 已否决：留痕性质，降为次级列表（不占卡片视觉重量）----
+    // ---- 已否决：整理的中间过程（判据依据），不属于主页面结论 ----
+    // 默认收起成一行，点击才展开。用原生 details/summary：折叠状态不落在 JS 变量里，
+    // 面板重渲染后自然回到收起；键盘操作与无障碍语义也都是浏览器原生的。
     if (rej.length) {
-      const sec = advEl("div", "adv-sec");
-      sec.appendChild(advEl("div", "adv-sec-head",
+      const det = advEl("details", "adv-rej-fold");
+      det.appendChild(advEl("summary", "adv-rej-fold-head",
         `<span class="adv-sec-title">判据已否决</span>` +
-        `<span class="adv-sec-note">${rej.length} 条，留痕以免日后重复提议合并</span>`));
+        `<span class="adv-sec-note">${rej.length} 条，属整理的中间过程，留痕以免日后重复提议合并</span>`));
       const box = advEl("div", "adv-rej");
       rej.slice(0, 18).forEach((r) => {
         const gate = (r.blocked_by || []).join("、");
@@ -4560,8 +4567,8 @@ async function reprobeEndpoints(btnEl) {
         box.appendChild(advEl("div", "adv-foot",
           `另有 ${rej.length - 18} 条，命令行 scan.py --merge-advice --format json 可看全部`));
       }
-      sec.appendChild(box);
-      out.appendChild(sec);
+      det.appendChild(box);
+      out.appendChild(det);
     }
 
     out.appendChild(advEl("div", "adv-foot",
