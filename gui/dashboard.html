@@ -4572,7 +4572,7 @@ async function reprobeEndpoints(btnEl) {
   // ---------------- 技能市场（FEAT-9） ----------------
   // 已加载的源状态。缺这行声明时 toggleMarketPanel 会抛 ReferenceError，
   // 面板打开后源可用性永远不会加载（实测踩到过，故显式声明并加静态守卫）。
-  const MARKET_DATA = { sources: null };
+  const MARKET_DATA = { sources: null, loading: false };
 
   // 数据一律经 CLI 的只读出口取得（scan.py --market ...），前端不解析 npx 输出。
   // 检查更新绝不用 npx skills check（该命令名为检查、实为升级），后端已改为只读比对。
@@ -4582,25 +4582,40 @@ async function reprobeEndpoints(btnEl) {
     if (!el) return;
     const open = show === undefined ? el.classList.contains("hidden") : show;
     if (open) openOverlay(el); else closeOverlay(el);
-    if (open && !MARKET_DATA.sources) loadMarketSources();
+    if (open) refreshMarketSources();
+  }
+
+  /** 每次打开面板都重新探测。源可用性会随环境变化（例如事后才装上 Node/npx），
+   *  只在首次探测的话，后端已经修好、用户重开面板看到的却仍是旧结论，
+   *  除了重启 App 没有别的刷新途径——实测踩到过。先铺缓存可避免空白闪一下。 */
+  function refreshMarketSources() {
+    if (MARKET_DATA.loading) return;
+    if (MARKET_DATA.sources) renderMarketSources({ sources: MARKET_DATA.sources }, "");
+    loadMarketSources();
   }
 
   async function loadMarketSources() {
-    const res = await runCli(["--market", "sources", "--format", "json"]);
-    if (!res || res.code !== 0) {
-      renderMarketSources(null, (res && res.stderr)
-        || "没能读取市场来源：桌面 App 内才能访问外部市场（浏览器预览模式下不执行）");
-      return;
-    }
-    let data = null;
+    if (MARKET_DATA.loading) return;
+    MARKET_DATA.loading = true;
     try {
-      data = JSON.parse(res.stdout || "{}");
-    } catch (e) {
-      renderMarketSources(null, "返回数据无法解析");
-      return;
+      const res = await runCli(["--market", "sources", "--format", "json"]);
+      if (!res || res.code !== 0) {
+        renderMarketSources(null, (res && res.stderr)
+          || "没能读取市场来源：桌面 App 内才能访问外部市场（浏览器预览模式下不执行）");
+        return;
+      }
+      let data = null;
+      try {
+        data = JSON.parse(res.stdout || "{}");
+      } catch (e) {
+        renderMarketSources(null, "返回数据无法解析");
+        return;
+      }
+      MARKET_DATA.sources = data.sources || {};
+      renderMarketSources(data, "");
+    } finally {
+      MARKET_DATA.loading = false;
     }
-    MARKET_DATA.sources = data.sources || {};
-    renderMarketSources(data, "");
   }
 
   function renderMarketSources(data, err) {

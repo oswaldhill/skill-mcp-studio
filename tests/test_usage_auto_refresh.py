@@ -161,6 +161,24 @@ class MarketDialogTest(unittest.TestCase):
         self.assertIn("closeOverlay(el)", body)
         self.assertNotIn("classList.toggle", body, "不应再用 class 切换显隐")
 
+    def test_sources_reprobed_on_every_open(self):
+        """打开面板必须重新探测源可用性。
+
+        源可用性随环境变化（例如事后才装上 Node/npx）。若只在首次探测，
+        后端已经修好、用户重开弹窗看到的仍是旧结论，除了重启 App 没有别的
+        刷新途径——2026-09 实测踩到过，故钉住。
+        """
+        body = _body("toggleMarketPanel")
+        self.assertIn("refreshMarketSources()", body, "打开面板未触发重新探测")
+        self.assertNotIn("!MARKET_DATA.sources", body,
+                         "又退回「只在首次加载」，环境变化后无法刷新")
+        refresh = _body("refreshMarketSources")
+        self.assertIn("loadMarketSources()", refresh, "刷新未真正发起探测")
+        # 面板可被反复开关，探测进行中不得重复打 CLI
+        self.assertIn("MARKET_DATA.loading", refresh, "刷新缺并发守卫")
+        self.assertIn("MARKET_DATA.loading", _body("loadMarketSources"),
+                      "探测本身缺并发守卫")
+
     def test_only_available_sources_rendered(self):
         body = _body("renderMarketSources")
         self.assertIn(".filter((s) => s.available)", body, "必须过滤出可用源")
