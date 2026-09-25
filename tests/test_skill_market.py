@@ -1,6 +1,7 @@
 """FEAT-9: 技能市场访问层（只读）契约测试。"""
 
 import json as _json
+import os
 import sys
 import tempfile
 import unittest
@@ -11,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "core"))
 
 from skill_market import (  # noqa: E402
+    _npx_env,
     check_updates,
     detect_backend,
     list_installed,
@@ -29,11 +31,33 @@ class DetectBackendTest(unittest.TestCase):
 
     def test_missing_npx_degrades_without_raising(self):
         """后端缺失必须降级为 available=False，不得抛异常。"""
-        with mock.patch("skill_market.shutil.which", return_value=None):
+        with mock.patch("skill_market.which_with_fallback", return_value=None):
             info = detect_backend()
         self.assertFalse(info["available"])
         self.assertIsNone(info["npx_path"])
         self.assertTrue(info["reason"])
+
+    def test_npx_lookup_goes_through_path_fallback(self):
+        """回归：GUI 壳（Finder 启动）PATH 受限时，npx 必须经兜底目录命中。
+
+        原先裸查 ``shutil.which("npx")``，最小 PATH 下必然落空，技能市场恒报
+        「未找到 npx」；改走 ``which_with_fallback`` 后与 CLI 探测策略一致。
+        """
+        with mock.patch(
+            "skill_market.which_with_fallback", return_value="/opt/homebrew/bin/npx"
+        ) as finder, mock.patch(
+            "skill_market._run_npx",
+            return_value={"code": 0, "stdout": "", "stderr": ""},
+        ):
+            info = detect_backend()
+        finder.assert_called_once_with("npx")
+        self.assertTrue(info["available"])
+        self.assertEqual(info["npx_path"], "/opt/homebrew/bin/npx")
+
+    def test_npx_env_exposes_node_next_to_npx(self):
+        """npx 是 `#!/usr/bin/env node` 脚本：只给绝对路径仍找不到 node。"""
+        env = _npx_env("/opt/homebrew/bin/npx")
+        self.assertEqual(env["PATH"].split(os.pathsep)[0], "/opt/homebrew/bin")
 
 
 class ReadSourcesTest(unittest.TestCase):

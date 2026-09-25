@@ -22,6 +22,8 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from tool_registry import which_with_fallback
+
 # 这三个源来自本机 find-skills 技能的权威说明；A/C 在当前环境不可用，
 # 但仍要在清单中呈现，让用户看到「为什么没有结果」而不是静默空白。
 _SOURCE_SPECS = (
@@ -32,16 +34,37 @@ _SOURCE_SPECS = (
 
 _NPX_TIMEOUT = 60
 
+# GUI 壳（Finder 启动）继承 launchd 的最小 PATH（/usr/bin:/bin:/usr/sbin:/sbin），
+# 裸名 `npx` 必然查不到，技能市场会恒报「未找到 npx」。这里复用
+# tool_registry.which_with_fallback：PATH 优先，未命中再兜底 /opt/homebrew/bin
+# 等常见安装位置——与 CLI 探测、Rust 侧 run_cli 的定位策略保持一致。
+
+
+def _npx_env(npx: str) -> Dict[str, str]:
+    """构造子进程环境：把 npx 所在目录并入 PATH。
+
+    npx 是 `#!/usr/bin/env node` 脚本，只用绝对路径启动仍会因 PATH 里没有
+    node 而报 `env: node: No such file or directory`，故必须让其同目录可见。
+    """
+    env = os.environ.copy()
+    npx_dir = str(Path(npx).parent)
+    parts = [p for p in env.get("PATH", "").split(os.pathsep) if p]
+    if npx_dir not in parts:
+        parts.insert(0, npx_dir)
+    env["PATH"] = os.pathsep.join(parts)
+    return env
+
 
 def _run_npx(args: List[str], timeout: int = _NPX_TIMEOUT) -> Dict[str, Any]:
     """执行 `npx -y skills ...`，返回 {code, stdout, stderr}。不抛异常。"""
-    npx = shutil.which("npx")
+    npx = which_with_fallback("npx")
     if not npx:
         return {"code": 127, "stdout": "", "stderr": "npx not found"}
     try:
         proc = subprocess.run(
             [npx, "-y", "skills", *args],
             capture_output=True, text=True, timeout=timeout,
+            env=_npx_env(npx),
         )
         return {"code": proc.returncode, "stdout": proc.stdout, "stderr": proc.stderr}
     except subprocess.TimeoutExpired:
@@ -52,7 +75,7 @@ def _run_npx(args: List[str], timeout: int = _NPX_TIMEOUT) -> Dict[str, Any]:
 
 def detect_backend() -> Dict[str, Any]:
     """探测 `npx skills` 可用性。缺失时降级，不抛异常。"""
-    npx = shutil.which("npx")
+    npx = which_with_fallback("npx")
     if not npx:
         return {
             "available": False,
