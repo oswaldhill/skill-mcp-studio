@@ -478,7 +478,7 @@
   .modal {
     background: var(--panel);
     border: 1px solid var(--line);
-    border-radius: 16px;
+    border-radius: var(--r-card);
     padding: 28px;
     width: min(560px, 92vw);
     max-height: 92vh;
@@ -756,7 +756,7 @@
   .token-row input { flex: 1; border-top-right-radius: 0; border-bottom-right-radius: 0; }
   .token-toggle {
     flex: 0 0 auto; padding: 0 12px; border: 1px solid var(--line); border-left: none;
-    border-radius: 0 8px 8px 0; background: var(--panel-2); color: var(--muted);
+    border-radius: 0 var(--r-control) var(--r-control) 0; background: var(--panel-2); color: var(--muted);
     font-size: var(--fs-2xs); cursor: pointer; white-space: nowrap;
   }
   .token-toggle:hover { background: var(--line); color: var(--text); }
@@ -814,7 +814,7 @@
   .pagination .pg-ellipsis { color: var(--faint); font-size: var(--fs-xs); padding: 0 2px; }
   .pagination .pg-jump { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-xs); color: var(--muted); margin-left: 6px; }
   .pagination .pg-input { width: 52px; padding: 3px 6px; font-size: var(--fs-xs); font-family: var(--mono); border: 1px solid var(--line); border-radius: var(--r-control); background: var(--panel); color: var(--text); }
-  .pagination .pg-input:focus { outline: none; border-color: var(--accent); }
+  .pagination .pg-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
 
   /* 表格内路径分行 */
   .path-lines { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-2xs); }
@@ -3042,7 +3042,7 @@ function renderEndpointLibrary() {
   el.innerHTML = '<div class="table-scroll"><table><thead><tr><th>端点 key</th><th>name</th><th>地址 / 命令</th><th>transport</th><th style="width:168px">操作</th></tr></thead><tbody>' +
     endpoints.map((ep) => {
       const isStdio = (ep.transport || "streamable-http") === "stdio";
-      const address = isStdio ? (ep.command || "—") : (ep.url || "");
+      const address = isStdio ? (ep.command || "-") : (ep.url || "");
       return `<tr>
         <td class="mono">${escapeHtml(ep.key)}</td>
         <td class="mono">${escapeHtml(ep.name || "")}</td>
@@ -5318,7 +5318,7 @@ function openUnifiedDirModal() {
       <div class="form-field" style="flex:1">
         <input type="text" id="ud-path" placeholder="~/.skills-manager/skills" value="${escapeHtml(current)}" />
       </div>
-      ${hasDialog ? '<button type="button" id="ud-pick" class="btn-cancel" style="padding:8px 14px;font-size:var(--fs-sm);border-radius:8px">选择文件夹</button>' : ''}
+      ${hasDialog ? '<button type="button" id="ud-pick" class="btn-cancel" style="padding:8px 14px;font-size:var(--fs-sm);border-radius:var(--r-control)">选择文件夹</button>' : ''}
     </div>
     <div class="form-actions">
       <button class="btn-cancel" id="ud-cancel">取消</button>
@@ -5456,9 +5456,9 @@ function renderMergeRows(rows) {
       const st = SKILL_STATUS[r.status] || { label: r.status || "未知", cls: "" };
       const act = mergeActionOf(r);
       return `<tr>
-        <td>${escapeHtml(r.tool_name || "—")}</td>
-        <td class="mono muted">${escapeHtml(r.type || "—")}</td>
-        <td class="mono path-cell" title="${escapeHtml(r.path || "")}">${escapeHtml(r.path || "—")}</td>
+        <td>${escapeHtml(r.tool_name || "-")}</td>
+        <td class="mono muted">${escapeHtml(r.type || "-")}</td>
+        <td class="mono path-cell" title="${escapeHtml(r.path || "")}">${escapeHtml(r.path || "-")}</td>
         <td><span class="tag ${st.cls}">${escapeHtml(st.label)}</span></td>
         <td class="wrap-cell"><span class="tag ${act.cls}">${escapeHtml(act.label)}</span></td>
       </tr>`;
@@ -5496,8 +5496,8 @@ function renderMergeChanges(data) {
       <thead><tr><th colspan="3">🆕 新增工具（${add.length}）</th></tr>
       <tr><th>工具</th><th>Skills 路径</th><th>状态</th></tr></thead>
       <tbody>${add.map((t) => `<tr>
-        <td>${escapeHtml(t.name || "—")}</td>
-        <td class="mono path-cell" title="${escapeHtml(t.path || "")}">${escapeHtml(t.path || "—")}</td>
+        <td>${escapeHtml(t.name || "-")}</td>
+        <td class="mono path-cell" title="${escapeHtml(t.path || "")}">${escapeHtml(t.path || "-")}</td>
         <td>${statusTag(t.status)}</td></tr>`).join("")}</tbody></table>`);
   }
   if (rem.length) {
@@ -5505,16 +5505,16 @@ function renderMergeChanges(data) {
       <thead><tr><th colspan="2">🗑 移除工具（${rem.length}）</th></tr>
       <tr><th>工具</th><th>Skills 路径</th></tr></thead>
       <tbody>${rem.map((t) => `<tr>
-        <td>${escapeHtml(t.name || "—")}</td>
-        <td class="mono path-cell" title="${escapeHtml(t.path || "")}">${escapeHtml(t.path || "—")}</td></tr>`).join("")}</tbody></table>`);
+        <td>${escapeHtml(t.name || "-")}</td>
+        <td class="mono path-cell" title="${escapeHtml(t.path || "")}">${escapeHtml(t.path || "-")}</td></tr>`).join("")}</tbody></table>`);
   }
   if (chg.length) {
     parts.push(`<table class="merge-table">
       <thead><tr><th colspan="4">🔄 状态变化（${chg.length}）</th></tr>
       <tr><th>工具</th><th>Skills 路径</th><th>之前</th><th>现在</th></tr></thead>
       <tbody>${chg.map((t) => `<tr>
-        <td>${escapeHtml(t.name || "—")}</td>
-        <td class="mono path-cell" title="${escapeHtml(t.path || "")}">${escapeHtml(t.path || "—")}</td>
+        <td>${escapeHtml(t.name || "-")}</td>
+        <td class="mono path-cell" title="${escapeHtml(t.path || "")}">${escapeHtml(t.path || "-")}</td>
         <td>${statusTag(t.from)}</td><td>${statusTag(t.to)}</td></tr>`).join("")}</tbody></table>`);
   }
   const scRows = [];
@@ -5595,7 +5595,7 @@ async function testStoredEndpoint(key) {
   const mcp = (SNAP && SNAP.mcp) || {};
   const ep = (mcp.endpoints || []).find(e => e.key === key) || {};
   const isStdio = (ep.transport || "streamable-http") === "stdio";
-  const address = isStdio ? (ep.command || "—") : (ep.url || "—");
+  const address = isStdio ? (ep.command || "-") : (ep.url || "-");
 
   mountModal(`<div class="modal-backdrop"><div class="modal modal-form test-modal">
     <div class="form-title">测试连接 - ${escapeHtml(key)}</div>
@@ -5617,7 +5617,7 @@ async function testStoredEndpoint(key) {
     const body = $("ts-body");
     const summary = `<div class="ts-summary">
         <span class="k">端点</span><span class="v">${escapeHtml(key)}</span>
-        <span class="k">名称</span><span class="v">${escapeHtml(ep.name || "—")}</span>
+        <span class="k">名称</span><span class="v">${escapeHtml(ep.name || "-")}</span>
         <span class="k">传输</span><span class="v">${escapeHtml(data.transport || ep.transport || "streamable-http")}</span>
         <span class="k">地址</span><span class="v">${escapeHtml(address)}</span>
       </div>`;
