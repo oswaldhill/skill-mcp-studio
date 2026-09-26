@@ -86,6 +86,25 @@ cargo tauri build              # 产出 target/release/bundle/macos/skill-mcp-st
 
 详细步骤见 [`src-tauri/BUILD.md`](src-tauri/BUILD.md)。
 
+### 改 GUI 不必重建：开发态热加载
+
+生产构建会把 `gui/` 整体嵌入二进制（`tauri.conf.json` 的 `frontendDist`），
+所以默认情况下改一行 `dashboard.html` 都要重新 build + 重装。
+
+开发时可以设 `SMS_GUI_DEV=1`：桌面壳启动后会把主窗口导航到**源树里的**
+`gui/dashboard.html`，于是改完只需在窗口里刷新（macOS 上 `Cmd+R`）。
+
+```bash
+cd src-tauri
+SMS_GUI_DEV=1 cargo tauri dev
+```
+
+- 不设该变量时完全走原有嵌入资源路径，**生产行为不变**。
+- 三处异常（未找到窗口 / 路径无法转为 `file://` URL / 导航失败）都会在 stderr
+  打印 `[SMS_GUI_DEV]` 前缀的告警，便于排查。
+- 这是「直读磁盘」，不是文件监听：改完仍需手动刷新一次，但无需重新编译。
+
+
 ## 项目结构
 
 - `scan.py` — CLI 入口
