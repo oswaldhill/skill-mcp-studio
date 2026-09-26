@@ -137,7 +137,7 @@ step "执行 bump（--apply）"
 
 NEW_VERSION="$("$PY" -c 'import json;print(json.load(open("version.json"))["version"])')"
 NEW_TAG="v${NEW_VERSION}"
-note "✓ 新版本: $NEW_VERSION（tag 将为 $NEW_TAG）"
+note "✓ 新版本: ${NEW_VERSION}（tag 将为 ${NEW_TAG}）"
 
 # CHANGELOG 正文必须由人写 —— 这里只做「有没有」的硬校验。
 step "校验 CHANGELOG 段落"
@@ -207,7 +207,7 @@ git merge --no-ff -q "$SOURCE_BRANCH" -m "merge: ${SOURCE_BRANCH} → ${TARGET_B
 
 # tag 必须与 version.json 一致 —— 与 P0-2 的 CI 校验同源，这里是事前拦截。
 TAG_VERSION="$(git show "$TARGET_BRANCH:version.json" | "$PY" -c 'import json,sys;print(json.load(sys.stdin)["version"])')"
-[ "$TAG_VERSION" = "$NEW_VERSION" ] || die "$TARGET_BRANCH 上 version.json 是 $TAG_VERSION，与 $NEW_VERSION 不一致"
+[ "$TAG_VERSION" = "$NEW_VERSION" ] || die "$TARGET_BRANCH 上 version.json 是 ${TAG_VERSION}，与 $NEW_VERSION 不一致"
 
 if git rev-parse -q --verify "refs/tags/$NEW_TAG" >/dev/null; then
   die "tag $NEW_TAG 已存在（发布不可重来；如需重打请先确认是否要删除旧 tag）"

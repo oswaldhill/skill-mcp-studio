@@ -82,6 +82,44 @@ else
   note "✗ 缺少 PyYAML（$PY -m pip install PyYAML）"
 fi
 
+# 1c) 脚本卫生自检（P2-18）—— 这两条都是「会伪装成测试失败」的缺陷，必须前置拦截。
+# 背景：用 qclaw-text-file 的 write_text.py 重写脚本时不继承权限，可执行位丢失后
+# bash 直接执行仍正常、但 Python subprocess 调用会 PermissionError，
+# 表现为 exit!=0 且日志里没有任何 "Ran N tests" 行，极易被误判为测试失败。
+hygiene_fail=0
+
+if [ -d .git ]; then
+  bad_mode="$(git ls-files -s -- 'scripts/*.sh' 2>/dev/null | awk '$1 != "100755" {print $4}')"
+  if [ -n "$bad_mode" ]; then
+    note "✗ scripts/*.sh 缺少可执行位（git mode 应为 100755）："
+    printf '    %s\n' $bad_mode
+    note "  → 修复：chmod +x <file> && git add <file>"
+    hygiene_fail=1
+  else
+    note "✓ scripts/*.sh 的 git mode 均为 100755"
+  fi
+fi
+
+# 变量名紧跟全角标点：bash 在部分 locale 下会把标点首字节并入变量名，
+# 配合 set -u 直接 "unbound variable" 中止脚本。必须写成 ${var}。
+bad_var="$(
+  grep -nE '\$[A-Za-z_][A-Za-z_0-9]*[，。：；（）「」、！？]' scripts/*.sh 2>/dev/null \
+    | grep -v '\${' || true
+)"
+if [ -n "$bad_var" ]; then
+  note "✗ scripts/*.sh 存在「\$var 紧跟全角标点」写法（须写 \${var}）："
+  printf '    %s\n' "$bad_var"
+  hygiene_fail=1
+else
+  note "✓ scripts/*.sh 无「\$var 紧跟全角标点」写法"
+fi
+
+if [ "$hygiene_fail" -ne 0 ]; then
+  note ""
+  note "==> 失败：脚本卫生自检未通过（P2-18）。此类缺陷会伪装成「测试失败」，故在跑测试前拦截。"
+  exit 1
+fi
+
 note ""
 note "== 运行（命令与 .github/workflows/test.yml 一致）=="
 note "   $PY -m unittest discover -s tests -p '$CI_PATTERN' $*"
