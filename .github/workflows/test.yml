@@ -55,7 +55,7 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Check tracked text files (no BOM / LF / trailing newline)
+      - name: Check tracked text files (no BOM / no CRLF)
         run: |
           set -euo pipefail
           python - <<'INNER'
@@ -97,7 +97,8 @@ jobs:
               for p in problems:
                   print("  - " + p, file=sys.stderr)
               sys.exit(1)
-          print("✓ 无 BOM、无 CRLF、末尾均有换行")
+          print("✓ 全部文本文件：无 BOM、无 CRLF")
+          print("  （末尾换行刻意未纳入，见脚本内说明）")
           INNER
 
   test-python:
