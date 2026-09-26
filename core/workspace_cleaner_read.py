@@ -318,5 +318,3 @@ def format_clean_result(result: Dict[str, Any]) -> str:
 
     lines.append("=" * 60)
     return "\n".join(lines)
-
-

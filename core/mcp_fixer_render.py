@@ -547,5 +547,3 @@ def _reasonix_servers(path: str, key_path: List[str]) -> Dict[str, Dict[str, str
         if value.startswith("https://"):
             servers[name.strip()] = {"url": value}
     return servers
-
-

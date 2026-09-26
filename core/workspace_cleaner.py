@@ -383,5 +383,3 @@ def clean_temp_files(workspace_dir: str, dry_run: bool = True) -> Dict[str, Any]
             result["message"] += f"，{len(errors)} 个失败"
 
     return result
-
-

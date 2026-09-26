@@ -89,8 +89,13 @@ jobs:
                   problems.append(f"{f}: 含 CRLF（本仓库统一 LF）")
               # 末尾换行：P2-17 已把存量 90 个文件一次性补齐，因此本项自本次起
               # 纳入门禁。新增文件若缺末尾换行会在此拦下。
+              # 同时禁止「末尾多余空行」—— P2-16 拆分产出的模块曾出现末尾连续空行，
+              # 而当时只查「缺换行」故未被拦下（本地 ci_parity.sh 那时也无此检查，
+              # 造成「本地全绿 vs CI 拦下」盲区）。现已两边同判据。
               if not raw.endswith(b"\n"):
                   problems.append(f"{f}: 末尾缺少换行")
+              elif raw.endswith(b"\n\n"):
+                  problems.append(f"{f}: 末尾多余空行（应恰好一个换行）")
 
           print(f"检查了 {checked} 个文本文件")
           if problems:

@@ -395,5 +395,3 @@ def remove_legacy_mcp_clients(
             continue
         results.append(remove_legacy_mcp_tool(tool, expected, dry_run=dry_run))
     return results
-
-

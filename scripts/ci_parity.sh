@@ -120,6 +120,57 @@ if [ "$hygiene_fail" -ne 0 ]; then
   exit 1
 fi
 
+
+# 1d) 文本卫生自检（P2-17 / P2-14）—— 与 CI 的 text-hygiene job 等价。
+#     之所以放进本脚本：此前该检查只存在于 CI workflow，本地 ci_parity.sh 跑不到，
+#     于是「本地全绿」与「CI 拦下」之间存在盲区 —— 实际发生过一次：
+#     P2-16 拆分产出的 6 个模块末尾多出空行，本地门禁全绿而无人发现。
+#     判据比 CI 更严一格：不仅要求「有末尾换行」，还要求「恰好一个」
+#     （末尾空行会让 diff 与后续追加都产生噪音）。
+note "== 文本卫生自检（P2-17 / P2-14）=="
+if ! "$PY" - <<'INNER'
+import subprocess, sys
+
+SKIP_SUFFIX = (
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".icns",
+    ".pdf", ".zip", ".gz", ".woff", ".woff2", ".ttf", ".otf",
+    ".dmg", ".exe", ".msi", ".deb", ".rpm", ".so", ".dylib",
+)
+files = subprocess.run(["git", "ls-files"], capture_output=True, text=True, check=True).stdout.split()
+problems, checked = [], 0
+for f in files:
+    if f.lower().endswith(SKIP_SUFFIX):
+        continue
+    try:
+        raw = open(f, "rb").read()
+    except OSError:
+        continue
+    if b"\x00" in raw[:8000]:
+        continue
+    checked += 1
+    if raw.startswith(b"\xef\xbb\xbf"):
+        problems.append(f + ": 含 UTF-8 BOM")
+    if b"\r\n" in raw:
+        problems.append(f + ": 含 CRLF（本仓库统一 LF）")
+    if not raw.endswith(b"\n"):
+        problems.append(f + ": 末尾缺少换行")
+    elif raw.endswith(b"\n\n"):
+        problems.append(f + ": 末尾多余空行（应恰好一个换行）")
+print("  检查了 " + str(checked) + " 个文本文件")
+if problems:
+    print("发现以下问题：", file=sys.stderr)
+    for x in problems:
+        print("  - " + x, file=sys.stderr)
+    sys.exit(1)
+INNER
+then
+  note "==> 失败：文本卫生自检未通过（P2-17 / P2-14）。"
+  exit=$(printf '%s' 1)
+  note "    修法：补齐/去掉末尾换行，或去掉 BOM、把 CRLF 转为 LF。"
+  exit 1
+fi
+note "✓ 文本文件：无 BOM、无 CRLF、末尾恰好一个换行"
+
 note ""
 note "== 运行（命令与 .github/workflows/test.yml 一致）=="
 note "   $PY -m unittest discover -s tests -p '$CI_PATTERN' $*"

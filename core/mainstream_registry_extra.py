@@ -224,4 +224,3 @@ EXTRA_MAINSTREAM_TOOLS: List[Dict[str, Any]] = [
                          "mcp_config_path": "~/.hermes/config.yaml"},
            }),
 ]
-
