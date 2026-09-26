@@ -159,6 +159,33 @@ jobs:
           set -euo pipefail
           python -m unittest discover -s tests -p 'test_*.py'
 
+  # P1-11：ruff 静态检查。规则集与忽略项在 pyproject.toml 的 [tool.ruff] 中，
+  # 刻意分阶段开启（F401/I001 会改变代码行为，需先做准备，配置内有说明）。
+  lint-ruff:
+    name: Ruff lint
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      # 固定版本：ruff 的诊断集合会随版本变化，不锁版本会让门禁时红时绿。
+      - name: Install ruff (pinned)
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check "ruff==0.16.9"
+
+      - name: ruff check
+        run: |
+          set -euo pipefail
+          python -m ruff check --output-format=github core tests scan.py scripts
+
   test-rust:
     name: Rust unit tests (cargo test)
     runs-on: ubuntu-22.04
