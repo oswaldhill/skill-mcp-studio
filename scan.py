@@ -1322,6 +1322,10 @@ def _run_skill_migrate(args, config, config_path) -> int:
 def build_parser() -> argparse.ArgumentParser:
     """Construct the full CLI argument parser (A-7: 从 main() 抽出，拆分 god-function)."""
     parser = argparse.ArgumentParser(
+        # 关闭前缀缩写：argparse 默认允许 `--prof` 这类简写，而它会被解析成
+        # `--profile` —— 一个被安全边界明令拒绝的重定向参数（Tauri 侧的
+        # run_cli 按「裸标志」比对，缩写形式可绕过）。两边一起关掉才成立。
+        allow_abbrev=False,
         description="Skill MCP Studio - IDE/Agent Skills 统一化与 Hermes MCP 接入管理工具",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
