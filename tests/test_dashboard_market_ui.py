@@ -3,6 +3,7 @@
 import re
 import unittest
 from pathlib import Path
+from tests._gui_source import page_source
 
 ROOT = Path(__file__).resolve().parents[1]
 HTML = ROOT / "gui" / "dashboard.html"
@@ -10,7 +11,9 @@ RS = ROOT / "src-tauri" / "src" / "lib.rs"
 
 
 def _src() -> str:
-    return HTML.read_text(encoding="utf-8")
+    # S10 前置：取源统一到 tests/_gui_source.page_source()，
+    # 使断言不再依赖「脚本内联在 HTML 里」这一布局细节。
+    return page_source()
 
 
 def _section(page_id: str) -> str:
