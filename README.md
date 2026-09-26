@@ -392,8 +392,11 @@ Tauri 壳在 `src-tauri/`（`cargo tauri build` 产出 `.app`），构建步骤�
 ## 开发
 
 ```bash
-# 单元测试
-python3 -m pytest tests/ -q
+# 单元测试（与 CI 完全一致；本项目统一用 unittest，不引入 pytest）
+python3 -m unittest discover -s tests -p 'test_*.py'
+
+# 或一键脚本：自动补齐解释器与 node 前置条件，并与 CI 基线对照
+scripts/ci_parity.sh
 
 # 桌面 App 构建（macOS，本机架构）
 cargo tauri build --target aarch64-apple-darwin

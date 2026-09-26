@@ -9,6 +9,16 @@
 
 ### 修复
 
+- **「怎么跑测试」三处说法不一**（评审清单 P1-8 + P1-10，方案 B）：`pyproject.toml`
+  曾声明 `[test]` 依赖组（pytest / coverage）与完整的 pytest、coverage 配置，但 CI
+  从不安装它们、也从不产出覆盖率数据；README 与产品 PRD 还写着 `python3 -m pytest`
+  并建议写死 `/usr/local/bin/python3`（Apple Silicon 上该路径根本不存在，前缀是
+  `/opt/homebrew`）。现已**全项目统一为标准库 unittest**：删除 `pyproject.toml` 的
+  `[test]` 组与全部 pytest/coverage 配置并就地注明理由；README 与 PRD 改指
+  `scripts/ci_parity.sh` / `python3 -m unittest discover -s tests -p 'test_*.py'`；
+  两份历史 plan 存档加时效性横幅（保留原文不改写，避免篡改已执行计划的记录），
+  并把那句误导性的解释器建议改为「交给 `ci_parity.sh` 自动挑选，不要写死绝对路径」。
+
 - **技能库根路径在 `import` 时被定死**（评审清单 P0-4，「改了要重启」类问题的共同
   根源）：`skill_market` / `skill_merge_advisor` / `skill_market_ops` 三处
   `_SKILLS_DIR = Path.home() / ...` 模块级常量在 import 期求值并缓存，运行期无法

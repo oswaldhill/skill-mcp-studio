@@ -14,30 +14,13 @@ dependencies = [
     "certifi>=2024.2.2",
 ]
 
-[project.optional-dependencies]
-# T-5: 测试与覆盖率依赖独立成组，CI 用 `pip install -e .[test]` 一次性装齐。
-test = [
-    "pytest>=8.0",
-    "coverage>=7.0",
-]
+# 测试一律使用标准库 unittest（见 CONTRIBUTING「运行测试」）。
+# 这里刻意**不**声明 pytest / coverage 的依赖与配置：曾经声明过，但 CI 从不安装
+# 它们、也从不产出覆盖率数据，导致「该装什么」在 README / CONTRIBUTING /
+# pyproject 三者之间说法不一（评审 P1-10，方案 B：全项目统一 unittest）。
+# 跑测试请用：
+#   scripts/ci_parity.sh
+#   python3 -m unittest discover -s tests -p 'test_*.py'
 
 [project.scripts]
 skill-mcp-studio = "scan:main"
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py"]
-addopts = "-ra"
-
-[tool.coverage.run]
-source = ["core", "scan"]
-branch = true
-omit = ["tests/*"]
-
-[tool.coverage.report]
-# 覆盖率不必为 100% 的样板/平台差异行，避免虚假红色门禁。
-exclude_lines = [
-    "pragma: no cover",
-    "if __name__ == .__main__.:",
-    "raise NotImplementedError",
-]

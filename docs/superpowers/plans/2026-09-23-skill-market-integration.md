@@ -1,5 +1,12 @@
 # 技能市场接入 + 版本更新检测 + 在线升级 实现计划
 
+> **⚠️ 历史存档 —— 文中的测试命令已过时。** 本计划写于 pytest 尚在 `pyproject.toml`
+> 中声明的时期；项目现已统一为**标准库 unittest**（评审 P1-10 采方案 B）。
+> 文中所有 `python3 -m pytest …` 请一律改用 CI 的等价命令：
+> `python3 -m unittest discover -s tests -p 'test_*.py'`，或直接跑 `scripts/ci_parity.sh`
+> （它还会自动挑选合格解释器、补齐 node 前置条件并与 CI 基线对照）。
+> 单文件调试请用 `python3 -m unittest tests.<文件名去掉 .py 并把 / 换成 .>`。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 在 Skill MCP Studio 中接入 skills.sh 技能市场，提供只读的搜索、已装清单与版本更新检测，以及经用户确认的在线安装/升级，GUI 以逐技能进度展示。

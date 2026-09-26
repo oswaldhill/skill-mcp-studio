@@ -1,5 +1,12 @@
 # MCP 条目删除与清理 Implementation Plan
 
+> **⚠️ 历史存档 —— 文中的测试命令已过时。** 本计划写于 pytest 尚在 `pyproject.toml`
+> 中声明的时期；项目现已统一为**标准库 unittest**（评审 P1-10 采方案 B）。
+> 文中所有 `python3 -m pytest …` 请一律改用 CI 的等价命令：
+> `python3 -m unittest discover -s tests -p 'test_*.py'`，或直接跑 `scripts/ci_parity.sh`
+> （它还会自动挑选合格解释器、补齐 node 前置条件并与 CI 基线对照）。
+> 单文件调试请用 `python3 -m unittest tests.<文件名去掉 .py 并把 / 换成 .>`。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 让管理台能删除 / 清理任意客户端的 MCP 条目（含「未纳管」），对「疑似客户端自带」条目做强化确认，并提供基于配置备份的一键回滚。
@@ -36,7 +43,9 @@
   is_high_risk_entry`），而非 `from core.X import ...`——后者依赖 pytest 注入仓库根到
   `sys.path`，单文件直接 `python3 tests/test_x.py` 跑会失败。
 - `core/` 内部模块之间同样用扁平导入（如 `from tool_registry import expand_path`）。
-- 测试运行：`python3 -m pytest tests/<file> -q`。**必须用 `python3`（`/usr/local/bin/python3`）**，`/usr/bin/python3` 缺 PyYAML。
+- 测试运行：`python3 -m unittest discover -s tests -p 'test_*.py'`，或 `scripts/ci_parity.sh`。
+  **解释器交给 `ci_parity.sh` 自动挑选**（它会校验版本并回退到 ≥3.11），不要写死绝对路径 ——
+  原先记的 `/usr/local/bin/python3` 只对 Intel Homebrew 成立，Apple Silicon 前缀是 `/opt/homebrew`。
 - 提交信息沿用仓库风格：Conventional Commits + 中文描述。
 - 六种配置格式的既有 fixture 在 `tests/test_mcp_fixer.py`（含 `tool(path)` / `EXPECTED` / `URL` 助手），本计划的任务 2、3、4 直接复用其形状，不要另创格式。
 
