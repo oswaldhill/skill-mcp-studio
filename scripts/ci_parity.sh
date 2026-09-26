@@ -57,6 +57,14 @@ if ! "$PY" -c 'import sys; raise SystemExit(0 if sys.version_info[:2] >= (3, 11)
   note "✓ Python  $("$PY" --version 2>&1)  [$(command -v "$PY")]  （已回退到 3.11）"
 fi
 
+# 2a) cargo —— 本地门禁要跑 cargo test（Q0-5）。rustup 默认装在 ~/.cargo/bin，
+#     非交互式 shell 里通常不在 PATH。
+if ! command -v cargo >/dev/null 2>&1 && [ -x "$HOME/.cargo/bin/cargo" ]; then
+  note "· 发现 $HOME/.cargo/bin/cargo，本次运行临时并入 PATH"
+  PATH="$HOME/.cargo/bin:$PATH"
+  export PATH
+fi
+
 # 2) node —— 缺失会让约 35 个渲染护栏用例静默跳过
 if ! command -v node >/dev/null 2>&1; then
   note "✗ node 不在 PATH —— 渲染护栏用例会被跳过，本地结论将与 CI 不等价"
@@ -76,10 +84,16 @@ fi
 note "✓ node    $(node --version 2>&1)  [$(command -v node)]"
 
 # 3) 运行时依赖（缺失时相关用例同样会 skip）
+# Q0-6：缺依赖必须**硬失败**。此前只打一行 ✗ 就继续跑 —— 相关用例会 skip，
+# 于是「本地全绿」并不代表 CI 全绿，而脚本头部却宣称「与 CI 等价」。
 if "$PY" -c 'import yaml' >/dev/null 2>&1; then
   note "✓ PyYAML"
 else
-  note "✗ 缺少 PyYAML（$PY -m pip install PyYAML）"
+  note "✗ 缺少 PyYAML —— 相关用例会 skip，本地结论无法代表 CI"
+  note "  安装：$PY -m pip install PyYAML"
+  note ""
+  note "==> 失败：依赖不满足（Q0-6）。本脚本的用途是复现 CI 结论，缺依赖时必须停下。"
+  exit 1
 fi
 
 # 1c) 脚本卫生自检（P2-18）—— 这两条都是「会伪装成测试失败」的缺陷，必须前置拦截。
@@ -220,14 +234,23 @@ note "== ruff 静态检查（P1-11，ruff==${RUFF_VERSION}）=="
 RUFF_BIN=""
 if command -v ruff >/dev/null 2>&1; then
   RUFF_BIN="$(command -v ruff)"
-elif [ -x /tmp/p05/venv/bin/ruff ]; then
-  RUFF_BIN="/tmp/p05/venv/bin/ruff"
+elif [ -x .venv/bin/ruff ]; then
+  # 项目内 venv 是贡献者的标准位置（.venv/ 已在 .gitignore 中）。
+  # 此前这里找的是 /tmp/p05/venv/bin/ruff 这种个人临时目录 —— 换台机器即失效（Q0-3）。
+  RUFF_BIN=".venv/bin/ruff"
+elif [ -x /opt/homebrew/bin/ruff ]; then
+  RUFF_BIN="/opt/homebrew/bin/ruff"
 elif "$PY" -m ruff --version >/dev/null 2>&1; then
   RUFF_BIN="$PY -m ruff"
 fi
 if [ -z "$RUFF_BIN" ]; then
-  note "  ⚠ 未找到 ruff，跳过静态检查（本地缺此步不会让结论与 CI 相反，但覆盖不全）"
-  note "     安装：$PY -m pip install \"ruff==${RUFF_VERSION}\""
+  # 原注释写「本地缺此步不会让结论与 CI 相反」—— 这句是错的：lint 有错时
+  # 本地绿、CI 红，正是 P1-11 要根治的盲区。缺 ruff 必须硬失败。
+  note "✗ 未找到 ruff —— 静态检查无法执行，本地结论不能代表 CI"
+  note "  安装：$PY -m pip install \"ruff==${RUFF_VERSION}\""
+  note ""
+  note "==> 失败：ruff 不可用（Q0-6）。"
+  exit 1
 else
   have="$($RUFF_BIN --version 2>&1 | awk '{print $2}')"
   if [ "$have" != "$RUFF_VERSION" ]; then
@@ -262,6 +285,25 @@ else
 fi
 note ""
 
+note ""
+# 1g) Rust 单元测试（Q0-5）—— 与 CI 的 test-rust job 同命令。
+#     此前本地门禁完全没有 cargo，而脚本头部宣称「与 CI 等价」：
+#     lib.rs 的 run_cli/open_url 安全边界回归在本地永远看不见（本地绿、CI 红）。
+note "== Rust 单元测试（Q0-5，CI test-rust 同命令）=="
+if ! command -v cargo >/dev/null 2>&1; then
+  note "  ⚠ 未找到 cargo，跳过 cargo test —— 本次结果**不含** Rust 侧（lib.rs）"
+  note "     这是覆盖缺口，不是通过：CI 的 test-rust 仍会跑。"
+  note "     安装 Rust：https://rustup.rs"
+else
+  if ! (cd src-tauri && cargo test --quiet); then
+    note ""
+    note "==> 失败：cargo test 未通过（Q0-5）。CI 的 test-rust 会用同一命令拦下。"
+    exit 1
+  fi
+  note "✓ cargo test 通过（src-tauri）"
+fi
+note ""
+
 note "== 运行（命令与 .github/workflows/test.yml 一致）=="
 note "   $PY -m unittest discover -s tests -p '$CI_PATTERN' $*"
 note ""
@@ -288,7 +330,13 @@ if [ "$skipped" -eq "$CI_BASELINE_SKIPPED" ]; then
   exit 0
 fi
 
-note "==> 通过，但 skipped=$skipped ≠ CI 基线 $CI_BASELINE_SKIPPED"
+note "==> skipped=$skipped ≠ CI 基线 $CI_BASELINE_SKIPPED"
 note "    多出的 skip 表示有用例没真正执行，本地结论不足以代表 CI。"
 note "    最常见原因：node 不在 PATH（见上），或缺少可选依赖。"
-exit 0
+if [ "${CI_ALLOW_SKIP_DRIFT:-}" = "1" ]; then
+  note "    CI_ALLOW_SKIP_DRIFT=1 已显式豁免，按通过处理。"
+  exit 0
+fi
+note "    Q0-6：这一不一致本身就是失败信号（此前仍以 0 退出）。"
+note "    确认无碍时用 CI_ALLOW_SKIP_DRIFT=1 显式豁免。"
+exit 1
