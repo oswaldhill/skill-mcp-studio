@@ -16,6 +16,13 @@
 
 ### 修复
 
+- **测试运行时的裸噪音**（评审清单 P2-15）：`tests/test_exit_codes.py` 的 4 个负例
+  直接调 `scan` 内部函数，其 `print` 的错误文案直通终端（实测全量跑里 **stdout 4 行**、
+  stderr 0 行），在 unittest 汇总中极易被误读成「有失败」。新增 `_captured_output()`
+  上下文管理器把输出收进断言，并把文案本身纳入校验（`--all-profiles 与 --profile
+  互斥`、`扫描失败: boom`、`profile 'bad' 加载失败` + 底层原因等）—— 既消音，也把此前
+  从未验证过的输出变成回归保护。全量跑噪音 **4 → 0 行**。
+
 - **90 个被跟踪文本文件末尾缺少换行**（评审清单 P2-17）：仓库内近半数文本文件
   （`tests/*.py` 40 个、`core/*.py` 21 个，以及 `docs/**`、`src-tauri/**`、
   `gui/dashboard.html`、`SECURITY.md`、`setup.py` 等）末尾无换行符。作为独立批次
