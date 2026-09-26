@@ -2452,6 +2452,10 @@ function renderHomeListView(q) {
     const statusCell = a.installed
       ? '<span class="ok-true">已安装</span>'
       : (isConfigOnly ? '<span class="ok-false" style="color:var(--warn)">仅配置</span>' : '<span class="ok-false">未安装</span>');
+    // S8：同一状态同时准备纯文本版本，供状态点的 .sr-only 使用 ——
+    // 原来该列只用 .dot 的 CSS 颜色表达状态，色盲与读屏用户拿不到信息
+    // （WCAG 1.4.1 用色传达信息）。同表 MCP 列本就用文字标签，口径也统一了。
+    const statusText = a.installed ? "已安装" : (isConfigOnly ? "仅配置" : "未安装");
     const skillsCell = !a.installed
       ? '<span class="ok-na" title="客户端未安装，技能目录状态不适用">不适用</span>'
       : (!a.skills_dir_found
@@ -2482,7 +2486,7 @@ function renderHomeListView(q) {
       mcpCell = `<span class="tag err" title="端点未在设置中配置（可用「修复 MCP」接入）">${mcpConfigured}/${mcpTotal}</span>`;
     }
     return `<tr>
-      <td><span class="dot ${dot}"></span> <span class="al-name">${escapeHtml(a.name)}</span></td>
+      <td><span class="dot ${dot}" aria-hidden="true"></span> <span class="sr-only">${escapeHtml(statusText)}</span> <span class="al-name">${escapeHtml(a.name)}</span></td>
       <td><span class="al-type">${escapeHtml(a.type || "其他")}</span></td>
       <td>${statusCell}</td>
       <td>${cell("app", a.app_paths, a.name)}</td>
@@ -2632,9 +2636,21 @@ function skillTriggers(desc) {
 // 打开官网链接：桌面 App 走 open_url 命令，浏览器预览回退 window.open。
 async function openExternal(url) {
   if (!url) return;
+  // S5：scheme 白名单必须在**回退之前**。原来 open_url 被拒时不 return，而是继续
+  // 落到 window.open(url)；而 url 来自 SKILL.md frontmatter（第三方内容），
+  // escapeHtml 只解决 HTML 转义、不解决 scheme —— javascript:/file: 会走到平台。
+  if (!/^https?:\/\//i.test(url)) {
+    showToast("err", "仅支持 http(s) 链接");
+    return;
+  }
   if (tauriInvoke) {
     try { await tauriInvoke("open_url", { url }); return; }
-    catch (err) { console.error("open_url error:", err); }
+    catch (err) {
+      // 安全边界拒了它就不该再交给平台 —— 直接提示，不回退。
+      console.error("open_url error:", err);
+      showToast("err", "打开链接失败（已被安全边界拒绝或系统调用失败）");
+      return;
+    }
   }
   window.open(url, "_blank", "noopener");
 }
@@ -2792,7 +2808,10 @@ function renderSkillList() {
       const nestRow = r.isContainer
         ? `<tr class="nest-tr" data-nest-of="${escapeHtml(s)}" hidden><td colspan="5"><div class="nest-list">${nestHtml(s)}</div></td></tr>`
         : "";
-      return `<tr class="skill-row" data-skill="${escapeHtml(s)}" role="button" tabindex="0" title="查看详情">
+      // S6：不在 <tr> 上写 role="button" —— 那会把行从表格语义里摘出去，
+      // 读屏丢失「第几行/对应哪个表头」的行列关联（该表 5 列）。
+      // 保留 tabindex 与 Enter/Space 键盘补丁，可聚焦性不变。
+      return `<tr class="skill-row" data-skill="${escapeHtml(s)}" tabindex="0" aria-label="查看 ${escapeHtml(s)} 详情" title="查看详情">
         <td class="st-name"><div class="st-name-cell">${nameCell}</div></td>
         <td class="st-cat"><span class="sk-cat">${escapeHtml(r.cat)}</span></td>
         <td class="st-usage ${r.home ? "has-home" : "wrap"}" title="${escapeHtml((meta[s] && meta[s].description) || "")}">${usageCell(s, r)}</td>
@@ -6001,6 +6020,18 @@ function needFixMcpFor(a) {
   return configured < attachKeys.length;
 }
 
+// S7：触发按钮声明了 aria-haspopup="menu"，弹层就必须真是菜单语义 ——
+// 否则读屏不会进入菜单模式（打开后焦点也不进入，键盘用户要自己 Tab 过去）。
+// 统一在 innerHTML 构造完成后补 role，并把焦点送入第一项。
+function setupMenuA11y(root) {
+  const menu = root.querySelector(".pop-menu");
+  if (!menu) return;
+  menu.setAttribute("role", "menu");
+  const items = root.querySelectorAll(".pm-item");
+  items.forEach((b) => b.setAttribute("role", "menuitem"));
+  if (items.length) items[0].focus();
+}
+
 function toggleSkillMenu(btnEl, skill) {
   const root = $("pop-root");
   if (!root) return;
@@ -6016,6 +6047,7 @@ function toggleSkillMenu(btnEl, skill) {
     <div class="pm-sep"></div>
     <button class="pm-item danger" data-spm="delete" data-skill="${escapeHtml(skill)}">${ICONS.cross}<span>删除（软删除）</span></button>
   </div>`;
+  setupMenuA11y(root);
 }
 
 function runSkillMenu(pm, skill) {
@@ -6054,6 +6086,7 @@ function toggleAgentMenu(btnEl, name) {
     <div class="pm-sep"></div>
     <button class="pm-item danger" data-pm="remove" data-name="${escapeHtml(name)}">${ICONS.cross}<span>移出管理</span></button>
   </div>`;
+  setupMenuA11y(root);
 }
 function runAgentMenu(pm, name) {
   closePop();

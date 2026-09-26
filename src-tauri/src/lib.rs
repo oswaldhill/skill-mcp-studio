@@ -422,7 +422,17 @@ fn open_url(url: String) -> Result<(), String> {
     }
     // Reject shell metacharacters that carry meaning for the Windows `cmd /C
     // start` dispatcher (defense in depth; the webview is the only caller).
-    if url.chars().any(|c| matches!(c, '&' | '|' | '<' | '>' | '^' | '"' | '\'' | '`' | '$' | '(' | ')' | ';')) {
+    // S4：只列元字符是不够的 —— 原黑名单漏了 \r \n % !：
+    //   · cmd.exe 把换行当命令分隔符，"https://x/a\ncalc.exe" 能通过旧的 scheme 校验；
+    //   · % 触发环境变量展开、! 触发延迟展开（delayed expansion）。
+    // 用 char::is_control() 一并覆盖 \n \r \t 与 DEL 等控制字符。
+    if url.chars().any(|c| {
+        c.is_control()
+            || matches!(
+                c,
+                '&' | '|' | '<' | '>' | '^' | '"' | '\'' | '`' | '$' | '(' | ')' | ';' | '%' | '!'
+            )
+    }) {
         return Err("open_url: URL 含非法字符（命令注入防护）".to_string());
     }
     // 命令名与参数都是普通字符串，所有平台均可编译，用 cfg! 运行时分支即可。
@@ -598,6 +608,23 @@ mod tests {
         assert!(open_url("file:///etc/passwd".to_string()).is_err());
         assert!(open_url("javascript:alert(1)".to_string()).is_err());
         assert!(open_url("data:text/html,bad".to_string()).is_err());
+    }
+
+    // S4 回归：换行与控制字符同样必须被拒（cmd.exe 把换行当命令分隔符）。
+    #[test]
+    fn open_url_rejects_control_chars_and_percent() {
+        for bad in [
+            "https://x.com/a\ncalc.exe",
+            "https://x.com/a\r\ncalc.exe",
+            "https://x.com/%PATH%",
+            "https://x.com/a!b",
+            "https://x.com/a\tb",
+        ] {
+            assert!(
+                open_url(bad.to_string()).is_err(),
+                "应拒绝含控制字符或 %/! 的 URL: {bad:?}"
+            );
+        }
     }
 
     #[test]
