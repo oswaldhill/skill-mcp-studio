@@ -65,7 +65,14 @@ def interactive_commit_untracked(workspace_dir: str, untracked: List[str],
     # 自动添加
     for fpath in auto_add:
         try:
-            subprocess.run(["git", "add", fpath], cwd=expanded, capture_output=True, timeout=15)
+            proc = subprocess.run(
+                ["git", "add", fpath], cwd=expanded, capture_output=True, timeout=15
+            )
+            if proc.returncode != 0:
+                # git 非 0 退出（被 .gitignore 忽略、路径失效…）时必须不计入 added：
+                # 否则汇总文案与「是否触发二次 commit」都建立在假列表上。
+                result["skipped"].append(fpath)
+                continue
             result["added"].append(fpath)
         except Exception:
             ask.append(fpath)
@@ -92,8 +99,13 @@ def interactive_commit_untracked(workspace_dir: str, untracked: List[str],
             answer = _ask_user(f"如何处理 \"{fpath}\"？")
             if answer == "y":
                 try:
-                    subprocess.run(["git", "add", fpath], cwd=expanded, capture_output=True, timeout=15)
-                    result["added"].append(fpath)
+                    proc = subprocess.run(
+                        ["git", "add", fpath], cwd=expanded, capture_output=True, timeout=15
+                    )
+                    if proc.returncode != 0:
+                        result["skipped"].append(fpath)
+                    else:
+                        result["added"].append(fpath)
                 except Exception:
                     result["skipped"].append(fpath)
             elif answer == "d":
@@ -269,11 +281,20 @@ def ensure_workspace_clean(workspace_dir: str, interactive: bool = True,
         if result["untracked_result"]["added"]:
             try:
                 msg = commit_msg if commit_msg else "chore: add new workspace files"
-                subprocess.run(
+                proc = subprocess.run(
                     ["git", "commit", "-m", msg],
                     cwd=expanded, capture_output=True, text=True, timeout=30
                 )
-                print("  ✅ 已提交新添加的未跟踪文件")
+                if proc.returncode != 0:
+                    # 不能无条件打印「已提交」：pre-commit hook 拒绝、user.email 未配、
+                    # 索引锁都会走这里。同文件的 commit_all_modified 是检查了 returncode
+                    # 的，此处口径不一致 —— 用户会以为改动已入库。
+                    lines = (proc.stderr or proc.stdout or "").strip().splitlines()
+                    first = lines[0] if lines else f"git exit={proc.returncode}"
+                    result["errors"].append(f"commit untracked 失败: {first}")
+                    print(f"  ✗ 提交未跟踪文件失败（git exit={proc.returncode}）：{first}")
+                else:
+                    print("  ✅ 已提交新添加的未跟踪文件")
             except Exception as e:
                 result["errors"].append(f"commit untracked: {str(e)}")
 
