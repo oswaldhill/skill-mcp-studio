@@ -9,6 +9,15 @@
 
 ### 变更
 
+- **新增脚本卫生自检（P2-18）**：`scripts/ci_parity.sh` 与 CI 的 `text-hygiene` job
+  各新增两条断言 ——（1）`scripts/*.sh` 的 git mode 必须为 `100755`；
+  （2）不得出现「`$var` 紧跟全角标点」（须写 `${var}`）。
+  两条都对应**会伪装成测试失败**的缺陷：可执行位丢失时 bash 直接执行仍正常、
+  但 Python subprocess 调用会 `PermissionError`，表现为 `exit != 0` 且日志无
+  `Ran N tests`；`$var` 紧跟全角标点则在部分 locale 下直接 `unbound variable` 中止脚本。
+  自检落地后立即抓出此前未发现的 4 处真实缺陷（`release.sh` 2 处、
+  `verify_gui_consistency.sh` 变量写法 1 处 + git mode 1 处），均已修正。
+
 - **`core/mcp_fixer.py` 拆分为 渲染/写安全链 两模块**（P2-16 第四刀）：900 行按「纯渲染」与
   「写安全链 + 编排」分界拆为 `mcp_fixer_render.py`（558 行，29 个纯渲染/纯文本函数）与
   `mcp_fixer.py`（400 行，validate/写安全链/编排 + 逐名再导出）。归属依据是 AST 实测：
