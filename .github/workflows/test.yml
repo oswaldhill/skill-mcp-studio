@@ -53,7 +53,7 @@ jobs:
       - name: Setup Python 3.11
         uses: actions/setup-python@v6
         with:
-          python-version: '3.11'
+          python-version: ${{ matrix.python-version }}
 
       - name: Check tracked text files (no BOM / no CRLF / trailing newline)
         run: |
@@ -149,7 +149,7 @@ jobs:
       - name: Setup Python 3.11
         uses: actions/setup-python@v6
         with:
-          python-version: '3.11'
+          python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
         run: |
@@ -178,7 +178,7 @@ jobs:
       - name: Setup Python 3.11
         uses: actions/setup-python@v6
         with:
-          python-version: '3.11'
+          python-version: ${{ matrix.python-version }}
 
       # 固定版本：ruff 的诊断集合会随版本变化，不锁版本会让门禁时红时绿。
       - name: Install ruff (pinned)

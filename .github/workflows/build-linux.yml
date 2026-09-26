@@ -4,6 +4,13 @@ on:
   push:
     branches: [master, develop]
     tags: ['v*']
+    paths-ignore:
+      # Q1-3：文档/说明类改动不可能影响构建产物，却会拉起三平台全量打包
+      # （macOS 那条 timeout 45 分钟）。tags 触发不受影响（发版必须构建）。
+      - 'docs/**'
+      - '**.md'
+      - 'LICENSE'
+      - '.github/dependabot.yml'
   pull_request:
     branches: [master, develop]
   workflow_dispatch:
@@ -13,8 +20,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Q0-2：顶层收窄为只读。原来顶层就是 contents: write，而本 workflow 同时被
+# pull_request 触发 —— PR 场景下这一步授权超出所需（最小权限原则）。
+# 需要写权限的只有「上传 release 资产」，因此把它下放到发布 job（见文件末尾）。
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build-linux:
@@ -76,7 +86,7 @@ jobs:
 
       # 非 tag 触发（push/PR/manual）：仅上传构建产物作为 artifact 校验
       - name: Upload artifacts (build validation)
-        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        # 总是上传：tag 触发时由 release job 取用（Q0-2 拆 job 后必需）。
         uses: actions/upload-artifact@v6
         with:
           name: skill-mcp-studio-linux
@@ -87,10 +97,41 @@ jobs:
             dist/*.AppImage
             dist/SHA256SUMS
 
-      # tag 触发（v*）：将 deb/rpm/AppImage 追加到 GitHub Release
-      # （与 macOS/windows workflow 并存；action-gh-release 对已存在 release 做增量追加）
       - name: Publish GitHub Release
         if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            dist/*.deb
+            dist/*.rpm
+            dist/*.AppImage
+            dist/SHA256SUMS
+          # 正文由 release-notes.yml 统一写入。这里必须为 false：
+          # 三个平台各自 generate_release_notes 会把正文重复追加三次
+          # （v0.23.0 的 Release 正文即为三份重复内容）。
+          generate_release_notes: false
+          draft: false
+          prerelease: false
+
+  release-linux:
+    # Q0-2：发布单独成 job，只有它持有 contents: write。
+    # 原来 build 与 release 同在一个 job，顶层就必须给 contents: write，
+    # 而本 workflow 同时被 pull_request 触发 —— PR 场景下授权超出所需。
+    name: Publish GitHub Release (Linux)
+    needs: build-linux
+    if: ${{ startsWith(github.ref, 'refs/tags/') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v6
+        with:
+          name: skill-mcp-studio-linux
+          path: dist
+
+      - name: Publish GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           files: |

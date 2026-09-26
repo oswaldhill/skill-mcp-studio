@@ -23,6 +23,11 @@ CI_PATTERN='test_*.py'
 # CI 基线：CI 上稳定出现的 skip 数。
 # 允许用环境变量覆盖 —— CI 侧若新增/移除可选依赖，skip 数会变化，
 # 硬编码会让本脚本对「正确的结果」误报不一致，退化成噪音源。
+# Q2-2：基线 2 对应下面这两条「与环境耦合」的可选用例（避免后人看到 skipped=3 无从判断）：
+#   1) test_combined_checker.CombinedCheckerTest.test_dsh_installed_via_config_evidence
+#      —— 本机无 ~/.dsh 配置证据时跳过（T-6 环境耦合）
+#   2) test_stdio_probe 中依赖外部 MCP stdio 可执行文件的用例
+# 若你机器上实际 skipped 与此不同，先确认是不是新增了环境耦合用例，再改这个值。
 CI_BASELINE_SKIPPED="${CI_BASELINE_SKIPPED:-2}"
 
 PY="${PYTHON:-python3}"
@@ -270,6 +275,16 @@ note ""
 #     它测的是 gui/dashboard.html 内联脚本的纯函数（escapeHtml/stripAnsi/
 #     cliErrDetail/cliFailLines/dotFor）—— 恰好是 GUI 改动最容易碰坏的地方。
 note "== JS 用例（T-3，node --test）=="
+# Q1-1：本地 node 主版本与 CI 不一致时必须显式告警。
+# `node --test` 在 node 20 与 26 上并非完全等价（报告格式与部分 API 行为跨大版本有变化），
+# 而 T-3 是 GUI 纯函数（escapeHtml/stripAnsi 等）的主要防线 —— 不告警就会出现
+# 「本地绿不保证 CI 绿，反之亦然」而无人察觉。
+CI_NODE_MAJOR=20
+LOCAL_NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo '')"
+if [ -n "$LOCAL_NODE_MAJOR" ] && [ "$LOCAL_NODE_MAJOR" != "$CI_NODE_MAJOR" ]; then
+  note "  ⚠ node 主版本不一致：本地 v$LOCAL_NODE_MAJOR vs CI v$CI_NODE_MAJOR"
+  note "    node --test 跨大版本的报告格式/API 行为有差异，本地结论未必等价于 CI。"
+fi
 if ! command -v node >/dev/null 2>&1; then
   note "  ⚠ node 不在 PATH，跳过 JS 用例（上面已尝试并入 /opt/homebrew/bin）"
 elif [ ! -f tests/gui_helpers.test.mjs ]; then
