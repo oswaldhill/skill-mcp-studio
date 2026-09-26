@@ -55,7 +55,7 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Check tracked text files (no BOM / no CRLF)
+      - name: Check tracked text files (no BOM / no CRLF / trailing newline)
         run: |
           set -euo pipefail
           python - <<'INNER'
@@ -87,9 +87,10 @@ jobs:
                   problems.append(f"{f}: 含 UTF-8 BOM")
               if b"\r\n" in raw:
                   problems.append(f"{f}: 含 CRLF（本仓库统一 LF）")
-              # 这里刻意**不**检查「末尾缺少换行」：实测本仓库有 96/200 个文本
-              # 文件末尾无换行（约占一半），属存量普遍现象，在此强制会立刻让 CI
-              # 变红。该项由本地 write_text.py --verify 负责；存量补齐见清单 P2-17。
+              # 末尾换行：P2-17 已把存量 90 个文件一次性补齐，因此本项自本次起
+              # 纳入门禁。新增文件若缺末尾换行会在此拦下。
+              if not raw.endswith(b"\n"):
+                  problems.append(f"{f}: 末尾缺少换行")
 
           print(f"检查了 {checked} 个文本文件")
           if problems:
@@ -97,8 +98,7 @@ jobs:
               for p in problems:
                   print("  - " + p, file=sys.stderr)
               sys.exit(1)
-          print("✓ 全部文本文件：无 BOM、无 CRLF")
-          print("  （末尾换行刻意未纳入，见脚本内说明）")
+          print("✓ 全部文本文件：无 BOM、无 CRLF、末尾均有换行")
           INNER
 
   test-python:
