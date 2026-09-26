@@ -39,8 +39,14 @@ SCRIPT_TAG = '<script src="app.js" defer></script>'
 
 
 class BuildSplitTest(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
+    def setUp(self):
+        """每个用例前重建产物，消除用例间的顺序耦合。
+
+        为什么不能用 setUpClass 只建一次：本套件里有会**改动** `gui/dist` 的用例
+        （漂移检测用例临时往 app.js 追加内容），若产物只在类级建一次，
+        后续用例读到的就是别人留下的中间状态 —— 实测出现过一次偶发失败
+        （974 用例 1 failed，重跑即绿）。每例重建约 0.15s，代价可接受，换来确定性。
+        """
         r = subprocess.run(
             [sys.executable, str(BUILD)], cwd=ROOT, capture_output=True, text=True
         )
@@ -169,6 +175,36 @@ class BuildSplitTest(unittest.TestCase):
             self.assertIn(
                 "全部按钮点击链路端到端通过", report, f"{label} 按钮链路断裂：\n{report}"
             )
+
+    def test_dist_contains_every_referenced_asset(self):
+        """产物目录必须**自包含**：页面引用的每个静态资源都要在 dist 里找得到。
+
+        为什么必须有这条：Tauri 只嵌入 `frontendDist` 这一个目录。页面除了 `app.js`，
+        还在 `@font-face` 里 `url('assets/fonts/*.woff2')` 引用 3 个字体，它们原本
+        只躺在 `gui/assets/`。
+
+        **这是实测踩到的真缺陷**：`frontendDist` 由 `../gui` 改为 `../gui/dist` 后，
+        字体不跟着进产物，打出来的包会缺字体（界面回退系统等宽字体 + 控制台 404）。
+        修法是构建时把 `gui/assets/` 复制进 `gui/dist/assets/`。
+        """
+        html = INDEX.read_text(encoding="utf-8")
+        refs = re.findall(r"""(?:src|href)\s*=\s*["']([^"']+)["']""", html)
+        refs += re.findall(r"""url\(\s*["']?([^"')]+)["']?\s*\)""", html)
+        checked = 0
+        for ref in refs:
+            if ref.startswith(("data:", "blob:", "#", "http://", "https://", "//", "/")):
+                continue
+            rel = ref.split("?", 1)[0].split("#", 1)[0]
+            if not rel:
+                continue
+            checked += 1
+            self.assertTrue(
+                (DIST / rel).is_file(),
+                f"产物缺少页面引用的资源：{rel}（frontendDist 只嵌入 gui/dist）",
+            )
+        self.assertGreater(checked, 0, "没有解析到任何资源引用，断言失去意义")
+        # 字体是当前唯一的外部资源，单独点名，避免将来正则失效却静默通过
+        self.assertTrue((DIST / "assets" / "fonts").is_dir(), "产物缺少 assets/fonts")
 
     def test_check_mode_passes_when_in_sync(self):
         r = subprocess.run(

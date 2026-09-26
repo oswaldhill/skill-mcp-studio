@@ -42,6 +42,8 @@
 
 from __future__ import annotations
 
+import re
+import shutil
 import sys
 from pathlib import Path
 
@@ -50,6 +52,7 @@ SRC = ROOT / "gui" / "dashboard.html"
 DIST = ROOT / "gui" / "dist"
 INDEX = DIST / "dashboard.html"
 APP_JS = DIST / "app.js"
+ASSETS = ROOT / "gui" / "assets"
 
 SCRIPT_OPEN = "<script>"
 SCRIPT_CLOSE = "</script>"
@@ -71,6 +74,28 @@ def build() -> tuple[str, str]:
     return html[:i] + SCRIPT_TAG + html[j + len(SCRIPT_CLOSE):], body
 
 
+def missing_assets(dist_html: str) -> list[str]:
+    """列出页面引用、但产物目录里缺失的静态资源（相对路径）。
+
+    为什么要查这个：Tauri 只嵌入 `frontendDist` 这一个目录。页面除了 `app.js`，
+    还在 `@font-face` 里用 `url('assets/fonts/*.woff2')` 引用字体 ——
+    这些不能只留在 `gui/assets/`，必须一并进产物目录，否则打出来的包会缺字体
+    （表现为界面回退到系统等宽字体，且控制台有 404）。
+    """
+    refs = re.findall(r"""(?:src|href)\s*=\s*["']([^"']+)["']""", dist_html)
+    refs += re.findall(r"""url\(\s*["']?([^"')]+)["']?\s*\)""", dist_html)
+    missing = []
+    for ref in refs:
+        if ref.startswith(("data:", "blob:", "#", "http://", "https://", "//")):
+            continue
+        rel = ref.split("?", 1)[0].split("#", 1)[0]
+        if not rel or rel.startswith("/"):
+            continue
+        if not (DIST / rel).is_file() and rel not in missing:
+            missing.append(rel)
+    return missing
+
+
 def main(argv: list[str]) -> int:
     dist_html, app_js = build()
 
@@ -88,6 +113,14 @@ def main(argv: list[str]) -> int:
                 file=sys.stderr,
             )
             return 1
+        missing = missing_assets(dist_html)
+        if missing:
+            print(
+                "✗ 产物缺少页面引用的静态资源：" + "、".join(missing)
+                + "（请运行：python3 scripts/build_gui.py）",
+                file=sys.stderr,
+            )
+            return 1
         print("✓ gui/dist 与源文件同步")
         return 0
 
@@ -96,6 +129,14 @@ def main(argv: list[str]) -> int:
     APP_JS.write_text(app_js, encoding="utf-8")
     print(f"✓ {INDEX.relative_to(ROOT)}  ({dist_html.count(chr(10)) + 1} 行)")
     print(f"✓ {APP_JS.relative_to(ROOT)}  ({app_js.count(chr(10)) + 1} 行)")
+
+    # 字体等静态资源必须一并进产物目录：
+    # 页面在 @font-face 里用 url('assets/fonts/*.woff2') 引用它们，
+    # 而 Tauri 只嵌入 frontendDist 这一个目录 —— 不复制就会打出「缺字体」的包。
+    if ASSETS.is_dir():
+        shutil.copytree(ASSETS, DIST / "assets", dirs_exist_ok=True)
+        n = sum(1 for p in (DIST / "assets").rglob("*") if p.is_file())
+        print(f"✓ {ASSETS.relative_to(ROOT)} → dist/assets  ({n} 个文件)")
     return 0
 
 
