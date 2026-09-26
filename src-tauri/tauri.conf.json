@@ -4,7 +4,8 @@
   "version": "0.23.0",
   "identifier": "io.skillmcp.studio",
   "build": {
-    "frontendDist": "../gui"
+    "frontendDist": "../gui/dist",
+    "beforeBuildCommand": "python3 scripts/build_gui.py || python scripts/build_gui.py || python3 ../scripts/build_gui.py || python ../scripts/build_gui.py"
   },
   "app": {
     "withGlobalTauri": true,

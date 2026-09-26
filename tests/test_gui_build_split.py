@@ -1,20 +1,26 @@
 """S10 构建期拆分：源文件保持单文件，发布产物拆分（既有测试零改动）。
 
 `scripts/build_gui.py` 把 `gui/dashboard.html` 的内联 `<script>` 切成
-`gui/dist/index.html` + `gui/dist/app.js`。本文件守两条不变量：
+`gui/dist/dashboard.html` + `gui/dist/app.js`。本文件守三类不变量：
 
 1. **产物里没有内联 `<script>`** —— 这是「关掉 CSP `'unsafe-inline'`」的前置条件之一
    （外置脚本后 `script-src` 才可能不再需要 `'unsafe-inline'`；样式仍受 77 处内联
    `style=` 属性约束，见清单的 S2 专节）。顺带这条断言本身也防止「有人图省事
-   又把脚本塞回 index.html」。
+   又把脚本塞回产物」。
 2. **拆分无损** —— 把 `<script src="app.js" defer></script>` 换回
    `<script>脚本体</script>` 必须**逐字节还原**源文件。拆分不能丢内容、不能改空白，
    否则发布产物与测试所测的源文件就不是同一个东西了。
+3. **与 Tauri 配置对齐** —— `tauri.conf.json` 的 `frontendDist` 指向 `gui/dist`，
+   且窗口 `url` 在产物目录里真实存在。这三者（配置、产物、窗口 URL）任一漂移，
+   发行构建就会打出一个打不开窗口的包 —— 而这一点只能靠本地断言兜住，
+   因为 `tauri build` 不在门禁里跑。
 
 另外测 `--check`：CI 用它判断 `gui/dist/` 是否与源文件同步（防止有人改了源文件却忘了重新构建）。
 """
 
+import json
 import re
+import shutil
 import subprocess
 import sys
 import unittest
@@ -26,8 +32,9 @@ sys.path.insert(0, str(ROOT))
 from tests._gui_source import page_source  # noqa: E402
 
 BUILD = ROOT / "scripts" / "build_gui.py"
+CONF = ROOT / "src-tauri" / "tauri.conf.json"
 DIST = ROOT / "gui" / "dist"
-INDEX = DIST / "index.html"
+INDEX = DIST / "dashboard.html"
 APP_JS = DIST / "app.js"
 SCRIPT_TAG = '<script src="app.js" defer></script>'
 
@@ -42,29 +49,100 @@ class BuildSplitTest(unittest.TestCase):
             raise AssertionError(f"构建失败：\n{r.stdout}\n{r.stderr}")
 
     def test_dist_files_exist(self):
-        self.assertTrue(INDEX.is_file(), "缺少 gui/dist/index.html")
+        self.assertTrue(INDEX.is_file(), "缺少 gui/dist/dashboard.html")
         self.assertTrue(APP_JS.is_file(), "缺少 gui/dist/app.js")
 
-    def test_dist_index_has_no_inline_script(self):
-        index = INDEX.read_text(encoding="utf-8")
-        inline = re.findall(r"<script(?![^>]*\bsrc=)", index)
+    def test_dist_has_no_inline_script(self):
+        html = INDEX.read_text(encoding="utf-8")
+        inline = re.findall(r"<script(?![^>]*\bsrc=)", html)
         self.assertEqual(inline, [], f"发布产物里仍有内联 <script>：{inline}")
 
-    def test_dist_index_references_external_script(self):
-        index = INDEX.read_text(encoding="utf-8")
-        self.assertIn(SCRIPT_TAG, index, "发布产物没有引用外置脚本")
+    def test_dist_references_external_script(self):
+        html = INDEX.read_text(encoding="utf-8")
+        self.assertIn(SCRIPT_TAG, html, "发布产物没有引用外置脚本")
 
-    def test_dist_app_js_carries_the_page_script(self):
+    def test_app_js_carries_the_page_script(self):
         app = APP_JS.read_text(encoding="utf-8")
         # 抽一个真实存在的顶层函数，确认搬过去的是页面脚本本体而不是空文件
         self.assertIn("function renderMcpClients", app)
 
     def test_split_is_lossless(self):
         """把产物拼回单文件形态，必须与源文件逐字节一致。"""
-        index = INDEX.read_text(encoding="utf-8")
+        html = INDEX.read_text(encoding="utf-8")
         app = APP_JS.read_text(encoding="utf-8")
-        rebuilt = index.replace(SCRIPT_TAG, "<script>" + app + "</script>", 1)
+        rebuilt = html.replace(SCRIPT_TAG, "<script>" + app + "</script>", 1)
         self.assertEqual(rebuilt, page_source(), "拆分不是无损的（内容/空白被改动）")
+
+    # ------------------------------------------------------------ 与 Tauri 配置对齐
+
+    def test_tauri_frontend_dist_points_at_dist(self):
+        conf = json.loads(CONF.read_text(encoding="utf-8"))
+        frontend = conf["build"]["frontendDist"]
+        self.assertEqual(
+            frontend.replace("\\", "/"),
+            "../gui/dist",
+            "frontendDist 未指向拆分产物目录（gui/dist）",
+        )
+
+    def test_tauri_before_build_command_builds_the_split(self):
+        conf = json.loads(CONF.read_text(encoding="utf-8"))
+        cmd = conf["build"].get("beforeBuildCommand", "")
+        self.assertIn(
+            "build_gui.py",
+            cmd,
+            "beforeBuildCommand 未调用 build_gui.py —— 发行构建会缺少 gui/dist",
+        )
+
+    def test_before_build_command_works_from_either_cwd(self):
+        """`beforeBuildCommand` 必须**在两种可能的工作目录下都成功**。
+
+        为什么这条必须测：`tauri-cli` 不在 cargo registry 里（它是 npm 包），
+        我们无法从源码确认 hook 的 cwd 是**仓库根**还是 **src-tauri/**；
+        而三个构建 workflow 是用 `working-directory: src-tauri` 跑 `tauri build` 的。
+        猜错的后果是**三平台发行构建全挂**，且只能在 CI 上发现。
+
+        所以配置里写成「多候选 `||` 链」，本用例把那个字符串**原样**在两个目录各跑一遍，
+        把「cwd 是哪个」这个未知量消掉 —— 这样无需 `tauri build` 也能验证接线正确。
+        """
+        conf = json.loads(CONF.read_text(encoding="utf-8"))
+        cmd = conf["build"]["beforeBuildCommand"]
+
+        try:
+            for cwd in (ROOT, ROOT / "src-tauri"):
+                with self.subTest(cwd=str(cwd)):
+                    # 先删掉产物，确保「成功」不是因为产物本来就在
+                    shutil.rmtree(DIST, ignore_errors=True)
+                    self.assertFalse(INDEX.is_file(), "前置条件：产物应已删除")
+
+                    r = subprocess.run(cmd, cwd=cwd, shell=True, capture_output=True, text=True)
+                    self.assertEqual(
+                        r.returncode,
+                        0,
+                        f"beforeBuildCommand 在 cwd={cwd} 下失败：\n{r.stdout}\n{r.stderr}",
+                    )
+                    self.assertTrue(
+                        INDEX.is_file(),
+                        f"beforeBuildCommand 在 cwd={cwd} 下退出码为 0 但没生成产物",
+                    )
+        finally:
+            # 本用例会删掉 gui/dist；必须复原，否则同进程内其它用例看到的产物是缺的
+            subprocess.run(
+                [sys.executable, str(BUILD)], cwd=ROOT, capture_output=True, text=True, check=True
+            )
+
+    def test_tauri_window_url_exists_in_dist(self):
+        """窗口 url 必须能在 frontendDist 目录里找到，否则打包出来是个打不开的窗口。"""
+        conf = json.loads(CONF.read_text(encoding="utf-8"))
+        dist_dir = (CONF.parent / conf["build"]["frontendDist"]).resolve()
+        self.assertEqual(dist_dir, DIST.resolve(), "frontendDist 解析后不是 gui/dist")
+
+        urls = [w.get("url") for w in conf["app"]["windows"]]
+        self.assertTrue(urls, "配置里没有窗口 url")
+        for url in urls:
+            self.assertTrue(
+                (dist_dir / url).is_file(),
+                f"窗口 url={url!r} 在 {dist_dir} 里不存在",
+            )
 
     def test_check_mode_passes_when_in_sync(self):
         r = subprocess.run(

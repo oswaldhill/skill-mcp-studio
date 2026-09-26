@@ -11,8 +11,11 @@
 本脚本换个方向：**源文件保持单文件原样**（测试继续测源文件，零改动），
 由构建期生成拆分后的发布产物：
 
-    gui/dist/index.html   不含内联 <script>，改为 <script src="app.js" defer></script>
-    gui/dist/app.js       原内联脚本全文（逐字节取自源文件）
+    gui/dist/dashboard.html   不含内联 <script>，改为 <script src="app.js" defer></script>
+    gui/dist/app.js           原内联脚本全文（逐字节取自源文件）
+
+产物里 HTML 仍叫 `dashboard.html`：`tauri.conf.json` 的 `windows[0].url` 就是
+`dashboard.html`，同名可少改一处、少一个出错点。
 
 于是「单文件难以模块化 / 难以测试」的诉求在**发布产物**这一层得到满足，
 而源文件与既有测试都不受影响。它同时是「关掉 CSP `'unsafe-inline'`」的前置条件之一
@@ -29,6 +32,12 @@
 拆分是**纯字符串切片**：脚本体逐字节照搬，HTML 其余部分原样保留。
 因此把 `<script src="app.js" defer></script>` 换回 `<script>脚本体</script>`
 即可**逐字节还原**源文件 —— `tests/test_gui_build_split.py` 守住了这条不变量。
+
+## 在哪被调用
+
+`src-tauri/tauri.conf.json` 的 `build.beforeBuildCommand`：
+`tauri build`（三平台发行构建）会先跑本脚本，因此产物不会缺。
+`tauri dev` 不会跑它，本地若要 `tauri dev` 且改过源文件，手动跑一次即可。
 """
 
 from __future__ import annotations
@@ -39,7 +48,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "gui" / "dashboard.html"
 DIST = ROOT / "gui" / "dist"
-INDEX = DIST / "index.html"
+INDEX = DIST / "dashboard.html"
 APP_JS = DIST / "app.js"
 
 SCRIPT_OPEN = "<script>"
@@ -48,7 +57,7 @@ SCRIPT_TAG = '<script src="app.js" defer></script>'
 
 
 def build() -> tuple[str, str]:
-    """返回 `(index_html, app_js)`。
+    """返回 `(dist_html, app_js)`。
 
     取**最后一个** `</script>`：源文件里内联脚本只有一个，这样写能容忍脚本体内部
     出现字符串 `"</script>"` 的边缘情况。
@@ -59,19 +68,18 @@ def build() -> tuple[str, str]:
     if i < 0 or j < 0 or j < i:
         raise SystemExit(f"源文件里找不到内联 <script> 区块：{SRC}")
     body = html[i + len(SCRIPT_OPEN):j]
-    index = html[:i] + SCRIPT_TAG + html[j + len(SCRIPT_CLOSE):]
-    return index, body
+    return html[:i] + SCRIPT_TAG + html[j + len(SCRIPT_CLOSE):], body
 
 
 def main(argv: list[str]) -> int:
-    index, app_js = build()
+    dist_html, app_js = build()
 
     if "--check" in argv:
         if not (INDEX.is_file() and APP_JS.is_file()):
             print("✗ gui/dist 尚未生成，请运行：python3 scripts/build_gui.py", file=sys.stderr)
             return 1
         same = (
-            INDEX.read_text(encoding="utf-8") == index
+            INDEX.read_text(encoding="utf-8") == dist_html
             and APP_JS.read_text(encoding="utf-8") == app_js
         )
         if not same:
@@ -84,9 +92,9 @@ def main(argv: list[str]) -> int:
         return 0
 
     DIST.mkdir(parents=True, exist_ok=True)
-    INDEX.write_text(index, encoding="utf-8")
+    INDEX.write_text(dist_html, encoding="utf-8")
     APP_JS.write_text(app_js, encoding="utf-8")
-    print(f"✓ {INDEX.relative_to(ROOT)}  ({index.count(chr(10)) + 1} 行)")
+    print(f"✓ {INDEX.relative_to(ROOT)}  ({dist_html.count(chr(10)) + 1} 行)")
     print(f"✓ {APP_JS.relative_to(ROOT)}  ({app_js.count(chr(10)) + 1} 行)")
     return 0
 

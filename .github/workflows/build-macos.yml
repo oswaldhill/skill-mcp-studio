@@ -91,7 +91,7 @@ jobs:
             echo "APPLE_TEAM_ID=${APPLE_TEAM_ID}"
           } >> "$GITHUB_ENV"
 
-      # 项目前端为纯静态单文件（gui/dashboard.html，frontendDist=../gui），无 npm
+      # 项目前端为纯静态单文件（gui/dashboard.html，frontendDist=../gui/dist，由 beforeBuildCommand 生成），无 npm
       # 构建步骤。universal-apple-darwin：Tauri 分别编译 arm64/x86_64 并 lipo 合并，
       # 产出单一 .app，原生运行于 Intel 与 Apple Silicon。
       - name: Build Tauri app (universal)

@@ -66,7 +66,7 @@ jobs:
       - name: Install Tauri CLI
         run: npm install -g @tauri-apps/cli@2
 
-      # 前端为纯静态单文件（gui/dashboard.html，frontendDist=../gui），无 npm 构建。
+      # 前端为纯静态单文件（gui/dashboard.html，frontendDist=../gui/dist，由 beforeBuildCommand 生成），无 npm 构建。
       # 用 --bundles 覆盖 config 里 macOS 专属的 "app"，产出 Linux 安装包：
       #   deb -> .deb；rpm -> .rpm；appimage -> .AppImage。
       - name: Build Tauri app (deb + rpm + AppImage)
