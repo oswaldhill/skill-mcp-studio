@@ -4,6 +4,7 @@
 并把只读侧的公开名字再导出，使 `workspace_cleaner.<name>` 与拆分前一致。
 """
 import os
+import shutil
 import subprocess
 import sys
 from typing import Any, Dict, List, Optional, Set, Tuple
