@@ -45,7 +45,7 @@ if ! "$PY" -c 'import sys; raise SystemExit(0 if sys.version_info[:2] >= (3, 11)
   note "  CI 用的是 Python 3.11，低版本会以与代码无关的原因失败。"
   for cand in /opt/homebrew/opt/python@3.11/bin/python3.11 /opt/homebrew/bin/python3.11; do
     if [ -x "$cand" ]; then
-      note "  → 发现 $cand，本次运行改用它"
+      note "  → 发现 ${cand}，本次运行改用它"
       PY="$cand"
       break
     fi
@@ -95,7 +95,7 @@ skipped="$(printf '%s\n' "$out" | sed -n 's/.*skipped=\([0-9][0-9]*\)).*/\1/p' |
 
 note ""
 if [ "$rc" -ne 0 ]; then
-  note "==> 失败（exit=$rc）"
+  note "==> 失败（exit=${rc}）"
   exit "$rc"
 fi
 
@@ -105,7 +105,7 @@ if [ -z "$skipped" ]; then
 fi
 
 if [ "$skipped" -eq "$CI_BASELINE_SKIPPED" ]; then
-  note "==> 通过，skipped=$skipped，与 CI 基线一致"
+  note "==> 通过，skipped=${skipped}，与 CI 基线一致"
   exit 0
 fi
 
