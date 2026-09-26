@@ -478,9 +478,17 @@ def read_cli_versions(
                 proc = subprocess.run(
                     [real, flag], capture_output=True, text=True, timeout=timeout
                 )
-                line = ((proc.stdout or "") + (proc.stderr or "")).strip().splitlines()
-                if line and line[0].strip():
-                    version = line[0].strip()
+                # 必须先看 returncode：不支持该 flag 的 CLI 会把
+                # "unknown option: --version" 打到 stderr 且以非 0 退出，
+                # 此前把它与 stdout 拼起来取首行 → 报错文本被当成版本号，
+                # 显示在管理快照与 GUI 徽章上。stdout 优先、stderr 仅作兜底。
+                if proc.returncode != 0:
+                    continue
+                lines = (proc.stdout or "").strip().splitlines()
+                if not lines:
+                    lines = (proc.stderr or "").strip().splitlines()
+                if lines and lines[0].strip():
+                    version = lines[0].strip()
                     break
             except Exception:
                 continue

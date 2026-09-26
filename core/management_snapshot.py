@@ -257,6 +257,7 @@ def build_management_snapshot(
     ]
 
     # --- skills: repo inventory + unified dir + per-client enable matrix (FEAT-5) ---
+    skills_error = None
     try:
         from skill_state import repo_skill_names, read_skill_states, read_skill_meta, read_nested_meta, scan_skill_nesting
 
@@ -264,11 +265,15 @@ def build_management_snapshot(
         skill_meta = read_skill_meta(unified_dir, skills)
         skill_nesting = scan_skill_nesting(unified_dir)
         nested_meta = read_nested_meta(unified_dir, skill_nesting)
-    except Exception:
+    except (ImportError, OSError, ValueError, TypeError) as exc:
+        # 此前是裸 `except Exception` + 静默降级：四步共用一个兜底，失败即返回
+        # 「统一库 0 个技能」而 status 照常 —— 前端无法区分「空库」与「读取失败」。
+        # 现在收窄捕获范围并记录原因，由 skills_error 字段透出。
         skills = []
         skill_meta = {}
         skill_nesting = {}
         nested_meta = {}
+        skills_error = f"{type(exc).__name__}: {exc}"
     # FEAT-5: per-skill × per-client enable matrix so the GUI can render it
     clients_states: List[Dict[str, Any]] = []
     sorted_skills = sorted(skills)
@@ -311,6 +316,7 @@ def build_management_snapshot(
     skills_panel = {
         "unified_dir": unified_dir,
         "skills": sorted_skills,
+        "skills_error": skills_error,
         "skill_count": len(sorted_skills),
         "clients_states": clients_states,
         "skill_meta": skill_meta,

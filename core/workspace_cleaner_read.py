@@ -178,10 +178,10 @@ def scan_temp_files(workspace_dir: str) -> List[str]:
     except PermissionError:
         pass
 
-    if len(temp_files) > 50:
-        temp_files = temp_files[:50] + ["... (更多省略)"]
-
-    return temp_files
+    # 截断只影响**展示**，不再把 "... (更多省略)" 这个提示串塞进返回值：
+    # 调用方用 len() 当计数（temp_file_count），塞进去会让计数恒偏大 1，
+    # 而且该字符串会被当成一个路径参与后续渲染。
+    return temp_files[:50]
 
 
 def classify_untracked(workspace_dir: str, untracked: List[str]) -> Tuple[List[str], List[str], List[str]]:

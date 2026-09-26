@@ -30,8 +30,14 @@ def parse_frontmatter(skill_dir: str) -> Dict[str, Any]:
     if not os.path.exists(skill_md):
         return {}
 
-    with open(skill_md, "r", encoding="utf-8") as f:
-        content = f.read()
+    # 单个 SKILL.md 读不了（权限 / 非 UTF-8 编码）不应中断整轮版本检查：
+    # 此前这里无任何保护，一个 GBK 编码的 SKILL.md 会让 check_all_versions
+    # 的整个循环抛 UnicodeDecodeError 中断，其余技能一个都查不到。
+    try:
+        with open(skill_md, "r", encoding="utf-8") as f:
+            content = f.read()
+    except (OSError, UnicodeDecodeError):
+        return {}
 
     # 提取 frontmatter 块
     m = re.match(r"^---\s*\n(.*?)\n---", content, re.DOTALL)
