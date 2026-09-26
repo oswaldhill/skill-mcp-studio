@@ -20,8 +20,9 @@ dist/
 .DS_Store
 
 # Rust / Tauri build artifacts & local toolchain cache (CARGO_HOME redirect)
-.cargo-home/
-.rustup-home/
+# 注：曾长期保留 .cargo-home/ 与 .rustup-home/，会让人以为「把 RUSTUP_HOME/
+# CARGO_HOME 指向仓库内」是预期布局。二者已于 v0.24.0 清理（P2-1），故移除条目；
+# 若你在本地又重新生成，请直接把 RUSTUP_HOME/CARGO_HOME 指回 $HOME。
 .npm-cache/
 src-tauri/target/
 src-tauri/gen/

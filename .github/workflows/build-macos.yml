@@ -32,7 +32,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.98.1  # Q0-1: 钉具体版本；@stable 会在上游发版时无声切换编译器
         with:
           # universal-apple-darwin 需要同时具备两个目标，Tauri 会自动 lipo 合并
           targets: aarch64-apple-darwin,x86_64-apple-darwin

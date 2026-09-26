@@ -213,7 +213,7 @@ jobs:
             librsvg2-dev
 
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.98.1  # Q0-1: 钉具体版本；@stable 会在上游发版时无声切换编译器
 
       - name: Cache Cargo dependencies
         uses: swatinem/rust-cache@v2

@@ -363,6 +363,10 @@ def clean_temp_files(workspace_dir: str, dry_run: bool = True) -> Dict[str, Any]
             continue
         try:
             for root, dirs, files in os.walk(base):
+                # 剪枝而非 continue：原来的判据（"/.git/" in root）虽然也能拦住
+                # .git 子树内的删除，但仍会无谓遍历整个 .git（大型仓库开销明显），
+                # 且与只读侧 workspace_cleaner_read.py 的 dirs[:] 写法不一致。
+                dirs[:] = [d for d in dirs if d != ".git"]
                 if os.sep + ".git" + os.sep in root or root.endswith(os.sep + ".git"):
                     continue
 

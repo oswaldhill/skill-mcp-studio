@@ -217,7 +217,6 @@ if problems:
 INNER
 then
   note "==> 失败：文本卫生自检未通过（P2-17 / P2-14）。"
-  exit=$(printf '%s' 1)
   note "    修法：补齐/去掉末尾换行，或去掉 BOM、把 CRLF 转为 LF。"
   exit 1
 fi

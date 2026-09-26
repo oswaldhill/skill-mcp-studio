@@ -1,0 +1,22 @@
+# Q1-5：把门禁「事后拦截」的文本卫生规则前置到编辑器。
+# 目前 1d 文本卫生自检会拦下 BOM / CRLF / 末尾换行问题 —— 但那是在写完之后，
+# 新贡献者会先产出不合规文件再被门禁挡下。这里让编辑器直接按规范写。
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{yml,yaml,json,html,mjs,js,ts,tsx,css}]
+indent_size = 2
+
+[*.md]
+# Markdown 的行尾双空格是「硬换行」语义，不能裁掉。
+trim_trailing_whitespace = false
+
+[Makefile]
+indent_style = tab
