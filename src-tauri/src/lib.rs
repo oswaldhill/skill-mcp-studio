@@ -449,6 +449,41 @@ pub fn run() {
             read_scan_progress,
             open_url
         ])
+        // P2-12：开发态直读磁盘上的 dashboard.html。
+        //
+        // 生产构建把 gui/ 整个嵌入二进制（tauri.conf.json 的 frontendDist），
+        // 因此改一行 HTML 都要 cargo build + 重装。设置环境变量 SMS_GUI_DEV 后，
+        // 启动时把主窗口导航到源树里的 dashboard.html：改完只需刷新（Cmd+R）。
+        // 不设该变量则完全走原有嵌入资源路径，生产行为不变。
+        .setup(|app| {
+            if std::env::var_os("SMS_GUI_DEV").is_some() {
+                match app.get_webview_window("main") {
+                    Some(window) => {
+                        // CARGO_MANIFEST_DIR 是编译期常量，指向 src-tauri/；
+                        // 其同级即仓库根的 gui/，正是开发时要读的那份文件。
+                        let dev_html = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                            .join("../gui/dashboard.html");
+                        match tauri::Url::from_file_path(&dev_html) {
+                            Ok(url) => {
+                                eprintln!(
+                                    "[SMS_GUI_DEV] 开发态直读磁盘：{}",
+                                    dev_html.display()
+                                );
+                                if let Err(e) = window.navigate(url) {
+                                    eprintln!("[SMS_GUI_DEV] 导航失败，回退嵌入资源：{e}");
+                                }
+                            }
+                            Err(_) => eprintln!(
+                                "[SMS_GUI_DEV] 路径无法转为 file:// URL：{}",
+                                dev_html.display()
+                            ),
+                        }
+                    }
+                    None => eprintln!("[SMS_GUI_DEV] 未找到 label=main 的窗口"),
+                }
+            }
+            Ok(())
+        })
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 // 单窗口常驻：Cmd+W / 红色关闭钮只隐藏窗口，不退出应用；
