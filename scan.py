@@ -54,7 +54,6 @@ from git_sync import (
     validate_unified_dir,
     fix_unified_dir,
     git_pull_if_needed,
-    git_status,
     is_git_repo,
 )
 from change_tracker import (
@@ -67,23 +66,18 @@ from skills_analyser import (
     format_analysis_report,
 )
 from workspace_cleaner import (
-    check_workspace_cleanliness,
-    clean_temp_files,
-    format_cleanliness_report,
     ensure_workspace_clean,
     format_clean_result,
 )
 from version_checker import (
     check_all_versions,
     format_version_report,
-    format_version_report_markdown,
 )
 from cli_modes import resolve_modes
 from combined_checker import check_agents, format_combined_report, result_ok
 from frontmatter_audit import (
     audit_skill_frontmatter,
     format_frontmatter_report,
-    format_frontmatter_markdown,
 )
 from mcp_fixer import fix_mcp_clients, remove_legacy_mcp_clients
 from profile_loader import list_profiles, load_profile

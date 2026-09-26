@@ -6,8 +6,7 @@
 import os
 import shutil
 import subprocess
-import sys
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List
 
 # 再导出：tests/test_highrisk_modules.py 与 scan.py 通过本模块访问这些名字。
 # `as` 同名字写法同时避免被 ruff F401 当未使用导入删除（见清单 P1-11）。

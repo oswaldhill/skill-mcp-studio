@@ -36,7 +36,6 @@ class ReadAppInfoTest(unittest.TestCase):
         self.assertGreaterEqual(int(info["build"]), 0)
 
     def test_invalid_semver_flagged(self):
-        import importlib
 
         tmp = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False)
         tmp.write(json.dumps({"version": "1.2", "build": 5}))
@@ -61,7 +60,6 @@ class BumpSemverTest(unittest.TestCase):
         return mod
 
     def test_patch_minor_major(self):
-        import importlib.util
 
         mod = self._import()
         self.assertEqual(mod.bump_semver("0.2.0", "patch"), "0.2.1")

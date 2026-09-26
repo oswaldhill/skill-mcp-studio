@@ -4,7 +4,7 @@
 """
 import os
 import subprocess
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Set, Tuple
 
 
 TEMP_PATTERNS: Set[str] = {

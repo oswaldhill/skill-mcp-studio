@@ -14,7 +14,7 @@ import re
 import json
 import subprocess
 import hashlib
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple
 
 
 # ============================================================

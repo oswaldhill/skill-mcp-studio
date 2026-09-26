@@ -5,13 +5,12 @@
 """
 import json
 import os
-import re
 import shutil
 import stat
 from typing import Any, Dict, List, Optional, Tuple
 from config_codec import parse_cordis_yaml as _parse_cordis_yaml
 from file_atomic import atomic_write as _atomic_write, backup_path as _backup_path
-from jsonc_text import mask_jsonc_comments, remove_object_members
+from jsonc_text import mask_jsonc_comments
 from mcp_checker import inspect_mcp_configuration, load_mcp_servers
 from ops_log import ops_log
 from profile_loader import list_profiles, load_profile

@@ -17,7 +17,7 @@ The probe state is made explicit below and consumed by ``result_ok`` so that
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 
 STATE_GREEN = "green"

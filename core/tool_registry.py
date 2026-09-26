@@ -8,7 +8,6 @@ import subprocess
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from names import normalized_name  # noqa: F401  (re-export; leaf module, A-5)
-from config_store import load_discovered
 
 
 def expand_path(path: str, environ: Dict[str, str] = None) -> str:

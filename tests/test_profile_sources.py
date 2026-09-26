@@ -6,7 +6,6 @@ The trunk config.yaml stays free of personal topology (stage-1 principle):
 gracefully; malformed ones fail as ProfileError (exit-code 2 channel).
 """
 
-import os
 import sys
 import tempfile
 import unittest

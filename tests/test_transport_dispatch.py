@@ -6,7 +6,6 @@
 - stdio 分支经由统一分派（probe_mcp → dispatch_probe → StdioTransport）。
 """
 
-import json
 import sys
 import time
 import unittest

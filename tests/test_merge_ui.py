@@ -1,5 +1,4 @@
 """整理建议的执行入口（FEAT-12）：前端契约。"""
-import re
 import unittest
 from pathlib import Path
 

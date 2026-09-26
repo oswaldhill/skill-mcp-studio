@@ -6,7 +6,7 @@
 """
 
 import os
-from typing import Dict, List, Any
+from typing import Dict, Any
 from checker import status_label
 
 

@@ -1,6 +1,5 @@
 """skill_ops：备份 / 导出 / 元数据重命名 / 软删除 的单元测试。"""
 
-import os
 import sys
 import tempfile
 import unittest

@@ -9,7 +9,7 @@
 import os
 import yaml
 import time
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any
 
 
 STATE_FILE = os.path.join(

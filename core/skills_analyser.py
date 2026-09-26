@@ -9,8 +9,7 @@ Skills 分布分析与整理建议模块
 
 import os
 import re
-import yaml
-from typing import Dict, Any, List, Optional, Set, Tuple
+from typing import Dict, Any, List, Set
 
 
 def scan_skills_distribution(unified_dir: str) -> Dict[str, Any]:
