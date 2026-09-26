@@ -172,6 +172,38 @@ fi
 note "✓ 文本文件：无 BOM、无 CRLF、末尾恰好一个换行"
 
 note ""
+# 1e) ruff 静态检查（P1-11）——与 CI 的 lint-ruff job 同判据、同路径。
+#     为什么放进本脚本：此前 ruff 只存在于 CI workflow，本地跑不到；
+#     而本仓库只做本地提交、从不推送 → CI 从未运行 → **ruff 实际从未被强制过**。
+#     与 P2-17（文本卫生只在 CI）是同一类盲区，这里一并补上。
+#     版本刻意与 CI 锁一致：ruff 的诊断集合随版本变化，不锁会让两边结论漂移。
+RUFF_VERSION="0.16.9"
+note "== ruff 静态检查（P1-11，ruff==${RUFF_VERSION}）=="
+RUFF_BIN=""
+if command -v ruff >/dev/null 2>&1; then
+  RUFF_BIN="$(command -v ruff)"
+elif [ -x /tmp/p05/venv/bin/ruff ]; then
+  RUFF_BIN="/tmp/p05/venv/bin/ruff"
+elif "$PY" -m ruff --version >/dev/null 2>&1; then
+  RUFF_BIN="$PY -m ruff"
+fi
+if [ -z "$RUFF_BIN" ]; then
+  note "  ⚠ 未找到 ruff，跳过静态检查（本地缺此步不会让结论与 CI 相反，但覆盖不全）"
+  note "     安装：$PY -m pip install \"ruff==${RUFF_VERSION}\""
+else
+  have="$($RUFF_BIN --version 2>&1 | awk '{print $2}')"
+  if [ "$have" != "$RUFF_VERSION" ]; then
+    note "  ⚠ ruff 版本为 ${have}，CI 锁的是 ${RUFF_VERSION} —— 诊断集合可能不同"
+  fi
+  if ! $RUFF_BIN check core tests scan.py scripts; then
+    note ""
+    note "==> 失败：ruff 静态检查未通过（P1-11）。CI 的 lint-ruff 会用同一命令拦下。"
+    exit 1
+  fi
+  note "✓ ruff check 通过（$(printf '%s' "$RUFF_BIN")）"
+fi
+note ""
+
 note "== 运行（命令与 .github/workflows/test.yml 一致）=="
 note "   $PY -m unittest discover -s tests -p '$CI_PATTERN' $*"
 note ""
