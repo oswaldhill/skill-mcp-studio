@@ -258,7 +258,7 @@ git remote get-url "$RELEASE_REMOTE" >/dev/null 2>&1 \
 REMOTE_URL="$(git remote get-url "$RELEASE_REMOTE")"
 case "$REMOTE_URL" in
   *github.com*) : ;;
-  *) warn "  ⚠ 远端 '$RELEASE_REMOTE' 不是 github.com（$REMOTE_URL）"
+  *) warn "  ⚠ 远端 '$RELEASE_REMOTE' 不是 github.com（${REMOTE_URL}）"
      warn "    .github/workflows/ 下的校验、三平台构建与 Release 正文只在该远端运行，"
      warn "    推到别处等于发布流水线不会启动。确认无误再加 --remote 显式覆盖。" ;;
 esac
