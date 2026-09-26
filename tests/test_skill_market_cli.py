@@ -1,8 +1,11 @@
 """FEAT-9: `--market` CLI 出口契约。"""
 
+import contextlib
 import json
+import os
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -10,10 +13,39 @@ ROOT = Path(__file__).resolve().parents[1]
 SCAN = ROOT / "scan.py"
 
 
-def run_market(*args, timeout=240):
+@contextlib.contextmanager
+def isolated_home():
+    """临时 HOME，内含一个 fixture 技能库。
+
+    ``core/skill_market.py`` 的 ``_SKILLS_DIR`` 在 import 时由 ``Path.home()`` 求值，
+    所以给子进程换一个 HOME 就能把技能库整体重定向到临时目录。测试因此不再依赖
+    开发机本机的 ``~/.skills-manager/skills``：CI runner 上没有该目录，旧写法在那
+    里必然失败（``list`` 只拿到空列表、``iterdir`` 抛 FileNotFoundError）。
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        home = Path(tmp)
+        fixture = home / ".skills-manager" / "skills" / "demo-skill"
+        fixture.mkdir(parents=True)
+        (fixture / "SKILL.md").write_text(
+            "---\nname: demo-skill\ndescription: isolated fixture\n---\n",
+            encoding="utf-8",
+        )
+        yield home
+
+
+def home_env(home):
+    """POSIX 读 HOME，Windows 读 USERPROFILE；``Path.home()`` 两者都认。"""
+    env = dict(os.environ)
+    env["HOME"] = str(home)
+    env["USERPROFILE"] = str(home)
+    return env
+
+
+def run_market(*args, timeout=240, home=None):
     return subprocess.run(
         [sys.executable, str(SCAN), "--market", *args, "--format", "json"],
         capture_output=True, text=True, timeout=timeout, cwd=str(ROOT),
+        env=home_env(home) if home is not None else None,
     )
 
 
@@ -26,12 +58,18 @@ class MarketCliTest(unittest.TestCase):
         self.assertIn("skills.sh", data["sources"])
 
     def test_list_returns_installed(self):
-        proc = run_market("list")
-        self.assertEqual(proc.returncode, 0, proc.stderr)
-        data = json.loads(proc.stdout)
-        self.assertIn("installed", data)
-        self.assertIsInstance(data["installed"], list)
-        self.assertTrue(data["installed"])
+        """隔离技能库里的 fixture 必须被 list 列出。
+
+        旧写法直接读本机 ``~/.skills-manager/skills`` 并要求它非空，这在 CI runner
+        上必然失败；改为自造 fixture 后，本机与 CI 的断言对象一致。
+        """
+        with isolated_home() as home:
+            proc = run_market("list", home=home)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            data = json.loads(proc.stdout)
+            self.assertIn("installed", data)
+            self.assertIsInstance(data["installed"], list)
+            self.assertEqual([s["name"] for s in data["installed"]], ["demo-skill"])
 
     def test_search_without_query_is_usage_error(self):
         proc = run_market("search")
@@ -92,10 +130,11 @@ class MarketCliHumanOutputTest(unittest.TestCase):
 class MarketWriteCliTest(unittest.TestCase):
     """写操作 CLI：必须 --yes 门禁，且测试期绝不真的执行。"""
 
-    def _run(self, *args):
+    def _run(self, *args, home=None):
         return subprocess.run(
             [sys.executable, str(SCAN), *args],
             capture_output=True, text=True, timeout=120, cwd=str(ROOT),
+            env=home_env(home) if home is not None else None,
         )
 
     def test_install_without_yes_is_refused(self):
@@ -119,12 +158,17 @@ class MarketWriteCliTest(unittest.TestCase):
         self.assertEqual(proc.returncode, 2)
 
     def test_dry_run_path_did_not_touch_skills(self):
-        """未加 --yes 的调用绝不能碰到技能库。"""
-        skills = Path.home() / ".skills-manager" / "skills"
-        before = {p.name: p.stat().st_mtime_ns for p in skills.iterdir()}
-        self._run("--market-install", "zzz/no-such-skill@nope")
-        after = {p.name: p.stat().st_mtime_ns for p in skills.iterdir()}
-        self.assertEqual(before, after)
+        """未加 --yes 的调用绝不能碰到技能库。
+
+        在隔离 HOME 里先放一个技能，护栏才有非空基线可比对；旧写法对本机技能库直接
+        iterdir()，CI runner 上没有该目录会抛 FileNotFoundError。
+        """
+        with isolated_home() as home:
+            skills = home / ".skills-manager" / "skills"
+            before = {p.name: p.stat().st_mtime_ns for p in skills.iterdir()}
+            self._run("--market-install", "zzz/no-such-skill@nope", home=home)
+            after = {p.name: p.stat().st_mtime_ns for p in skills.iterdir()}
+            self.assertEqual(before, after)
 
 
 if __name__ == "__main__":
