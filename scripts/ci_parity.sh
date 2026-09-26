@@ -35,6 +35,25 @@ if ! command -v "$PY" >/dev/null 2>&1; then
 fi
 note "✓ Python  $("$PY" --version 2>&1)  [$(command -v "$PY")]"
 
+# 1b) 解释器版本 —— CI 固定 3.11，项目要求 >=3.11。
+#     版本不符时测试会以与代码无关的原因失败，必须先拦下来并说清原因。
+if ! "$PY" -c 'import sys; raise SystemExit(0 if sys.version_info[:2] >= (3, 11) else 1)'; then
+  note "✗ 解释器版本过低：$("$PY" --version 2>&1) < 3.11"
+  note "  CI 用的是 Python 3.11，低版本会以与代码无关的原因失败。"
+  for cand in /opt/homebrew/opt/python@3.11/bin/python3.11 /opt/homebrew/bin/python3.11; do
+    if [ -x "$cand" ]; then
+      note "  → 发现 $cand，本次运行改用它"
+      PY="$cand"
+      break
+    fi
+  done
+  if ! "$PY" -c 'import sys; raise SystemExit(0 if sys.version_info[:2] >= (3, 11) else 1)'; then
+    note "  请安装 Python >= 3.11 后重试（或用 PYTHON=... 指定）"
+    exit 1
+  fi
+  note "✓ Python  $("$PY" --version 2>&1)  [$(command -v "$PY")]  （已回退到 3.11）"
+fi
+
 # 2) node —— 缺失会让约 35 个渲染护栏用例静默跳过
 if ! command -v node >/dev/null 2>&1; then
   note "✗ node 不在 PATH —— 渲染护栏用例会被跳过，本地结论将与 CI 不等价"

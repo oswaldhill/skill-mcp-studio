@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+## [v0.23.0] - 2026-09
+
+当前发布版本（build 109）。
+
 ### 新增
 
 - **界面统一规范（docs/DESIGN.md）**：把散落在样式表里的取值收敛成可查的规范，
@@ -649,7 +653,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.22.0...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.23.0...HEAD
+[v0.23.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.23.0
 [v0.22.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.22.0
 [v0.21.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.21.1
 [v0.21.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.21.0
