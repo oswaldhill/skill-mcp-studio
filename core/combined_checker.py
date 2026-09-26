@@ -168,7 +168,6 @@ def check_agents(
         expected = load_profile(config, endpoint_key)["profile"]
     expected_name = expected.get("name", "hermes")
     expected_url = expected.get("url", "")
-    legacy_names = expected.get("legacy_names", [])
     probe = probe_mcp(
         expected_url,
         transport=expected.get("transport", "streamable-http"),

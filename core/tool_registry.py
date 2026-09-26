@@ -399,7 +399,7 @@ def effective_tools(config: Dict[str, Any]) -> List[Dict[str, Any]]:
     ``effective_tools``（函数级互依赖），顶层互 import 会成环；此处的调用期 import
     同时保证测试对 ``config_store.load_discovered`` 的 mock 生效。
     """
-    from config_store import load_discovered
+    from config_store import load_discovered  # noqa: F811  （刻意惰性导入，见上方 docstring）
 
     merged: Dict[str, Dict[str, Any]] = {}
     order: List[str] = []

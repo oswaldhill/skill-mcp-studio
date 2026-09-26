@@ -123,7 +123,9 @@ class OverlayValidationTest(unittest.TestCase):
             "profile_sources": [],  # inline overlay below via direct call
         }
         # simulate an overlay dict referencing an endpoint that doesn't exist
-        import tempfile, os, yaml
+        import tempfile
+        import os
+        import yaml
 
         with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
             yaml.safe_dump({"client_mcp_attach": {"Cursor": ["a", "nonexistent"]}}, f)

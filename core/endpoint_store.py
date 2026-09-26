@@ -57,7 +57,6 @@ def _dump(data: Dict[str, Any]) -> str:
 
 def _persist(path: str, data: Dict[str, Any], dry_run: bool) -> Dict[str, str]:
     """Atomically write ``data`` to ``path`` (unless dry-run), with rollback."""
-    directory = os.path.dirname(path) or "."
     rendered = _dump(data)
     if dry_run:
         return {"status": "dry-run", "message": rendered, "path": path, "backup": ""}

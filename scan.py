@@ -841,7 +841,6 @@ def _stage4_client_skills_dirs(scan_result) -> Dict[str, List[str]]:
 
 def _run_list_skill_states(args, config, config_path) -> int:
     """Read-only: print the per-client skill enable/disable matrix (design §7)."""
-    unified = args.unified_dir or config.get("unified_skills_dir", "~/.skills")
     try:
         scan_result = run_scan(config_path=config_path, auto_discover=args.discover)
         bundle = load_profile(config, getattr(args, "profile", None), config_path=config_path)
@@ -1968,11 +1967,11 @@ def main() -> int:
                 git_sync_result = git_pull_if_needed(expanded_unified, auto=True)
                 print(f"\n  {git_sync_result['message']}")
                 if git_sync_result.get("changed_files"):
-                    print(f"\n  变更文件:")
+                    print("\n  变更文件:")
                     for line in git_sync_result["changed_files"][:10]:
                         print(f"    {line}")
             else:
-                print(f"  ⏭️ 非 git 仓库，跳过同步")
+                print("  ⏭️ 非 git 仓库，跳过同步")
         # 无 --sync 时不访问远端，也不修改 .git 元数据。
     except Exception as e:
         print(f"\n  ❌ Phase 2 异常: {e}")
@@ -2271,8 +2270,8 @@ def main() -> int:
 
             # 如果是一般模式（非交互），也给出提示
             if args.no_interactive and not clean_result.get("final_clean"):
-                print(f"\n  ⚠️ 非交互模式，部分不确定文件已跳过。")
-                print(f"  使用默认模式 (--clean) 可交互确认。")
+                print("\n  ⚠️ 非交互模式，部分不确定文件已跳过。")
+                print("  使用默认模式 (--clean) 可交互确认。")
         except Exception as e:
             print(f"\n  ❌ Phase 11 异常: {e}")
             internal_errors.append(f"Phase 11: {e}")

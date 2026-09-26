@@ -52,7 +52,7 @@ def print_console_report(scan_result: Dict[str, Any]) -> None:
 
     print("")
     print("=" * 100)
-    print(f"  Skills 统一化检查报告")
+    print("  Skills 统一化检查报告")
     print(f"  统一目录: {unified_dir}")
     if new_tools_count > 0:
         print(f"  🆕 新发现工具: {new_tools_count} 个")

@@ -269,7 +269,6 @@ def generate_suggestions(
 
     # 建议4: SKILL.md 覆盖情况
     has_md = distribution.get("has_skill_md", 0)
-    no_md = distribution.get("no_skill_md", 0)
     coverage = (has_md / real_count * 100) if real_count > 0 else 0
     suggestions.append(f"📄 SKILL.md 覆盖率: {has_md}/{real_count} ({coverage:.1f}%)")
 

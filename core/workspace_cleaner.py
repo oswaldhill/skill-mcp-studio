@@ -60,7 +60,7 @@ def interactive_commit_untracked(workspace_dir: str, untracked: List[str],
             elif os.path.isdir(full):
                 shutil.rmtree(full)
             result["deleted"].append(fpath)
-        except Exception as e:
+        except Exception:
             ask.append(fpath)  # 删除失败，改为询问
 
     # 自动添加
@@ -68,7 +68,7 @@ def interactive_commit_untracked(workspace_dir: str, untracked: List[str],
         try:
             subprocess.run(["git", "add", fpath], cwd=expanded, capture_output=True, timeout=15)
             result["added"].append(fpath)
-        except Exception as e:
+        except Exception:
             ask.append(fpath)
 
     # 交互式确认
@@ -249,7 +249,7 @@ def ensure_workspace_clean(workspace_dir: str, interactive: bool = True,
                     cwd=expanded, capture_output=True, text=True, timeout=30
                 )
                 if push_proc.returncode == 0:
-                    print(f"  📤 已推送到远程")
+                    print("  📤 已推送到远程")
                 else:
                     print(f"  ⚠️ 推送失败: {push_proc.stderr.strip()}")
                     result["errors"].append(f"push: {push_proc.stderr.strip()[:100]}")
@@ -274,7 +274,7 @@ def ensure_workspace_clean(workspace_dir: str, interactive: bool = True,
                     ["git", "commit", "-m", msg],
                     cwd=expanded, capture_output=True, text=True, timeout=30
                 )
-                print(f"  ✅ 已提交新添加的未跟踪文件")
+                print("  ✅ 已提交新添加的未跟踪文件")
             except Exception as e:
                 result["errors"].append(f"commit untracked: {str(e)}")
 

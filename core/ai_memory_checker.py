@@ -255,7 +255,6 @@ def check_ai_memory_hooks(
             results.append(result)
             continue
 
-        commands = _extract_hook_commands(hook_section)
         # 找出命中 ai-memory 签名的命令及其事件
         matched_events = []
 
@@ -317,7 +316,7 @@ def format_ai_memory_hooks_report(result: Dict[str, Any]) -> str:
         elif t["installed"]:
             lines.append(f"      ⚠️ {t['note']}")
         else:
-            lines.append(f"      未安装，跳过")
+            lines.append("      未安装，跳过")
 
     return "\n".join(lines)
 
@@ -445,7 +444,7 @@ def fix_ai_memory_config(
         bridge = _bridge_path()
         entry = f"ai-memory={_python3_command()} {bridge}"
         if dry_run:
-            result["message"] = f"[dry-run] 将追加 ai-memory 条目到 mcp 数组"
+            result["message"] = "[dry-run] 将追加 ai-memory 条目到 mcp 数组"
             return result
         backup = _backup_file(config_path)
         result["backup"] = backup
@@ -479,7 +478,7 @@ def fix_ai_memory_config(
     section["ai-memory"] = entry
 
     if dry_run:
-        result["message"] = f"[dry-run] 将写入 ai-memory 条目"
+        result["message"] = "[dry-run] 将写入 ai-memory 条目"
         return result
 
     backup = _backup_file(config_path)
