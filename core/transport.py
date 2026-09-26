@@ -200,6 +200,52 @@ class _LineReader(threading.Thread):
             self.lines.put(_EOF)
 
 
+#: stderr 尾部保留上限（字符）——只留末尾，诊断信息通常在最后。
+_STDERR_TAIL_LIMIT = 2000
+
+
+class _StderrDrain(threading.Thread):
+    """Daemon thread that keeps the child's stderr pipe empty (评审 P0-5).
+
+    为什么必须排空：``stderr`` 以 ``subprocess.PIPE`` 打开时，子进程写入的量
+    一旦超过管道缓冲（POSIX 通常 64 KiB）就会阻塞在 ``write`` 上，再也不读
+    stdin、不回握手 —— 外部只看到「stdio handshake timed out」。这与
+    ``test_stdio_probe`` 那次未定位的偶发失败特征吻合（是否触发取决于子进程
+    在握手期间往 stderr 写了多少）。
+
+    为什么按块读而不是 ``readline()``：两者**都能**把管道排空 —— ``readline()``
+    会持续把数据读进自己的内部缓冲，所以它并不会死锁（实测如此，别照抄
+    「必须按块读否则死锁」的说法）。真正的差别是：``readline()`` 要读满一整行
+    才返回，遇到不含换行的 stderr（进度条、未换行的 traceback）就是**无界内存
+    增长**，而且 ``tail()`` 在它返回前一直取不到东西 —— 偏偏这种输入正是最需要
+    取证的时候。``read(4096)`` 读一块丢一块（只留尾部），内存恒定。
+    （stdout 是行协议的 JSON-RPC，那里用 ``readline()`` 是正确的。）
+    """
+
+    def __init__(self, stream):
+        super().__init__(daemon=True)
+        self._stream = stream
+        self._lock = threading.Lock()
+        self._tail = ""
+        self.start()
+
+    def run(self) -> None:
+        try:
+            while True:
+                chunk = self._stream.read(4096)
+                if not chunk:
+                    break
+                with self._lock:
+                    self._tail = (self._tail + chunk)[-_STDERR_TAIL_LIMIT:]
+        except (OSError, ValueError):
+            # 与 _LineReader 一致：流被主线程收尾关闭时静默退出。
+            pass
+
+    def tail(self) -> str:
+        with self._lock:
+            return self._tail
+
+
 def _read_json_message(reader: _LineReader, deadline: float) -> Optional[Dict[str, Any]]:
     remaining = deadline - time.monotonic()
     if remaining <= 0:
@@ -290,6 +336,10 @@ def probe_stdio(
             stderr=subprocess.PIPE,
             env=environ,
             text=True,
+            # 解码失败绝不能把排空线程打退（它会因 UnicodeDecodeError 提前结束，
+            # 管道重新被填满 → 死锁回归）。errors="replace" 让非 UTF-8 的 stderr
+            # 退化成替换字符，而不是中断排空。
+            errors="replace",
             bufsize=1,
             **popen_kwargs,
         )
@@ -299,6 +349,9 @@ def probe_stdio(
 
     deadline = time.monotonic() + timeout  # 单一预算（评审 CLI-5a）
     reader = _LineReader(proc.stdout)  # __init__ 内已 start()
+    # 必须与 stdout 同时开始排空 stderr：握手期间子进程往 stderr 写多少，
+    # 都不该把它卡死（评审 P0-5）。
+    stderr_drain = _StderrDrain(proc.stderr)
     try:
         _rpc(proc, {
             "jsonrpc": "2.0",
@@ -341,6 +394,15 @@ def probe_stdio(
         result["error"] = str(exc)
     finally:
         _terminate(proc)
+        # 进程已终止 → 子进程 stderr 写端关闭，排空线程读到 EOF 后自然结束；
+        # join 给它一点时间把管道里剩余内容收干净。
+        stderr_drain.join(timeout=1.0)
+        detail = stderr_drain.tail().strip()
+        if result["error"] and detail:
+            # P0-5 要的可诊断性：超时不再只是一句「stdio handshake timed out」，
+            # 而是带上子进程自己说的话 —— 足以区分「没启动」「卡在 stderr」
+            # 「真的没回应」。
+            result["error"] = f"{result['error']}\n--- server stderr (tail) ---\n{detail}"
         # 收尾关管道，避免 ResourceWarning（读线程对已关闭流的读错误已被其捕获）。
         for pipe in (proc.stdin, proc.stdout, proc.stderr):
             try:

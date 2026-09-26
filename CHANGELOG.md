@@ -7,6 +7,17 @@
 
 ## [Unreleased]
 
+### 修复
+
+- **`probe_stdio` 的 stderr 管道从未排空**（评审清单 P0-5，`test_stdio_probe` 那次
+  「偶发、复跑不复现」超时的根因）：`stderr=subprocess.PIPE` 打开后整个握手期间无人
+  读取，子进程一旦向 stderr 写满管道缓冲（POSIX 通常 64 KiB）就阻塞在 `write` 上，
+  不再读 stdin、不回握手，外部只能看到一句 `stdio handshake timed out`。新增
+  `_StderrDrain` 守护线程按块排空 stderr（只保留末尾 2000 字符），失败时把 stderr
+  尾部附到错误信息使超时可归因；`Popen` 增加 `errors="replace"`，避免解码失败让排空
+  线程提前退出。附两个回归用例，并已反向验证：去掉排空即稳定失败。
+  （实测：200 KiB 无换行 stderr → 修复前 8.01s 超时，修复后 0.07s 通过。）
+
 ## [v0.23.0] - 2026-09
 
 当前发布版本（build 109）。
