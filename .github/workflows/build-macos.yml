@@ -173,3 +173,16 @@ jobs:
         with:
           name: skill-mcp-studio-macos-universal
           path: dist
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            dist/Skill-MCP-Studio-universal.dmg
+            dist/skill-mcp-studio-universal.app.zip
+            dist/SHA256SUMS
+          # 正文由 release-notes.yml 统一写入。这里必须为 false：
+          # 三个平台各自 generate_release_notes 会把正文重复追加三次
+          # （v0.23.0 的 Release 正文即为三份重复内容）。
+          generate_release_notes: false
+          draft: false
+          prerelease: false

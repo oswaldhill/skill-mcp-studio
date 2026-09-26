@@ -123,21 +123,6 @@ jobs:
             dist/*.msi
             dist/SHA256SUMS
 
-      - name: Publish GitHub Release
-        if: ${{ startsWith(github.ref, 'refs/tags/') }}
-        uses: softprops/action-gh-release@v3
-        with:
-          files: |
-            dist/*.exe
-            dist/*.msi
-            dist/SHA256SUMS
-          # 正文由 release-notes.yml 统一写入。这里必须为 false：
-          # 三个平台各自 generate_release_notes 会把正文重复追加三次
-          # （v0.23.0 的 Release 正文即为三份重复内容）。
-          generate_release_notes: false
-          draft: false
-          prerelease: false
-
   release-windows:
     # Q0-2：发布单独成 job，只有它持有 contents: write。
     # 原来 build 与 release 同在一个 job，顶层就必须给 contents: write，
