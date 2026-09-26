@@ -18,7 +18,7 @@ import sys
 import os
 import json
 import argparse
-from typing import Dict, List
+from typing import Any, Dict, List
 
 # 添加 core/ 到 sys.path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "core"))
@@ -476,6 +476,36 @@ def _run_skill_delete(args, config, config_path) -> int:
     return 0 if result["status"] in ("ok", "dry-run") else 2
 
 
+def _run_merge_skills(args, config, config_path) -> int:
+    """写操作：按整理建议执行合并（FEAT-12）。
+
+    执行前由 core.skill_merge_exec 重算判据，拒绝照过期建议动盘。
+    """
+    import json as _json
+
+    from skill_merge_exec import merge_all, merge_group
+
+    unified = _unified_dir_from(args, config)
+    fold_raw = (getattr(args, "merge_fold", None) or "").strip()
+
+    if fold_raw == "all":
+        result = merge_all(skills_dir=unified, dry_run=args.dry_run)
+    else:
+        fold = [x for x in fold_raw.split(",") if x.strip()]
+        result = merge_group(
+            getattr(args, "merge_keep", None) or "",
+            fold,
+            skills_dir=unified,
+            dry_run=args.dry_run,
+        )
+
+    if getattr(args, "format", None) == "json":
+        print(_json.dumps(result, ensure_ascii=False))
+    else:
+        _print_skill_op(result)
+    return 0 if result.get("status") in ("ok", "dry-run") else 2
+
+
 def _run_remove_client(args, config, config_path) -> int:
     """写操作：移除客户端（本机停用 + 残留配置 + skills 链接）。
 
@@ -663,6 +693,29 @@ def _run_single_profile_snapshot(args, config, config_path) -> int:
     return 0 if ok else 1
 
 
+def _non_agent_names(config_path) -> set:
+    """FEAT-7 口径：声明 non_agent 的客户端（如 CC Switch）不进技能面板。
+
+    它同时管着合并预览（GUI「修复链接」弹窗）的统计与实写：`~/.cc-switch/skills`
+    是 CC Switch 自管的挂载点，本工具不代它修链接，也不该计入"总路径"。
+    曾因这里漏了过滤，卡片显示 7 条路径而用户实际只有 6 个 IDE/Agent。
+    """
+    return {normalized_name(t.get("name", ""))
+            for t in effective_tools(load_config(config_path))
+            if t.get("name") and t.get("non_agent")}
+
+
+def _drop_non_agent_rows(scan_result, config_path):
+    """按 _non_agent_names 口径过滤扫描行。预览与实写共用，杜绝两处不同源。"""
+    names = _non_agent_names(config_path)
+    if not names:
+        return scan_result
+    return {**scan_result, "results": [
+        r for r in scan_result.get("results", [])
+        if normalized_name(r.get("tool_name", "")) not in names
+    ]}
+
+
 def _run_fix_skills_preview(args, config, config_path) -> int:
     """「一键合并预览」机读出口（--fix-skills --format json）。
 
@@ -674,27 +727,35 @@ def _run_fix_skills_preview(args, config, config_path) -> int:
     严格只读：修复计划始终以 dry_run=True 生成（真正写入走 --fix-skills 的
     11 阶段主流程，由 GUI 的「确认实写」按钮触发）。
     """
+    tools = effective_tools(load_config(config_path))
+    # 与 IDE/Agent 页保持统一（FEAT-7）：只纳入「已安装 / 仅配置」的客户端，
+    # 过滤掉 install_state == "none" 的幽灵条目与 non_agent 客户端。
+    # 过滤必须发生在 fix_all 之前：修复计划要和表格同源，否则预览显示 N 项、
+    # 实写却按另一套口径执行。
+    install_by_name = {
+        normalized_name(t.get("name", "")): detect_installation(t)["install_state"]
+        for t in tools
+        if t.get("name")
+    }
+
     try:
         scan_result = run_scan(config_path=config_path, auto_discover=args.discover)
-        fix_result = fix_all(scan_result, dry_run=True, client=args.client)
-        changes = compute_changes(scan_result)
     except Exception as exc:  # 预览失败不得拖垮 GUI
         print(json.dumps({"kind": "fix-skills-preview", "error": str(exc)}, ensure_ascii=False, indent=2))
         return 2
 
-    # 与 IDE/Agent 页保持统一：只纳入「已安装 / 仅配置」的客户端，
-    # 过滤掉 install_state == "none" 的幽灵条目（无 app/cli/config，本机根本不存在）。
-    # 否则合并清单里会出现 IDE/Agent 页看不到的未安装客户端，造成两处口径不一致。
-    install_by_name = {
-        normalized_name(t.get("name", "")): detect_installation(t)["install_state"]
-        for t in effective_tools(load_config(config_path))
-        if t.get("name")
-    }
-    scan_results = scan_result.get("results", [])
+    scan_result = _drop_non_agent_rows(scan_result, config_path)
     scan_results = [
-        r for r in scan_results
+        r for r in scan_result.get("results", [])
         if install_by_name.get(normalized_name(r.get("tool_name", ""))) != "none"
     ]
+    scan_result = {**scan_result, "results": scan_results}
+    try:
+        fix_result = fix_all(scan_result, dry_run=True, client=args.client)
+        changes = compute_changes(scan_result)
+    except Exception as exc:
+        print(json.dumps({"kind": "fix-skills-preview", "error": str(exc)}, ensure_ascii=False, indent=2))
+        return 2
 
     payload = {
         "kind": "fix-skills-preview",
@@ -951,6 +1012,220 @@ def _run_skill_toggle(args, config, config_path) -> int:
             print(f"\n  ⚠️ 复检失败: {e}")
     print("")
     return exit_code
+
+
+def _run_market(args) -> int:
+    """`--market` 只读出口。
+
+    全量禁止写操作：安装/升级由 core/skill_market_ops.py 另行处理。
+    **不调用 `npx skills check`** —— 该命令名为检查、实为升级。
+    """
+    from skill_market import check_updates, list_installed, read_sources, search
+
+    want_json = getattr(args, "format", None) == "json"
+    try:
+        if args.market == "sources":
+            payload = read_sources()
+        elif args.market == "list":
+            payload = list_installed()
+        elif args.market == "search":
+            if not args.market_query:
+                print("  ❌ --market search 需要 --market-query <词>")
+                return 2
+            payload = search(args.market_query)
+        elif args.market == "check":
+            payload = check_updates()
+        else:
+            print(f"  ❌ 未知的 --market 子命令: {args.market}")
+            return 2
+    except Exception as exc:                      # 市场不可用不应中断其他流程
+        payload = {"error": str(exc)}
+
+    if want_json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        _print_market(payload, args.market)
+    return 0
+
+
+def _run_market_write(args) -> int:
+    """市场写操作出口（安装 / 升级）。
+
+    必须先 --yes：市场技能来自第三方仓库，静默安装是供应链风险。
+    """
+    from skill_market_ops import execute_plan, plan_install, plan_upgrade
+
+    if args.market_install and args.market_upgrade:
+        print("  ❌ --market-install 与 --market-upgrade 互斥")
+        return 2
+
+    if args.market_install:
+        plan = plan_install(args.market_install)
+        what = f"安装 {args.market_install}"
+    else:
+        names = [n for n in str(args.market_upgrade).split(",") if n.strip()]
+        plan = plan_upgrade(names)
+        what = "升级 " + "、".join(plan.get("names") or names)
+
+    if not plan.get("ok"):
+        print(f"  ❌ {plan.get('reason')}")
+        return 2
+
+    if not getattr(args, "yes", False):
+        print(f"  待执行：{what}")
+        print(f"  命令：npx skills {' '.join(plan['argv'])}")
+        print("  这是写操作，确认后请加 --yes 重跑。")
+        return 2  # 非 0：本次未执行任何写操作
+
+    result = execute_plan(plan)
+    want_json = getattr(args, "format", None) == "json"
+    if want_json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        mark = "完成" if result["ok"] else "失败"
+        print(f"  {what} {mark}")
+        if result.get("verify"):
+            v = result["verify"]
+            print(f"  已确认在统一库: {len(v.get('present') or [])} 个"
+                  f"，缺失 {len(v.get('missing') or [])} 个")
+        if not result["ok"] and result.get("stderr"):
+            print(f"  {result['stderr'][:300]}")
+    return 0 if result["ok"] else 1
+
+
+def _print_market(payload: dict, kind: str) -> None:
+    """人读输出。与 --format json 同源，避免两套口径。"""
+    if payload.get("error"):
+        print(f"  ❌ {payload['error']}")
+        return
+    if kind == "sources":
+        for _sid, s in (payload.get("sources") or {}).items():
+            mark = "可用" if s["available"] else "不可用"
+            line = f"  {s['label']}: {mark}"
+            if s["reason"]:
+                line += f" —— {s['reason']}"
+            print(line)
+    elif kind == "list":
+        rows = payload.get("installed") or []
+        print(f"  已装 {len(rows)} 个技能")
+        for r in rows:
+            print(f"    {r['name']:32} {r.get('source') or '-'}")
+    elif kind == "search":
+        for r in payload.get("results") or []:
+            print(f"    {r['package']:56} {r['installs']}")
+        if not payload.get("results"):
+            print(f"  {payload.get('reason') or '无结果'}")
+    elif kind == "check":
+        s = payload.get("summary") or {}
+        print(f"  共 {s.get('total', 0)}：有更新 {s.get('outdated', 0)} / "
+              f"已最新 {s.get('current', 0)} / 无法检测 {s.get('unknown', 0)}")
+        for r in payload.get("updates") or []:
+            if r["state"] == "outdated":
+                print(f"    {r['name']:32} 远端 {r.get('remote_commit')}")
+
+
+def _run_skill_usage(args) -> int:
+    """`--skill-usage` 只读出口：技能使用统计。
+
+    数据源是各客户端落盘的会话日志（当前仅 Codex 可靠），全程只读、不写盘。
+    判据只认工具调用记录（function_call / custom_tool_call）里的技能路径，
+    会话注入的技能清单与工具返回内容都不算使用，否则命中数会虚高到全量误报。
+    """
+    from skill_usage import scan_usage, summarize_text
+
+    want_json = getattr(args, "format", None) == "json"
+    try:
+        payload = scan_usage(
+            since=getattr(args, "usage_since", None),
+            progress_path=getattr(args, "progress_file", None),
+        )
+    except Exception as exc:                      # 日志缺失/损坏不应中断其他流程
+        payload = {"error": str(exc)}
+
+    if want_json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    elif payload.get("error"):
+        print(f"  ❌ {payload['error']}")
+    else:
+        print(summarize_text(payload))
+    return 0
+
+
+def _run_merge_advice(args) -> int:
+    """`--merge-advice` 只读出口：技能整理建议（FEAT-11）。
+
+    全程只读：判据在 `skill_merge_advisor` 内，本函数不写盘、不移动、不删除。
+    `--usage-since` 复用于窗口过滤，因为 `load`/`sessions` 参与保留者打分。
+    """
+    from skill_merge_advisor import scan_advice, summarize_text
+
+    want_json = getattr(args, "format", None) == "json"
+    try:
+        payload = scan_advice(since=getattr(args, "usage_since", None))
+    except Exception as exc:                      # 库缺失等异常不中断其他流程
+        payload = {"error": str(exc)}
+
+    if want_json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    elif payload.get("error"):
+        print(f"  ❌ {payload['error']}")
+    else:
+        print(summarize_text(payload))
+    return 0
+
+
+def _run_skill_insight(args) -> int:
+    """`--skill-insight` 只读出口：一次扫描同时产出使用统计与整理建议。
+
+    这两个结论共用同一份会话日志汇总（整理建议的保留者打分依赖 load/sessions，
+    零触达判定也来自它），拆成两次调用等于把同一份上千个日志文件的扫描做两遍。
+    这里只扫一次 `scan_usage`，把结果注入 `scan_advice`（该参数本就是为此预留的），
+    两份结论一起返回，GUI 打开面板即可直接展示，不需要用户等待重算。
+    """
+    from skill_usage import scan_usage
+    from skill_merge_advisor import scan_advice
+
+    want_json = getattr(args, "format", None) == "json"
+    since = getattr(args, "usage_since", None)
+    payload: Dict[str, Any] = {}
+    try:
+        usage = scan_usage(
+            since=since,
+            progress_path=getattr(args, "progress_file", None),
+        )
+        payload["usage"] = usage
+        if usage.get("error"):
+            # 会话日志读不了时，整理建议也拿不到触达数据，如实透出而不是给空结论。
+            payload["advice"] = {"error": usage["error"]}
+        else:
+            payload["advice"] = scan_advice(since=since, usage=usage)
+    except Exception as exc:                      # 库缺失等异常不中断其他流程
+        payload = {"error": str(exc)}
+
+    if want_json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    elif payload.get("error"):
+        print(f"  ❌ {payload['error']}")
+    else:
+        print(summarize_insight_text(payload))
+    return 0
+
+
+def summarize_insight_text(payload: Dict[str, Any]) -> str:
+    """文本出口：两段结论拼在一起，保持各自的原有摘要格式。"""
+    from skill_usage import summarize_text as usage_text
+    from skill_merge_advisor import summarize_text as advice_text
+
+    usage = payload.get("usage") or {}
+    advice = payload.get("advice") or {}
+    lines = []
+    if usage.get("error") or advice.get("error"):
+        lines.append(f"  ❌ {usage.get('error') or advice.get('error')}")
+        return "\n".join(lines)
+    lines.append(usage_text(usage))
+    lines.append("")
+    lines.append(advice_text(advice).rstrip())
+    return "\n".join(lines)
 
 
 def _run_skill_migrate(args, config, config_path) -> int:
@@ -1317,6 +1592,50 @@ def build_parser() -> argparse.ArgumentParser:
         help="配合 --add-client：安装检测用的 App Bundle 路径（如 /Applications/Foo.app）",
     )
     parser.add_argument(
+        "--market", type=str, default=None,
+        choices=["sources", "list", "search", "check"],
+        help="技能市场（只读）：sources=源可用性 list=已装清单 "
+             "search=搜索（需 --market-query）check=检查更新",
+    )
+    parser.add_argument(
+        "--market-query", type=str, default=None,
+        help="配合 --market search：搜索词",
+    )
+    parser.add_argument(
+        "--market-install", type=str, default=None, metavar="PKG",
+        help="从技能市场安装（写操作，需 --yes）：包名形如 owner/repo@skill",
+    )
+    parser.add_argument(
+        "--market-upgrade", type=str, default=None, metavar="NAME",
+        help="升级已装技能（写操作，需 --yes）：可按逗号分隔多个技能名",
+    )
+    parser.add_argument(
+        "--yes", action="store_true",
+        help="配合 --market-install/--market-upgrade：确认执行写操作",
+    )
+    # === 技能使用统计（FEAT-10，只读、零侵入）===
+    parser.add_argument(
+        "--skill-usage", action="store_true",
+        help="统计各技能的真实使用情况（读 Codex 会话日志）：加载/浏览/编辑 + 最近使用时间",
+    )
+    parser.add_argument(
+        "--usage-since", type=str, default=None, metavar="ISO_DATE",
+        help="配合 --skill-usage：只统计该日期之后的动作（如 2026-08-24）",
+    )
+    parser.add_argument(
+        "--skill-insight", action="store_true",
+        help="一次扫描同时产出使用统计与整理建议（两者共用会话日志汇总，避免重扫）",
+    )
+    parser.add_argument(
+        "--progress-file", type=str, default=None, metavar="PATH",
+        help="配合 --skill-usage/--merge-advice：把扫描进度原子写入该文件（GUI 轮询用，只写进度不写结论）",
+    )
+    # === 技能整理建议（FEAT-11，只读，不删不改不移）===
+    parser.add_argument(
+        "--merge-advice", action="store_true",
+        help="产出技能整理建议（只读）：可执行合并组 / 上游仅标注 / 已否决变体，不删改任何文件",
+    )
+    parser.add_argument(
         "--client-command", type=str, default=None,
         help="配合 --add-client：安装检测用的 CLI 命令（如 foo）",
     )
@@ -1392,6 +1711,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--delete-skill", type=str, default=None, metavar="SKILL",
         help="软删除指定 skill：先备份再移入统一目录 _trash/（写操作，支持 --dry-run）",
+    )
+    parser.add_argument(
+        "--merge-skills", action="store_true",
+        help="按整理建议执行合并（FEAT-12，写操作）：把 --merge-fold 的技能备份后"
+             "移入 _trash/，保留 --merge-keep 不动；执行前会重算判据确认建议仍成立",
+    )
+    parser.add_argument(
+        "--merge-keep", type=str, default=None, metavar="SKILL",
+        help="配合 --merge-skills：保留的技能（不被改动）",
+    )
+    parser.add_argument(
+        "--merge-fold", type=str, default=None, metavar="A,B",
+        help="配合 --merge-skills：要归并的技能，逗号分隔；传 all 表示全部可执行组",
     )
 
     return parser
@@ -1508,6 +1840,29 @@ def main() -> int:
         return _run_skill_rename(args, config, config_path)
     if getattr(args, "delete_skill", None):
         return _run_skill_delete(args, config, config_path)
+    if getattr(args, "merge_skills", False):
+        return _run_merge_skills(args, config, config_path)
+
+    # 技能市场（FEAT-9）同属这一组：它带 --format json，且 GUI 直接
+    # JSON.parse 整个 stdout，若排在通用快照路由之后会被截走。
+    # 只读；安装/升级不在 CLI 出口内。
+    if getattr(args, "market", None):
+        return _run_market(args)
+    if getattr(args, "market_install", None) or getattr(args, "market_upgrade", None):
+        return _run_market_write(args)
+
+    # 技能使用统计（FEAT-10）同上：只读，且带 --format json 供 GUI 直接
+    # JSON.parse，必须排在通用快照路由之前。
+    if getattr(args, "skill_insight", False):
+        return _run_skill_insight(args)
+
+    if getattr(args, "skill_usage", False):
+        return _run_skill_usage(args)
+
+    # 技能整理建议（FEAT-11）同上：只读且 GUI 会 JSON.parse 整段 stdout，
+    # 必须排在通用快照路由之前，否则输出会被快照截走。
+    if getattr(args, "merge_advice", False):
+        return _run_merge_advice(args)
 
     # 阶段二：--all-profiles 一次遍历全部 profile，输出跨 profile 汇总报告。
     if getattr(args, "all_profiles", False):
@@ -1753,6 +2108,9 @@ def main() -> int:
     # 阶段 6: 修复（--fix 或 --full 时执行）
     # ================================================================
     if args.fix:
+        # FEAT-7 口径：non_agent 客户端（CC Switch 等）不进技能面板，也不代修链接。
+        # 与「修复链接」弹窗的预览同源过滤，否则预览显示 6 项、实写按 7 项执行。
+        scan_result = _drop_non_agent_rows(scan_result, config_path)
         ops_log("fix_skills_begin", action="fix_skills", client=args.client, dry_run=bool(args.dry_run))
         try:
             print("")

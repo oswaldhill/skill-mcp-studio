@@ -275,6 +275,15 @@ def build_management_snapshot(
     for tool in _effective_tools(config):
         if not isinstance(tool, dict) or not tool.get("name"):
             continue
+        # FEAT-7: 非 IDE/Agent 的客户端（non_agent，如 CC Switch）不进本面板。
+        # 它是技能的**管理/安装者**而非消费方，列在这里会让「技能面板 7 个 vs
+        # IDE/Agent 表 6 个」自相矛盾——同一个界面里两个数字对不上，用户无从判断
+        # 该信哪个。两处口径统一为「本机安装的 IDE/Agent」，此面板不再列它。
+        # 仅影响本面板的渲染数据：技能**审计**（combined_checker 遍历
+        # scan_result.results 的 managed_names）不经此路径，故 CC Switch 的技能
+        # 合规检查照常进行，监督能力不受影响。
+        if tool.get("non_agent"):
+            continue
         # 一致性门控：skills 面板只保留「本机扫描到」的客户端（installed /
         # config_only），与 home 列表的 install_state!=="none" 判定对齐。未安装
         # 但残留 skills 目录(symlink)的客户端（如已卸载的 TRAE）不应出现——

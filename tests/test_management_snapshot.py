@@ -386,10 +386,50 @@ class NonAgentClientTest(unittest.TestCase):
         snap = self._snapshot()
         self.assertNotIn("CC Switch", [c["name"] for c in snap["mcp"]["clients"]])
 
-    def test_visible_in_skills_audit(self):
-        """技能挂载点必须在技能审计里可见，否则这个挂载点失去可见性。"""
+    def test_absent_from_skills_panel(self):
+        """FEAT-7: 技能面板不列它，与 IDE/Agent 表统一为同一批「本机安装的 IDE/Agent」。
+
+        此前它出现在 clients_states 里，导致同一界面「技能面板 7 个 vs IDE/Agent 表
+        6 个」对不上，用户无从判断该信哪个。
+        """
         snap = self._snapshot()
-        self.assertIn("CC Switch", [c["name"] for c in snap["skills"]["clients_states"]])
+        self.assertNotIn(
+            "CC Switch", [c["name"] for c in snap["skills"]["clients_states"]]
+        )
+
+    def test_still_covered_by_skills_audit(self):
+        """但技能**审计**必须照常覆盖它——面板不列 ≠ 监督消失。
+
+        审计走 combined_checker → scan_result["results"]（run_scan 产出）的
+        managed_names，与 clients_states 是两条独立数据链。本用例锁定这条边界：
+        从面板移除不得连带削弱审计，否则 ~/.cc-switch/skills 这 186 个技能
+        就再无人监督。
+        """
+        import sys
+
+        sys.path.insert(0, str(ROOT / "core"))
+        from combined_checker import _skills_compliant  # noqa: E402
+        from management_snapshot import _client_skill_stats  # noqa: E402
+
+        row = {"tool_name": "CC Switch", "path": "~/.cc-switch/skills",
+               "expanded_path": "/tmp/cc-switch-skills",
+               "status": "correct", "is_installed": True}
+        scan_result = {"results": [row]}
+        tool = {"name": "CC Switch", "non_agent": True,
+                "skills_paths": ["~/.cc-switch/skills"]}
+
+        # 审计侧：按 tool_name 命中该行并判合规
+        self.assertTrue(
+            _skills_compliant("CC Switch", scan_result),
+            "审计必须仍能看到 CC Switch 的技能行",
+        )
+        # 面板侧的路径/统计辅助函数对 non_agent 无感知——排除只发生在快照组装处
+        # （clients_states 循环里的 continue），故这两个下游函数照常返回数据。
+        stats = _client_skill_stats(tool, scan_result, "~/.skills-manager/skills")
+        self.assertTrue(
+            stats.get("skills_compliant"),
+            "non_agent 不得影响技能统计辅助函数（排除只该发生在面板组装处）",
+        )
 
 
 class DriftDetectionTest(unittest.TestCase):

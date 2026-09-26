@@ -12,7 +12,9 @@
 
 ## 测试
 
-- [ ] `python3 -m unittest discover -s tests -t .` 全部通过
+- [ ] `scripts/ci_parity.sh` 通过（等价于 CI 的
+      `python3 -m unittest discover -s tests -p 'test_*.py'`；脚本会核对 skipped 数，
+      确认 `node` 在 PATH 上，避免渲染护栏用例被静默跳过）
 - [ ] 涉及 GUI/CLI 结论时，`scripts/verify_gui_consistency.sh` 通过
 - [ ] 桌面 App 改动已本地构建验证（如有）
 

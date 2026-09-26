@@ -35,3 +35,6 @@ profiles-hermes-home/
 
 # Local-only migration notes (contains personal email / SSH paths; never publish)
 新设备Git迁移指南.md
+
+# 调试截图（仅本地留存，不入库）
+.debug-shots/
