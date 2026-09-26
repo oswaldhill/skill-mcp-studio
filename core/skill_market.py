@@ -22,6 +22,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import paths
 from tool_registry import which_with_fallback
 
 # 这三个源来自本机 find-skills 技能的权威说明；A/C 在当前环境不可用，
@@ -117,9 +118,8 @@ def read_sources() -> Dict[str, Any]:
     return {"backend": backend, "sources": sources}
 
 
-_AGENTS_DIR = Path.home() / ".agents"
-_DEFAULT_LOCK = _AGENTS_DIR / ".skill-lock.json"
-_SKILLS_DIR = Path.home() / ".skills-manager" / "skills"
+# 路径不在此处求值：模块级 ``Path.home()`` 常量会在 import 时定死、运行期
+# 改不动（评审 P0-4）。统一走 ``paths`` 的访问器，每次调用重新解析。
 
 
 def _read_lock(lock_path: Path) -> Dict[str, Any]:
@@ -140,8 +140,8 @@ def list_installed(
     folder_hash 归一为 None —— 实测该字段恒为空字符串，若原样透出会被
     调用方误当作版本标识。
     """
-    lock_path = Path(lock_path) if lock_path else _DEFAULT_LOCK
-    skills_dir = Path(skills_dir) if skills_dir else _SKILLS_DIR
+    lock_path = Path(lock_path) if lock_path else paths.default_lock_path()
+    skills_dir = Path(skills_dir) if skills_dir else paths.skills_dir()
 
     lock = _read_lock(lock_path)
     registered = lock.get("skills") or {}

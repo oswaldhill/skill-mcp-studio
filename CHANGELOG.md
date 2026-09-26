@@ -9,6 +9,17 @@
 
 ### 修复
 
+- **技能库根路径在 `import` 时被定死**（评审清单 P0-4，「改了要重启」类问题的共同
+  根源）：`skill_market` / `skill_merge_advisor` / `skill_market_ops` 三处
+  `_SKILLS_DIR = Path.home() / ...` 模块级常量在 import 期求值并缓存，运行期无法
+  改变 —— 「技能市场源只在首次打开时探测、环境变化后刷不掉」与「用例读死开发机
+  技能库」都是这一族的症状。新增 `core/paths.py` 提供访问器
+  （`home_root()` / `skills_dir()` / `agents_dir()` / `default_lock_path()`），
+  **每次调用重新解析、不缓存**；优先级为「显式注入 > 环境变量
+  `SKILL_MCP_STUDIO_HOME` > 真实 home」，并提供 `override()` 上下文管理器供测试
+  临时切换。四个消费点全部改为跟随访问器。附 `tests/test_paths.py` 锁定验收标准
+  （不重启进程即可切根），并已反向验证：退回模块级常量语义即 4 个用例失败。
+
 - **`probe_stdio` 的 stderr 管道从未排空**（评审清单 P0-5，`test_stdio_probe` 那次
   「偶发、复跑不复现」超时的根因）：`stderr=subprocess.PIPE` 打开后整个握手期间无人
   读取，子进程一旦向 stderr 写满管道缓冲（POSIX 通常 64 KiB）就阻塞在 `write` 上，
