@@ -105,6 +105,31 @@ SMS_GUI_DEV=1 cargo tauri dev
 - 这是「直读磁盘」，不是文件监听：改完仍需手动刷新一次，但无需重新编译。
 
 
+## 发布新版本
+
+发布流程已固化为 `scripts/release.sh`。**不要手敲那一串步骤** ——
+它把顺序与前置校验写死，让「漏一步」在本地就暴露，而不是等 release workflow
+触发后才发现。
+
+```bash
+scripts/release.sh --bump minor                      # 预演：跑校验 + bump 预览，不改任何东西
+scripts/release.sh --bump minor --apply             # 执行本地部分（bump + 提交）
+scripts/release.sh --bump minor --apply --tag       # 额外打 tag
+scripts/release.sh --bump minor --apply --tag --push  # 额外推送
+```
+
+三条设计约束，知道了才不会误用：
+
+- **默认预演**：发布不可逆（tag 与远端历史），必须显式 `--apply` 才动手。
+- **默认不推送**：本仓库有「未经允许不得 push」的门禁 hook（P0-6），
+  脚本不绕过它；`--push` 是显式授权，且推送前会再确认一次。
+- **CHANGELOG 正文不自动生成**：脚本只校验「新版本段落存在且非空」，
+  缺失就停下让你去写 —— 变更内容需要人写，不该编。
+
+与 CI 的关系：CI 的 `tag-version-consistency` job 会在 tag 与 `version.json`
+不一致时**事后**拦下；本脚本做的是**事前**同源校验（要打的 tag 必须等于
+`version.json` 里的 version）。两者构成双保险，不是重复。
+
 ## 项目结构
 
 - `scan.py` — CLI 入口
