@@ -9,6 +9,14 @@
 
 ### 变更
 
+- **`core/mcp_fixer.py` 拆分为 渲染/写安全链 两模块**（P2-16 第四刀）：900 行按「纯渲染」与
+  「写安全链 + 编排」分界拆为 `mcp_fixer_render.py`（558 行，29 个纯渲染/纯文本函数）与
+  `mcp_fixer.py`（400 行，validate/写安全链/编排 + 逐名再导出）。归属依据是 AST 实测：
+  全模块真正落盘的只有 `fix_mcp_tool` 与 `remove_mcp_entries_tool`，其余命中的「写盘调用」
+  是 `str.replace` 与 `yaml.safe_dump`（生成文本、不落盘）。三处约束保持不动：`os`
+  （`patch("mcp_fixer.os.replace")` 依赖）、`_validate_written_config`（同文件有 patch）、
+  以及 9 个外部导入名。验收：公开名 67 → 67，943 用例全绿。
+
 - **`core/workspace_cleaner.py` 拆分为 只读/写 两模块**（P2-16 第二刀）：698 行按
   「只读检查」与「写操作」分界拆为 `workspace_cleaner_read.py`（322 行：分类谓词、
   `check_workspace_cleanliness`、`scan_temp_files`、`classify_untracked`、两个格式化函数）
