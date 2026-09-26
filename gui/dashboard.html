@@ -480,7 +480,10 @@
     border: 1px solid var(--line);
     border-radius: var(--r-card);
     padding: 28px;
-    width: min(560px, 92vw);
+    /* S13：宽度改为变量 —— 原来 .modal-xl/.cfm-card/.task-card 各自用 !important
+       去压这一条同表规则，属「用 !important 覆盖自身样式」的特异性问题。
+       变量在更具体的类上赋值即可覆盖，无需 !important。 */
+    width: var(--modal-w, min(560px, 92vw));
     max-height: 92vh;
     overflow-y: auto;
     box-shadow:
@@ -494,13 +497,13 @@
   .modal .rows { display: flex; flex-direction: column; gap: 10px; }
   .modal .rows .k { flex: 0 0 110px; }
   .modal .row + .row { margin-top: 0; }
-  .modal-xl { width: min(760px, 94vw) !important; }
+  .modal-xl { --modal-w: min(760px, 94vw); }
   .modal-section { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
   .modal-section h4 { margin: 0 0 8px; font-family: var(--display); font-size: var(--fs-xs); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
   .endpoint-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 
   /* 确认对话框 */
-  .cfm-card { text-align: center; width: min(400px, 94vw) !important; padding: 32px 28px 24px; }
+  .cfm-card { text-align: center; --modal-w: min(400px, 94vw); padding: 32px 28px 24px; }
   .cfm-icon {
     width: 48px; height: 48px; border-radius: 50%;
     margin: 0 auto 18px;
@@ -533,7 +536,7 @@
   .cfm-typed input { width: 100%; text-align: center; font-family: var(--mono); letter-spacing: .04em; }
 
   /* 进度 / 结果对话框 */
-  .task-card { width: min(420px, 94vw) !important; }
+  .task-card { --modal-w: min(420px, 94vw); }
   /* 长耗时 CLI 调用期间的进度对话框（FEAT-11 UX 整改）：
      复用 task-card 的视觉语言，但完成即自动消失——刷新/统计会高频触发，
      强制多点一次「完成」只会招烦。同样走 <dialog> top layer：
@@ -2084,6 +2087,14 @@ function _agentsForPanel() {
   return ((SNAP && SNAP.agents) || []).filter((a) => a.is_agent !== false);
 }
 
+// S9：stat-card 的**唯一**实现。此前有两份手写：renderOverview 内的局部 card()
+// 与 renderMergeChanges 内的字面量模板。必须放**顶层** —— 函数内的 const 对
+// 其他顶层函数不可见，而 node --check 只查语法、查不出这种作用域错误。
+function statCard(num, lbl, cls, accent, tip) {
+  return `<div title="${escapeHtml(tip || "")}" class="stat-card${accent ? " accent" : ""}">`
+    + `<div class="num ${cls || ""}">${num}</div><div class="lbl">${escapeHtml(lbl)}</div></div>`;
+}
+
 function renderOverview() {
   const el = $("overview-body");
   if (!el) return;
@@ -2136,7 +2147,7 @@ function renderOverview() {
     probeTip += `；另有 ${unprobed} 个端点未探活`;
   }
   const registered = mainstream.filter((t) => t.registered).length;
-  const card = (num, lbl, cls, accent, tip) => `<div title="${escapeHtml(tip || "")}" class="stat-card${accent ? " accent" : ""}"><div class="num ${cls || ""}">${num}</div><div class="lbl">${lbl}</div></div>`;
+  const card = statCard;  // S9：统一到顶层的 statCard
   el.innerHTML =
     '<div class="stat-grid">' +
     card(agents.length, "受管客户端", "", false) +
@@ -5401,8 +5412,9 @@ function renderMergePreview(data) {
     { n: sum.missing, l: "缺失", c: "err" },
     { n: sum.wrong_link + sum.broken_link, l: "错误指向 / 断链", c: "warn" },
     { n: sum.skipped, l: "跳过（工具自有）", c: "" },
-  ].map((s) => `<div class="stat-card">
-      <div class="num ${s.c}">${s.n}</div><div class="lbl">${s.l}</div></div>`).join("");
+  // S9：复用上面 renderStats 用的同一份 card() —— 原来这里是第二份手写实现，
+  // 两份的 class 组装与无障碍属性只能各自演化（card() 还带 title 提示）。
+  ].map((s) => statCard(s.n, s.l, s.c)).join("");
 
   mountModal(`<div class="modal-backdrop"><div class="modal modal-form" style="width:min(920px,94vw)">
     <div class="form-title">一键合并预览</div>
@@ -5540,7 +5552,7 @@ function renderMergeChanges(data) {
   Object.keys(sc).forEach((k) => {
     const v = sc[k];
     const sign = v.diff > 0 ? "+" : "";
-    scRows.push(`<tr><td class="mono">${escapeHtml(k)}</td><td class="mono">${v.from}</td><td class="mono">${v.to}</td><td class="mono">${sign}${v.diff}</td></tr>`);
+    scRows.push(`<tr><td class="mono">${escapeHtml(k)}</td><td class="mono">${escapeHtml(String(v.from))}</td><td class="mono">${escapeHtml(String(v.to))}</td><td class="mono">${sign}${escapeHtml(String(v.diff))}</td></tr>`);
   });
   if (scRows.length) {
     parts.push(`<table class="merge-table">
@@ -5846,7 +5858,16 @@ async function removeEndpoint(key) {
 
 // ---------------- global delegation ----------------
 const skillFilterEl = $("skill-filter");
-if (skillFilterEl) skillFilterEl.addEventListener("input", renderSkillList);
+if (skillFilterEl) {
+  // S11：输入即重建整张技能表（每键一次 DOM 重建 + 计数重算）。加 120ms debounce
+  // 合并连续击键；用 setTimeout 而非 requestAnimationFrame，因为这里要的是
+  // 「停下来之后再渲染」，而不是每帧渲染一次。
+  let skillFilterTimer = null;
+  skillFilterEl.addEventListener("input", () => {
+    if (skillFilterTimer) clearTimeout(skillFilterTimer);
+    skillFilterTimer = setTimeout(renderSkillList, 120);
+  });
+}
 
 document.addEventListener("click", (e) => {
   if (e.target.classList && e.target.classList.contains("modal-backdrop")) {
@@ -6338,6 +6359,21 @@ const SAMPLE_MGMT = {
     endpoint_status: {},
   },
 };
+
+// S12：全局错误兜底。此前任何未捕获异常都只落在 devtools 控制台 ——
+// 页面表现为「某个区块一直空着」，用户完全无从判断是没数据还是出错了。
+// 这里显式提示并保留控制台堆栈（不吞异常）。
+window.addEventListener("error", (ev) => {
+  console.error("[global error]", ev.error || ev.message);
+  try { showToast("err", "页面出现未处理的错误：" + ((ev.error && ev.error.message) || ev.message)); }
+  catch (_) { /* toast 自身失败时不再抛出，避免递归 */ }
+});
+window.addEventListener("unhandledrejection", (ev) => {
+  const r = ev.reason;
+  console.error("[unhandled rejection]", r);
+  try { showToast("err", "后台操作失败：" + ((r && r.message) || r)); }
+  catch (_) { /* 同上 */ }
+});
 
 // startup
 initNavGroups();
