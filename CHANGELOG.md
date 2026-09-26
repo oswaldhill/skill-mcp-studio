@@ -9,6 +9,15 @@
 
 ### 变更
 
+- **`core/workspace_cleaner.py` 拆分为 只读/写 两模块**（P2-16 第二刀）：698 行按
+  「只读检查」与「写操作」分界拆为 `workspace_cleaner_read.py`（322 行：分类谓词、
+  `check_workspace_cleanliness`、`scan_temp_files`、`classify_untracked`、两个格式化函数）
+  与 `workspace_cleaner.py`（387 行：`_ask_user` 与 4 个写操作）。`_ask_user` 归写侧是
+  查出来的（仅被写侧两处调用）。写侧以 `from workspace_cleaner_read import X as X`
+  逐个再导出 9 个只读名字 —— 因为 `tests/test_highrisk_modules.py` 与 `scan.py`
+  通过本模块访问它们（含私有谓词 `_is_temp_file` / `_is_suspicious_file`）。
+  验收：公开名字集合 20 → 20（缺失 0、多出 0），`TEMP_PATTERNS` 仍 14 项，943 用例全绿。
+
 - **文本卫生检查把「末尾缺少换行」纳入 CI 门禁**（评审清单 P2-17 的验收标准后半句）：
   存量文件已一次性补齐，CI 的 `text-hygiene` 步骤因此从「只查 BOM/CRLF」扩到
   「BOM / CRLF / 末尾换行」三项，此后新增文件若缺末尾换行会被直接拦下。
