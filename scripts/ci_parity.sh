@@ -204,6 +204,26 @@ else
 fi
 note ""
 
+# 1f) JS 用例（T-3）——与 CI 的 test-js job 同命令。
+#     这是第三处「只在 CI 生效」的检查：node 本地可用（上面已自动并入 PATH），
+#     命令 `node --test tests/gui_helpers.test.mjs` 本地完全可跑，却从未被本脚本执行。
+#     它测的是 gui/dashboard.html 内联脚本的纯函数（escapeHtml/stripAnsi/
+#     cliErrDetail/cliFailLines/dotFor）—— 恰好是 GUI 改动最容易碰坏的地方。
+note "== JS 用例（T-3，node --test）=="
+if ! command -v node >/dev/null 2>&1; then
+  note "  ⚠ node 不在 PATH，跳过 JS 用例（上面已尝试并入 /opt/homebrew/bin）"
+elif [ ! -f tests/gui_helpers.test.mjs ]; then
+  note "  ⚠ 找不到 tests/gui_helpers.test.mjs，跳过"
+else
+  if ! node --test tests/gui_helpers.test.mjs; then
+    note ""
+    note "==> 失败：JS 用例未通过（T-3）。CI 的 test-js 会用同一命令拦下。"
+    exit 1
+  fi
+  note "✓ node --test tests/gui_helpers.test.mjs 通过"
+fi
+note ""
+
 note "== 运行（命令与 .github/workflows/test.yml 一致）=="
 note "   $PY -m unittest discover -s tests -p '$CI_PATTERN' $*"
 note ""
