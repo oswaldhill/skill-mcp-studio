@@ -37,6 +37,68 @@ jobs:
           fi
           echo "✓ ${GITHUB_REF_NAME} 与 version.json 一致"
 
+  # 文本产物的编码卫生：无 BOM、LF 换行、末尾有换行。
+  # 这类问题没有功能影响，但会让编辑器/工具持续报警（v0.23.0 的
+  # CONTRIBUTING.md 就缺末尾换行），人工发现成本高，适合自动拦住。
+  # 注意：这里用内联 python 实现，不依赖任何本地 skill 或额外依赖。
+  text-hygiene:
+    name: Text encoding hygiene
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Check tracked text files (no BOM / LF / trailing newline)
+        run: |
+          set -euo pipefail
+          python - <<'INNER'
+          import subprocess, sys
+
+          SKIP_SUFFIX = (
+              ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".icns",
+              ".pdf", ".zip", ".gz", ".woff", ".woff2", ".ttf", ".otf",
+              ".dmg", ".exe", ".msi", ".deb", ".rpm", ".so", ".dylib",
+          )
+
+          files = subprocess.run(
+              ["git", "ls-files"], capture_output=True, text=True, check=True
+          ).stdout.split()
+
+          problems = []
+          checked = 0
+          for f in files:
+              if f.lower().endswith(SKIP_SUFFIX):
+                  continue
+              try:
+                  raw = open(f, "rb").read()
+              except OSError:
+                  continue
+              if b"\x00" in raw[:8000]:      # 二进制，跳过
+                  continue
+              checked += 1
+              if raw.startswith(b"\xef\xbb\xbf"):
+                  problems.append(f"{f}: 含 UTF-8 BOM")
+              if b"\r\n" in raw:
+                  problems.append(f"{f}: 含 CRLF（本仓库统一 LF）")
+              if raw and not raw.endswith(b"\n"):
+                  problems.append(f"{f}: 末尾缺少换行")
+
+          print(f"检查了 {checked} 个文本文件")
+          if problems:
+              print("\n发现以下问题：", file=sys.stderr)
+              for p in problems:
+                  print("  - " + p, file=sys.stderr)
+              sys.exit(1)
+          print("✓ 无 BOM、无 CRLF、末尾均有换行")
+          INNER
+
   test-python:
     name: Python unit tests (unittest)
     runs-on: ubuntu-22.04

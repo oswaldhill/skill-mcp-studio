@@ -20,7 +20,10 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 CI_PATTERN='test_*.py'
-CI_BASELINE_SKIPPED=2
+# CI 基线：CI 上稳定出现的 skip 数。
+# 允许用环境变量覆盖 —— CI 侧若新增/移除可选依赖，skip 数会变化，
+# 硬编码会让本脚本对「正确的结果」误报不一致，退化成噪音源。
+CI_BASELINE_SKIPPED="${CI_BASELINE_SKIPPED:-2}"
 
 PY="${PYTHON:-python3}"
 
