@@ -1,0 +1,97 @@
+name: Release notes
+
+# 方案 B：Release 的创建/资产上传仍由三个平台 workflow 各自负责（它们只传资产，
+# generate_release_notes 均为 false），正文则由本 workflow 统一写入一处。
+#
+# 之所以独立成 job：原先三个平台各自 generate_release_notes: true，
+# action-gh-release 对已存在 release 做增量追加，于是正文被重复追加三次
+# （v0.22.0 / v0.23.0 的 Release 正文都是三份相同内容）。
+#
+# 触发方式是 workflow_run：等三个构建跑完再写，避免与「release 尚未创建」竞争。
+on:
+  workflow_run:
+    workflows:
+      - "Build & Release macOS App"
+      - "Build Linux App"
+      - "Build Windows App"
+    types: [completed]
+
+permissions:
+  contents: write
+
+# 三个构建会各触发一次本 workflow；按 tag 串行化，避免并发写同一 release。
+concurrency:
+  group: release-notes-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  write-notes:
+    name: Write CHANGELOG section into the Release
+    # tag 触发时 head_branch 就是 tag 名（形如 v0.23.0）。
+    if: ${{ startsWith(github.event.workflow_run.head_branch, 'v') }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout the tagged tree
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+          # 需要历史与 tag 才能算出上一个版本，用于拼 Full Changelog 链接。
+          fetch-depth: 0
+
+      - name: Extract this version's CHANGELOG section
+        env:
+          VER: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+          VER="${VER#v}"
+          python3 - "$VER" <<'PY' > /tmp/notes.md
+          import re, sys
+          ver = sys.argv[1]
+          text = open("CHANGELOG.md", encoding="utf-8").read()
+          pat = re.compile(
+              r"^## \[v" + re.escape(ver) + r"\][^\n]*\n(.*?)(?=^## \[|\Z)",
+              re.M | re.S,
+          )
+          m = pat.search(text)
+          if not m:
+              sys.exit("CHANGELOG.md 中找不到 v%s 的正文段落" % ver)
+          body = m.group(1).strip()
+          if not body:
+              sys.exit("CHANGELOG.md 中 v%s 的正文段落是空的" % ver)
+          print(body)
+          PY
+          echo "--- 抽取结果（前 15 行）---"
+          head -15 /tmp/notes.md
+          echo "字节数：$(wc -c < /tmp/notes.md)"
+
+      - name: Publish notes to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.workflow_run.head_branch }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          # 补一条 Full Changelog；取不到上一个 tag 就跳过（不让它阻断发布）。
+          PREV="$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)"
+          if [ -n "$PREV" ]; then
+            {
+              echo
+              echo "**Full Changelog**: https://github.com/${REPO}/compare/${PREV}...${TAG}"
+            } >> /tmp/notes.md
+          fi
+
+          # 本 job 与三个构建并发，release 可能还没被创建；带退避重试。
+          for i in $(seq 1 20); do
+            if gh release view "$TAG" >/dev/null 2>&1; then
+              gh release edit "$TAG" --notes-file /tmp/notes.md
+              echo "✓ 已写入 ${TAG} 的 Release 正文"
+              exit 0
+            fi
+            echo "release ${TAG} 尚未创建，等待中（第 ${i}/20 次）…"
+            sleep 15
+          done
+          echo "✗ 等待 release ${TAG} 出现超时（5 分钟）" >&2
+          exit 1

@@ -13,10 +13,34 @@
 
 ```bash
 git clone <repo> && cd skill-mcp-studio
+scripts/install-hooks.sh        # 启用提交门禁，见下节（只需一次）
 
 # 从源码直接运行 CLI（无需安装）
 python3 scan.py --help
 python3 scan.py --full            # 只读审计
+```
+
+### 启用提交门禁（clone 后必做一次）
+
+仓库自带一个 `pre-push` 门禁：**默认拦截**推送到 GitHub 的请求，只有显式设置
+`GITHUB_PUSH_ALLOW=1` 时才放行。
+
+`.git/hooks/` 不随仓库提交，所以门禁脚本放在 `scripts/git-hooks/`，并用
+`core.hooksPath` 让 git 直接从仓库内加载：
+
+```bash
+scripts/install-hooks.sh
+```
+
+该脚本会设置 `core.hooksPath=scripts/git-hooks` 并补上可执行位。
+
+> **不执行这一步，门禁不会生效，而且不会有任何提示。**
+> 新克隆的仓库、换机器、或 `.git` 目录被重建后，都需要重新执行一次。
+
+放行某次推送（仅在确实需要提交 GitHub 时）：
+
+```bash
+GITHUB_PUSH_ALLOW=1 git push github <branch>
 ```
 
 ## 运行测试
@@ -30,8 +54,6 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 > **不要加 `-t .`**：`tests/` 目录不含 `__init__.py`，一旦指定顶层目录，`discover` 会直接抛
 > `ImportError: Start directory is not importable`。省略 `-t`（顶层目录默认即 `tests/`）才能正常收集，
 > 这也正是 CI 的用法。
->
-> 也可以用 pytest（`pip install pytest` 后 `python3 -m pytest tests/ -q`）。
 
 ### 必须让 `node` 在 PATH 上
 
@@ -48,7 +70,8 @@ node --version
 python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
-更省事的方式是直接跑一键脚本，它会自动补齐前置条件并与 CI 基线对照：
+更省事的方式是直接跑一键脚本，它会自动补齐前置条件（含解释器版本与 node）
+并与 CI 基线对照：
 
 ```bash
 scripts/ci_parity.sh
@@ -66,9 +89,10 @@ cargo tauri build              # 产出 target/release/bundle/macos/skill-mcp-st
 ## 项目结构
 
 - `scan.py` — CLI 入口
-- `core/` — 领域逻辑（39 模块，扁平顶层模块）
+- `core/` — 领域逻辑（扁平顶层模块）
 - `gui/dashboard.html` — 前端管理台（单文件静态页）
 - `src-tauri/` — Tauri 桌面壳
+- `scripts/git-hooks/` — 随仓库分发的 git hooks（用 `scripts/install-hooks.sh` 启用）
 - `docs/` — 产品 / 设计 / 决策 / 评审文档（见 [`docs/README.md`](docs/README.md)）
 
 ## 提交规范

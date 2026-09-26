@@ -3,6 +3,9 @@ name: Test
 on:
   push:
     branches: [master, develop]
+    # tag 也要跑：一是校验 tag 与 version.json 一致（见 tag-version-consistency），
+    # 二是让被打 tag 的那个提交本身经过完整测试。
+    tags: ['v*']
   pull_request:
     branches: [master, develop]
   workflow_dispatch:
@@ -11,6 +14,29 @@ permissions:
   contents: read
 
 jobs:
+  # 打 tag 时先拦住「tag 名与包内版本号不一致」的发布：这类错误会一路走到
+  # 签名、上传、分发，事后只能撤回资产。必须在构建之前失败。
+  tag-version-consistency:
+    name: Tag matches version.json
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Assert tag == v<version.json version>
+        run: |
+          set -euo pipefail
+          v="$(python3 -c "import json;print(json.load(open('version.json'))['version'])")"
+          if [ "v$v" != "${GITHUB_REF_NAME}" ]; then
+            echo "✗ tag ${GITHUB_REF_NAME} 与 version.json 的 v$v 不一致" >&2
+            echo "  打 tag 前请先运行：python3 scripts/bump_version.py" >&2
+            exit 1
+          fi
+          echo "✓ ${GITHUB_REF_NAME} 与 version.json 一致"
+
   test-python:
     name: Python unit tests (unittest)
     runs-on: ubuntu-22.04

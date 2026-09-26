@@ -20,6 +20,29 @@ import json
 import argparse
 from typing import Any, Dict, List
 
+_MIN_PYTHON = (3, 11)
+
+
+def _require_python() -> None:
+    """在导入任何 core 模块之前做解释器版本守卫。
+
+    低版本会以「与代码无关」的方式失败（缺语法特性、缺标准库 API），排查成本很高。
+    这里提前退出，并给出可直接照做的提示。
+    """
+    if sys.version_info >= _MIN_PYTHON:
+        return
+    want = ".".join(str(n) for n in _MIN_PYTHON)
+    have = ".".join(str(n) for n in sys.version_info[:3])
+    print(f"✗ 需要 Python >= {want}，当前是 {have}（{sys.executable}）", file=sys.stderr)
+    print('  本项目声明 requires-python = ">=3.11"（见 pyproject.toml）。', file=sys.stderr)
+    print("  若已用 Homebrew 安装 3.11，可显式指定解释器：", file=sys.stderr)
+    print("    /opt/homebrew/opt/python@3.11/bin/python3.11 scan.py ...", file=sys.stderr)
+    print("  或直接运行一键脚本（会自动挑选解释器）：scripts/ci_parity.sh", file=sys.stderr)
+    raise SystemExit(2)
+
+
+_require_python()
+
 # 添加 core/ 到 sys.path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "core"))
 

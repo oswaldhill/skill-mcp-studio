@@ -123,6 +123,9 @@ jobs:
             dist/*.exe
             dist/*.msi
             dist/SHA256SUMS
-          generate_release_notes: true
+          # 正文由 release-notes.yml 统一写入。这里必须为 false：
+          # 三个平台各自 generate_release_notes 会把正文重复追加三次
+          # （v0.23.0 的 Release 正文即为三份重复内容）。
+          generate_release_notes: false
           draft: false
           prerelease: false
