@@ -101,6 +101,37 @@ jobs:
           print("✓ 全部文本文件：无 BOM、无 CRLF、末尾均有换行")
           INNER
 
+      # P2-18：脚本卫生自检。两条都对应「会伪装成测试失败」的缺陷，
+      # 故与文本卫生同 job 前置拦截。
+      - name: Shell script hygiene (P2-18)
+        run: |
+          fail=0
+
+          # 1) scripts/*.sh 在 git 中的 mode 必须为 100755。
+          # 丢失可执行位后：bash 直接执行仍正常，但 Python subprocess 调用会
+          # PermissionError —— 表现为 exit!=0 且日志无 "Ran N tests" 行，易被误判为测试失败。
+          bad="$(git ls-files -s -- 'scripts/*.sh' | awk '$1 != "100755" {print $4}')"
+          if [ -n "$bad" ]; then
+            echo "::error::scripts/*.sh 缺少可执行位（git mode 应为 100755）："
+            printf '  %s\n' $bad
+            fail=1
+          else
+            echo "✓ scripts/*.sh 的 git mode 均为 100755"
+          fi
+
+          # 2) 变量名不得紧跟全角标点：bash 在部分 locale 下会把标点首字节并入
+          # 变量名，配合 set -u 直接 unbound variable 中止脚本。须写 ${var}。
+          bv="$(grep -nE '\$[A-Za-z_][A-Za-z_0-9]*[，。：；（）「」、！？]' scripts/*.sh | grep -v '\${' || true)"
+          if [ -n "$bv" ]; then
+            echo "::error::scripts/*.sh 存在「\$var 紧跟全角标点」写法（须写 \${var}）："
+            printf '  %s\n' "$bv"
+            fail=1
+          else
+            echo "✓ scripts/*.sh 无「\$var 紧跟全角标点」写法"
+          fi
+
+          [ "$fail" -eq 0 ] || exit 1
+
   test-python:
     name: Python unit tests (unittest)
     runs-on: ubuntu-22.04
