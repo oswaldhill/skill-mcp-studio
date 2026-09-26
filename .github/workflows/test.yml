@@ -189,7 +189,7 @@ jobs:
       - name: ruff check
         run: |
           set -euo pipefail
-          python -m ruff check --output-format=github core tests scan.py scripts
+          python -m ruff check --output-format=github core tests scan.py scripts setup.py
 
   test-rust:
     name: Rust unit tests (cargo test)

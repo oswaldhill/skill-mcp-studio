@@ -50,9 +50,9 @@ extend-exclude = ["build", "dist", "gui", ".git"]
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F"]
 ignore = [
-    "F401",  # 有意的再导出；开启前需先补 `import X as X`（见上）
     "E402",  # sys.path 引导后才 import，是本项目扁平模块布局的既定写法
 ]
+# F401（未使用导入）已启用 —— 见下方「F401 的启用过程」说明。
 
 [tool.ruff.lint.per-file-ignores]
 # 测试里的「赋值后未使用」多为构造夹具的中间变量，保留可读性。

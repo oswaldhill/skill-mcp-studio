@@ -195,7 +195,7 @@ else
   if [ "$have" != "$RUFF_VERSION" ]; then
     note "  ⚠ ruff 版本为 ${have}，CI 锁的是 ${RUFF_VERSION} —— 诊断集合可能不同"
   fi
-  if ! $RUFF_BIN check core tests scan.py scripts; then
+  if ! $RUFF_BIN check core tests scan.py scripts setup.py; then
     note ""
     note "==> 失败：ruff 静态检查未通过（P1-11）。CI 的 lint-ruff 会用同一命令拦下。"
     exit 1
