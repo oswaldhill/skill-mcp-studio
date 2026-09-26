@@ -114,9 +114,47 @@ else
   note "✓ scripts/*.sh 无「\$var 紧跟全角标点」写法"
 fi
 
+# hook 生效性自检（P0-6）——「门禁配了但不可执行」= 静默失效，最危险的一类。
+# 背景：git 对**不可执行**的 hook 会**静默跳过**，既不报错也不提示。
+# 本仓库用 core.hooksPath=scripts/git-hooks 提供禁推门禁，而该文件 git mode 为
+# 100644（可执行位由 install-hooks.sh 的 chmod +x 赋予）—— 一旦没跑过安装脚本
+# 或权限被覆盖，禁推门禁就形同不存在，且没有任何迹象。实际发生过一次。
+# 只在本地生效：core.hooksPath 是本地 git config，CI 上不存在，故不影响 CI。
+if [ -d .git ]; then
+  hooks_path="$(git config --get core.hooksPath 2>/dev/null || true)"
+  if [ -z "$hooks_path" ]; then
+    note "· 未启用仓库内 git hooks（core.hooksPath 未设置），跳过生效性检查"
+    note "  如需启用：bash scripts/install-hooks.sh"
+  else
+    case "$hooks_path" in
+      /*) hooks_dir="$hooks_path" ;;
+      *)  hooks_dir="$ROOT/$hooks_path" ;;
+    esac
+    if [ ! -d "$hooks_dir" ]; then
+      note "✗ core.hooksPath 指向的目录不存在，门禁不会生效：$hooks_dir"
+      note "  → 修复：bash scripts/install-hooks.sh"
+      hygiene_fail=1
+    else
+      bad_hooks=""
+      for h in "$hooks_dir"/*; do
+        [ -f "$h" ] || continue
+        [ -x "$h" ] || bad_hooks="$bad_hooks $h"
+      done
+      if [ -n "$bad_hooks" ]; then
+        note "✗ core.hooksPath 下的 hook 缺少可执行位 —— git 会静默跳过，门禁等于未生效："
+        printf '    %s\n' $bad_hooks
+        note "  → 修复：bash scripts/install-hooks.sh"
+        hygiene_fail=1
+      else
+        note "✓ core.hooksPath=$hooks_path 下的 hook 均可执行（门禁生效）"
+      fi
+    fi
+  fi
+fi
+
 if [ "$hygiene_fail" -ne 0 ]; then
   note ""
-  note "==> 失败：脚本卫生自检未通过（P2-18）。此类缺陷会伪装成「测试失败」，故在跑测试前拦截。"
+  note "==> 失败：脚本卫生自检未通过（P2-18 / P0-6）。此类缺陷会伪装成「测试失败」或「门禁本不存在」，故在跑测试前拦截。"
   exit 1
 fi
 
