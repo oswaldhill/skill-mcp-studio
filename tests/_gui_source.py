@@ -41,16 +41,35 @@ def page_html() -> str:
 
 
 def page_source() -> str:
-    """HTML + 页面脚本（内联或外置，两者都覆盖）。
+    """页面源码，重建为 S10 之前的「单文件」形态（脚本内联在 <script> 里）。
 
-    取源顺序：先 HTML 全文；若 HTML 里已有内联 `<script>`（无 src），它已包含脚本；
-    若脚本已外置（存在 `gui/dashboard.js` 且 HTML 用 src 引用），则把外置内容一并接上。
+    实测教训：测试里有两类取源写法 ——
+      · 直接抽 `function xxx` 的函数体；
+      · 用 <script> 标记**切片/正则匹配脚本块**
+        （re.search(r"<script>(.*?)</script>")、s.index("<script>")、re.findall(...)）。
+
+    若只是把 HTML 与外置 JS 简单拼接，第二类写法会抓到空串，表现为
+    「未找到 <script> 区块」/「substring not found」/「str 无 group 属性」，
+    实测一次性打掉约 30 个用例。
+
+    所以这里做「形态还原」：把 <script src="dashboard.js" defer></script>
+    换回 <script> …外置脚本全文… </script>。于是两类写法都无需感知脚本放在哪个文件，
+    绝大多数测试文件一个字都不用改。
+
+    脚本仍内联时（S10 生效前），本函数与直接读 HTML 逐字节等价。
     """
     key = "source"
     if key not in _cache:
-        html = page_html()
-        parts = [html]
+        # 直接读文件，不回绕 page_html()：两者互相调用会无限递归。
+        html = HTML.read_text(encoding="utf-8")
         if JS.is_file():
-            parts.append(JS.read_text(encoding="utf-8"))
-        _cache[key] = "\n".join(parts)
+            js = JS.read_text(encoding="utf-8")
+            for tag in (
+                '<script src="dashboard.js" defer></script>',
+                '<script src="dashboard.js"></script>',
+            ):
+                if tag in html:
+                    html = html.replace(tag, "<script>" + chr(10) + js + chr(10) + "</script>", 1)
+                    break
+        _cache[key] = html
     return _cache[key]
