@@ -17,6 +17,7 @@
 #   scripts/release.sh --bump minor --apply    # 真正执行本地部分（bump + 提交）
 #   scripts/release.sh --bump minor --apply --tag      # 额外打 tag
 #   scripts/release.sh --bump minor --apply --tag --push   # 额外推送（需显式开启）
+#   scripts/release.sh ... --push --remote github          # 指定推送远端（默认 github）
 #
 # 设计取舍：
 # - **默认预演**。发布不可逆（tag 与远端历史），必须显式 --apply 才动手。
@@ -36,6 +37,12 @@ TAG=0
 PUSH=0
 TARGET_BRANCH="master"
 SOURCE_BRANCH="develop"
+# 推送目标远端。默认 github —— 因为 tag-version-consistency、三个 build workflow
+# 与 release-notes.yml **只在 GitHub 上运行**。此前硬编码 `git push origin`，
+# 而本仓库的 origin 是 Codeup：--push 推完 tag 之后，CI 侧什么都不会发生，
+# 脚本却宣称「release workflow 会被 tag 触发」—— 一次静默失效的发布。
+# 可用 --remote <name> 或环境变量 RELEASE_REMOTE 覆盖。
+RELEASE_REMOTE="${RELEASE_REMOTE:-github}"
 
 note()  { printf '%s\n' "$*"; }
 warn()  { printf '%s\n' "$*" >&2; }
@@ -53,6 +60,7 @@ while [ $# -gt 0 ]; do
     --apply)  APPLY=1; shift ;;
     --tag)    TAG=1; shift ;;
     --push)   PUSH=1; shift ;;
+    --remote) RELEASE_REMOTE="${2:-}"; shift 2 ;;
     --target) TARGET_BRANCH="${2:-}"; shift 2 ;;
     --source) SOURCE_BRANCH="${2:-}"; shift 2 ;;
     -h|--help) usage 0 ;;
@@ -84,14 +92,25 @@ if [ "$BRANCH" != "$SOURCE_BRANCH" ]; then
 fi
 note "✓ 分支为 $SOURCE_BRANCH"
 
-# 3) 远端同步性 —— 落后或有本地未推提交都说明状态可疑。
+# 3) 远端同步性 —— 落后必须拦下；领先只在「不打 tag / 不推送」时才有意义：
+#    若本地有未推提交而 --push 关闭，tag 会指向远端并不存在的提交，
+#    于是 release-notes.yml 拿不到对应源码。此前这里只检查了 BEHIND，
+#    注释却写着「落后或有本地未推提交都说明状态可疑」—— 注释与实现不符。
 if git rev-parse --abbrev-ref '@{upstream}' >/dev/null 2>&1; then
   AHEAD_BEHIND="$(git rev-list --left-right --count '@{upstream}...HEAD' 2>/dev/null || echo '0	0')"
   BEHIND="$(printf '%s' "$AHEAD_BEHIND" | cut -f1)"
+  AHEAD="$(printf '%s' "$AHEAD_BEHIND" | cut -f2)"
   if [ "${BEHIND:-0}" -gt 0 ]; then
     die "本地落后 upstream $BEHIND 个提交，先 pull/rebase"
   fi
-  note "✓ 未落后 upstream"
+  if [ "${AHEAD:-0}" -gt 0 ]; then
+    if [ "$PUSH" -eq 0 ]; then
+      die "本地领先 upstream ${AHEAD} 个提交，且未开启 --push —— tag 会指向远端不存在的提交（先推送，或加 --push）"
+    fi
+    note "· 本地领先 upstream ${AHEAD} 个提交（--push 会一并推送）"
+  else
+    note "✓ 未落后 upstream"
+  fi
 else
   note "· 无 upstream（跳过远端同步性检查）"
 fi
@@ -110,14 +129,6 @@ note "✓ 测试通过"
 step "版本变更预演"
 BEFORE_JSON="$(cat version.json)"
 "$PY" scripts/bump_version.py --bump "$BUMP" --dry-run || die "bump_version.py --dry-run 失败"
-AFTER_VERSION="$("$PY" -c '
-import json, subprocess, sys
-out = subprocess.run(
-    [sys.executable, "scripts/bump_version.py", "--bump", sys.argv[1], "--dry-run"],
-    capture_output=True, text=True,
-)
-' "$BUMP" 2>/dev/null; echo "")"
-
 # dry-run 的输出格式不由本脚本掌控，因此版本号一律从「落盘后」的 version.json 读，
 # 预演阶段只提示会按哪个分量升级，不做字符串解析（解析别家脚本的输出很脆）。
 note "  version.json 当前: $(printf '%s' "$BEFORE_JSON" | tr -d '\n')"
@@ -165,17 +176,31 @@ note "✓ CHANGELOG 有 v${NEW_VERSION} 段落（$SECTION_LINES 行实质内容�
 
 # 编码合规：与 CI 的 text-hygiene 同源，避免推上去才红。
 step "文本编码校验"
-SK="$HOME/.dsh/skills/qclaw-text-file/scripts/write_text.py"
-if [ -f "$SK" ]; then
-  for f in CHANGELOG.md version.json pyproject.toml README.md; do
-    if ! "$PY" "$SK" --verify "$f" >/dev/null 2>&1; then
-      die "$f 编码不合规（跑 write_text.py --verify 看详情）"
-    fi
-  done
-  note "✓ 关键文本产物编码合规"
-else
-  note "· 未找到 write_text.py，跳过（CI 仍会查）"
-fi
+# 判据**内联**在本脚本里，不再依赖 $HOME/.dsh/skills/... 这类仓库外的个人路径 ——
+# 此前那条依赖在缺失时只打一行「跳过」，发布链上的编码门禁就这样静默消失了，
+# 而脚本仍宣称「与 CI 的 text-hygiene 同源」。
+for f in CHANGELOG.md version.json pyproject.toml README.md; do
+  if ! "$PY" - "$f" <<'PYEOF'
+import sys
+raw = open(sys.argv[1], "rb").read()
+bad = []
+if raw.startswith(b"\xef\xbb\xbf"):
+    bad.append("含 UTF-8 BOM")
+if b"\r\n" in raw:
+    bad.append("含 CRLF（本仓库统一 LF）")
+if not raw.endswith(b"\n"):
+    bad.append("末尾缺少换行")
+elif raw.endswith(b"\n\n"):
+    bad.append("末尾多余空行（应恰好一个换行）")
+if bad:
+    print("; ".join(bad), file=sys.stderr)
+    sys.exit(1)
+PYEOF
+  then
+    die "$f 编码不合规（BOM / CRLF / 末尾换行）"
+  fi
+done
+note "✓ 关键文本产物编码合规"
 
 # ---------------------------------------------------------------------------
 step "提交（--apply）"
@@ -193,7 +218,7 @@ if [ "$TAG" -eq 0 ]; then
   note "  后续手动步骤："
   note "    git checkout $TARGET_BRANCH && git merge $SOURCE_BRANCH"
   note "    git tag -a $NEW_TAG -m 'release ${NEW_TAG}'"
-  note "    git push origin $TARGET_BRANCH && git push origin $NEW_TAG"
+  note "    git push $RELEASE_REMOTE $TARGET_BRANCH && git push $RELEASE_REMOTE $NEW_TAG"
   note "  或重跑本脚本并追加 --tag --push（它会完成上述动作）。"
   exit 0
 fi
@@ -219,26 +244,42 @@ if [ "$PUSH" -eq 0 ]; then
   step "到此为止（未推送）"
   note "  本仓库有「未经允许不得 push」的门禁（P0-6），脚本不会替你绕开它。"
   note "  确认无误后手动执行："
-  note "    git push origin $TARGET_BRANCH"
-  note "    git push origin $NEW_TAG"
+  note "    git push $RELEASE_REMOTE $TARGET_BRANCH"
+  note "    git push $RELEASE_REMOTE $NEW_TAG"
   exit 0
 fi
 
 # ---------------------------------------------------------------------------
 step "推送（--push，需显式授权）"
 # ---------------------------------------------------------------------------
-warn "  即将推送 $TARGET_BRANCH 与 tag $NEW_TAG 到 origin —— 这是不可逆的对外动作。"
+# 推送前确认目标远端存在，并检查它是否就是跑流水线的那个。
+git remote get-url "$RELEASE_REMOTE" >/dev/null 2>&1 \
+  || die "远端 '$RELEASE_REMOTE' 不存在（git remote -v 查看；可用 --remote 指定）"
+REMOTE_URL="$(git remote get-url "$RELEASE_REMOTE")"
+case "$REMOTE_URL" in
+  *github.com*) : ;;
+  *) warn "  ⚠ 远端 '$RELEASE_REMOTE' 不是 github.com（$REMOTE_URL）"
+     warn "    .github/workflows/ 下的校验、三平台构建与 Release 正文只在该远端运行，"
+     warn "    推到别处等于发布流水线不会启动。确认无误再加 --remote 显式覆盖。" ;;
+esac
+warn "  即将推送 $TARGET_BRANCH 与 tag $NEW_TAG 到 $RELEASE_REMOTE —— 这是不可逆的对外动作。"
 if [ "${RELEASE_YES:-}" != "1" ]; then
   printf '  确认推送请输入 yes: '
   read -r REPLY || die "无法读取确认输入（非交互环境请设 RELEASE_YES=1）"
   [ "$REPLY" = "yes" ] || die "已取消推送（本地 tag 与合并仍在，可稍后手动推送）"
 fi
 
-git push origin "$TARGET_BRANCH" || die "推送 $TARGET_BRANCH 失败"
-git push origin "$NEW_TAG" || die "推送 tag $NEW_TAG 失败"
-note "✓ 已推送 $TARGET_BRANCH 与 $NEW_TAG"
+git push "$RELEASE_REMOTE" "$TARGET_BRANCH" || die "推送 $TARGET_BRANCH 到 $RELEASE_REMOTE 失败"
+git push "$RELEASE_REMOTE" "$NEW_TAG" || die "推送 tag $NEW_TAG 到 $RELEASE_REMOTE 失败"
+note "✓ 已推送 $TARGET_BRANCH 与 $NEW_TAG 到 $RELEASE_REMOTE"
 note ""
-note "release workflow 会被 tag 触发，自动补 Release 正文（release-notes.yml）。"
+case "$REMOTE_URL" in
+  *github.com*)
+    note "tag 已推到 GitHub，release workflow 会被它触发并自动补 Release 正文（release-notes.yml）。" ;;
+  *)
+    note "注意：tag 推到了非 GitHub 远端，.github/workflows/ 不会运行 —— 三平台构建与" ;
+    note "Release 正文都不会自动生成，需手工完成。" ;;
+esac
 
 # 收尾：回到源分支，避免把人留在 master 上继续开发。
 git checkout -q "$SOURCE_BRANCH" 2>/dev/null && note "· 已切回 $SOURCE_BRANCH"
