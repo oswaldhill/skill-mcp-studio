@@ -85,8 +85,6 @@ def _ensure_overlay_registered(config_path: str, overlay_path: str) -> None:
     # avoid duplicate registration
     if overlay_rel in text or overlay_path in text:
         return
-    import re
-
     # 流式写法：profile_sources: [a, b]
     flow = re.compile(r"(?m)^(\s*profile_sources\s*:\s*\[)([^\]]*)\]")
     # 块式写法：profile_sources:\n- a\n- b

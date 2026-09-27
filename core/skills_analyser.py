@@ -9,8 +9,7 @@ Skills 分布分析与整理建议模块
 
 import os
 import re
-import yaml
-from typing import Dict, Any, List, Optional, Set, Tuple
+from typing import Dict, Any, List, Set
 
 
 def scan_skills_distribution(unified_dir: str) -> Dict[str, Any]:
@@ -269,7 +268,6 @@ def generate_suggestions(
 
     # 建议4: SKILL.md 覆盖情况
     has_md = distribution.get("has_skill_md", 0)
-    no_md = distribution.get("no_skill_md", 0)
     coverage = (has_md / real_count * 100) if real_count > 0 else 0
     suggestions.append(f"📄 SKILL.md 覆盖率: {has_md}/{real_count} ({coverage:.1f}%)")
 

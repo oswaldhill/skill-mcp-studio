@@ -57,7 +57,6 @@ def _dump(data: Dict[str, Any]) -> str:
 
 def _persist(path: str, data: Dict[str, Any], dry_run: bool) -> Dict[str, str]:
     """Atomically write ``data`` to ``path`` (unless dry-run), with rollback."""
-    directory = os.path.dirname(path) or "."
     rendered = _dump(data)
     if dry_run:
         return {"status": "dry-run", "message": rendered, "path": path, "backup": ""}
@@ -81,7 +80,11 @@ def _persist(path: str, data: Dict[str, Any], dry_run: bool) -> Dict[str, str]:
     except yaml.YAMLError as exc:
         try:
             if backup and os.path.isfile(backup):
-                _atomic_write(path, open(backup, "r", encoding="utf-8").read(), mode)
+                # 用 with 关闭：此前是无名字的 open(...).read()，回滚路径每次泄漏一个 fd
+                # （同文件其余读取都用 with）。
+                with open(backup, "r", encoding="utf-8") as fh:
+                    content = fh.read()
+                _atomic_write(path, content, mode)
         except OSError:
             pass
         return {"status": "error", "message": f"re-parse failed: {exc}", "path": path, "backup": backup}

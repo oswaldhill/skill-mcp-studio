@@ -293,6 +293,9 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
     const ALLOWED: &[&str] = &[
         "--management",
         "--version",
+        // 端点连通性独立出口（v0.24.0）：审计只判配置，端口通断由这条命令单独检查。
+        // 不登记进来的话，前端「检查端点连通性」按钮会直接撞上安全边界。
+        "--endpoint-status",
         "--list-endpoints",
         "--list-mcp-inventory",
         "--list-profiles",
@@ -350,25 +353,25 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
     // distinct from the future write command `--set-active-profile` (persist a
     // default endpoint into config). The former is denied here; the latter, once
     // implemented, is a non-redirect write flag and is not blocked by this list.
-    const DENIED_FLAGS: &[&str] = &["--config", "--profile", "--active-profile"];
-
+    // 拒绝判据见模块级 `DENIED_FLAG_PREFIXES` / `is_denied_flag`
+    // （抽到模块级是为了让 `cargo test` 能直接断言这条不变量）。
     let first_flag = args.iter().find(|a| a.starts_with("--")).cloned();
     if let Some(flag) = first_flag {
-        if DENIED_FLAGS.contains(&flag.as_str()) {
-            return Err(format!("run_cli: 被拒绝的重定向参数 {flag}（安全边界）"));
-        }
-        let sub = flag.as_str();
         // allow --flag=value form by checking the bare flag
-        let bare = sub.split('=').next().unwrap_or(sub);
+        let bare = flag.split('=').next().unwrap_or(flag.as_str());
+        if is_denied_flag(bare) {
+            return Err(format!("run_cli: 被拒绝的参数 {bare}（安全边界）"));
+        }
         if !ALLOWED.contains(&bare) {
             return Err(format!("run_cli: 子命令 {bare} 不在白名单内（安全边界）"));
         }
     }
-    // Also scan the whole argv for denied flags appearing later (e.g. appended).
+    // 扫描整个 argv：拒绝列表中的标志不得出现在任何位置，`--flag=value`
+    // 形式同样按裸标志比对。
     for a in &args {
         let bare = a.split('=').next().unwrap_or(a);
-        if DENIED_FLAGS.contains(&bare) {
-            return Err(format!("run_cli: 被拒绝的重定向参数 {bare}（安全边界）"));
+        if is_denied_flag(bare) {
+            return Err(format!("run_cli: 被拒绝的参数 {bare}（安全边界）"));
         }
     }
 
@@ -378,7 +381,9 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
     let is_scan = argv.iter().any(|a| {
         a == "--skill-usage" || a == "--merge-advice" || a == "--skill-insight"
     });
-    if is_scan && !argv.iter().any(|a| a == "--progress-file") {
+    // 路径**无条件**使用 shell 自己的；刻意不再有「调用方已给就不覆盖」的分支
+    // —— 那个分支正是原先的漏洞。
+    if is_scan {
         let _ = std::fs::remove_file(progress_file_path());
         argv.push("--progress-file".to_string());
         argv.push(progress_file_path().to_string_lossy().into_owned());
@@ -420,7 +425,17 @@ fn open_url(url: String) -> Result<(), String> {
     }
     // Reject shell metacharacters that carry meaning for the Windows `cmd /C
     // start` dispatcher (defense in depth; the webview is the only caller).
-    if url.chars().any(|c| matches!(c, '&' | '|' | '<' | '>' | '^' | '"' | '\'' | '`' | '$' | '(' | ')' | ';')) {
+    // S4：只列元字符是不够的 —— 原黑名单漏了 \r \n % !：
+    //   · cmd.exe 把换行当命令分隔符，"https://x/a\ncalc.exe" 能通过旧的 scheme 校验；
+    //   · % 触发环境变量展开、! 触发延迟展开（delayed expansion）。
+    // 用 char::is_control() 一并覆盖 \n \r \t 与 DEL 等控制字符。
+    if url.chars().any(|c| {
+        c.is_control()
+            || matches!(
+                c,
+                '&' | '|' | '<' | '>' | '^' | '"' | '\'' | '`' | '$' | '(' | ')' | ';' | '%' | '!'
+            )
+    }) {
         return Err("open_url: URL 含非法字符（命令注入防护）".to_string());
     }
     // 命令名与参数都是普通字符串，所有平台均可编译，用 cfg! 运行时分支即可。
@@ -449,6 +464,41 @@ pub fn run() {
             read_scan_progress,
             open_url
         ])
+        // P2-12：开发态直读磁盘上的 dashboard.html。
+        //
+        // 生产构建把 gui/ 整个嵌入二进制（tauri.conf.json 的 frontendDist），
+        // 因此改一行 HTML 都要 cargo build + 重装。设置环境变量 SMS_GUI_DEV 后，
+        // 启动时把主窗口导航到源树里的 dashboard.html：改完只需刷新（Cmd+R）。
+        // 不设该变量则完全走原有嵌入资源路径，生产行为不变。
+        .setup(|app| {
+            if std::env::var_os("SMS_GUI_DEV").is_some() {
+                match app.get_webview_window("main") {
+                    Some(window) => {
+                        // CARGO_MANIFEST_DIR 是编译期常量，指向 src-tauri/；
+                        // 其同级即仓库根的 gui/，正是开发时要读的那份文件。
+                        let dev_html = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                            .join("../gui/dashboard.html");
+                        match tauri::Url::from_file_path(&dev_html) {
+                            Ok(url) => {
+                                eprintln!(
+                                    "[SMS_GUI_DEV] 开发态直读磁盘：{}",
+                                    dev_html.display()
+                                );
+                                if let Err(e) = window.navigate(url) {
+                                    eprintln!("[SMS_GUI_DEV] 导航失败，回退嵌入资源：{e}");
+                                }
+                            }
+                            Err(_) => eprintln!(
+                                "[SMS_GUI_DEV] 路径无法转为 file:// URL：{}",
+                                dev_html.display()
+                            ),
+                        }
+                    }
+                    None => eprintln!("[SMS_GUI_DEV] 未找到 label=main 的窗口"),
+                }
+            }
+            Ok(())
+        })
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 // 单窗口常驻：Cmd+W / 红色关闭钮只隐藏窗口，不退出应用；
@@ -480,12 +530,69 @@ pub fn run() {
     });
 }
 
+/// 被拒绝的 CLI 标志前缀（`run_cli` 的安全边界）。
+///
+/// 用**前缀**而非精确比较：`scan.py` 的 argparse 允许前缀缩写（`--prof` 会被
+/// 解析成 `--profile`），且 `--flag=value` 形式按裸标志比对。
+///
+/// `--progress-file` 也在列：它是「往任意路径原子写 JSON」的写原语，路径只能由
+/// `run_cli` 自己追加，webview 不得指定 —— 否则一次 DOM 注入即可覆写任意可写文件。
+const DENIED_FLAG_PREFIXES: &[&str] = &[
+    "--config",        // --config / --config-paths：重定向到任意配置文件
+    "--prof",          // --profile / --prof
+    "--active-prof",   // --active-profile / --active-prof
+    "--progress-file", // 进度文件路径：只允许 shell 追加
+];
+
+/// `run_cli` 安全边界的纯函数部分 —— 抽到模块级是为了让 `cargo test` 能直接
+/// 断言这条不变量（此前内嵌在命令函数里，测试碰不到，回归时无人可查）。
+fn is_denied_flag(bare: &str) -> bool {
+    DENIED_FLAG_PREFIXES.iter().any(|p| bare.starts_with(p))
+}
+
 #[cfg(test)]
 mod tests {
     // T-3: 为 spawn 路径解析与 open_url 注入校验补 Rust 单元测试。仅覆盖纯函数
     // 与「在任何子进程 spawn 之前就返回」的拒绝分支，确保 `cargo test` 无副作用
     // 且跨平台确定。
     use super::*;
+
+    // S1/S3 回归：run_cli 的安全边界必须拦住「重定向类」与「路径写入类」参数。
+    // 这些断言把不变量钉在测试里 —— 此前它内嵌在命令函数内，回归时无人可查，
+    // 于是 `--progress-file` 长期不在拒绝列表里而没人发现。
+    #[test]
+    fn run_cli_denies_path_writing_and_redirect_flags() {
+        // 路径写入原语：webview 指定进度文件路径 = 往任意路径原子写 JSON。
+        assert!(is_denied_flag("--progress-file"), "--progress-file 必须被拒绝");
+        // argparse 前缀缩写：`--prof` 会被解析成 `--profile`（精确比较挡不住）。
+        assert!(is_denied_flag("--prof"), "--prof（--profile 的缩写）必须被拒绝");
+        assert!(is_denied_flag("--profile"), "--profile 必须被拒绝");
+        assert!(is_denied_flag("--config"), "--config 必须被拒绝");
+        assert!(is_denied_flag("--config-paths"), "--config-paths 必须被拒绝");
+        assert!(is_denied_flag("--active-profile"), "--active-profile 必须被拒绝");
+    }
+
+    #[test]
+    fn run_cli_deny_list_covers_progress_file_explicitly() {
+        // 反向断言：若有人删掉 `--progress-file`，这条会失败。
+        assert!(
+            DENIED_FLAG_PREFIXES.contains(&"--progress-file"),
+            "DENIED_FLAG_PREFIXES 必须显式包含 --progress-file"
+        );
+    }
+
+    #[test]
+    fn run_cli_allowlist_is_not_accidentally_denied() {
+        // 拒绝判据用前缀匹配，必须确认没有误伤任何白名单标志。
+        const ALLOWED: &[&str] = &[
+            "--management", "--version", "--list-endpoints", "--skill-usage",
+            "--merge-advice", "--skill-insight", "--merge-skills", "--delete-skill",
+            "--market", "--market-install", "--market-upgrade",
+        ];
+        for a in ALLOWED {
+            assert!(!is_denied_flag(a), "白名单标志 {a} 被误判为拒绝项");
+        }
+    }
 
     #[test]
     fn cli_candidates_are_non_empty_and_start_with_path_name() {
@@ -504,6 +611,23 @@ mod tests {
         assert!(open_url("file:///etc/passwd".to_string()).is_err());
         assert!(open_url("javascript:alert(1)".to_string()).is_err());
         assert!(open_url("data:text/html,bad".to_string()).is_err());
+    }
+
+    // S4 回归：换行与控制字符同样必须被拒（cmd.exe 把换行当命令分隔符）。
+    #[test]
+    fn open_url_rejects_control_chars_and_percent() {
+        for bad in [
+            "https://x.com/a\ncalc.exe",
+            "https://x.com/a\r\ncalc.exe",
+            "https://x.com/%PATH%",
+            "https://x.com/a!b",
+            "https://x.com/a\tb",
+        ] {
+            assert!(
+                open_url(bad.to_string()).is_err(),
+                "应拒绝含控制字符或 %/! 的 URL: {bad:?}"
+            );
+        }
     }
 
     #[test]

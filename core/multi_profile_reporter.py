@@ -155,12 +155,13 @@ def _annotate_states(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     annotated: List[Dict[str, Any]] = []
     for result in results:
-        probe = result.get("probe", {})
+        # 不再取 probe：颜色判定只看配置，探活派生字段不参与（见
+        # dashboard_states 模块文档）。保留该变量会让 ruff 报 F841。
         copy = dict(result)
         records = []
         for record in result.get("records", []) or []:
             annotated_record = dict(record)
-            annotated_record["state"] = classify_record(record, probe)
+            annotated_record["state"] = classify_record(record)
             records.append(annotated_record)
         copy["records"] = records
         annotated.append(copy)

@@ -150,12 +150,6 @@ def disable_skill(tool: Dict[str, Any], skill: str, unified_dir: str, *, dry_run
     if dry_run:
         return _result(name, skills_dir, "dry-run", f"would disable {skill} by removing its symlink")
 
-    previous_target = None
-    if os.path.islink(link_path):
-        try:
-            previous_target = os.readlink(link_path)
-        except OSError:
-            previous_target = None
 
     if not os.path.lexists(link_path):
         return _result(name, skills_dir, "unchanged", "no symlink to remove")

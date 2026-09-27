@@ -98,27 +98,32 @@ def fix_unified_dir(config_path: Optional[str] = None) -> Dict[str, Any]:
     config_path = os.path.normpath(config_path)
 
     try:
-        with open(config_path, "r", encoding="utf-8") as f:
-            config = yaml.safe_load(f)
+        # 读 trunk 只为拿到「旧值」用于汇报 —— **本函数不再改写它**。
+        old_dir = ""
+        if os.path.isfile(config_path):
+            with open(config_path, "r", encoding="utf-8") as f:
+                old_dir = (yaml.safe_load(f) or {}).get("unified_skills_dir", "")
 
-        old_dir = config.get("unified_skills_dir", "")
-        config["unified_skills_dir"] = "~/.skills-manager/skills"
+        # 值写进 gitignored overlay 才是正确路径 —— config_store.set_unified_dir
+        # 的 docstring 明写「Never edits the version-controlled trunk config.yaml」。
+        # 此前这里用 yaml.dump 整文件回写 config.yaml：既把个人机器路径写进
+        # 版本受控文件，又因 yaml.dump 丢掉全部注释与键序。
+        from config_store import set_unified_dir
 
-        # 备份原配置文件
-        import shutil
-        import time
-        backup_path = f"{config_path}.bak.{time.strftime('%Y%m%d_%H%M%S')}"
-        shutil.copy2(config_path, backup_path)
+        outcome = set_unified_dir("~/.skills-manager/skills", config_path=config_path)
+        if outcome.get("status") == "error":
+            return {"fixed": False, "message": f"❌ 修复失败: {outcome.get('message', '')}"}
 
-        with open(config_path, "w", encoding="utf-8") as f:
-            yaml.dump(config, f, allow_unicode=True, default_flow_style=False)
-
+        target = outcome.get("path", "")
         return {
             "fixed": True,
             "old_dir": old_dir,
             "new_dir": "~/.skills-manager/skills",
-            "backup_path": backup_path,
-            "message": f"✅ 已修复: {old_dir} → ~/.skills-manager/skills\n   备份: {backup_path}",
+            "overlay_path": target,
+            "message": (
+                f"✅ 已修复: {old_dir} → ~/.skills-manager/skills\n"
+                f"   写入 overlay: {target}（trunk config.yaml 未被改动）"
+            ),
         }
     except Exception as e:
         return {
@@ -202,7 +207,25 @@ def git_pull_if_needed(path: str, auto: bool = False) -> Dict[str, Any]:
             cwd=path, capture_output=True, text=True, timeout=60
         )
 
-        if fetch_result.stdout.strip() or fetch_result.stderr.strip():
+        if fetch_result.returncode != 0:
+            # fetch 失败（离线 / 无凭据 / 远端不可达）时**无法判断**是否有更新，
+            # 不能沿用「stderr 非空即有更新」—— 那会把错误信息读成「有更新」。
+            lines = (fetch_result.stderr or fetch_result.stdout or "").strip().splitlines()
+            result["message"] = (
+                f"git fetch 失败（退出码 {fetch_result.returncode}），无法判断是否有更新"
+                + (f"：{lines[0]}" if lines else "")
+            )
+            result["fetch_failed"] = True
+            return result
+
+        # `git fetch --dry-run` 把「将会更新哪些 ref」写到 stderr
+        # （形如 `abc1234..def5678  main -> origin/main`），已是最新时为空。
+        # 但 warning、凭据提示同样走 stderr，所以只认形如 ref 更新的行。
+        update_lines = [
+            ln for ln in (fetch_result.stderr or "").splitlines()
+            if " -> " in ln or "[new branch]" in ln or "[new tag]" in ln or "[new ref]" in ln
+        ]
+        if update_lines or fetch_result.stdout.strip():
             result["has_updates"] = True
 
             if auto:
@@ -257,7 +280,7 @@ def git_status(path: str) -> Dict[str, Any]:
     Returns:
         dict: {
             "has_changes": bool,
-            "is_clean": bool,
+            "is_clean": bool | None,  # None = 检查失败/不可知，绝非「干净」
             "untracked": list,
             "modified": list,
             "staged": list,
@@ -275,36 +298,36 @@ def git_status(path: str) -> Dict[str, Any]:
         return result
 
     try:
-        # 未暂存的变更
-        modified = subprocess.run(
-            ["git", "diff", "--name-only"],
-            cwd=path, capture_output=True, text=True, timeout=30
+        probes = (
+            ("modified", ["git", "diff", "--name-only"]),
+            ("untracked", ["git", "ls-files", "--others", "--exclude-standard"]),
+            ("staged", ["git", "diff", "--cached", "--name-only"]),
         )
-        if modified.stdout.strip():
-            result["modified"] = modified.stdout.strip().split("\n")
-            result["has_changes"] = True
-
-        # 未跟踪的文件
-        untracked = subprocess.run(
-            ["git", "ls-files", "--others", "--exclude-standard"],
-            cwd=path, capture_output=True, text=True, timeout=30
-        )
-        if untracked.stdout.strip():
-            result["untracked"] = untracked.stdout.strip().split("\n")
-            result["has_changes"] = True
-
-        # 已暂存
-        staged = subprocess.run(
-            ["git", "diff", "--cached", "--name-only"],
-            cwd=path, capture_output=True, text=True, timeout=30
-        )
-        if staged.stdout.strip():
-            result["staged"] = staged.stdout.strip().split("\n")
-            result["has_changes"] = True
+        for key, argv in probes:
+            proc = subprocess.run(argv, cwd=path, capture_output=True, text=True, timeout=30)
+            if proc.returncode != 0:
+                # subprocess.run 不带 check=True，所以「git 报错」在这里**不抛异常**。
+                # 此前非 0 直接被忽略，is_clean 照样是 True —— 与 except: pass 同一个
+                # 后果：把「查不了」报告成「没问题」。必须显式识别。
+                lines = (proc.stderr or proc.stdout or "").strip().splitlines()
+                result["is_clean"] = None
+                result["error"] = (
+                    f"{' '.join(argv)} 退出码 {proc.returncode}: "
+                    f"{lines[0] if lines else '(无输出)'}"
+                )
+                return result
+            if proc.stdout.strip():
+                result[key] = proc.stdout.strip().split("\n")
+                result["has_changes"] = True
 
         result["is_clean"] = not result["has_changes"]
 
-    except Exception:
-        pass
+    except Exception as exc:
+        # 「检查失败」绝不能被当成「工作区干净」—— 这是安全结论反向。
+        # git 不存在、超时、仓库损坏都会走到这里；此前 `pass` 让函数按初始默认值
+        # 返回 is_clean=True，于是对外报告「没有未提交变更」，而实际上根本没查成。
+        # 现在置 None（未知）并记录 error，调用方无法把「查不了」误读为「没问题」。
+        result["is_clean"] = None
+        result["error"] = f"{type(exc).__name__}: {exc}"
 
     return result

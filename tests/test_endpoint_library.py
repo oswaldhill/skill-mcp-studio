@@ -17,7 +17,6 @@ from endpoint_library import (  # noqa: E402
 from profile_loader import ProfileError  # noqa: E402
 from mcp_inventory import (  # noqa: E402
     classify_entries,
-    list_client_mcp_entries,
     McpEntry,
 )
 

@@ -20,6 +20,29 @@ import json
 import argparse
 from typing import Any, Dict, List
 
+_MIN_PYTHON = (3, 11)
+
+
+def _require_python() -> None:
+    """在导入任何 core 模块之前做解释器版本守卫。
+
+    低版本会以「与代码无关」的方式失败（缺语法特性、缺标准库 API），排查成本很高。
+    这里提前退出，并给出可直接照做的提示。
+    """
+    if sys.version_info >= _MIN_PYTHON:
+        return
+    want = ".".join(str(n) for n in _MIN_PYTHON)
+    have = ".".join(str(n) for n in sys.version_info[:3])
+    print(f"✗ 需要 Python >= {want}，当前是 {have}（{sys.executable}）", file=sys.stderr)
+    print('  本项目声明 requires-python = ">=3.11"（见 pyproject.toml）。', file=sys.stderr)
+    print("  若已用 Homebrew 安装 3.11，可显式指定解释器：", file=sys.stderr)
+    print("    /opt/homebrew/opt/python@3.11/bin/python3.11 scan.py ...", file=sys.stderr)
+    print("  或直接运行一键脚本（会自动挑选解释器）：scripts/ci_parity.sh", file=sys.stderr)
+    raise SystemExit(2)
+
+
+_require_python()
+
 # 添加 core/ 到 sys.path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "core"))
 
@@ -31,7 +54,6 @@ from git_sync import (
     validate_unified_dir,
     fix_unified_dir,
     git_pull_if_needed,
-    git_status,
     is_git_repo,
 )
 from change_tracker import (
@@ -44,23 +66,18 @@ from skills_analyser import (
     format_analysis_report,
 )
 from workspace_cleaner import (
-    check_workspace_cleanliness,
-    clean_temp_files,
-    format_cleanliness_report,
     ensure_workspace_clean,
     format_clean_result,
 )
 from version_checker import (
     check_all_versions,
     format_version_report,
-    format_version_report_markdown,
 )
 from cli_modes import resolve_modes
 from combined_checker import check_agents, format_combined_report, result_ok
 from frontmatter_audit import (
     audit_skill_frontmatter,
     format_frontmatter_report,
-    format_frontmatter_markdown,
 )
 from mcp_fixer import fix_mcp_clients, remove_legacy_mcp_clients
 from profile_loader import list_profiles, load_profile
@@ -325,19 +342,64 @@ def _run_list_mcp_inventory(args, config, config_path) -> int:
 
 
 def _run_management(args, config, config_path) -> int:
-    """输出三栏管理台管理快照 JSON（stage-5 P5，只读）。"""
+    """输出三栏管理台管理快照 JSON（stage-5 P5，只读）。
+
+    **不探活**（v0.24.0 复审后修正）：管理台审计只回答「配置是否正确」。
+    端点连通性是运行时状态，属**独立的连通性检查**职责，见 ``--endpoint-status``。
+    这样刷新管理台不再为不可达端点等待超时，页面颜色也不再由端口通断决定。
+    """
     try:
         payload = build_management_snapshot(
             config,
             config_path=config_path,
-            live_probe=True,
+            live_probe=False,
             auto_discover=getattr(args, "discover", None),
+            # 「操作后只刷新该操作产生的内容」：--only 让本次只构建受影响的那一块，
+            # 不重跑整份审计。None/空 = 全量，行为与加此参数前完全一致。
+            only=getattr(args, "only", None),
         )
     except Exception as exc:
         print(json.dumps({"kind": "management", "error": str(exc)}, ensure_ascii=False))
         return 2
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
+
+
+def _run_endpoint_status(args, config, config_path) -> int:
+    """单独检查端点连通性（真探活）——**与配置审计完全无关**。
+
+    用户要求：审计只判配置是否正确，端口是否正常应单独检查。所以这条命令：
+
+    - 只做一件事：对已配置端点发起一次真探活，输出「端点状态」；
+    - **不参与**审计结论，也**不影响**审计退出码；
+    - 退出码只反映连通性：``failed`` → 1，``ok``/``not_run`` → 0，
+      便于脚本/CI 按需单独判定「端点是否活着」。
+
+    支持 ``--format json``（默认 table），``--profile`` 指定端点。
+    """
+    from mcp_endpoint_status import (
+        build_endpoint_status,
+        endpoint_exit_code,
+        status_lines,
+        status_summary,
+    )
+
+    try:
+        status = build_endpoint_status(config, endpoint_key=getattr(args, "profile", None))
+    except Exception as exc:
+        print(json.dumps(
+            {"kind": "endpoint-status", "error": str(exc)}, ensure_ascii=False,
+        ) if getattr(args, "format", None) == "json"
+            else f"端点状态检查失败: {exc}")
+        return 2
+
+    if getattr(args, "format", None) == "json":
+        print(json.dumps(status, ensure_ascii=False, indent=2))
+    else:
+        print(status_summary(status))
+        print()
+        print("\n".join(status_lines(status)))
+    return endpoint_exit_code(status)
 
 
 def _run_version(args, config, config_path) -> int:
@@ -818,7 +880,6 @@ def _stage4_client_skills_dirs(scan_result) -> Dict[str, List[str]]:
 
 def _run_list_skill_states(args, config, config_path) -> int:
     """Read-only: print the per-client skill enable/disable matrix (design §7)."""
-    unified = args.unified_dir or config.get("unified_skills_dir", "~/.skills")
     try:
         scan_result = run_scan(config_path=config_path, auto_discover=args.discover)
         bundle = load_profile(config, getattr(args, "profile", None), config_path=config_path)
@@ -1306,6 +1367,10 @@ def _run_skill_migrate(args, config, config_path) -> int:
 def build_parser() -> argparse.ArgumentParser:
     """Construct the full CLI argument parser (A-7: 从 main() 抽出，拆分 god-function)."""
     parser = argparse.ArgumentParser(
+        # 关闭前缀缩写：argparse 默认允许 `--prof` 这类简写，而它会被解析成
+        # `--profile` —— 一个被安全边界明令拒绝的重定向参数（Tauri 侧的
+        # run_cli 按「裸标志」比对，缩写形式可绕过）。两边一起关掉才成立。
+        allow_abbrev=False,
         description="Skill MCP Studio - IDE/Agent Skills 统一化与 Hermes MCP 接入管理工具",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
@@ -1403,6 +1468,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--mcp", action="store_true", help="检查单一 Hermes MCP 配置")
     parser.add_argument("--hooks", action="store_true", help="检查生命周期 hooks")
     parser.add_argument("--probe-mcp", action="store_true", help="执行 MCP initialize 和 tools/list")
+    parser.add_argument(
+        "--endpoint-status", action="store_true",
+        help="单独检查端点连通性（真探活；与配置审计无关，不影响审计退出码）",
+    )
     parser.add_argument("--fix-skills", action="store_true", help="修复 Skills 路径（兼容 --fix）")
     parser.add_argument("--fix-mcp", action="store_true", help="写入统一 Hermes MCP 配置（带备份）")
     parser.add_argument(
@@ -1554,6 +1623,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--management", action="store_true",
         help="输出三栏管理台管理快照 JSON（IDE/Skills/MCP 三面板；配合 --format json）",
+    )
+    parser.add_argument(
+        "--only", type=str, default=None, metavar="BLOCKS",
+        help="配合 --management：只构建指定块（逗号分隔：endpoints/mcp/agents/skills/"
+             "mainstream/settings），用于「操作后只刷新该操作影响的内容」，"
+             "不重跑整份审计；其中 endpoints 为纯配置读取，可完全跳过技能扫描",
     )
     parser.add_argument(
         "--version", action="store_true",
@@ -1818,6 +1893,10 @@ def main() -> int:
         return _run_restore_config_backup(args, config, config_path)
     if getattr(args, "management", False):
         return _run_management(args, config, config_path)
+    # 端点连通性独立出口：与审计并列而非包含在内。放在这里（早于通用快照路由）
+    # 以确保它拿到自己的 JSON/文本输出，不被后续「全量快照」分支截走。
+    if getattr(args, "endpoint_status", False):
+        return _run_endpoint_status(args, config, config_path)
     if getattr(args, "version", False):
         return _run_version(args, config, config_path)
     if getattr(args, "add_client", None):
@@ -1945,11 +2024,11 @@ def main() -> int:
                 git_sync_result = git_pull_if_needed(expanded_unified, auto=True)
                 print(f"\n  {git_sync_result['message']}")
                 if git_sync_result.get("changed_files"):
-                    print(f"\n  变更文件:")
+                    print("\n  变更文件:")
                     for line in git_sync_result["changed_files"][:10]:
                         print(f"    {line}")
             else:
-                print(f"  ⏭️ 非 git 仓库，跳过同步")
+                print("  ⏭️ 非 git 仓库，跳过同步")
         # 无 --sync 时不访问远端，也不修改 .git 元数据。
     except Exception as e:
         print(f"\n  ❌ Phase 2 异常: {e}")
@@ -2248,8 +2327,8 @@ def main() -> int:
 
             # 如果是一般模式（非交互），也给出提示
             if args.no_interactive and not clean_result.get("final_clean"):
-                print(f"\n  ⚠️ 非交互模式，部分不确定文件已跳过。")
-                print(f"  使用默认模式 (--clean) 可交互确认。")
+                print("\n  ⚠️ 非交互模式，部分不确定文件已跳过。")
+                print("  使用默认模式 (--clean) 可交互确认。")
         except Exception as e:
             print(f"\n  ❌ Phase 11 异常: {e}")
             internal_errors.append(f"Phase 11: {e}")

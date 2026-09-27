@@ -9,9 +9,10 @@
 import re
 import unittest
 from pathlib import Path
+from tests._gui_source import page_html as _gui_source_page_html
 
 ROOT = Path(__file__).resolve().parents[1]
-HTML = (ROOT / "gui" / "dashboard.html").read_text(encoding="utf-8")
+HTML = _gui_source_page_html()
 
 
 class TestModalLayer(unittest.TestCase):

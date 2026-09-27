@@ -1,8 +1,8 @@
 # Skill MCP Studio
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v0.23.0-blue" alt="version">
-  <img src="https://img.shields.io/badge/build-109-lightgrey" alt="build">
+  <img src="https://img.shields.io/badge/version-v0.24.0-blue" alt="version">
+  <img src="https://img.shields.io/badge/build-110-lightgrey" alt="build">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="license">
   <img src="https://img.shields.io/badge/python-%3E%3D3.11-3776AB" alt="python">
   <img src="https://img.shields.io/github/actions/workflow/status/oswaldhill/skill-mcp-studio/build-macos.yml?branch=master&label=CI%20(macOS)" alt="CI">
@@ -392,8 +392,11 @@ Tauri 壳在 `src-tauri/`（`cargo tauri build` 产出 `.app`），构建步骤�
 ## 开发
 
 ```bash
-# 单元测试
-python3 -m pytest tests/ -q
+# 单元测试（与 CI 完全一致；本项目统一用 unittest，不引入 pytest）
+python3 -m unittest discover -s tests -p 'test_*.py'
+
+# 或一键脚本：自动补齐解释器与 node 前置条件，并与 CI 基线对照
+scripts/ci_parity.sh
 
 # 桌面 App 构建（macOS，本机架构）
 cargo tauri build --target aarch64-apple-darwin
@@ -411,7 +414,7 @@ cargo tauri build --target universal-apple-darwin
 | --- | --- |
 | push / PR 到 `master` | 构建 universal `.app` + `.dmg`，上传为 workflow artifact |
 | 手动 `workflow_dispatch` | 同上 |
-| push `v*` tag（如 `v0.23.0`） | 构建并**自动创建 GitHub Release**，上传 `.dmg` 与 `.app.zip` |
+| push `v*` tag（如 `v0.24.0`） | 构建并**自动创建 GitHub Release**，上传 `.dmg` 与 `.app.zip` |
 
 产物为**通用二进制（universal）**，原生运行于 Intel 与 Apple Silicon，无需 Rosetta。
 

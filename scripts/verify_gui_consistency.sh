@@ -34,7 +34,7 @@ if [ "$SCAN_RC" -eq 2 ]; then
   echo "FAIL: CLI 运行/配置错误（exit 2），未产出有效快照" >&2
   exit 1
 elif [ "$SCAN_RC" -ne 0 ] && [ "$SCAN_RC" -ne 1 ]; then
-  echo "FAIL: CLI 异常退出（exit $SCAN_RC），未产出有效快照" >&2
+  echo "FAIL: CLI 异常退出（exit ${SCAN_RC}），未产出有效快照" >&2
   exit 1
 fi
 

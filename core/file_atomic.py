@@ -14,7 +14,6 @@ top level without re-introducing a cycle.
 import os
 import tempfile
 from datetime import datetime
-from typing import Optional
 
 
 def backup_path(path: str) -> str:

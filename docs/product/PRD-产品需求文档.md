@@ -226,7 +226,7 @@ skill-mcp-studio 是一台面向开发者的**管理型桌面应用**（Tauri 2 
 | **GUI / CLI 一致性** | `scripts/verify_gui_consistency.sh` gate 绿，GUI 审计结论 == CLI 审计结论 |
 | **只读默认** | 无参数 CLI 运行是只读；`--full` 绝不隐含 git/cleanup/fix |
 | **离线可用** | 字体自托管（IBM Plex Mono），无外部 CDN 依赖；中文字体用原生 PingFang SC |
-| **回归零破坏** | 单端点缺省路径输出与阶段一~四保持一致；`python3 -m pytest tests/ -q` 全绿 |
+| **回归零破坏** | 单端点缺省路径输出与阶段一~四保持一致；`scripts/ci_parity.sh`（等价于 CI 的 `python3 -m unittest discover -s tests -p 'test_*.py'`）全绿 |
 | **可访问性** | 对比度 ≥ 4.5:1（正文）、focus ring、reduced-motion、图标带语义 |
 
 ### 退出码语义

@@ -7,6 +7,160 @@
 
 ## [Unreleased]
 
+## [v0.24.0] - 2026-09-27
+
+当前发布版本（build 110）。
+
+### 变更
+
+- **审计只判配置，端口连通性独立检查**：审计的职责收敛为「**配置是否正确**」，
+  端点是否可达属运行时状态，改由**独立的连通性检查入口**负责。
+  - **引擎**：`classify_record(record)` 只看配置（`installed` / `skills_compliant` /
+    `mcp_configured` / `hooks` / `legacy_channels`），探活字段不再参与结论；
+    `result_ok()` 同样忽略 probe。
+  - **MCP 模块**：新增 `core/mcp_endpoint_status.py`，复用既有 `probe_mcp` 与
+    `classify_endpoint_probe`，**不另写一套探活**（避免两套实现各自漂移）。
+  - **CLI**：新增 `--endpoint-status`（默认 table；支持 `--format json`、`--profile`）。
+    退出码**只反映连通性**：`failed → 1`，`ok`/`not_run → 0`，与审计退出码完全无关。
+  - **GUI**：审计总览区**移除**「MCP 探活正常 x/y」卡片；新增独立的「端点状态」区，
+    **手动触发**检查，未检查用中性色（「没测过」既不是通过也不是故障）。
+  - **安全边界**：Tauri `run_cli` 白名单登记 `--endpoint-status` —— 漏登记会让前端
+    按钮直接撞安全边界，该缺口由 `tests/test_run_cli_boundary.py` 抓出。
+  - **实测**：`--endpoint-status --format json` → `exit=0`、`state: ok`、
+    `initialize_ok: true`、`tools_list_ok: true`、`tool_count: 16`、`elapsed_ms: 64`。
+    审计刷新由 28.3s 降至 12.56s；配置合法但不可达的端点不再让审计显示异常。
+  - **取舍（须知）**：端点故障**不再出现在审计结论里** —— 配置完全合规但所有端点
+    都不通的客户端，审计仍为绿色。若要用它做 CI 门禁，需**另外**跑
+    `--endpoint-status` 并看它自己的退出码。
+
+- **操作后只刷新该操作产生的内容，不重跑整份审计**：此前 GUI 里 13 处写操作成功后
+  一律重跑 `--management` 全量快照（实测 **8.02s**、快照约 556KB，其中 skills 215KB +
+  mcp 211KB）—— 最刺眼的是**改一个端点的 URL 会连带重扫整棵技能树**。
+  - **后端**：`--management` 新增 `--only <blocks>`（`endpoints`/`mcp`/`agents`/
+    `skills`/`mainstream`/`settings`；不传 = 全量，行为与改造前逐字段一致）。
+    复用**同一份组装逻辑**按块裁剪，故局部快照与全量快照天然同构。
+  - **依赖事实**：`agents`/`skills`/`mainstream`/`mcp`/`settings` 的数据来源都是
+    `run_scan()`，**跳不掉扫描**；只有 `endpoints`（`endpoint_entries(config)`）
+    是纯配置读取，可完全跳过 —— 实测 **8.02s → 0.26s**（约 31 倍）。
+  - **前端**：新增 `refreshBlocks()` + `BLOCK_RENDERERS`（只重渲染受影响面板）
+    与 `mergePatch()` **深合并**。深合并是必须的：`--only endpoints` 只返回
+    `mcp.endpoints`，整块覆盖 `SNAP.mcp` 会把未请求的 `endpoint_status`/`clients`
+    一起抹掉，面板会突然空掉。
+  - **13 处映射**：端点三处 → `["endpoints"]`；客户端/统一目录 →
+    `["agents","mainstream"]`；技能启停 → `["skills","agents"]`；
+    合并 → `["agents","mainstream","skills"]`。保留全量的只有启动加载、
+    命令面板「刷新快照」、「重新扫描」按钮（用户显式要重扫全部）。
+  - **护栏**：新增 `tests/test_partial_refresh.py`（10 用例）双向锁死该契约，
+    其中 **monkeypatch 计数断言「只取 endpoints 不得触发 `run_scan`」** ——
+    保证「快」不是偶然。
+
+- **版本号 0.23.0 → 0.24.0（build 109 → 110）**：按语义化版本以 `minor` 递增，
+  由 `scripts/bump_version.py --bump minor` 同步 `version.json`、`pyproject.toml`、
+  `src-tauri/Cargo.toml`、`src-tauri/Cargo.lock`、`src-tauri/tauri.conf.json`
+  与文档/预览层版本引用（单源真相仍是 `version.json`）。
+
+
+### 变更
+
+- **引入 ruff 静态检查（P1-11，可审计终态）**：`pyproject.toml` 新增 `[tool.ruff]`，
+  并新增 CI job `lint-ruff`（`ruff==0.16.9` 固定版本；ruff 的诊断集合随版本变化，
+  不锁版本会让门禁时红时绿）。规则集分阶段开启，现已达 **`ignore` 仅剩 `E402`**：
+  - `F401` 已启用：清理 53 处并逐处判定（多数是 `from typing import ...` 的多余名字）；
+    清前先反查「被外部引用」的名字（`patch("mod.name")` 字符串锚点与跨模块 `mod.name`
+    访问是 ruff 看不到的），实测 53 处无一被引用 —— 因为 P2-16 拆分时已把再导出写成
+    `import X as X`，而带冗余别名的导入本就不被 `F401` 标记，两件事正好互补。
+  - `F811` 两处**性质相反**，不可一把 `--fix`：`config_store.py:88` 是与顶层重复的
+    `import re`（真冗余，删除）；`tool_registry.py:402` 是**刻意的惰性导入**
+    （避免顶层互 import 成环 + 保证 `patch("config_store.load_discovered")` 生效），
+    加 `# noqa: F811` 保留并注明原因。
+  - 首批另修 20 处：13 处自动修（`F541`/`E401`/`F841`）、6 处死赋值、`E741` 改名。
+  - **经量化论证不采用**：`I001`（76 处中 45 处落在含 `sys.path` 引导的文件 ——
+    33 个测试文件 + `scan.py`，自动重排会在 `sys.path` 未设置时执行 import，
+    **结构上不可行**）、`ruff format`（114/135 文件需重排、单文件可达 243 行；
+    纯排版变更会淹没本仓库的有语义改动，**收益不匹配成本**）。二者理由不同，
+    均已写入清单「附二」待确认。
+- **修复 `core/workspace_cleaner.py` 丢失的 `import shutil`**：由上述 ruff 的 `F821`
+  （未定义名）抓出 —— P2-16 拆分该模块时 `import shutil` 被整个丢失，三处
+  `shutil.rmtree`（目录型临时目标的删除路径）抛 `NameError` 并被 `except` 吞掉，
+  表现为「清理失败」而非崩溃，**943 个用例全绿却无人发现**。已修复并反向验证
+  （修复前目录删不掉，修复后真正删除）。
+
+- **新增脚本卫生自检（P2-18）**：`scripts/ci_parity.sh` 与 CI 的 `text-hygiene` job
+  各新增两条断言 ——（1）`scripts/*.sh` 的 git mode 必须为 `100755`；
+  （2）不得出现「`$var` 紧跟全角标点」（须写 `${var}`）。
+  两条都对应**会伪装成测试失败**的缺陷：可执行位丢失时 bash 直接执行仍正常、
+  但 Python subprocess 调用会 `PermissionError`，表现为 `exit != 0` 且日志无
+  `Ran N tests`；`$var` 紧跟全角标点则在部分 locale 下直接 `unbound variable` 中止脚本。
+  自检落地后立即抓出此前未发现的 4 处真实缺陷（`release.sh` 2 处、
+  `verify_gui_consistency.sh` 变量写法 1 处 + git mode 1 处），均已修正。
+
+- **`core/mcp_fixer.py` 拆分为 渲染/写安全链 两模块**（P2-16 第四刀）：900 行按「纯渲染」与
+  「写安全链 + 编排」分界拆为 `mcp_fixer_render.py`（558 行，29 个纯渲染/纯文本函数）与
+  `mcp_fixer.py`（400 行，validate/写安全链/编排 + 逐名再导出）。归属依据是 AST 实测：
+  全模块真正落盘的只有 `fix_mcp_tool` 与 `remove_mcp_entries_tool`，其余命中的「写盘调用」
+  是 `str.replace` 与 `yaml.safe_dump`（生成文本、不落盘）。三处约束保持不动：`os`
+  （`patch("mcp_fixer.os.replace")` 依赖）、`_validate_written_config`（同文件有 patch）、
+  以及 9 个外部导入名。验收：公开名 67 → 67，943 用例全绿。
+
+- **`core/workspace_cleaner.py` 拆分为 只读/写 两模块**（P2-16 第二刀）：698 行按
+  「只读检查」与「写操作」分界拆为 `workspace_cleaner_read.py`（322 行：分类谓词、
+  `check_workspace_cleanliness`、`scan_temp_files`、`classify_untracked`、两个格式化函数）
+  与 `workspace_cleaner.py`（387 行：`_ask_user` 与 4 个写操作）。`_ask_user` 归写侧是
+  查出来的（仅被写侧两处调用）。写侧以 `from workspace_cleaner_read import X as X`
+  逐个再导出 9 个只读名字 —— 因为 `tests/test_highrisk_modules.py` 与 `scan.py`
+  通过本模块访问它们（含私有谓词 `_is_temp_file` / `_is_suspicious_file`）。
+  验收：公开名字集合 20 → 20（缺失 0、多出 0），`TEMP_PATTERNS` 仍 14 项，943 用例全绿。
+
+- **文本卫生检查把「末尾缺少换行」纳入 CI 门禁**（评审清单 P2-17 的验收标准后半句）：
+  存量文件已一次性补齐，CI 的 `text-hygiene` 步骤因此从「只查 BOM/CRLF」扩到
+  「BOM / CRLF / 末尾换行」三项，此后新增文件若缺末尾换行会被直接拦下。
+  实测本地等价跑：检查 202 个文本文件，全部合规。
+
+### 修复
+
+- **测试运行时的裸噪音**（评审清单 P2-15）：`tests/test_exit_codes.py` 的 4 个负例
+  直接调 `scan` 内部函数，其 `print` 的错误文案直通终端（实测全量跑里 **stdout 4 行**、
+  stderr 0 行），在 unittest 汇总中极易被误读成「有失败」。新增 `_captured_output()`
+  上下文管理器把输出收进断言，并把文案本身纳入校验（`--all-profiles 与 --profile
+  互斥`、`扫描失败: boom`、`profile 'bad' 加载失败` + 底层原因等）—— 既消音，也把此前
+  从未验证过的输出变成回归保护。全量跑噪音 **4 → 0 行**。
+
+- **90 个被跟踪文本文件末尾缺少换行**（评审清单 P2-17）：仓库内近半数文本文件
+  （`tests/*.py` 40 个、`core/*.py` 21 个，以及 `docs/**`、`src-tauri/**`、
+  `gui/dashboard.html`、`SECURITY.md`、`setup.py` 等）末尾无换行符。作为独立批次
+  一次性补齐（每个文件恰好只多一个换行，diff 为 90 增 90 删），避免与其它改动混在
+  一起淹没真实差异。清单原记 96 个，其中 6 个已在此前几轮归一化时顺手修掉。
+
+- **「怎么跑测试」三处说法不一**（评审清单 P1-8 + P1-10，方案 B）：`pyproject.toml`
+  曾声明 `[test]` 依赖组（pytest / coverage）与完整的 pytest、coverage 配置，但 CI
+  从不安装它们、也从不产出覆盖率数据；README 与产品 PRD 还写着 `python3 -m pytest`
+  并建议写死 `/usr/local/bin/python3`（Apple Silicon 上该路径根本不存在，前缀是
+  `/opt/homebrew`）。现已**全项目统一为标准库 unittest**：删除 `pyproject.toml` 的
+  `[test]` 组与全部 pytest/coverage 配置并就地注明理由；README 与 PRD 改指
+  `scripts/ci_parity.sh` / `python3 -m unittest discover -s tests -p 'test_*.py'`；
+  两份历史 plan 存档加时效性横幅（保留原文不改写，避免篡改已执行计划的记录），
+  并把那句误导性的解释器建议改为「交给 `ci_parity.sh` 自动挑选，不要写死绝对路径」。
+
+- **技能库根路径在 `import` 时被定死**（评审清单 P0-4，「改了要重启」类问题的共同
+  根源）：`skill_market` / `skill_merge_advisor` / `skill_market_ops` 三处
+  `_SKILLS_DIR = Path.home() / ...` 模块级常量在 import 期求值并缓存，运行期无法
+  改变 —— 「技能市场源只在首次打开时探测、环境变化后刷不掉」与「用例读死开发机
+  技能库」都是这一族的症状。新增 `core/paths.py` 提供访问器
+  （`home_root()` / `skills_dir()` / `agents_dir()` / `default_lock_path()`），
+  **每次调用重新解析、不缓存**；优先级为「显式注入 > 环境变量
+  `SKILL_MCP_STUDIO_HOME` > 真实 home」，并提供 `override()` 上下文管理器供测试
+  临时切换。四个消费点全部改为跟随访问器。附 `tests/test_paths.py` 锁定验收标准
+  （不重启进程即可切根），并已反向验证：退回模块级常量语义即 4 个用例失败。
+
+- **`probe_stdio` 的 stderr 管道从未排空**（评审清单 P0-5，`test_stdio_probe` 那次
+  「偶发、复跑不复现」超时的根因）：`stderr=subprocess.PIPE` 打开后整个握手期间无人
+  读取，子进程一旦向 stderr 写满管道缓冲（POSIX 通常 64 KiB）就阻塞在 `write` 上，
+  不再读 stdin、不回握手，外部只能看到一句 `stdio handshake timed out`。新增
+  `_StderrDrain` 守护线程按块排空 stderr（只保留末尾 2000 字符），失败时把 stderr
+  尾部附到错误信息使超时可归因；`Popen` 增加 `errors="replace"`，避免解码失败让排空
+  线程提前退出。附两个回归用例，并已反向验证：去掉排空即稳定失败。
+  （实测：200 KiB 无换行 stderr → 修复前 8.01s 超时，修复后 0.07s 通过。）
+
 ## [v0.23.0] - 2026-09
 
 当前发布版本（build 109）。
@@ -653,7 +807,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.23.0...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.24.0...HEAD
+[v0.24.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.24.0
 [v0.23.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.23.0
 [v0.22.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.22.0
 [v0.21.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.21.1

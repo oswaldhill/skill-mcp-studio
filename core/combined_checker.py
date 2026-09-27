@@ -168,21 +168,29 @@ def check_agents(
         expected = load_profile(config, endpoint_key)["profile"]
     expected_name = expected.get("name", "hermes")
     expected_url = expected.get("url", "")
-    legacy_names = expected.get("legacy_names", [])
+    # None 安全化：`dict.get(key, default)` 只在**键不存在**时才用 default；
+    # 键存在但值为 null（YAML 里写 `probe_timeout:` / `probe_retries:` 留空）会得到
+    # None 并被原样传下去，后果比报错更糟：
+    #   - timeout=None → urllib 视为「无超时」，探活会**永久挂死**；
+    #   - retries=None → mcp_probe 内 `int(None)` 抛 TypeError，被快照的 except
+    #     吞成一个误导性错误，真实探活结论丢失。
+    # 因此把「显式为 null」与「未设置」一律当作未设置，用文档化默认值。
+    _raw_timeout = expected.get("probe_timeout")
+    _raw_retries = expected.get("probe_retries")
     probe = probe_mcp(
         expected_url,
         transport=expected.get("transport", "streamable-http"),
         command=expected.get("command"),
         args=expected.get("args"),
         env=expected.get("env"),
-        timeout=expected.get("probe_timeout", 8.0),
+        timeout=8.0 if _raw_timeout is None else _raw_timeout,
         token=expected.get("auth_token"),
         token_env=expected.get("auth_token_env"),
         url_policy=expected.get("url_policy", "strict"),
         # 默认重试 1 次：远程网关偶发单次超时（如 k8s.carobo.cn 正常约 0.4s 但会抖动）
         # 不应被当成端点故障，否则总览会把「实际正常的 MCP」显示成「探活不正常」。
         # profile 可用 probe_retries 覆盖（0 = 关闭重试）。
-        retries=expected.get("probe_retries", 1),
+        retries=1 if _raw_retries is None else _raw_retries,
     ) if live_probe else {
         "initialize_ok": False, "tools_list_ok": False, "tool_names": [], "error": "not probed"
     }
@@ -251,7 +259,8 @@ def check_agents(
         }
         # U-2: 把单一 rule set（dashboard_states.classify_record）的合规总态
         # green/yellow/red/gray 直接落到每条 record，GUI 与 CLI 消费同一 state。
-        record["state"] = classify_record(record, probe)
+        # 只传 record：该判定**只看配置**，探活派生字段不参与（见模块文档）。
+        record["state"] = classify_record(record)
         records.append(record)
     unmanaged = _unmanaged_installed_clients(
         registry,
@@ -283,28 +292,24 @@ def check_agents(
 
 
 def result_ok(result: Dict[str, Any], *, strict_skill_state: bool = False) -> bool:
-    """Phase-2 exit-code judgment: is a ``check_agents`` result fully compliant?
+    """退出码判定：**只看配置**，不看探活（连通性）。
 
-    Non-compliant (``False``) when a live probe fails, any installed client
-    fails a required config field (skills / MCP configure / hooks), any
-    capability group is unmet (only meaningful when the probe ran), any legacy
-    channel remains, or any unmanaged installed client is present.
+    v0.24.0 复审后修正（用户明确要求）：审计的职责是「配置是否正确」，
+    端点可达性属于**运行时状态**，不该影响审计退出码。因此这里不再看
+    ``probe`` / ``mcp_initialize_ok`` / ``mcp_tools_list_ok`` / ``capabilities``。
 
-    A-2 (probe tri-state): probe-derived fields (``mcp_initialize_ok``,
-    ``mcp_tools_list_ok``, ``capabilities``) are only enforced when the live
-    probe actually ran.  A config-only run (``live_probe=False`` → probe.error
-    == ``"not probed"``) reports those fields as ``False``/empty but is still
-    compliant, so ``python3 scan.py`` can reach exit 0.  Only ``probed_failed``
-    (a probe that ran and errored) is a hard failure.
+    下列情形判为非合规（``False``）：
+
+    - 任一已安装客户端缺必需配置项（skills / MCP 配置 / hooks）；
+    - 任一已安装客户端仍留有遗留通道；
+    - 存在 unmanaged（未纳管却已安装）客户端。
+
+    端点连通性由**独立的连通性检查入口**手动触发，其结果不参与本判定。
 
     Stage-4 (design §4.4): by default the L5 skill state is NOT part of this
     judgment. ``strict_skill_state=True`` (CLI ``--strict-skill-state``)
     additionally requires cross-client skill-state consistency.
     """
-    probe_error = (result.get("probe") or {}).get("error", "")
-    if probe_error and probe_error != "not probed":
-        return False
-    not_probed = probe_error == "not probed"
     for record in result.get("records", []) or []:
         if not record.get("installed"):
             continue
@@ -316,14 +321,6 @@ def result_ok(result: Dict[str, Any], *, strict_skill_state: bool = False) -> bo
             return False
         if record.get("legacy_channels"):
             return False
-        # A-2: live-probe-derived fields gate only when the probe actually ran;
-        # "not probed" is a measurement gap, not a failure.
-        if not not_probed:
-            if not record.get("mcp_initialize_ok") or not record.get("mcp_tools_list_ok"):
-                return False
-            capabilities = record.get("capabilities", {}) or {}
-            if not all(capabilities.values()):
-                return False
     if result.get("unmanaged"):
         return False
     if strict_skill_state:

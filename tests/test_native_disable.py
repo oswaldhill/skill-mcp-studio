@@ -11,7 +11,6 @@ truth still governs.
 """
 
 import json
-import os
 import sys
 import tempfile
 import unittest

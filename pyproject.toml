@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "skill-mcp-studio"
-version = "0.23.0"
+version = "0.24.0"
 description = "Local multi-client Skill/MCP compliance audit & repair tool"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -14,30 +14,46 @@ dependencies = [
     "certifi>=2024.2.2",
 ]
 
-[project.optional-dependencies]
-# T-5: 测试与覆盖率依赖独立成组，CI 用 `pip install -e .[test]` 一次性装齐。
-test = [
-    "pytest>=8.0",
-    "coverage>=7.0",
-]
+# 测试一律使用标准库 unittest（见 CONTRIBUTING「运行测试」）。
+# 这里刻意**不**声明 pytest / coverage 的依赖与配置：曾经声明过，但 CI 从不安装
+# 它们、也从不产出覆盖率数据，导致「该装什么」在 README / CONTRIBUTING /
+# pyproject 三者之间说法不一（评审 P1-10，方案 B：全项目统一 unittest）。
+# 跑测试请用：
+#   scripts/ci_parity.sh
+#   python3 -m unittest discover -s tests -p 'test_*.py'
 
 [project.scripts]
 skill-mcp-studio = "scan:main"
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py"]
-addopts = "-ra"
+# ---------------------------------------------------------------------------
+# Ruff（评审清单 P1-11）
+#
+# 本项目的 lint 门禁刻意**分阶段**开启，而不是一次性打开全部规则 —— 因为其中两条
+# 会改变代码行为，必须先做完准备再开（详见下）：
+#
+#   * F401（未使用导入）：本项目 core/ 是扁平模块目录，大量导入是**有意的再导出**
+#     （供 `patch("mod.name")` 或外部 `import mod` 使用）。直接 `--fix` 会删掉它们，
+#     实测会破坏 5 个用例。开启前需先补 `import X as X` / `__all__`。
+#   * I001（导入排序）：测试与 scan.py 依赖「先 sys.path 引导、再 import」的顺序，
+#     自动重排会打乱引导逻辑（E402 同理）。
+#
+# 因此当前只启用「正确性与低风险」规则；F401 / I001 待上述准备完成后另行开启。
+# 注：F821（未定义名）就属于本集合，且已实际抓出一个真实缺陷 ——
+#     core/workspace_cleaner.py 拆分时丢失 `import shutil`，三个 shutil.rmtree
+#     路径抛 NameError 并被 except 吞掉，943 个用例全绿却无人发现。
+# ---------------------------------------------------------------------------
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = ["build", "dist", "gui", ".git"]
 
-[tool.coverage.run]
-source = ["core", "scan"]
-branch = true
-omit = ["tests/*"]
-
-[tool.coverage.report]
-# 覆盖率不必为 100% 的样板/平台差异行，避免虚假红色门禁。
-exclude_lines = [
-    "pragma: no cover",
-    "if __name__ == .__main__.:",
-    "raise NotImplementedError",
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+ignore = [
+    "E402",  # sys.path 引导后才 import，是本项目扁平模块布局的既定写法
 ]
+# F401（未使用导入）已启用 —— 见下方「F401 的启用过程」说明。
+
+[tool.ruff.lint.per-file-ignores]
+# 测试里的「赋值后未使用」多为构造夹具的中间变量，保留可读性。
+"tests/*" = ["F841"]

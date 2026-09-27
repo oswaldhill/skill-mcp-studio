@@ -437,8 +437,8 @@ class ReadOnlyGuardTest(unittest.TestCase):
 
     def test_module_source_has_no_writes(self):
         src = (ROOT / "core" / "skill_merge_advisor.py").read_text(encoding="utf-8")
-        code = "\n".join(l for l in src.splitlines()
-                         if not l.strip().startswith("#"))
+        code = "\n".join(ln for ln in src.splitlines()
+                         if not ln.strip().startswith("#"))
         for token in ("write_text", "open(", "shutil", "os.remove", "os.rename",
                       "mkdir", "unlink", "subprocess"):
             self.assertNotIn(token, code, f"只读出口出现写操作/外部调用片段 {token}")

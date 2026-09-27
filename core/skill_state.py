@@ -30,7 +30,20 @@ from skills_analyser import scan_skills_distribution
 
 
 @lru_cache(maxsize=None)
+def invalidate_repo_skill_names() -> None:
+    """清空 ``repo_skill_names`` 的进程内缓存。
+
+    技能增删/改名/迁移之后必须调用它 —— 否则同一进程内的后续调用会拿到陈旧清单，
+    而该清单是 skill_toggle 存在性校验、技能矩阵与迁移校验的共同输入。
+    """
+    repo_skill_names.cache_clear()
+
+
 def repo_skill_names(unified_dir: str) -> List[str]:
+    # 注意：本函数带 lru_cache 且**全仓没有任何调用点会 cache_clear**，而它的返回值
+    # 是多个门禁的输入（skill_toggle 的存在性校验、技能矩阵、迁移校验）。同一进程内
+    # 「先枚举 → 再增删技能」会拿到陈旧清单：新技能被 not_in_repo 挡下、已删技能仍在矩阵。
+    # 连续的写操作请调用 repo_skill_names.cache_clear()（见 invalidate_repo_skill_names）。
     """Return the sorted, non-dot skill directory names under the shared repo.
 
     The inventory is sourced from ``skills_analyser.scan_skills_distribution``

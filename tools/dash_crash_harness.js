@@ -3,17 +3,37 @@
 // 动机：node --check 只查语法，不查引用。FEAT-10 的 MARKET_DATA 就是语法全过、
 // 运行期抛错，导致委托之后的所有按钮集体失效。
 const fs = require("fs");
+const path = require("path");
 const vm = require("vm");
-const html = fs.readFileSync(process.argv[2], "utf8");
+const pagePath = process.argv[2];
+const html = fs.readFileSync(pagePath, "utf8");
 const out = [];
 function log(s) { out.push(s); }
 
-const a = html.indexOf("<script>") + "<script>".length;
-const b = html.indexOf("</script>", a);
-const js = html.slice(a, b);
-// 行号换算：js 的第 1 行对应 html 的第 jsFirstLine 行
-const jsFirstLine = html.slice(0, a).split("\n").length;
-log(`脚本块：${js.length} 字节，起始于 dashboard.html 第 ${jsFirstLine} 行`);
+// 取页面脚本：源文件是内联 <script>；S10 构建期拆分后，产物改为
+//   <script src="app.js" defer></script>
+// 两种形态都要能跑 —— 否则本 harness 只能盯住源文件，
+// 而真正会被打进安装包的是拆分产物（tauri.conf.json 的 frontendDist）。
+let js, jsFirstLine, where;
+const inlineOpen = html.indexOf("<script>");
+if (inlineOpen >= 0) {
+  const a = inlineOpen + "<script>".length;
+  const b = html.indexOf("</script>", a);
+  js = html.slice(a, b);
+  jsFirstLine = html.slice(0, a).split("\n").length;
+  where = `${path.basename(pagePath)} 内联块第 ${jsFirstLine} 行`;
+} else {
+  const m = html.match(/<script[^>]*\bsrc=["']([^"']+)["'][^>]*>\s*<\/script>/);
+  if (!m) {
+    console.error(`✗ ${pagePath} 里既没有内联 <script>，也没有外链 <script src=…>`);
+    process.exit(2);
+  }
+  const src = path.resolve(path.dirname(pagePath), m[1]);
+  js = fs.readFileSync(src, "utf8");
+  jsFirstLine = 1;
+  where = `${path.basename(src)}（外链，第 1 行）`;
+}
+log(`脚本块：${js.length} 字节，取自 ${where}`);
 
 const listeners = {};
 function mkEl(id) {

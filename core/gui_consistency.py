@@ -66,12 +66,12 @@ def verify_snapshot(snapshot: Dict[str, Any]) -> List[str]:
             violations.append(f"{where}: not a mapping")
             continue
 
-        probe = result.get("probe", {})
         records = result.get("records", []) or []
         unmanaged = result.get("unmanaged", []) or []
 
-        # ok must equal re-running result_ok over the same content.
-        expected_ok = result_ok({"probe": probe, "records": records, "unmanaged": unmanaged})
+        # ok 必须等于对同一内容重跑 result_ok 的结果。
+        # 不再传 probe：v0.24.0 复审后 result_ok 只看配置，端点连通性不参与判定。
+        expected_ok = result_ok({"records": records, "unmanaged": unmanaged})
         if bool(result.get("ok")) != bool(expected_ok):
             violations.append(f"{where}: ok={result.get('ok')!r} but result_ok={expected_ok!r}")
 
@@ -81,7 +81,7 @@ def verify_snapshot(snapshot: Dict[str, Any]) -> List[str]:
                 if field not in record:
                     violations.append(f"{rwhere}: missing contract field {field!r}")
             if "state" in record:
-                expected_state = classify_record(record, probe)
+                expected_state = classify_record(record)
                 if record["state"] != expected_state:
                     violations.append(
                         f"{rwhere}: state={record['state']!r} but classify={expected_state!r}"

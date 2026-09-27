@@ -4,6 +4,13 @@ on:
   push:
     branches: [master, develop]
     tags: ['v*']
+    paths-ignore:
+      # Q1-3：文档/说明类改动不可能影响构建产物，却会拉起三平台全量打包
+      # （macOS 那条 timeout 45 分钟）。tags 触发不受影响（发版必须构建）。
+      - 'docs/**'
+      - '**.md'
+      - 'LICENSE'
+      - '.github/dependabot.yml'
   pull_request:
     branches: [master, develop]
   workflow_dispatch:
@@ -13,8 +20,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Q0-2：顶层收窄为只读。原来顶层就是 contents: write，而本 workflow 同时被
+# pull_request 触发 —— PR 场景下这一步授权超出所需（最小权限原则）。
+# 需要写权限的只有「上传 release 资产」，因此把它下放到发布 job（见文件末尾）。
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build-macos:
@@ -31,8 +41,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      # Round 32：beforeBuildCommand 跑 Python 脚本 scripts/build_gui.py，
+      # 构建依赖必须显式声明（原先靠 runner 自带 python3 侥幸通过）。
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.98.1  # Q0-1: 钉具体版本；@stable 会在上游发版时无声切换编译器
         with:
           # universal-apple-darwin 需要同时具备两个目标，Tauri 会自动 lipo 合并
           targets: aarch64-apple-darwin,x86_64-apple-darwin
@@ -49,6 +66,12 @@ jobs:
 
       - name: Install Tauri CLI
         run: npm install -g @tauri-apps/cli@2
+
+      # Round 32：gui/dist 被 .gitignore 排除，CI 全新 checkout 时不存在，必须先生成。
+      - name: Generate frontend dist (gui/dist)
+        run: |
+          python3 scripts/build_gui.py
+          python3 scripts/build_gui.py --check
 
       # 仅当配置了 APPLE_CERTIFICATE（base64 .p12）时导入证书并启用正式签名 + 公证；
       # 未配置时跳过此步，Tauri 自动回退到 ad-hoc 签名（本机可运行，未公证）。
@@ -81,7 +104,7 @@ jobs:
             echo "APPLE_TEAM_ID=${APPLE_TEAM_ID}"
           } >> "$GITHUB_ENV"
 
-      # 项目前端为纯静态单文件（gui/dashboard.html，frontendDist=../gui），无 npm
+      # 项目前端为纯静态单文件（gui/dashboard.html，frontendDist=../gui/dist，由 beforeBuildCommand 生成），无 npm
       # 构建步骤。universal-apple-darwin：Tauri 分别编译 arm64/x86_64 并 lipo 合并，
       # 产出单一 .app，原生运行于 Intel 与 Apple Silicon。
       - name: Build Tauri app (universal)
@@ -136,7 +159,7 @@ jobs:
 
       # 非 tag 触发（push/PR/manual）：仅上传构建产物作为 artifact 校验
       - name: Upload artifacts (build validation)
-        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        # 总是上传：tag 触发时由下面的 release job 取用（Q0-2 拆 job 后必需）。
         uses: actions/upload-artifact@v6
         with:
           name: skill-mcp-studio-macos-universal
@@ -146,15 +169,33 @@ jobs:
             dist/skill-mcp-studio-universal.app.zip
             dist/SHA256SUMS
 
-      # tag 触发（v*）：创建/更新 GitHub Release 并上传产物，自动生成 release notes
+  release-macos:
+    # Q0-2：发布单独成 job，只有它持有 contents: write。
+    # 原来 build 与 release 同在一个 job，顶层就必须给 contents: write，
+    # 而本 workflow 同时被 pull_request 触发 —— PR 场景下授权超出所需。
+    name: Publish GitHub Release (macOS)
+    needs: build-macos
+    if: ${{ startsWith(github.ref, 'refs/tags/') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v6
+        with:
+          name: skill-mcp-studio-macos-universal
+          path: dist
       - name: Publish GitHub Release
-        if: ${{ startsWith(github.ref, 'refs/tags/') }}
         uses: softprops/action-gh-release@v3
         with:
           files: |
             dist/Skill-MCP-Studio-universal.dmg
             dist/skill-mcp-studio-universal.app.zip
             dist/SHA256SUMS
-          generate_release_notes: true
+          # 正文由 release-notes.yml 统一写入。这里必须为 false：
+          # 三个平台各自 generate_release_notes 会把正文重复追加三次
+          # （v0.23.0 的 Release 正文即为三份重复内容）。
+          generate_release_notes: false
           draft: false
           prerelease: false

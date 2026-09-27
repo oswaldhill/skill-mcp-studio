@@ -12,7 +12,7 @@ import glob
 from typing import Dict, Any, List
 
 
-from checker import check_all, check_path
+from checker import check_all
 from tool_registry import normalized_name
 
 

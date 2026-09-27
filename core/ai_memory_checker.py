@@ -255,7 +255,6 @@ def check_ai_memory_hooks(
             results.append(result)
             continue
 
-        commands = _extract_hook_commands(hook_section)
         # 找出命中 ai-memory 签名的命令及其事件
         matched_events = []
 
@@ -317,7 +316,7 @@ def format_ai_memory_hooks_report(result: Dict[str, Any]) -> str:
         elif t["installed"]:
             lines.append(f"      ⚠️ {t['note']}")
         else:
-            lines.append(f"      未安装，跳过")
+            lines.append("      未安装，跳过")
 
     return "\n".join(lines)
 
@@ -375,13 +374,24 @@ def _write_json_atomic(data: Dict[str, Any], config_path: str, backup: str) -> N
 
 
 def _find_json_mcp_section(data: Dict[str, Any], mcp_key_path: List[str]) -> Optional[Dict[str, Any]]:
-    """沿 mcp_key_path 深入取 MCP servers 段（若无则创建）。"""
+    """沿 mcp_key_path 深入取 MCP servers 段（不存在则创建）。
+
+    **任一层「已存在但不是 dict」时返回 None**，由调用方跳过并提示结构异常。
+
+    此前的写法是 `if key not in current or not isinstance(current[key], dict):
+    current[key] = {}` —— 那一行会把既有的非 dict 内容（列表/字符串/标量）
+    直接覆盖掉，于是本函数**永不返回 None**、调用方的「结构异常即跳过」
+    成了死代码，用户原有的 MCP 条目被无提示清空后整文件回写（数据丢失）。
+    「键不存在」才创建，「键存在但类型不对」必须原样返回 None。
+    """
     current = data
     for key in mcp_key_path:
         if not isinstance(current, dict):
             return None
-        if key not in current or not isinstance(current[key], dict):
+        if key not in current:
             current[key] = {}
+        elif not isinstance(current[key], dict):
+            return None
         current = current[key]
     return current
 
@@ -445,9 +455,15 @@ def fix_ai_memory_config(
         bridge = _bridge_path()
         entry = f"ai-memory={_python3_command()} {bridge}"
         if dry_run:
-            result["message"] = f"[dry-run] 将追加 ai-memory 条目到 mcp 数组"
+            result["message"] = "[dry-run] 将追加 ai-memory 条目到 mcp 数组"
             return result
-        backup = _backup_file(config_path)
+        try:
+            backup = _backup_file(config_path)
+        except RuntimeError as e:
+            # 备份失败就不该继续写：没有备份的改写是不可逆的。
+            result["message"] = f"跳过：{e}"
+            result["written"] = False
+            return result
         result["backup"] = backup
         mcp_arr.append(entry)
         try:
@@ -460,7 +476,15 @@ def fix_ai_memory_config(
 
     section = _find_json_mcp_section(data, mcp_key_path)
     if section is None:
-        result["message"] = "MCP 配置段结构异常，跳过"
+        # 说明是哪一段、为什么，而不是笼统的「结构异常」——
+        # 这条路径此前因 _find_json_mcp_section 永不返回 None 而不可达。
+        result["message"] = (
+            f"MCP 配置段结构异常，已跳过写入（未改动文件）："
+            f"{'.'.join(mcp_key_path)} 上有既存内容不是对象，"
+            f"为避免覆盖用户配置，本工具拒绝改写"
+        )
+        result["skipped_reason"] = "mcp_section_not_a_dict"
+        result["written"] = False
         return result
 
     # 已存在则不重复写入
@@ -479,10 +503,15 @@ def fix_ai_memory_config(
     section["ai-memory"] = entry
 
     if dry_run:
-        result["message"] = f"[dry-run] 将写入 ai-memory 条目"
+        result["message"] = "[dry-run] 将写入 ai-memory 条目"
         return result
 
-    backup = _backup_file(config_path)
+    try:
+        backup = _backup_file(config_path)
+    except RuntimeError as e:
+        result["message"] = f"跳过：{e}"
+        result["written"] = False
+        return result
     result["backup"] = backup
     try:
         _write_json_atomic(data, config_path, backup)

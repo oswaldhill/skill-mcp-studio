@@ -17,8 +17,11 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+import paths
+
 # 统一库是唯一实体，~/.agents|.codex|.dsh|.hermes|.cc-switch/skills 全是它的符号链接。
-_SKILLS_DIR = Path.home() / ".skills-manager" / "skills"
+# 路径不在此处求值：模块级 ``Path.home()`` 常量会在 import 时定死、运行期改不动
+# （评审 P0-4）。统一走 ``paths.skills_dir()``，每次调用重新解析。
 
 _T1_MIN_LEN = 40          # 归一后短于此的描述不足以支撑"逐字相同即同一份"的判断
 _JACCARD_MIN = 0.6        # T4 相似度门槛（低于此值本就进不了候选）
@@ -384,7 +387,7 @@ def load_metas(skills_dir: Optional[Path] = None,
     `installed` 来自 `skill_market.list_installed()`，其 `registered` 字段
     （在 `.skill-lock.json` 有登记）就是"有上游"的唯一依据。
     """
-    skills_dir = Path(skills_dir) if skills_dir else _SKILLS_DIR
+    skills_dir = Path(skills_dir) if skills_dir else paths.skills_dir()
     if not skills_dir.is_dir():
         return []
     names = sorted(d.name for d in skills_dir.iterdir()

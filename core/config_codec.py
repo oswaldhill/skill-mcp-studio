@@ -17,8 +17,7 @@ re-introduce the ``mcp_checker``/``mcp_fixer`` load-time cycle.
 """
 
 import json
-import re
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 try:
     import tomllib as _toml

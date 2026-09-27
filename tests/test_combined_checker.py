@@ -371,6 +371,12 @@ class ResultOkTest(unittest.TestCase):
         self.assertTrue(result_ok(result))
 
     def test_unmet_capability_is_not_ok(self):
+        """契约反转（v0.24.0 复审，用户明确要求）。
+
+        原名保留以便检索，但断言已**反向**：能力位（``capabilities``）由
+        ``tools/list`` 得出，属探活派生的**运行时状态**；审计只判配置，
+        因此能力未满足**不再**让审计不通过。端点能力应在独立的连通性检查里看。
+        """
         result = {
             "probe": {"error": ""},
             "records": [
@@ -387,15 +393,21 @@ class ResultOkTest(unittest.TestCase):
             ],
             "unmanaged": [],
         }
-        self.assertFalse(result_ok(result))
+        self.assertTrue(result_ok(result))
 
     def test_probe_error_is_not_ok(self):
+        """契约反转（v0.24.0 复审，用户明确要求）。
+
+        原名保留以便检索，但断言已**反向**：旧实现见到 ``probe.error`` 非空即
+        判审计不通过；现在审计只看配置，端点连不上不影响审计结论（这正是
+        「内网端点不可达不该让配置审计变红」那条要求）。
+        """
         result = {
             "probe": {"error": "spawn fail"},
             "records": [],
             "unmanaged": [],
         }
-        self.assertFalse(result_ok(result))
+        self.assertTrue(result_ok(result))
 
     def test_uninstalled_clients_are_ignored(self):
         result = {
@@ -451,6 +463,7 @@ class ResultOkTest(unittest.TestCase):
     def test_check_agents_records_carry_backend_state(self):
         # U-2: check_agents 的每条 record 都携带单一 rule set 产生的合规总态
         # state（green/yellow/red/gray），GUI 与 CLI 消费同一个后端结论。
+        # v0.24.0: classify_record 只看配置，故不再传 probe。
         from dashboard_states import classify_record
 
         config = {
@@ -464,11 +477,10 @@ class ResultOkTest(unittest.TestCase):
             "tools": [],
         }
         result = check_agents(config, {"results": []})
-        probe = result.get("probe", {})
         self.assertIn("records", result)
         for record in result["records"]:
             self.assertIn("state", record)
-            self.assertEqual(record["state"], classify_record(record, probe))
+            self.assertEqual(record["state"], classify_record(record))
 
 
 if __name__ == "__main__":

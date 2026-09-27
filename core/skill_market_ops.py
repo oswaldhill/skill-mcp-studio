@@ -23,12 +23,16 @@ from typing import Any, Callable, Dict, List, Optional
 
 from skill_market import _run_npx
 
-_SKILLS_DIR = Path.home() / ".skills-manager" / "skills"
+import paths
 
 
 def _skills_dir() -> Path:
-    """独立成函数，便于测试替换。"""
-    return _SKILLS_DIR
+    """独立成函数，便于测试替换。
+
+    真实解析交给 ``paths``：此前是模块级 ``Path.home()`` 常量，import 时定死、
+    运行期改不动（评审 P0-4）。
+    """
+    return paths.skills_dir()
 
 
 def plan_install(package: str) -> Dict[str, Any]:

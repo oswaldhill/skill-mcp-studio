@@ -3,6 +3,9 @@ name: Test
 on:
   push:
     branches: [master, develop]
+    # tag 也要跑：一是校验 tag 与 version.json 一致（见 tag-version-consistency），
+    # 二是让被打 tag 的那个提交本身经过完整测试。
+    tags: ['v*']
   pull_request:
     branches: [master, develop]
   workflow_dispatch:
@@ -11,6 +14,129 @@ permissions:
   contents: read
 
 jobs:
+  # 打 tag 时先拦住「tag 名与包内版本号不一致」的发布：这类错误会一路走到
+  # 签名、上传、分发，事后只能撤回资产。必须在构建之前失败。
+  tag-version-consistency:
+    name: Tag matches version.json
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Assert tag == v<version.json version>
+        run: |
+          set -euo pipefail
+          v="$(python3 -c "import json;print(json.load(open('version.json'))['version'])")"
+          if [ "v$v" != "${GITHUB_REF_NAME}" ]; then
+            echo "✗ tag ${GITHUB_REF_NAME} 与 version.json 的 v$v 不一致" >&2
+            echo "  打 tag 前请先运行：python3 scripts/bump_version.py" >&2
+            exit 1
+          fi
+          echo "✓ ${GITHUB_REF_NAME} 与 version.json 一致"
+
+  # 文本产物的编码卫生：无 BOM、LF 换行、末尾有换行。
+  # 这类问题没有功能影响，但会让编辑器/工具持续报警（v0.23.0 的
+  # CONTRIBUTING.md 就缺末尾换行），人工发现成本高，适合自动拦住。
+  # 注意：这里用内联 python 实现，不依赖任何本地 skill 或额外依赖。
+  text-hygiene:
+    name: Text encoding hygiene
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Check tracked text files (no BOM / no CRLF / trailing newline)
+        run: |
+          set -euo pipefail
+          python - <<'INNER'
+          import subprocess, sys
+
+          SKIP_SUFFIX = (
+              ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".icns",
+              ".pdf", ".zip", ".gz", ".woff", ".woff2", ".ttf", ".otf",
+              ".dmg", ".exe", ".msi", ".deb", ".rpm", ".so", ".dylib",
+          )
+
+          files = subprocess.run(
+              ["git", "ls-files"], capture_output=True, text=True, check=True
+          ).stdout.split()
+
+          problems = []
+          checked = 0
+          for f in files:
+              if f.lower().endswith(SKIP_SUFFIX):
+                  continue
+              try:
+                  raw = open(f, "rb").read()
+              except OSError:
+                  continue
+              if b"\x00" in raw[:8000]:      # 二进制，跳过
+                  continue
+              checked += 1
+              if raw.startswith(b"\xef\xbb\xbf"):
+                  problems.append(f"{f}: 含 UTF-8 BOM")
+              if b"\r\n" in raw:
+                  problems.append(f"{f}: 含 CRLF（本仓库统一 LF）")
+              # 末尾换行：P2-17 已把存量 90 个文件一次性补齐，因此本项自本次起
+              # 纳入门禁。新增文件若缺末尾换行会在此拦下。
+              # 同时禁止「末尾多余空行」—— P2-16 拆分产出的模块曾出现末尾连续空行，
+              # 而当时只查「缺换行」故未被拦下（本地 ci_parity.sh 那时也无此检查，
+              # 造成「本地全绿 vs CI 拦下」盲区）。现已两边同判据。
+              if not raw.endswith(b"\n"):
+                  problems.append(f"{f}: 末尾缺少换行")
+              elif raw.endswith(b"\n\n"):
+                  problems.append(f"{f}: 末尾多余空行（应恰好一个换行）")
+
+          print(f"检查了 {checked} 个文本文件")
+          if problems:
+              print("\n发现以下问题：", file=sys.stderr)
+              for p in problems:
+                  print("  - " + p, file=sys.stderr)
+              sys.exit(1)
+          print("✓ 全部文本文件：无 BOM、无 CRLF、末尾均有换行")
+          INNER
+
+      # P2-18：脚本卫生自检。两条都对应「会伪装成测试失败」的缺陷，
+      # 故与文本卫生同 job 前置拦截。
+      - name: Shell script hygiene (P2-18)
+        run: |
+          fail=0
+
+          # 1) scripts/*.sh 在 git 中的 mode 必须为 100755。
+          # 丢失可执行位后：bash 直接执行仍正常，但 Python subprocess 调用会
+          # PermissionError —— 表现为 exit!=0 且日志无 "Ran N tests" 行，易被误判为测试失败。
+          bad="$(git ls-files -s -- 'scripts/*.sh' | awk '$1 != "100755" {print $4}')"
+          if [ -n "$bad" ]; then
+            echo "::error::scripts/*.sh 缺少可执行位（git mode 应为 100755）："
+            printf '  %s\n' $bad
+            fail=1
+          else
+            echo "✓ scripts/*.sh 的 git mode 均为 100755"
+          fi
+
+          # 2) 变量名不得紧跟全角标点：bash 在部分 locale 下会把标点首字节并入
+          # 变量名，配合 set -u 直接 unbound variable 中止脚本。须写 ${var}。
+          bv="$(grep -nE '\$[A-Za-z_][A-Za-z_0-9]*[，。：；（）「」、！？]' scripts/*.sh | grep -v '\${' || true)"
+          if [ -n "$bv" ]; then
+            echo "::error::scripts/*.sh 存在「\$var 紧跟全角标点」写法（须写 \${var}）："
+            printf '  %s\n' "$bv"
+            fail=1
+          else
+            echo "✓ scripts/*.sh 无「\$var 紧跟全角标点」写法"
+          fi
+
+          [ "$fail" -eq 0 ] || exit 1
+
   test-python:
     name: Python unit tests (unittest)
     runs-on: ubuntu-22.04
@@ -38,6 +164,33 @@ jobs:
           set -euo pipefail
           python -m unittest discover -s tests -p 'test_*.py'
 
+  # P1-11：ruff 静态检查。规则集与忽略项在 pyproject.toml 的 [tool.ruff] 中，
+  # 刻意分阶段开启（F401/I001 会改变代码行为，需先做准备，配置内有说明）。
+  lint-ruff:
+    name: Ruff lint
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      # 固定版本：ruff 的诊断集合会随版本变化，不锁版本会让门禁时红时绿。
+      - name: Install ruff (pinned)
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check "ruff==0.16.9"
+
+      - name: ruff check
+        run: |
+          set -euo pipefail
+          python -m ruff check --output-format=github core tests scan.py scripts setup.py
+
   test-rust:
     name: Rust unit tests (cargo test)
     runs-on: ubuntu-22.04
@@ -46,6 +199,22 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+
+      # cargo test 要编译 lib.rs，其中 `tauri::generate_context!()`（lib.rs:509）
+      # 在**编译期**就会读取 tauri.conf.json 的 frontendDist（`../gui/dist`）。
+      # gui/dist 不入库（构建期由 scripts/build_gui.py 生成），全新检出时它不存在，
+      # 于是宏展开失败、cargo test 以 exit 101 挂在**编译**上 —— 测试函数本身都是
+      # 纯函数、与本机一致，问题从来不在断言。故此处必须先补出该目录。
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Generate frontend dist (gui/dist)
+        run: |
+          set -euo pipefail
+          python3 scripts/build_gui.py
+          python3 scripts/build_gui.py --check
 
       # T-3: 运行 lib.rs 的 #[cfg(test)]（cli_candidates 路径解析 + open_url 注入
       # 校验）。与 build-linux 相同的 webkit2gtk 系统依赖。
@@ -60,7 +229,7 @@ jobs:
             librsvg2-dev
 
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.98.1  # Q0-1: 钉具体版本；@stable 会在上游发版时无声切换编译器
 
       - name: Cache Cargo dependencies
         uses: swatinem/rust-cache@v2

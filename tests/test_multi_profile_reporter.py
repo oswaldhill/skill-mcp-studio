@@ -62,13 +62,19 @@ class MultiProfileReporterTest(unittest.TestCase):
         self.assertEqual(record["state"], "green")
 
     def test_json_annotates_state_for_unprobed_profile(self):
+        """契约反转（v0.24.0 复审，用户明确要求）。
+
+        原名断言「未探活 → yellow」。新契约下颜色**只由配置决定**：探活派生字段
+        （``mcp_initialize_ok`` / ``mcp_tools_list_ok`` / ``capabilities``）不再参与，
+        因此配置齐全的未探活 profile 应为 **green**，而不是被降级成 yellow。
+        """
         result = _result("a", ["hermes_memory"])
         result["probe"] = {"error": "not probed"}
         result["records"][0]["mcp_initialize_ok"] = False
         result["records"][0]["mcp_tools_list_ok"] = False
         result["records"][0]["capabilities"] = {"hermes_memory": False}
         payload = json.loads(report_all_profiles([result], "json", "a"))
-        self.assertEqual(payload["results"][0]["records"][0]["state"], "yellow")
+        self.assertEqual(payload["results"][0]["records"][0]["state"], "green")
 
     def test_table_and_markdown_render(self):
         results = [_result("a", ["hermes_memory"])]
