@@ -273,6 +273,51 @@ class BuildSplitTest(unittest.TestCase):
                     f"{name}.yml 没有显式生成 gui/dist 的步骤",
                 )
 
+    def test_ci_workflows_never_reference_undefined_matrix(self):
+        """workflow 里不许引用 ``matrix.*``，除非该 job 真的定义了 matrix。
+
+        Round 47 的 CI 事故：`test.yml` 完全没有 `strategy:`/`matrix:`，却在三个 job
+        里写 `python-version: ${{ matrix.python-version }}` —— 表达式求值为**空字符串**，
+        setup-python 遂报
+
+            The `python-version` input is not set. The version of Python currently
+            in `PATH` will be used.
+
+        并退化为 runner 自带的 Python（ubuntu-22.04 = 3.10），而本项目要求 >= 3.11，
+        于是 `python -m unittest discover` 长期失败 —— 且**本机门禁全绿**，
+        差异只出在 CI 的解释器版本上，极难从本地看出。
+        """
+        import re
+
+        for wf in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
+            text = wf.read_text(encoding="utf-8")
+            if "matrix." not in text:
+                continue
+            with self.subTest(workflow=wf.name):
+                self.assertIn(
+                    "strategy:",
+                    text,
+                    f"{wf.name} 引用了 matrix.* 却没有任何 strategy/matrix 定义 —— "
+                    "表达式会求值为空，setup-python 将静默退回 runner 自带版本",
+                )
+
+    def test_test_workflow_generates_frontend_dist_for_cargo(self):
+        """`test-rust` 跑 cargo test 前必须先造出 gui/dist。
+
+        `tauri::generate_context!()`（src-tauri/src/lib.rs）是**编译期**宏，展开时
+        就要读 `tauri.conf.json` 的 `frontendDist`（`../gui/dist`）；而 gui/dist
+        不入库（.gitignore 排除），全新检出时不存在 → 宏展开失败 → `cargo test`
+        以 exit 101 挂在编译上，与测试断言无关。
+        """
+        wf = ROOT / ".github" / "workflows" / "test.yml"
+        text = wf.read_text(encoding="utf-8")
+        self.assertIn(
+            "Generate frontend dist",
+            text,
+            "test.yml 未在 cargo test 之前生成 gui/dist —— "
+            "generate_context! 会在编译期因缺 frontendDist 而失败（exit 101）",
+        )
+
     def test_check_mode_detects_drift(self):
         """临时改动产物后 `--check` 必须报不同步，然后恢复。"""
         original = APP_JS.read_text(encoding="utf-8")
