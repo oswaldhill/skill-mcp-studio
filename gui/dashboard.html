@@ -3966,8 +3966,17 @@ function loadInternal(discover) {
     const args = ["--management", "--format", "json"];
     if (discover) args.push("--discover");
     const mgmt = await runCli(args, "更新审计：扫描全部技能与客户端（约 30 秒）");
-    if (mgmt && mgmt.code === 0) { render(JSON.parse(mgmt.stdout)); clearBanner(); }
-    else showBanner("err", (mgmt && mgmt.stderr) || "扫描失败");
+    if (mgmt && mgmt.code === 0) { render(JSON.parse(mgmt.stdout)); clearBanner(); return; }
+    // mgmt === null：runCli 已经抛出并显示了具体原因（未检测到 CLI / 安全边界拦截 /
+    // 命令执行失败）。此处**不能再覆盖**成「扫描失败」—— 那会把唯一有用的诊断信息抹掉，
+    // 让用户只看到一条无从下手的红横幅。
+    if (!mgmt) return;
+    // 被「取消」按钮终止的进程退出码同样非 0，且 stderr 为空。Rust 侧已用
+    // CANCELLED 区分「被杀」与「自己失败」，信封里就带 cancelled 字段；
+    // 不读它就等于把「用户主动取消」误报成故障。
+    if (mgmt.cancelled) { showBanner("warn", "已取消扫描，正在运行的进程已终止。"); return; }
+    const code = mgmt.code === undefined || mgmt.code === null ? "未知" : mgmt.code;
+    showBanner("err", "扫描失败（退出码 " + code + "）：" + (mgmt.stderr || "进程无 stderr 输出"));
   })();
 }
 

@@ -264,6 +264,14 @@ class BuildSplitTest(unittest.TestCase):
                     f"{name}.yml 未声明 Python —— beforeBuildCommand 里的 "
                     "scripts/build_gui.py 将无解释器可跑（Windows 上会直接失败）",
                 )
+                # gui/dist 被 .gitignore 排除，全新 checkout 时不存在，
+                # 因此 CI 必须显式先跑一次生成 + --check（而不是只靠
+                # Tauri 的 beforeBuildCommand —— 那样失败时只剩一个 exit code）。
+                self.assertIn(
+                    "Generate frontend dist",
+                    text,
+                    f"{name}.yml 没有显式生成 gui/dist 的步骤",
+                )
 
     def test_check_mode_detects_drift(self):
         """临时改动产物后 `--check` 必须报不同步，然后恢复。"""

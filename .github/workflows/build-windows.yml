@@ -65,6 +65,14 @@ jobs:
         with:
           node-version: 20
 
+      # Round 32：gui/dist 被 .gitignore 排除，CI 全新 checkout 时不存在，
+      # 必须先生成 —— 显式放一步，失败时能直接看到是哪一步，而不是藏在
+      # Tauri 的 beforeBuildCommand 里只留下一个 exit code。
+      - name: Generate frontend dist (gui/dist)
+        run: |
+          python scripts/build_gui.py
+          python scripts/build_gui.py --check
+
       - name: Install Tauri CLI
         run: npm install -g @tauri-apps/cli@2
 

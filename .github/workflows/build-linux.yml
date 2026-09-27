@@ -73,6 +73,12 @@ jobs:
       - name: Install Tauri CLI
         run: npm install -g @tauri-apps/cli@2
 
+      # Round 32：gui/dist 被 .gitignore 排除，CI 全新 checkout 时不存在，必须先生成。
+      - name: Generate frontend dist (gui/dist)
+        run: |
+          python3 scripts/build_gui.py
+          python3 scripts/build_gui.py --check
+
       # 前端为纯静态单文件（gui/dashboard.html，frontendDist=../gui/dist，由 beforeBuildCommand 生成），无 npm 构建。
       # 用 --bundles 覆盖 config 里 macOS 专属的 "app"，产出 Linux 安装包：
       #   deb -> .deb；rpm -> .rpm；appimage -> .AppImage。
