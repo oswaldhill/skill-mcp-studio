@@ -342,12 +342,17 @@ def _run_list_mcp_inventory(args, config, config_path) -> int:
 
 
 def _run_management(args, config, config_path) -> int:
-    """输出三栏管理台管理快照 JSON（stage-5 P5，只读）。"""
+    """输出三栏管理台管理快照 JSON（stage-5 P5，只读）。
+
+    **不探活**（v0.24.0 复审后修正）：管理台审计只回答「配置是否正确」。
+    端点连通性是运行时状态，属**独立的连通性检查**职责，见 ``--endpoint-status``。
+    这样刷新管理台不再为不可达端点等待超时，页面颜色也不再由端口通断决定。
+    """
     try:
         payload = build_management_snapshot(
             config,
             config_path=config_path,
-            live_probe=True,
+            live_probe=False,
             auto_discover=getattr(args, "discover", None),
         )
     except Exception as exc:

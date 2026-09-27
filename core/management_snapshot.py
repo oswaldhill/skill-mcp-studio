@@ -223,10 +223,19 @@ def build_management_snapshot(
     config: Dict[str, Any],
     config_path: str = "",
     *,
-    live_probe: bool = True,
+    live_probe: bool = False,
     auto_discover: bool | None = None,
 ) -> Dict[str, Any]:
-    """Assemble the three-panel management payload (read-only)."""
+    """Assemble the three-panel management payload (read-only).
+
+    ``live_probe`` 默认 **False**（v0.24.0 复审后修正，用户明确要求）：
+    管理面板的审计只回答「**配置是否正确**」。端点是否可达属运行时状态，
+    由**独立的连通性检查入口**（MCP 模块，手动触发）负责，不在本快照里跑，
+    也不参与本快照的 ``ok`` 结论与页面颜色。
+
+    这样做的直接收益：一台配置合法但当前不可达的端点（例如内网
+    ``k8s.carobo.cn``）不会再让审计显示异常，刷新也不会再为它等待超时。
+    """
     validate_attachment(config)
     try:
         scan_result = run_scan(config_path=config_path or None, auto_discover=auto_discover)

@@ -105,8 +105,16 @@ class AllProfilesInternalErrorTest(unittest.TestCase):
                 mock.patch.object(scan, "report_all_profiles", return_value=""):
             self.assertEqual(scan._run_all_profiles(_args(), {}, "config.yaml"), 2)
 
-    def test_probe_failure_stays_exit_1(self):
-        # 端点探测失败（非配置错误、非内部异常）仍为 1：分层语义锁定。
+    def test_probe_failure_does_not_change_exit_code(self):
+        """契约反转（v0.24.0 复审，用户明确要求）。
+
+        原名 ``test_probe_failure_stays_exit_1``，断言「端点探测失败仍为 1」。
+        该规则已被推翻：审计只判**配置**，端点连通性属运行时状态，改由
+        **独立的连通性检查**呈现，不再影响审计退出码。故此处断言 0。
+
+        分层语义本身未变：配置错误仍为 1（见 ``_non_compliant_result`` 那类
+        用例），内部异常仍为 2 —— 变的只是「探活失败」不再计入审计。
+        """
         with mock.patch.object(scan, "run_scan", return_value={}), \
                 mock.patch.object(scan, "list_profiles", return_value=["p1"]), \
                 mock.patch.object(scan, "load_profile", return_value={"name": "p1", "profile": {}}), \
@@ -114,7 +122,7 @@ class AllProfilesInternalErrorTest(unittest.TestCase):
                                   return_value={"probe": {"error": "connect fail"},
                                                 "records": [], "unmanaged": [], "summary": {}}), \
                 mock.patch.object(scan, "report_all_profiles", return_value=""):
-            self.assertEqual(scan._run_all_profiles(_args(), {}, "config.yaml"), 1)
+            self.assertEqual(scan._run_all_profiles(_args(), {}, "config.yaml"), 0)
 
 
 if __name__ == "__main__":

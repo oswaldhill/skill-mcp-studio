@@ -31,7 +31,32 @@ def _compliant_result():
 
 
 def _non_compliant_result():
-    return {"probe": {"error": "connect fail"}, "records": [], "unmanaged": [], "summary": {}}
+    """一个**因配置**而不合规的结果（退出码 1）。
+
+    v0.24.0 复审后修正：此前这里只放了 ``probe.error="connect fail"``，靠「探活
+    失败」表达不合规。但审计已改为**只判配置**，探活失败不再影响退出码，那样的
+    fixture 在新契约下其实**合规**（records 为空 → 空真），测试名与语义就脱节了。
+    改为用真正的**配置**违规：一台已安装但 MCP 未按预期配置的客户端。
+    """
+    return {
+        "probe": {"error": "connect fail"},
+        "records": [
+            {
+                "name": "Codex",
+                "installed": True,
+                "skills_compliant": True,
+                "mcp_configured": False,
+                "mcp_initialize_ok": False,
+                "mcp_tools_list_ok": False,
+                "hooks_configured": True,
+                "hooks_required": False,
+                "legacy_channels": [],
+                "capabilities": {},
+            }
+        ],
+        "unmanaged": [],
+        "summary": {},
+    }
 
 
 @contextlib.contextmanager

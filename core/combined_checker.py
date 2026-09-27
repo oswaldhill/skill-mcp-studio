@@ -259,7 +259,8 @@ def check_agents(
         }
         # U-2: 把单一 rule set（dashboard_states.classify_record）的合规总态
         # green/yellow/red/gray 直接落到每条 record，GUI 与 CLI 消费同一 state。
-        record["state"] = classify_record(record, probe)
+        # 只传 record：该判定**只看配置**，探活派生字段不参与（见模块文档）。
+        record["state"] = classify_record(record)
         records.append(record)
     unmanaged = _unmanaged_installed_clients(
         registry,
@@ -291,28 +292,24 @@ def check_agents(
 
 
 def result_ok(result: Dict[str, Any], *, strict_skill_state: bool = False) -> bool:
-    """Phase-2 exit-code judgment: is a ``check_agents`` result fully compliant?
+    """退出码判定：**只看配置**，不看探活（连通性）。
 
-    Non-compliant (``False``) when a live probe fails, any installed client
-    fails a required config field (skills / MCP configure / hooks), any
-    capability group is unmet (only meaningful when the probe ran), any legacy
-    channel remains, or any unmanaged installed client is present.
+    v0.24.0 复审后修正（用户明确要求）：审计的职责是「配置是否正确」，
+    端点可达性属于**运行时状态**，不该影响审计退出码。因此这里不再看
+    ``probe`` / ``mcp_initialize_ok`` / ``mcp_tools_list_ok`` / ``capabilities``。
 
-    A-2 (probe tri-state): probe-derived fields (``mcp_initialize_ok``,
-    ``mcp_tools_list_ok``, ``capabilities``) are only enforced when the live
-    probe actually ran.  A config-only run (``live_probe=False`` → probe.error
-    == ``"not probed"``) reports those fields as ``False``/empty but is still
-    compliant, so ``python3 scan.py`` can reach exit 0.  Only ``probed_failed``
-    (a probe that ran and errored) is a hard failure.
+    下列情形判为非合规（``False``）：
+
+    - 任一已安装客户端缺必需配置项（skills / MCP 配置 / hooks）；
+    - 任一已安装客户端仍留有遗留通道；
+    - 存在 unmanaged（未纳管却已安装）客户端。
+
+    端点连通性由**独立的连通性检查入口**手动触发，其结果不参与本判定。
 
     Stage-4 (design §4.4): by default the L5 skill state is NOT part of this
     judgment. ``strict_skill_state=True`` (CLI ``--strict-skill-state``)
     additionally requires cross-client skill-state consistency.
     """
-    probe_error = (result.get("probe") or {}).get("error", "")
-    if probe_error and probe_error != "not probed":
-        return False
-    not_probed = probe_error == "not probed"
     for record in result.get("records", []) or []:
         if not record.get("installed"):
             continue
@@ -324,14 +321,6 @@ def result_ok(result: Dict[str, Any], *, strict_skill_state: bool = False) -> bo
             return False
         if record.get("legacy_channels"):
             return False
-        # A-2: live-probe-derived fields gate only when the probe actually ran;
-        # "not probed" is a measurement gap, not a failure.
-        if not not_probed:
-            if not record.get("mcp_initialize_ok") or not record.get("mcp_tools_list_ok"):
-                return False
-            capabilities = record.get("capabilities", {}) or {}
-            if not all(capabilities.values()):
-                return False
     if result.get("unmanaged"):
         return False
     if strict_skill_state:

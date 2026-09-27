@@ -1,110 +1,119 @@
-"""Read-only dashboard tri-state classification (phase 3).
+"""Read-only dashboard tri-state classification.
 
-The GUI renders each installed client as green / yellow / red / gray. The rule
-set deliberately reuses the same record fields as ``combined_checker.result_ok``
-so a CLI run and a GUI run can never disagree.
+职责边界（v0.24.0 复审后修正，用户明确要求）
+-------------------------------------------
+本模块只回答一个问题：**这台机器上的客户端配置是否正确**。
 
-GREEN == fully compliant, YELLOW == not-probed / legacy-to-migrate / hooks missing,
-RED == a hard failure, GRAY == not installed.
+判定只用「配置派生」字段，**绝不**看探活（连通性）结果：
 
-A-2 (probe tri-state): "not probed" is NOT a failure — a config-only run never
-ran the live L4 probe, so its probe-derived fields cannot gate the exit code.
-The probe state is made explicit below and consumed by ``result_ok`` so that
+- 配置派生：``installed`` / ``skills_compliant`` / ``mcp_configured`` /
+  ``hooks_configured`` / ``hooks_required`` / ``legacy_channels``
+- 探活派生：``mcp_initialize_ok`` / ``mcp_tools_list_ok`` / ``capabilities`` /
+  ``probe`` —— 这些**不参与颜色**，只在「端点状态」视图里用
 
-    result_ok(result) is True  <=>  no installed record is a hard failure and
-                                   unmanaged == []  (probe "not probed" is a pass)
+理由：端点是否可达是**运行时状态**，不是配置正确性。一个配置完全合法的端点
+（例如内网 ``k8s.carobo.cn`` 在本机不可达）不应让配置审计变色；反过来，探活
+成功也不能把配置写错的客户端判成绿色。
+
+    GREEN  == 配置完全合规
+    YELLOW == 配置无硬性错误，但存在需人工处理项（遗留通道 / 缺必需 hooks）
+    RED    == 配置存在硬性错误（skills 不合规 / MCP 未按预期配置）
+    GRAY   == 未安装
+
+「端点连通性」是**另一个**视图，入口在 MCP 模块，由独立命令手动触发；
+其展示态由 ``classify_endpoint_probe`` 给出，与上面的颜色互不影响。
 """
 
 from __future__ import annotations
 
 from typing import Any, Dict
 
-
 STATE_GREEN = "green"
 STATE_YELLOW = "yellow"
 STATE_RED = "red"
 STATE_GRAY = "gray"
 
-# A-2: explicit probe tri-state (probed-ok / probed-failed / not-probed).
+# 端点连通性的三态（只服务于「端点状态」视图，与配置审计无关）。
 PROBE_STATE_OK = "probed_ok"
 PROBE_STATE_FAILED = "probed_failed"
 PROBE_STATE_NOT_PROBED = "not_probed"
 
+# 「端点状态」视图的展示态。
+ENDPOINT_OK = "ok"
+ENDPOINT_FAILED = "failed"
+ENDPOINT_NOT_RUN = "not_run"
+
 
 def probe_state(probe: Dict[str, Any]) -> str:
-    """Classify the endpoint probe into the A-2 tri-state.
+    """把一次端点探活归入三态。
 
-    ``probe`` is the ``check_agents`` result's ``probe`` dict.  Its ``error``
-    field carries the full signal:
-    - ``"not probed"`` → the live L4 probe never ran (config-only run),
-    - any other non-empty error → the probe ran and failed,
-    - empty → the probe ran and succeeded.
+    ``probe`` 是探活结果的 dict，其 ``error`` 字段承载全部信号：
+
+    - **没有 probe 段、或没有 ``error`` 键** → 从未探活（无信号可依），
+      判 ``NOT_PROBED``。**不能**当作成功 —— 把「没测过」显示成「正常」会误导人。
+    - ``error == "not probed"`` → 探活没跑（纯配置运行），
+    - 其它非空 error → 探活跑了但失败，
+    - 空串 → 探活跑了且成功。
     """
-    error = (probe or {}).get("error", "")
+    if not probe or "error" not in probe:
+        return PROBE_STATE_NOT_PROBED
+    error = probe.get("error", "")
     if error == "not probed":
         return PROBE_STATE_NOT_PROBED
     return PROBE_STATE_FAILED if error else PROBE_STATE_OK
 
 
-def _probe_phase(probe_error: str) -> str:
-    """Map probe.error to the probe phase used for classification."""
-    if probe_error == "not probed":
-        return "not_probed"
-    return "failed" if probe_error else "probed"
+def classify_endpoint_probe(probe: Dict[str, Any]) -> str:
+    """端点连通性的展示态：ok / failed / not_run。
+
+    这是「端点状态」视图专用的判定，**不参与** ``classify_record`` 的颜色，
+    因此「端口不通」永远不会让配置审计变红。
+    """
+    state = probe_state(probe)
+    if state == PROBE_STATE_OK:
+        return ENDPOINT_OK
+    if state == PROBE_STATE_FAILED:
+        return ENDPOINT_FAILED
+    return ENDPOINT_NOT_RUN
 
 
-def classify_record(record: Dict[str, Any], probe: Dict[str, Any]) -> str:
-    """Return green/yellow/red/gray for one ``check_agents`` record.
+def classify_record(record: Dict[str, Any]) -> str:
+    """按**配置**给出 green/yellow/red/gray（不看探活）。
 
-    ``record`` must include ``name``, ``installed``, ``skills_compliant``,
-    ``mcp_configured``, ``mcp_initialize_ok``, ``mcp_tools_list_ok``,
-    ``hooks_configured``, ``capabilities``, ``legacy_channels``.
+    ``record`` 需包含 ``installed``、``skills_compliant``、``mcp_configured``、
+    ``hooks_configured``、``hooks_required``、``legacy_channels``。
+
+    注意：``mcp_initialize_ok`` / ``mcp_tools_list_ok`` / ``capabilities`` 是
+    探活派生字段，**故意不参与判定**。
     """
     if not record.get("installed"):
         return STATE_GRAY
 
-    probe_error = (probe or {}).get("error", "")
-    phase = _probe_phase(probe_error)
-
-    # Hard failures -> RED.
+    # 硬性配置错误 -> RED。
     if not record.get("skills_compliant"):
         return STATE_RED
     if not record.get("mcp_configured"):
         return STATE_RED
-    if phase == "failed":
-        return STATE_RED
-    if phase == "probed":
-        if not record.get("mcp_initialize_ok") or not record.get("mcp_tools_list_ok"):
-            return STATE_RED
-        capabilities = record.get("capabilities", {}) or {}
-        if not all(capabilities.values()):
-            return STATE_RED
 
-    # Fully compliant -> GREEN. hooks 只在端点适用时才是硬性要求
+    # 配置完全合规 -> GREEN。hooks 只在端点适用时才是硬性要求
     # （纯工具端点 record.hooks_required=False，未配 hooks 不阻断 green）。
-    capabilities = record.get("capabilities", {}) or {}
     if (
         record.get("skills_compliant")
         and record.get("mcp_configured")
-        and record.get("mcp_initialize_ok")
-        and record.get("mcp_tools_list_ok")
         and (record.get("hooks_configured") or not record.get("hooks_required", True))
         and not record.get("legacy_channels")
-        and all(capabilities.values())
-        and phase == "probed"
     ):
         return STATE_GREEN
 
-    # Everything else: not-probed, legacy_to_migrate, or hooks missing -> YELLOW.
+    # 其余：遗留通道待迁移 / 缺必需 hooks -> YELLOW。
     return STATE_YELLOW
 
 
 def classify_result(result: Dict[str, Any]) -> Dict[str, Any]:
-    """Classify every record in a ``check_agents`` result, plus unmanaged split."""
-    probe = result.get("probe", {})
+    """对 ``check_agents`` 结果里的每条 record 分类，并附 unmanaged 名单。"""
     records: Dict[str, str] = {}
     for record in result.get("records", []) or []:
-        records[record.get("name", "")] = classify_record(record, probe)
+        records[record.get("name", "")] = classify_record(record)
     unmanaged = [item.get("name", "") for item in result.get("unmanaged", []) or []]
     return {
         "records": records,
@@ -113,29 +122,20 @@ def classify_result(result: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def all_installed_compliant(result: Dict[str, Any]) -> bool:
-    """Independent re-derivation of ``result_ok`` from the GUI tri-state.
+    """从 GUI 三态独立重推 ``result_ok``（配置口径）。
 
-    A-2: a not-probed (YELLOW) record with no legacy/hooks gap is compliant —
-    the live probe being absent is a measurement gap, not a failure.  RED and
-    YELLOW-for-legacy/hooks are failures.  This is the GUI-side twin of
-    ``combined_checker.result_ok``, so the two implementations are compared in
-    ``test_dashboard_states`` to catch drift.
+    配置审计里只有 GREEN 算合规：YELLOW 在本口径下必然意味着「有遗留通道」
+    或「缺必需 hooks」，两者都是失败，不再存在「因未探活而黄」的情形
+    （探活已完全移出审计）。
+
+    这是 ``combined_checker.result_ok`` 的 GUI 侧孪生实现，两者在
+    ``test_dashboard_states`` 中比对，以防漂移。
     """
-    probe = result.get("probe", {})
     if result.get("unmanaged"):
         return False
     for record in result.get("records", []) or []:
         if not record.get("installed"):
             continue
-        color = classify_record(record, probe)
-        if color == STATE_RED:
-            return False
-        if color == STATE_GREEN:
-            continue
-        # YELLOW is compliant only when the sole reason is "not probed"; a legacy
-        # channel or a missing (required) hook is still a failure.
-        if record.get("legacy_channels"):
-            return False
-        if not (record.get("hooks_configured") or not record.get("hooks_required", True)):
+        if classify_record(record) != STATE_GREEN:
             return False
     return True
