@@ -47,6 +47,19 @@ import shutil
 import sys
 from pathlib import Path
 
+# Windows 控制台默认代码页是 cp1252 / cp936，Python 的 sys.stdout 用该编码 ——
+# 本脚本会打印 "✓"（U+2713）和中文，在那种控制台下会抛
+#   UnicodeEncodeError: 'charmap' codec can't encode character '\u2713'
+# 且崩溃发生在**产物已写完之后**，于是 CI 的「Generate frontend dist」步骤
+# 判失败、而产物其实已生成（Windows 打包 workflow 实测就卡在这里）。
+# 显式把 stdout/stderr 改成 UTF-8 + errors="replace"：控制台若显示不了只降级成
+# 替换字符，绝不会让构建失败。Python 3.7+ 支持 reconfigure；3.6 及以下跳过。
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):  # pragma: no cover - 老解释器/非标准流
+        pass
+
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "gui" / "dashboard.html"
 DIST = ROOT / "gui" / "dist"
