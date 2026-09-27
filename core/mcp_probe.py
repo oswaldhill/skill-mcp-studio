@@ -3,6 +3,7 @@
 import json
 import os
 import ssl
+import time
 import urllib.error
 import urllib.request
 from typing import Any, Dict, Optional, Tuple
@@ -153,9 +154,26 @@ def probe_mcp(
     # 影响，只是少报一次「假故障」。
     transient = (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, ValueError, OSError)
     attempts = max(1, int(retries) + 1)
+    # Round 39：整个 initialize 阶段**共享一个 deadline**，重试只消耗剩余预算。
+    #
+    # 动机（实测）：`retries=1` 原本让每次尝试各自吃满 `timeout`，于是
+    #   retries=0 → 10.14s / retries=1 → 16.21s（同一个 'read operation timed out'）
+    # —— 对「端点根本不可达」这种确定性超时，第二次尝试注定同样超时，
+    # 多花的 6s 是纯等待。而审计要逐端点跑，这个浪费会被放大。
+    #
+    # 注意这里**不改变重试语义**：瞬时抖动（作者原意要吸收的「单次 socket 超时」）
+    # 仍然会重试，只是重试必须在原定预算内完成。这正是 `transport.py` 对 stdio
+    # 两次握手已经采用的做法（其注释：single deadline budget covering spawn +
+    # both handshakes, previously each handshake got its own timeout → up to 2×）。
+    phase_deadline = time.monotonic() + timeout
+    last_error = ""
     initialize: Dict[str, Any] = {}
     session_id = ""
     for attempt in range(attempts):
+        remaining = phase_deadline - time.monotonic()
+        if remaining <= 0:  # 预算已耗尽：不再发起注定超时的尝试
+            result["error"] = last_error or "probe budget exhausted before initialize"
+            return result
         try:
             initialize, session_id = _post(url, {
                 "jsonrpc": "2.0",
@@ -166,11 +184,12 @@ def probe_mcp(
                     "capabilities": {},
                     "clientInfo": {"name": "skill-mcp-studio", "version": "1.0"},
                 },
-            }, token=auth_token, timeout=timeout)
+            }, token=auth_token, timeout=remaining)
             break
         except transient as error:
+            last_error = str(error)
             if attempt + 1 >= attempts:
-                result["error"] = str(error)
+                result["error"] = last_error
                 return result
     try:
         if initialize.get("error") or not initialize.get("result"):
