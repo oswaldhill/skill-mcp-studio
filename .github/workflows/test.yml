@@ -51,7 +51,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Setup Python 3.11
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
 
@@ -147,7 +147,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Setup Python 3.11
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
 
@@ -176,7 +176,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Setup Python 3.11
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
 
@@ -206,7 +206,7 @@ jobs:
       # 于是宏展开失败、cargo test 以 exit 101 挂在**编译**上 —— 测试函数本身都是
       # 纯函数、与本机一致，问题从来不在断言。故此处必须先补出该目录。
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
 
