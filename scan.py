@@ -354,6 +354,9 @@ def _run_management(args, config, config_path) -> int:
             config_path=config_path,
             live_probe=False,
             auto_discover=getattr(args, "discover", None),
+            # 「操作后只刷新该操作产生的内容」：--only 让本次只构建受影响的那一块，
+            # 不重跑整份审计。None/空 = 全量，行为与加此参数前完全一致。
+            only=getattr(args, "only", None),
         )
     except Exception as exc:
         print(json.dumps({"kind": "management", "error": str(exc)}, ensure_ascii=False))
@@ -1620,6 +1623,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--management", action="store_true",
         help="输出三栏管理台管理快照 JSON（IDE/Skills/MCP 三面板；配合 --format json）",
+    )
+    parser.add_argument(
+        "--only", type=str, default=None, metavar="BLOCKS",
+        help="配合 --management：只构建指定块（逗号分隔：endpoints/mcp/agents/skills/"
+             "mainstream/settings），用于「操作后只刷新该操作影响的内容」，"
+             "不重跑整份审计；其中 endpoints 为纯配置读取，可完全跳过技能扫描",
     )
     parser.add_argument(
         "--version", action="store_true",

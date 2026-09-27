@@ -2958,7 +2958,7 @@ async function setSkillState(skill, client, enable) {
   const res = await runCli([enable ? "--enable-skill" : "--disable-skill", skill, "--client", client]);
   if (res && res.code === 0) {
     showToast("ok", `${enable ? "已启用" : "已禁用"} ${skill} @ ${client}`);
-    await loadInternal(false);
+    await refreshBlocks(["skills", "agents"]);
     showSkillDetail(skill);
   } else {
     showToast("err", (res && res.stderr) || "操作失败");
@@ -3023,7 +3023,7 @@ function openRenameSkillModal(skill) {
     const res = await runCli(args);
     if (res && res.code === 0) {
       showToast("ok", `${skill} 元数据已保存`);
-      await loadInternal(false);
+      await refreshBlocks(["skills", "agents"]);
       showSkillDetail(skill);
     } else showToast("err", cliErrDetail(res));
   };
@@ -3038,7 +3038,7 @@ async function confirmDeleteSkill(skill) {
     if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
     if (res.code === 0) return { ok: true, message: `${skill} 已移入 _trash/（备份在 _backup/）` };
     return { ok: false, message: "删除失败", detail: cliErrDetail(res) };
-  }, () => loadInternal(false), ["备份到 _backup/", "移入 _trash/ 回收目录", "刷新技能清单"]);
+  }, () => refreshBlocks(["skills", "agents"]), ["备份到 _backup/", "移入 _trash/ 回收目录", "刷新技能清单"]);
 }
 
 // ---------------- 端点库（设置页内嵌） ----------------
@@ -3600,7 +3600,7 @@ function openAgentSettings(name) {
 
     const res = await runCli(args);
     closeModal();
-    if (res && res.code === 0) { showBanner("ok", name + " 配置已更新"); loadInternal(); }
+    if (res && res.code === 0) { showBanner("ok", name + " 配置已更新"); refreshBlocks(["agents", "mainstream"]); }
     else showBanner("err", (res && res.stderr) || "更新失败");
   };
 }
@@ -3941,6 +3941,65 @@ async function doRescan(btnEl) {
     if (btn) { btn.disabled = false; btn.textContent = orig; }
   }
 }
+// ---------------- 局部刷新（只刷新该操作产生的内容） ----------------
+//
+// 用户要求：任何操作与「重新刷新整份审计」没有必然联系。操作结束之后，只需刷新
+// **该操作所产生的那一块**。整份审计（--management 全量）要重扫全部技能与客户端
+// （实测约 8 秒、快照约 556KB，其中 skills+mcp 占 427KB）；而改一个端点只需取
+// 端点库本身（实测 0.26 秒）—— 两者相差约 30 倍，且后者才是「这个操作的结果」。
+//
+// 与后端的契约：``--management --only <blocks>`` 只返回被请求的块，
+// **未请求的块不出现**（而不是出现空值），因此前端能区分「这块没刷新」与
+// 「这块是空的」。
+const BLOCK_RENDERERS = {
+  // endpoints 与 mcp 都只影响 MCP 面板与端点状态区。
+  endpoints: () => { renderMcp(); renderEndpointStatus(); },
+  mcp: () => { renderMcp(); renderEndpointStatus(); },
+  agents: () => { renderOverview(); renderAgents(); },
+  skills: () => { renderOverview(); renderSkills(); },
+  mainstream: () => { renderOverview(); },
+  settings: () => { renderSettings(); },
+};
+
+// 把局部快照合并进 SNAP。
+//
+// **必须是深合并**：``--only endpoints`` 只返回 ``mcp.endpoints``，若在此处整块
+// 覆盖 ``SNAP.mcp``，就会把没请求的 ``endpoint_status`` / ``clients`` 一起抹掉，
+// 面板会突然空掉。对象逐子键覆盖、数组整体替换，正好符合「只动返回的部分」。
+function mergePatch(patch) {
+  Object.keys(patch || {}).forEach((k) => {
+    const v = patch[k];
+    const cur = SNAP ? SNAP[k] : undefined;
+    const bothPlain =
+      v && typeof v === "object" && !Array.isArray(v) &&
+      cur && typeof cur === "object" && !Array.isArray(cur);
+    if (bothPlain) Object.assign(cur, v);
+    else if (SNAP) SNAP[k] = v;
+  });
+}
+
+// 只重取指定块并只重渲染受影响的面板；不触碰审计结论的其余部分。
+async function refreshBlocks(blocks) {
+  const want = Array.isArray(blocks) ? blocks.slice() : [blocks];
+  if (!tauriInvoke || !want.length) return true;
+  const mgmt = await runCli(["--management", "--only", want.join(","), "--format", "json"]);
+  if (!mgmt || mgmt.code !== 0) {
+    // mgmt === null 时 runCli 已透出具体原因（CLI 未装/安全边界/执行失败），此处不覆盖。
+    if (mgmt) showBanner("err", "局部刷新失败：" + mgmt.stderr);
+    return false;
+  }
+  mergePatch(JSON.parse(mgmt.stdout));
+  const done = new Set();
+  want.forEach((b) => {
+    if (done.has(b)) return;
+    done.add(b);
+    const fn = BLOCK_RENDERERS[b];
+    if (fn) fn();
+  });
+  clearBanner();
+  return true;
+}
+
 function loadInternal(discover) {
   return (async () => {
     const args = ["--management", "--format", "json"];
@@ -5286,7 +5345,7 @@ function renderAddPanel(filter) {
       } else fail++;
     }
     showToast(fail ? "warn" : "ok", checked ? `已纳入 ${ok} 个${fail ? `，失败 ${fail} 个` : ""}` : `已移出 ${ok} 个${fail ? `，失败 ${fail} 个` : ""}`);
-    await loadInternal();
+    await refreshBlocks(["agents", "mainstream"]);
     updateMtSum((SNAP && SNAP.mainstream_tools) || []);
   }
   $("mt-all").onclick = () => batchToggleMts(true);
@@ -5313,7 +5372,7 @@ function renderAddPanel(filter) {
           const lbl = cb.parentElement.querySelector(".chk-label");
           if (lbl) { lbl.textContent = willRegister ? "已纳入" : "未纳入"; lbl.className = "chk-label" + (willRegister ? "" : " off"); }
           showToast("ok", willRegister ? `${name} 已纳入管理` : `${name} 已移出管理`);
-          await loadInternal();
+          await refreshBlocks(["agents", "mainstream"]);
           updateMtSum((SNAP && SNAP.mainstream_tools) || []);
         } else {
           showToast("err", (res && res.stderr) || "操作失败");
@@ -5359,7 +5418,7 @@ function renderAddPanel(filter) {
           const cli = v("cli"); if (cli) args.push("--client-command", cli);
           const cfg = v("cfg"); if (cfg) args.push("--client-config-paths", cfg);
           const res = await runCli(args);
-          if (res && res.code === 0) { showBanner("ok", `${name} 设置已保存并纳入`); closeModal(); loadInternal(); }
+          if (res && res.code === 0) { showBanner("ok", `${name} 设置已保存并纳入`); closeModal(); refreshBlocks(["agents", "mainstream"]); }
           else showBanner("err", (res && res.stderr) || "保存失败");
         };
       });
@@ -5403,7 +5462,7 @@ function renderAddPanel(filter) {
     if (res && res.code === 0) {
       closeModal();
       showToast("ok", `已添加客户端「${name}」`);
-      loadInternal();
+      refreshBlocks(["agents", "mainstream"]);
     } else {
       btn.disabled = false;
       btn.textContent = "添加";
@@ -5437,7 +5496,7 @@ function openUnifiedDirModal() {
     if (!dir) { showBanner("err", "目录不能为空"); return; }
     const res = await runCli(["--set-unified-dir", dir]);
     closeModal();
-    if (res && res.code === 0) { showBanner("ok", "统一目录已更新"); loadInternal(); }
+    if (res && res.code === 0) { showBanner("ok", "统一目录已更新"); refreshBlocks(["agents", "mainstream"]); }
     else showBanner("err", (res && res.stderr) || "设置失败");
   };
   if (hasDialog) {
@@ -5540,7 +5599,7 @@ function renderMergePreview(data) {
     closeModal();
     showBanner("warn", "正在执行合并（实写）…");
     const apply = await runCli(["--fix-skills"], "执行链接修复：自动备份，失败回滚");
-    if (apply && apply.code === 0) { showBanner("ok", "合并完成：" + (apply.stdout || "").split("\n").slice(0, 2).join(" ")); loadInternal(); }
+    if (apply && apply.code === 0) { showBanner("ok", "合并完成：" + (apply.stdout || "").split("\n").slice(0, 2).join(" ")); refreshBlocks(["agents", "mainstream", "skills"]); }
     else showBanner("err", (apply && apply.stderr) || "合并失败（已回滚）");
   };
 
@@ -5832,7 +5891,7 @@ function openAddEndpointModal() {
     if (token) args.push("--endpoint-auth-token", token);
     const res = await runCli(args);
     closeModal();
-    if (res && res.code === 0) { showToast("ok", "端点已添加"); loadInternal(); }
+    if (res && res.code === 0) { showToast("ok", "端点已添加"); refreshBlocks(["endpoints"]); }
     else showToast("err", (res && res.stderr) || "添加失败");
   };
 }
@@ -5915,7 +5974,7 @@ function openEditEndpoint(ds) {
     if (newToken) args.push("--endpoint-auth-token", newToken);
     const res = await runCli(args);
     closeModal();
-    if (res && res.code === 0) { showToast("ok", "端点已更新"); loadInternal(); }
+    if (res && res.code === 0) { showToast("ok", "端点已更新"); refreshBlocks(["endpoints"]); }
     else showToast("err", (res && res.stderr) || "更新失败");
   };
 }
@@ -5925,7 +5984,7 @@ async function removeEndpoint(key) {
   if (!ok) return;
   showBanner("warn", "正在删除端点…");
   runCli(["--remove-endpoint", key]).then((res) => {
-    if (res && res.code === 0) { showToast("ok", "端点已删除"); loadInternal(); }
+    if (res && res.code === 0) { showToast("ok", "端点已删除"); refreshBlocks(["endpoints"]); }
     else showToast("err", (res && res.stderr) || "删除失败");
   }).catch((err) => {
     showToast("err", "删除失败：" + (err && err.message || err));

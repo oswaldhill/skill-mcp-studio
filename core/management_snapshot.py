@@ -219,12 +219,51 @@ def _mcp_inventory_payload(entries: List[Any], tool: Dict[str, Any]) -> List[Dic
     return payload
 
 
+# --- 局部刷新：`--only` 的块名与依赖关系 -----------------------------------
+#
+# 用户要求：任何操作与「重新刷新整份审计」没有必然联系；操作之后只刷新
+# **该操作所产生的内容**即可。本快照据此支持按块构建。
+#
+# 依赖事实（决定了哪些块能真正省时间）：
+#   * ``endpoints`` —— ``endpoint_entries(config)``，**纯配置读取**，不依赖
+#     ``run_scan``。这是唯一能完全跳过技能扫描的块，也是最常用的那个：
+#     端点增删改之后要刷新的恰恰就是端点库本身。
+#   * ``agents`` / ``skills`` / ``mainstream`` / ``mcp`` / ``settings`` ——
+#     数据来源都是 ``run_scan`` 的结果（agent 的 ``skills_compliant``、面板的
+#     技能状态、``mcp.endpoint_status`` 里每个 profile 的审计结论都建立在扫描
+#     结果之上），因此**跳不掉扫描**，只能少构建、少传输。
+_ONLY_BLOCKS = frozenset({"endpoints", "mcp", "agents", "skills", "mainstream", "settings"})
+_ONLY_NO_SCAN = frozenset({"endpoints"})
+
+
+def parse_only(raw: Any) -> "frozenset[str] | None":
+    """把 ``--only`` 的取值规范成块名集合；``None``/空 → ``None``（全量）。
+
+    逗号分隔字符串或任意可迭代都可接受。块名拼错时**显式报错**而不是静默
+    忽略——静默忽略会让调用方以为「只刷新了那一块」，实际却什么都没刷新。
+    """
+    if raw is None:
+        return None
+    items = raw.split(",") if isinstance(raw, str) else [str(x) for x in raw]
+    names = [s.strip() for s in items if s and s.strip()]
+    if not names:
+        return None
+    unknown = sorted(set(names) - _ONLY_BLOCKS)
+    if unknown:
+        raise ValueError(
+            "未知的 --only 块名: " + ", ".join(unknown)
+            + "（可用: " + ", ".join(sorted(_ONLY_BLOCKS)) + "）"
+        )
+    return frozenset(names)
+
+
 def build_management_snapshot(
     config: Dict[str, Any],
     config_path: str = "",
     *,
     live_probe: bool = False,
     auto_discover: bool | None = None,
+    only: Any = None,
 ) -> Dict[str, Any]:
     """Assemble the three-panel management payload (read-only).
 
@@ -237,9 +276,17 @@ def build_management_snapshot(
     ``k8s.carobo.cn``）不会再让审计显示异常，刷新也不会再为它等待超时。
     """
     validate_attachment(config)
-    try:
-        scan_result = run_scan(config_path=config_path or None, auto_discover=auto_discover)
-    except Exception:
+    only_set = parse_only(only)
+    # 只有 ``endpoints`` 一块能绕开技能扫描（它就是 endpoint_entries(config)）。
+    # 其余块的数据来源都是扫描结果，跳过扫描会得到错误的空数据，而不是「更快」。
+    _need_scan = only_set is None or bool(only_set - _ONLY_NO_SCAN)
+    if _need_scan:
+        try:
+            scan_result = run_scan(config_path=config_path or None, auto_discover=auto_discover)
+        except Exception:
+            scan_result = {"unified_dir": config.get("unified_skills_dir", "~/.skills"), "results": [], "summary": {}}
+    else:
+        # 免扫描路径：给一个最小骨架，让后续只构建 endpoints 的分支正常运行。
         scan_result = {"unified_dir": config.get("unified_skills_dir", "~/.skills"), "results": [], "summary": {}}
     unified_dir = scan_result.get("unified_dir", config.get("unified_skills_dir", "~/.skills"))
 
@@ -511,7 +558,7 @@ def build_management_snapshot(
     except Exception:
         app_info = {"version": "", "build": 0, "build_number": 0, "semver_ok": False, "full": ""}
 
-    return {
+    payload: Dict[str, Any] = {
         # DATA-6: this payload's schema_version (1) is the *management snapshot*
         # envelope version — distinct from config.yaml's schema_version (1 or 2,
         # the config file format). Disambiguated by the ``kind`` field below.
@@ -527,14 +574,28 @@ def build_management_snapshot(
             "semver_ok": app_info.get("semver_ok", False),
             "full": app_info.get("full", ""),
         },
-        "settings": settings_snapshot,
-        "agents": agents,
-        "discovered_candidates": discovered_candidates,
-        "mainstream_tools": mainstream_tools,
-        "skills": skills_panel,
-        "mcp": {
+    }
+    # 全量：把每一块都放进去。行为与引入 --only 之前**逐字段一致**。
+    everything = only_set is None
+    if everything or "settings" in only_set:
+        payload["settings"] = settings_snapshot
+    if everything or "agents" in only_set:
+        payload["agents"] = agents
+        payload["discovered_candidates"] = discovered_candidates
+    if everything or "mainstream" in only_set:
+        payload["mainstream_tools"] = mainstream_tools
+    if everything or "skills" in only_set:
+        payload["skills"] = skills_panel
+    # ``endpoints`` 与 ``mcp`` 都写 ``mcp`` 键，但粒度不同：
+    #   endpoints → 只给端点库本身（纯配置，免扫描）
+    #   mcp       → 端点库 + 每客户端挂载 + 每端点审计结论
+    # 只给子键、不给整块，是为了让前端**深合并**时不至于把未请求的兄弟键清掉。
+    if everything or "mcp" in only_set:
+        payload["mcp"] = {
             "endpoints": endpoints,
             "clients": mcp_clients,
             "endpoint_status": endpoint_status,
-        },
-    }
+        }
+    elif "endpoints" in only_set:
+        payload["mcp"] = {"endpoints": endpoints}
+    return payload
