@@ -200,6 +200,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      # cargo test 要编译 lib.rs，其中 `tauri::generate_context!()`（lib.rs:509）
+      # 在**编译期**就会读取 tauri.conf.json 的 frontendDist（`../gui/dist`）。
+      # gui/dist 不入库（构建期由 scripts/build_gui.py 生成），全新检出时它不存在，
+      # 于是宏展开失败、cargo test 以 exit 101 挂在**编译**上 —— 测试函数本身都是
+      # 纯函数、与本机一致，问题从来不在断言。故此处必须先补出该目录。
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Generate frontend dist (gui/dist)
+        run: |
+          set -euo pipefail
+          python3 scripts/build_gui.py
+          python3 scripts/build_gui.py --check
+
       # T-3: 运行 lib.rs 的 #[cfg(test)]（cli_candidates 路径解析 + open_url 注入
       # 校验）。与 build-linux 相同的 webkit2gtk 系统依赖。
       - name: Install Linux system dependencies (webkit2gtk)
