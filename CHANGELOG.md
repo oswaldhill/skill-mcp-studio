@@ -7,6 +7,59 @@
 
 ## [Unreleased]
 
+## [v0.24.0] - 2026-09-27
+
+当前发布版本（build 110）。
+
+### 变更
+
+- **审计只判配置，端口连通性独立检查**：审计的职责收敛为「**配置是否正确**」，
+  端点是否可达属运行时状态，改由**独立的连通性检查入口**负责。
+  - **引擎**：`classify_record(record)` 只看配置（`installed` / `skills_compliant` /
+    `mcp_configured` / `hooks` / `legacy_channels`），探活字段不再参与结论；
+    `result_ok()` 同样忽略 probe。
+  - **MCP 模块**：新增 `core/mcp_endpoint_status.py`，复用既有 `probe_mcp` 与
+    `classify_endpoint_probe`，**不另写一套探活**（避免两套实现各自漂移）。
+  - **CLI**：新增 `--endpoint-status`（默认 table；支持 `--format json`、`--profile`）。
+    退出码**只反映连通性**：`failed → 1`，`ok`/`not_run → 0`，与审计退出码完全无关。
+  - **GUI**：审计总览区**移除**「MCP 探活正常 x/y」卡片；新增独立的「端点状态」区，
+    **手动触发**检查，未检查用中性色（「没测过」既不是通过也不是故障）。
+  - **安全边界**：Tauri `run_cli` 白名单登记 `--endpoint-status` —— 漏登记会让前端
+    按钮直接撞安全边界，该缺口由 `tests/test_run_cli_boundary.py` 抓出。
+  - **实测**：`--endpoint-status --format json` → `exit=0`、`state: ok`、
+    `initialize_ok: true`、`tools_list_ok: true`、`tool_count: 16`、`elapsed_ms: 64`。
+    审计刷新由 28.3s 降至 12.56s；配置合法但不可达的端点不再让审计显示异常。
+  - **取舍（须知）**：端点故障**不再出现在审计结论里** —— 配置完全合规但所有端点
+    都不通的客户端，审计仍为绿色。若要用它做 CI 门禁，需**另外**跑
+    `--endpoint-status` 并看它自己的退出码。
+
+- **操作后只刷新该操作产生的内容，不重跑整份审计**：此前 GUI 里 13 处写操作成功后
+  一律重跑 `--management` 全量快照（实测 **8.02s**、快照约 556KB，其中 skills 215KB +
+  mcp 211KB）—— 最刺眼的是**改一个端点的 URL 会连带重扫整棵技能树**。
+  - **后端**：`--management` 新增 `--only <blocks>`（`endpoints`/`mcp`/`agents`/
+    `skills`/`mainstream`/`settings`；不传 = 全量，行为与改造前逐字段一致）。
+    复用**同一份组装逻辑**按块裁剪，故局部快照与全量快照天然同构。
+  - **依赖事实**：`agents`/`skills`/`mainstream`/`mcp`/`settings` 的数据来源都是
+    `run_scan()`，**跳不掉扫描**；只有 `endpoints`（`endpoint_entries(config)`）
+    是纯配置读取，可完全跳过 —— 实测 **8.02s → 0.26s**（约 31 倍）。
+  - **前端**：新增 `refreshBlocks()` + `BLOCK_RENDERERS`（只重渲染受影响面板）
+    与 `mergePatch()` **深合并**。深合并是必须的：`--only endpoints` 只返回
+    `mcp.endpoints`，整块覆盖 `SNAP.mcp` 会把未请求的 `endpoint_status`/`clients`
+    一起抹掉，面板会突然空掉。
+  - **13 处映射**：端点三处 → `["endpoints"]`；客户端/统一目录 →
+    `["agents","mainstream"]`；技能启停 → `["skills","agents"]`；
+    合并 → `["agents","mainstream","skills"]`。保留全量的只有启动加载、
+    命令面板「刷新快照」、「重新扫描」按钮（用户显式要重扫全部）。
+  - **护栏**：新增 `tests/test_partial_refresh.py`（10 用例）双向锁死该契约，
+    其中 **monkeypatch 计数断言「只取 endpoints 不得触发 `run_scan`」** ——
+    保证「快」不是偶然。
+
+- **版本号 0.23.0 → 0.24.0（build 109 → 110）**：按语义化版本以 `minor` 递增，
+  由 `scripts/bump_version.py --bump minor` 同步 `version.json`、`pyproject.toml`、
+  `src-tauri/Cargo.toml`、`src-tauri/Cargo.lock`、`src-tauri/tauri.conf.json`
+  与文档/预览层版本引用（单源真相仍是 `version.json`）。
+
+
 ### 变更
 
 - **引入 ruff 静态检查（P1-11，可审计终态）**：`pyproject.toml` 新增 `[tool.ruff]`，
@@ -754,7 +807,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.23.0...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.24.0...HEAD
+[v0.24.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.24.0
 [v0.23.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.23.0
 [v0.22.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.22.0
 [v0.21.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.21.1
