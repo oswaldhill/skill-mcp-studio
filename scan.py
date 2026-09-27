@@ -362,6 +362,43 @@ def _run_management(args, config, config_path) -> int:
     return 0
 
 
+def _run_endpoint_status(args, config, config_path) -> int:
+    """单独检查端点连通性（真探活）——**与配置审计完全无关**。
+
+    用户要求：审计只判配置是否正确，端口是否正常应单独检查。所以这条命令：
+
+    - 只做一件事：对已配置端点发起一次真探活，输出「端点状态」；
+    - **不参与**审计结论，也**不影响**审计退出码；
+    - 退出码只反映连通性：``failed`` → 1，``ok``/``not_run`` → 0，
+      便于脚本/CI 按需单独判定「端点是否活着」。
+
+    支持 ``--format json``（默认 table），``--profile`` 指定端点。
+    """
+    from mcp_endpoint_status import (
+        build_endpoint_status,
+        endpoint_exit_code,
+        status_lines,
+        status_summary,
+    )
+
+    try:
+        status = build_endpoint_status(config, endpoint_key=getattr(args, "profile", None))
+    except Exception as exc:
+        print(json.dumps(
+            {"kind": "endpoint-status", "error": str(exc)}, ensure_ascii=False,
+        ) if getattr(args, "format", None) == "json"
+            else f"端点状态检查失败: {exc}")
+        return 2
+
+    if getattr(args, "format", None) == "json":
+        print(json.dumps(status, ensure_ascii=False, indent=2))
+    else:
+        print(status_summary(status))
+        print()
+        print("\n".join(status_lines(status)))
+    return endpoint_exit_code(status)
+
+
 def _run_version(args, config, config_path) -> int:
     """只读输出应用版本信息（X.Y.Z + build），供「关于」页。"""
     from app_info import read_app_info
@@ -1428,6 +1465,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--mcp", action="store_true", help="检查单一 Hermes MCP 配置")
     parser.add_argument("--hooks", action="store_true", help="检查生命周期 hooks")
     parser.add_argument("--probe-mcp", action="store_true", help="执行 MCP initialize 和 tools/list")
+    parser.add_argument(
+        "--endpoint-status", action="store_true",
+        help="单独检查端点连通性（真探活；与配置审计无关，不影响审计退出码）",
+    )
     parser.add_argument("--fix-skills", action="store_true", help="修复 Skills 路径（兼容 --fix）")
     parser.add_argument("--fix-mcp", action="store_true", help="写入统一 Hermes MCP 配置（带备份）")
     parser.add_argument(
@@ -1843,6 +1884,10 @@ def main() -> int:
         return _run_restore_config_backup(args, config, config_path)
     if getattr(args, "management", False):
         return _run_management(args, config, config_path)
+    # 端点连通性独立出口：与审计并列而非包含在内。放在这里（早于通用快照路由）
+    # 以确保它拿到自己的 JSON/文本输出，不被后续「全量快照」分支截走。
+    if getattr(args, "endpoint_status", False):
+        return _run_endpoint_status(args, config, config_path)
     if getattr(args, "version", False):
         return _run_version(args, config, config_path)
     if getattr(args, "add_client", None):

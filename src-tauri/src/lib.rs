@@ -293,6 +293,9 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
     const ALLOWED: &[&str] = &[
         "--management",
         "--version",
+        // 端点连通性独立出口（v0.24.0）：审计只判配置，端口通断由这条命令单独检查。
+        // 不登记进来的话，前端「检查端点连通性」按钮会直接撞上安全边界。
+        "--endpoint-status",
         "--list-endpoints",
         "--list-mcp-inventory",
         "--list-profiles",

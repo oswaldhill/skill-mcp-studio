@@ -1503,6 +1503,18 @@
         <div class="page-actions"><button class="btn-soft" data-action="refresh">刷新审计</button></div>
       </div>
       <div id="overview-body"></div>
+
+      <!-- ===== 端点状态（独立于配置审计）=====
+           用户明确要求：审计只判配置是否正确，端口是否正常要单独看。
+           所以这里是一个**独立区域**，只在用户手动点按钮时才真探活，
+           其结果不参与上面审计区的任何颜色判定。 -->
+      <div class="panel" id="panel-endpoint-status" style="margin-top:16px">
+        <div class="hd">
+          <h3>端点状态</h3>
+          <div class="hint">端口连通性检查，与配置审计互不影响</div>
+        </div>
+        <div id="endpoint-status"></div>
+      </div>
     </section>
 
     <!-- ===== IDE / Agent（业务：客户端纳入与安装） ===== -->
@@ -1651,6 +1663,11 @@ const escapeHtml = (v) => String(v == null ? "" : v)
   .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
 let SNAP = null;
+// 端点连通性结果 —— **独立于审计快照 SNAP**。
+// 审计只判配置（不探活），端点通断只由用户手动点「检查端点连通性」触发，
+// 结果暂存在这里，不写回 SNAP，免得端点状态又渗回审计区的颜色。
+let ENDPOINT_STATUS = null;
+let ENDPOINT_CHECKED_AT = 0;
 
 // ---------------- theme（Light / Dark / System，参考 skills-manager 设置页） ----------------
 const THEME_KEY = "sms-theme";
@@ -2105,47 +2122,10 @@ function renderOverview() {
   const installed = agents.filter((a) => a.installed).length;
   const configOnly = agents.filter((a) => a.install_state === "config_only").length;
   const uncovered = agents.filter((a) => a.install_state === "none").length;
-  const endpoints = (mcp.endpoints || []);
-  // 「探活」= 端点 probe 成功（initialize + tools-list 均通过），而非「全合规」。
-  // result_ok() 是审计结论（还要求每个客户端 hooks 全配齐），与「探活」是不同语义，
-  // 之前误把 audit ``ok`` 当探活统计，导致 probe 成功却显示 0/1。
-  const statusMap = mcp.endpoint_status || {};
-  const verdicts = endpoints.map((e) => {
-    const s = (e && e.key && statusMap[e.key]) || null;
-    const p = (s && s.probe) || null;
-    return {
-      key: (e && e.key) || "",
-      url: (e && e.url) || "",
-      verdict: probeVerdict(p),
-      error: String((p && p.error) || "").trim(),
-    };
-  });
-  const probed = verdicts.filter((v) => v.verdict !== "unknown");
-  const probeOk = probed.filter((v) => v.verdict === "ok").length;
-  const failed = verdicts.filter((v) => v.verdict === "fail");
-  const unprobed = verdicts.filter((v) => v.verdict === "unknown").length;
-  // 分母只用「已探活」的端点：没有探活结果的端点不该被算成失败。
-  let probeNum = `${probeOk}/${probed.length}`;
-  let probeLbl = "MCP 探活正常";
-  let probeCls = "ok";
-  let probeTip = `已探活 ${probed.length} 个端点全部通过`;
-  if (!endpoints.length) {
-    probeNum = "0/0";
-    probeLbl = "MCP 端点";
-    probeCls = "";
-    probeTip = "尚未配置任何 MCP 端点";
-  } else if (!probed.length) {
-    probeNum = `${endpoints.length}`;
-    probeLbl = "MCP 未探活";
-    probeCls = "";
-    probeTip = "本次快照未包含探活结果，点击可重新探活";
-  } else if (failed.length) {
-    probeCls = "warn";
-    probeTip = "探活失败：" + failed.map((v) => `${v.key || v.url}${v.error ? `（${v.error}）` : ""}`).join("；");
-    if (unprobed) probeTip += `；另有 ${unprobed} 个端点未探活`;
-  } else if (unprobed) {
-    probeTip += `；另有 ${unprobed} 个端点未探活`;
-  }
+  // 探活统计**已整体移出本函数**：审计只判配置，端点通断在独立的「端点状态」区
+  // （见 renderEndpointStatus + --endpoint-status 出口）。这里原先计算
+  // probeNum/probeLbl/probeCls/probeTip 并渲染一张「MCP 探活正常 x/y」卡片，
+  // 那会让用户以为总览的颜色包含了端口通断 —— 正是本次要消除的误解。
   const registered = mainstream.filter((t) => t.registered).length;
   const card = statCard;  // S9：统一到顶层的 statCard
   el.innerHTML =
@@ -2155,13 +2135,12 @@ function renderOverview() {
     card(configOnly, "仅发现配置", "warn", false) +
     card(uncovered, "未安装", "err", false) +
     card(skills.skill_count || 0, "统一技能", "", false) +
-    card(probeNum, probeLbl, probeCls, false, probeTip) +
     card(`${registered}/${mainstream.length}`, "主流已纳入", "", false) +
     "</div>" +
     '<div class="quickbox"><span class="quickbox-label">快捷操作</span>' +
     '<button class="btn-soft" data-action="add-agent">添加 IDE / API</button>' +
     '<button class="btn-soft" data-action="merge">修复链接</button>' +
-    '<button class="btn-soft" data-action="reprobe">重新探活</button>' +
+    '<button class="btn-soft" data-action="endpoint-check">检查端点连通性</button>' +
     '<button class="btn-soft" data-goto="settings">管理 MCP 端点</button>' +
     "</div>";
 }
@@ -3734,6 +3713,7 @@ function switchSettingsTab(tab) {
 
 function renderAll() {
   renderOverview();
+  renderEndpointStatus();
   renderAgents();
   renderSkills();
   renderMcp();
@@ -4003,23 +3983,110 @@ async function refreshWithBtn(btnEl) {
   showToast(ok ? "ok" : "err", ok ? `${label}已刷新` : "刷新失败");
 }
 
-// 重新探活：重跑 --management 快照（内含 live_probe），给出探活专用反馈。
-// 快照原先只在启动时拉一次；端点网关抖动恢复后，用户可就地刷新而不必重启应用。
+// 端点连通性检查：走**独立出口** ``--endpoint-status``，不再借道 --management。
+//
+// v0.24.0 复审后修正：审计已改为**只判配置**（--management 的 live_probe 关闭），
+// 所以原先「重新探活 = 重跑 loadManagement()」的做法已**不再探活** ——
+// 按钮点了只刷新配置，用户会以为端点被检查过。这里改调独立的连通性命令，
+// 它才是真正发起 initialize + tools/list 的那条路径。
+//
+// 结果只更新 ENDPOINT_STATUS 并重绘**端点状态区**，不触碰审计区的颜色：
+// 端点通断与配置是否正确是两件独立的事。
 async function reprobeEndpoints(btnEl) {
   if (LOADING) return;
   LOADING = true;
   const btn = btnEl;
   const orig = btn ? btn.textContent : "";
-  if (btn) { btn.disabled = true; btn.textContent = "探活中…"; }
-  showToast("info", "正在重新探活 MCP 端点…", { loading: true });
+  if (btn) { btn.disabled = true; btn.textContent = "检查中…"; }
+  showToast("info", "正在检查端点连通性…", { loading: true });
   let ok = false;
   try {
-    ok = await loadManagement();
+    const res = await runCli(["--endpoint-status", "--format", "json"]);
+    if (res && res.code === 0) {
+      ENDPOINT_STATUS = JSON.parse(res.stdout);
+      ENDPOINT_CHECKED_AT = Date.now();
+      renderEndpointStatus();
+      ok = true;
+    } else if (res && res.code === 1) {
+      // 退出码 1 = 探活了但端点不通。**这是有效结论而非执行失败**：
+      // 把结果照样呈现出来，让用户看到具体错误。
+      ENDPOINT_STATUS = JSON.parse(res.stdout);
+      ENDPOINT_CHECKED_AT = Date.now();
+      renderEndpointStatus();
+      ok = true;
+    } else if (res) {
+      showBanner("err", "端点检查失败：" + res.stderr);
+    }
+  } catch (err) {
+    showBanner("err", "端点检查失败（非审计结论）：" + err);
   } finally {
     LOADING = false;
     if (btn) { btn.disabled = false; btn.textContent = orig; }
   }
-  showToast(ok ? "ok" : "err", ok ? "探活完成" : "探活失败");
+  showToast(ok ? "ok" : "err", ok ? "端点检查完成" : "端点检查失败");
+}
+
+// 渲染「端点状态」区。**只画端点连通性**，不碰审计区的任何元素。
+//
+// 三种呈现，全部以「未检查」为默认（绝不把「没测过」画成「正常」）：
+//   ok      → 绿色，列出工具数/耗时/检查时间
+//   failed  → 红色，列出具体错误
+//   未检查  → 灰色，提示「尚未检查，点按钮开始」
+function renderEndpointStatus() {
+  const el = $("endpoint-status");
+  if (!el) return;
+  const st = ENDPOINT_STATUS;
+  const note =
+    '<p class="hint">端点连通性是**运行时**状态，与上面的配置审计互不影响：' +
+    "配置合规不代表端点可达，端点不可达也不影响审计结论。</p>";
+
+  if (!st) {
+    el.innerHTML =
+      '<div class="empty">尚未检查端点连通性。</div>' +
+      '<div class="quickbox">' +
+      '<button class="btn-soft" data-action="reprobe">检查端点连通性</button>' +
+      "</div>" + note;
+    return;
+  }
+
+  const state = st.state || "not_run";
+  // 未检查必须是**中性色**（""），不能是 warn —— 沿用原总览护栏的口径：
+  // 「没测过」既不是通过也不是故障，用警告色会让人误以为端点有问题。
+  const cls = state === "ok" ? "ok" : state === "failed" ? "err" : "";
+  const label =
+    state === "ok" ? "连通正常" : state === "failed" ? "不通" : "尚未检查";
+  const ep = st.endpoint || {};
+  const rows = [
+    ["状态", label],
+    ["名称", ep.name || "hermes"],
+    ["地址", ep.url || ""],
+    ["传输", ep.transport || "streamable-http"],
+  ];
+  if (state !== "not_run") {
+    rows.push(["initialize", st.initialize_ok ? "成功" : "失败"]);
+    rows.push(["tools/list", st.tools_list_ok ? "成功" : "失败"]);
+    rows.push(["工具数", String(st.tool_count || 0)]);
+    rows.push(["耗时", `${st.elapsed_ms || 0}ms`]);
+  }
+  if (st.checked_at) rows.push(["检查时间", st.checked_at]);
+  if (st.error) rows.push(["错误", st.error]);
+
+  const table =
+    '<table class="kv"><tbody>' +
+    rows
+      .map(
+        ([k, v]) =>
+          `<tr><th>${escapeHtml(k)}</th><td>${escapeHtml(String(v))}</td></tr>`
+      )
+      .join("") +
+    "</tbody></table>";
+
+  el.innerHTML =
+    `<div class="endpoint-verdict ${cls}">${escapeHtml(label)}</div>` +
+    table +
+    '<div class="quickbox">' +
+    '<button class="btn-soft" data-action="reprobe">重新检查连通性</button>' +
+    "</div>" + note;
 }
 
 
@@ -5979,6 +6046,8 @@ document.addEventListener("click", (e) => {
     else if (a === "market-install") confirmMarketInstall(act.dataset.pkg);
     else if (a === "market-upgrade") confirmMarketUpgrade(act.dataset.name);
     else if (a === "reprobe") reprobeEndpoints(act);
+    // 「检查端点连通性」走独立出口，与审计刷新（refresh-audit）完全分开。
+    else if (a === "endpoint-check") reprobeEndpoints(act);
     else if (a === "fix-all") fixAllSkillsMcp();
     else if (a === "set-dir") openUnifiedDirModal();
     else if (a === "merge") openMergePreview();
