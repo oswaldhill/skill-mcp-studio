@@ -287,8 +287,6 @@ class BuildSplitTest(unittest.TestCase):
         于是 `python -m unittest discover` 长期失败 —— 且**本机门禁全绿**，
         差异只出在 CI 的解释器版本上，极难从本地看出。
         """
-        import re
-
         for wf in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
             text = wf.read_text(encoding="utf-8")
             if "matrix." not in text:
