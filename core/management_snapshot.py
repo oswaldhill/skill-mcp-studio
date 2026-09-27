@@ -16,6 +16,7 @@ writes anything.
 from __future__ import annotations
 
 import os
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
@@ -378,14 +379,29 @@ def build_management_snapshot(
         })
 
     # --- per-endpoint audit conclusion (reusing check_agents) ---
-    endpoint_status: Dict[str, Dict[str, Any]] = {}
-    for key in list_profiles(config):
+    #
+    # 并发执行（round 36）：每个端点的探活是**纯等待**，而 `transport.probe` 的
+    # 默认超时是 8s 的**单一 deadline 预算**（spawn + initialize + tools/list 共用）。
+    # 实测：2 个端点里 `K8s` 完全不可达 → 每次坐满 8s 超时；串行时这段是
+    # 8s × N 的累加（总 23.3s、其中 user+sys 仅 10.7s，六成是阻塞）。
+    # 端点之间**互不依赖**，因此并发不改变任何语义：每个端点仍保有完整 8s 预算，
+    # 只是同时进行。串行 N×8s → 并发 ≈ max(8s)。
+    #
+    # `ex.map` 按输入顺序返回，故 `endpoint_status` 的键序与串行版**逐一致**，
+    # 下游（GUI/CLI 一致性门禁、快照比对）不受影响。
+    #
+    # 只读性：`check_agents` 无模块级可变状态（写入都发生在每次调用新建的
+    # record/states/summary 上），`config`/`scan_result` 在本轮只被读取，
+    # 因此多线程安全。
+    profile_keys = list(list_profiles(config))
+
+    def _audit_endpoint(key: str) -> "tuple[str, Dict[str, Any]]":
         try:
             bundle = load_profile(config, key, config_path=config_path or None)
             result = check_agents(
                 config, scan_result, live_probe=live_probe, profile=bundle["profile"], endpoint_key=key
             )
-            endpoint_status[key] = {
+            return key, {
                 "endpoint": result.get("endpoint", ""),
                 "ok": result_ok(result),
                 "probe": result.get("probe", {}),
@@ -395,13 +411,22 @@ def build_management_snapshot(
         except Exception as exc:  # per-endpoint failure must not sink the whole snapshot
             # DATA-3: keep probe schema uniform — exception branch fills the
             # same fields as the normal branch so UI does not branch on shape.
-            endpoint_status[key] = {
+            return key, {
                 "endpoint": "",
                 "ok": False,
                 "probe": {"initialize_ok": False, "tools_list_ok": False, "tool_names": [], "error": str(exc)},
                 "summary": {},
                 "records": [],
             }
+
+    endpoint_status: Dict[str, Dict[str, Any]] = {}
+    if profile_keys:
+        # 上限 8 并发：够覆盖常见端点数量，又不会因为端点很多时一次性打爆
+        # 文件描述符/远端限流（探活含子进程与 socket 两类资源）。
+        max_workers = min(len(profile_keys), 8)
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            for key, payload in pool.map(_audit_endpoint, profile_keys):
+                endpoint_status[key] = payload
 
     # --- mainstream registry (for the unified add panel): name + registered? ---
     registered_names: set = {
