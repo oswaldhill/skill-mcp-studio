@@ -41,6 +41,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      # Round 32：beforeBuildCommand 跑 Python 脚本 scripts/build_gui.py，
+      # 构建依赖必须显式声明（原先靠 runner 自带 python3 侥幸通过）。
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@1.98.1  # Q0-1: 钉具体版本；@stable 会在上游发版时无声切换编译器
         with:

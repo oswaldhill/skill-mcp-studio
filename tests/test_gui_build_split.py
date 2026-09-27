@@ -212,6 +212,59 @@ class BuildSplitTest(unittest.TestCase):
         )
         self.assertEqual(r.returncode, 0, f"--check 应通过：\n{r.stdout}\n{r.stderr}")
 
+    def test_check_mode_detects_newline_drift(self):
+        """`--check` 必须能抓到「只差换行」的漂移。
+
+        Round 32 的真实教训：`--check` 原用 `Path.read_text()` 比较，而 read_text
+        走 universal newlines，会把 CRLF 归一成 LF —— 于是 Windows 上生成的
+        CRLF 产物会被判定为「与源文件同步」，漂移检测形同虚设。
+        改成按字节比较后才能真正抓到。这条用例把该行为钉住。
+        """
+        original = APP_JS.read_bytes()
+        try:
+            APP_JS.write_bytes(original.replace(b"\n", b"\r\n"))
+            r = subprocess.run(
+                [sys.executable, str(BUILD), "--check"], cwd=ROOT, capture_output=True, text=True
+            )
+            self.assertNotEqual(r.returncode, 0, "CRLF 漂移未被 --check 抓到")
+        finally:
+            APP_JS.write_bytes(original)
+
+    def test_dist_artifacts_are_lf_only(self):
+        """产物必须是纯 LF —— 否则跨平台构建结果不一致。
+
+        `write_text` 默认 `newline=None` 会做换行翻译，在 Windows 上把 \\n
+        写成 \\r\\n。脚本已显式 `newline="\\n"`；这条断言保证它不被改回去。
+        """
+        for path in (INDEX, APP_JS):
+            with self.subTest(path=path.name):
+                self.assertNotIn(
+                    b"\r",
+                    path.read_bytes(),
+                    f"{path.name} 含 CR —— 产物换行随平台漂移了",
+                )
+
+    def test_build_workflows_declare_python(self):
+        """三个打包 workflow 必须显式装 Python。
+
+        Round 32 的 CI 事故：`beforeBuildCommand` 跑 `scripts/build_gui.py`（Python），
+        但 `build-{linux,macos,windows}.yml` 都没装 Python —— macOS/Linux runner
+        自带 python3 侥幸通过，Windows 上四段 `||` 全失败、`tauri build` 中止
+        （HEAD 7fb4d22 的 Build Windows App = failure）。
+        构建依赖注入 CI 配置后，这条断言防止它再被悄悄漏掉。
+        """
+        for name in ("build-linux", "build-macos", "build-windows"):
+            wf = ROOT / ".github" / "workflows" / f"{name}.yml"
+            with self.subTest(workflow=name):
+                self.assertTrue(wf.is_file(), f"{name}.yml 不存在")
+                text = wf.read_text(encoding="utf-8")
+                self.assertIn(
+                    "actions/setup-python@",
+                    text,
+                    f"{name}.yml 未声明 Python —— beforeBuildCommand 里的 "
+                    "scripts/build_gui.py 将无解释器可跑（Windows 上会直接失败）",
+                )
+
     def test_check_mode_detects_drift(self):
         """临时改动产物后 `--check` 必须报不同步，然后恢复。"""
         original = APP_JS.read_text(encoding="utf-8")

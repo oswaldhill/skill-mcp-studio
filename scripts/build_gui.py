@@ -103,9 +103,12 @@ def main(argv: list[str]) -> int:
         if not (INDEX.is_file() and APP_JS.is_file()):
             print("✗ gui/dist 尚未生成，请运行：python3 scripts/build_gui.py", file=sys.stderr)
             return 1
+        # 按字节比较（不是 read_text）：read_text 走 universal newlines，会把
+        # CRLF 归一成 LF —— 那样在 Windows 上生成的 CRLF 产物会被误判为「同步」，
+        # 检测不出换行漂移。按字节比才抓得住。
         same = (
-            INDEX.read_text(encoding="utf-8") == dist_html
-            and APP_JS.read_text(encoding="utf-8") == app_js
+            INDEX.read_bytes() == dist_html.encode("utf-8")
+            and APP_JS.read_bytes() == app_js.encode("utf-8")
         )
         if not same:
             print(
@@ -125,8 +128,15 @@ def main(argv: list[str]) -> int:
         return 0
 
     DIST.mkdir(parents=True, exist_ok=True)
-    INDEX.write_text(dist_html, encoding="utf-8")
-    APP_JS.write_text(app_js, encoding="utf-8")
+    # newline="\n" 必须显式指定：默认会做「换行翻译」，在 Windows 上把 \n
+    # 写成 \r\n —— 产物与仓库的 LF 约定不一致，且会让下游按字节数断言的地方
+    # （tools/dash_crash_harness.js）对不上。
+    # 用显式 open(..., newline=) 而非 Path.write_text(newline=)：后者是 3.10+
+    # 才有的参数，而 macOS 自带 CLT python3 是 3.9（beforeBuildCommand 里的
+    # `python3` 会解析到它），用了会直接 TypeError。
+    for path, text in ((INDEX, dist_html), (APP_JS, app_js)):
+        with open(path, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(text)
     print(f"✓ {INDEX.relative_to(ROOT)}  ({dist_html.count(chr(10)) + 1} 行)")
     print(f"✓ {APP_JS.relative_to(ROOT)}  ({app_js.count(chr(10)) + 1} 行)")
 

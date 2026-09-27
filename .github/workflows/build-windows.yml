@@ -41,6 +41,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      # Round 32（CI 抓出来的真缺陷）：beforeBuildCommand 跑的是 Python 脚本
+      # scripts/build_gui.py，但本 workflow 原先没装 Python —— macOS/Linux runner
+      # 恰好自带 python3 所以侥幸通过，Windows 上四段 || 全失败、构建中止
+      # （步骤 7 failure，HEAD 7fb4d22）。构建依赖必须显式声明。
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@1.98.1  # Q0-1: 钉具体版本；@stable 会在上游发版时无声切换编译器
         with:
