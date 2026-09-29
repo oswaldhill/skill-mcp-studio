@@ -27,10 +27,6 @@ updates:
     commit-message:
       prefix: "chore(deps)"
 
-  - package-ecosystem: npm
-    directory: /
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
-    commit-message:
-      prefix: "chore(deps)"
+  # 刻意不配 npm：仓库里没有 package.json（GUI 是原生 HTML/JS + 构建脚本，无 npm 依赖树）。
+  # 配了只会让 Dependabot 每周产出一次必然失败的任务 —— v0.24.0 发布时实测两条
+  # 「npm_and_yarn in /. - Update」均为 failure，而 pip / github-actions / cargo 三项均 success。
