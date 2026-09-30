@@ -7,7 +7,32 @@
 
 ## [Unreleased]
 
-## [v0.24.0] - 2026-09-27
+## [v0.24.1] - 2026-09-29
+
+当前发布版本（build 111）。
+
+### 变更
+
+- **macOS 构建改用本机自签证书签名**：`src-tauri/tauri.conf.json` 新增
+  `bundle.macOS.signingIdentity = "oswaldhill Local Development"`。本地
+  `cargo tauri build` 产出的 `.app` 由此**默认由本机自签证书签名**，不再是
+  Tauri 的 ad-hoc 兜底。
+  - **动机**：ad-hoc 签名无 TeamIdentifier，macOS 只能用 **cdhash** 表述其身份，
+    而 cdhash 每次重建都变 ⇒ 依赖签名身份的记录（Gatekeeper 信任、以及若将来
+    申请 TCC 权限时的授权条目）在每次重建后全部指向失效身份。改为自签证书后
+    designated requirement 变为
+    `identifier "io.skillmcp.studio" and certificate root = H"e2f6d1a5…"`，
+    **绑定证书指纹而非 cdhash**：同一证书下跨版本重建身份稳定。
+  - **实测（2026-09-29，本机）**：`codesign --force --sign "oswaldhill Local Development"`
+    在**非交互**会话中直接成功（退出码 0），与 `src-tauri/BUILD.md` §3.3 此前记录的
+    「Agent 会话内签名必然失败（unknown exception）」相反 —— 该结论已就地更正并标注日期。
+  - **CI 无回归**：runner 上没有该证书，`.github/workflows/build-macos.yml` 新增一步，
+    仅在**未配置 `APPLE_CERTIFICATE`** 时把 `APPLE_SIGNING_IDENTITY` 覆盖为 `-`
+    （ad-hoc），与改造前行为一致；已配置正式证书时该步不执行，正式身份链路不变。
+    依据是 tauri-cli 实测语义：`APPLE_SIGNING_IDENTITY` 环境变量优先于 config。
+  - **未改变的部分**：产物仍是**未公证**（无 Apple Developer ID 证书），首次打开
+    需右键「打开」放行；本次解决的是**签名身份的稳定性**，不是 Gatekeeper 分发问题。
+
 
 当前发布版本（build 110）。
 
@@ -807,7 +832,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.24.0...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.24.1...HEAD
+[v0.24.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.24.1
 [v0.24.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.24.0
 [v0.23.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.23.0
 [v0.22.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.22.0

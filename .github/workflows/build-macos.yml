@@ -104,6 +104,16 @@ jobs:
             echo "APPLE_TEAM_ID=${APPLE_TEAM_ID}"
           } >> "$GITHUB_ENV"
 
+      # CI 兜底：tauri.conf.json 的 bundle.macOS.signingIdentity 指向开发者**本机**
+      # 自签证书（本地构建默认用它，见 src-tauri/BUILD.md §3.4）。runner 上没有该
+      # 证书，沿用 config 会在签名阶段失败，故在**未配置正式证书**时显式覆盖为 ad-hoc
+      # "-"，与「未配置证书时 Tauri 自动 ad-hoc」的既有行为一致。
+      # 优先级依据（tauri-cli 2.11.5 源码）：APPLE_SIGNING_IDENTITY 环境变量优先于 config。
+      # 上面那步已导入正式证书时本步不执行；本步只写环境变量，不改任何配置。
+      - name: Neutralize local-only signing identity (no Apple certificate)
+        if: ${{ env.ACTIONS_APPLE_CERTIFICATE == '' }}
+        run: echo "APPLE_SIGNING_IDENTITY=-" >> "$GITHUB_ENV"
+
       # 项目前端为纯静态单文件（gui/dashboard.html，frontendDist=../gui/dist，由 beforeBuildCommand 生成），无 npm
       # 构建步骤。universal-apple-darwin：Tauri 分别编译 arm64/x86_64 并 lipo 合并，
       # 产出单一 .app，原生运行于 Intel 与 Apple Silicon。

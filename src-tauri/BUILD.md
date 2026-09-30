@@ -217,6 +217,19 @@ codesign --force --sign - /tmp/testbin      # 对照：ad-hoc 可用
   → 退出码 0
 ```
 
+> **⚠️ 更正（2026-09-29 实测）**：上面「非交互会话内 `codesign` 必然失败」的结论
+> **已不成立**。本机在同样的受限会话中实测**自签证书**可非交互签名成功：
+>
+> ```
+> codesign --force --sign "oswaldhill Local Development" <testbin>
+>   → 退出码 0；DR = identifier testbin and certificate root = H"e2f6d1a5…"
+> ```
+>
+> 当年失败的是一次 `Apple Development:` 身份。可确认的是：**「签名必须人工交互」不是
+> 普遍规律**；能否非交互签名取决于该身份在钥匙串中的访问控制（ACL）是否已授权
+> `codesign`、以及钥匙串是否处于解锁状态（这两点在本次与当年之间哪里不同，未逐一
+> 验证，不在本文断言）。**实践结论：本仓库的 macOS 构建现默认使用自签证书，见 §3.4。**
+
 失败与体积（1.2 G）、Electron 结构、`--deep` **均无关**——纯粹是钥匙串访问被拒。
 **切勿在 Agent 会话内替换 `/Applications/DeepSeek Harness.app`**：签坏会导致 DSH
 无法启动。确需根治请在**普通终端**由本人执行（会弹钥匙串授权，确认即可）：
@@ -247,6 +260,124 @@ codesign -d -r- /tmp/dsh-resign.app    # 期望 DR 不再是 cdhash，而是 ide
 >    （v1 是顶层 `invoke`，vendored 源码证实 v2 命名空间化为
 >    `app/core/event/...`），并补启动加载：桌面壳自动审计、浏览器直开渲染
 >    示例——此前 `SAMPLE` 定义后从未 `render()`，任何上下文启动都是空窗口。
+
+### 3.4 自签证书签名（默认构建方式，2026-09-29 起）
+
+**默认行为**：`cargo tauri build` 产出的 `.app` **自动由本机自签证书签名**，无需额外
+参数或环境变量 —— 签名身份固化在 `tauri.conf.json`：
+
+```json
+"bundle": { "macOS": { "signingIdentity": "oswaldhill Local Development" } }
+```
+
+**为什么必须这么做**：签名身份决定 macOS 如何表述这个应用。
+
+| | ad-hoc（改造前） | 自签证书（现在） |
+|---|---|---|
+| 身份表述 | 无（`Signature=adhoc`） | `Authority=oswaldhill Local Development` |
+| designated requirement | `cdhash H"…"` | `identifier "io.skillmcp.studio" and certificate root = H"e2f6d1a5…"` |
+| 重建之后 | **cdhash 变 ⇒ 身份变**，依赖签名的记录全部失效 | **身份不变**（同一证书下证书指纹恒定） |
+
+ad-hoc 无 TeamIdentifier，macOS 只能用 cdhash 指认它，而 cdhash 每次重建都不同 ——
+这就是「每次重建都要重新授权」的机制性根因（与 §3.3 里 DSH 自身 TCC 失效同源）。
+
+**实测证据（2026-09-29，v0.24.1 / build 111，本机 arm64）**：
+
+```
+$ cargo tauri build
+     Signing with identity "oswaldhill Local Development"   ← 构建日志，未传任何签名参数
+     Finished release profile in 3m 37s                     ← 冷编译（target/ 为空）
+$ codesign -dv --verbose=4 <app>
+     Identifier=io.skillmcp.studio
+     CodeDirectory v=20500 flags=0x10000(runtime)           ← hardened runtime 开启
+     Authority=oswaldhill Local Development
+     TeamIdentifier=not set
+$ codesign -d -r- <app>
+     designated => identifier "io.skillmcp.studio" and certificate root = H"e2f6d1a521d4e93f1f…"
+$ codesign --verify --deep --strict <app>
+     valid on disk / satisfies its Designated Requirement   ← 退出码 0
+```
+
+**启动实证**：`<app>/Contents/MacOS/skill-mcp-studio` 在 hardened runtime 下正常启动并持续
+存活（未崩溃）。注：在受限会话（workspace-write 沙箱）里直接拉起时会打印一批 WebKit 报错
+`could not create directory ~/Library/WebKit/io.skillmcp.studio/…` —— 那是**沙箱不允许写
+工作区之外**所致，**不是应用缺陷**；从 Finder 正常启动不受影响。
+
+**证书信息**（`security find-identity -v -p codesigning`）：
+
+```
+"oswaldhill Local Development"
+  自签（subject == issuer），O=Local Development，有效期至 2036-09-23
+  SHA-1 E2F6D1A521D4E93F1FED9A44E46508BC90BC1F2F
+```
+
+**未改变的部分**：产物**未公证**（本机无 Apple Developer ID），`spctl -a` 仍报 `rejected`、
+首次打开仍需右键「打开」放行 —— 与改造前一致。本次解决的是**身份稳定性**，不是 Gatekeeper
+分发问题。
+
+**CI 不受影响**：runner 没有这张证书，`.github/workflows/build-macos.yml` 新增一步，仅在
+**未配置 `APPLE_CERTIFICATE`** 时把 `APPLE_SIGNING_IDENTITY` 覆盖为 `-`（ad-hoc），与改造前
+行为一致；配了正式证书的分支完全不变。依据（tauri-cli 2.11.5 源码
+`src/interface/rust.rs:1467`）：**该环境变量优先于 config**。
+
+**临时换身份 / 回到 ad-hoc / 构建前自检**：
+
+```bash
+security find-identity -v -p codesigning | grep "oswaldhill Local Development"   # 先确认证书在
+APPLE_SIGNING_IDENTITY="Route Director Local Development" cargo tauri build     # 临时换证书
+APPLE_SIGNING_IDENTITY=- cargo tauri build                                      # 临时回 ad-hoc
+```
+
+**换机器须知**：config 里是**证书名**，新机器若没有同名自签证书，本地构建会在签名阶段
+失败。两条路：① 用「钥匙串访问 → 证书助理 → 创建证书」建同名证书（类型选「代码签名」）；
+② 用 `APPLE_SIGNING_IDENTITY=-` 走 ad-hoc。**证书私钥不在仓库里，也不应进仓库。**
+
+### 3.5 构建产物会在 Launchpad 里多出一个图标（2026-09-29 实测）
+
+**现象**：`cargo tauri build` 在**仓库内**产出 `.app` 后，Spotlight 会索引它，于是
+Launchpad 出现**第二个** `skill-mcp-studio` 图标，与 `/Applications` 里已安装的那份
+重复（两者可能逐字节相同，看起来像"两个一模一样的 APP"）。
+
+**先分清一件事**：这两个副本**未必一个好一个坏**。本次实测两份的
+`Authority` / designated requirement / 二进制 sha256 **完全一致**（都自签、都合法）。
+判断"哪份是哪个"的唯一可靠办法是逐一验签，别靠图标外观：
+
+```bash
+for A in /Applications/skill-mcp-studio.app \
+         "$PWD/target/release/bundle/macos/skill-mcp-studio.app"; do
+  codesign -dv --verbose=4 "$A" 2>&1 | grep -E '^Authority|^TeamIdentifier'
+  codesign -d -r- "$A" 2>&1 | tail -1
+  shasum -a 256 "$A/Contents/MacOS/skill-mcp-studio"
+done
+```
+
+**为何常规"注销注册"不管用（都实测过，别再白试）**：
+
+| 尝试 | 结果 |
+|------|------|
+| `lsregister -u <产物路径>` | 返回 0，但**记录立刻回来** —— Spotlight 索引仍持有该路径，索引器会重新登记 |
+| 临时把 `.app` 移出 → `-u` → 移回 | 同样无条件回来（移回后重新索引） |
+| `mdutil -i off <产物目录>` | `Error: invalid operation / unknown indexing state`（该工具只认卷，不认目录） |
+| 产物目录放 `.metadata_never_index` | 对**已被索引的既有路径**未生效（是否对新生成文件生效，本次未验证） |
+
+**有效处置（二选一）**：
+
+1. **删掉产物里的 `.app`**（本次采用，最直接）：位置不存在的 LS 记录**不会**渲染成图标
+   —— 证据是 LS 库里至今还躺着一条指向**已卸载** `/Volumes/skill-mcp-studio` 的陈年记录，
+   而它并没有多给你一个图标。删前用 §3.4 的 sha256 确认 DMG 里已存有同一份。
+2. **把 `src-tauri/target` 加进 Spotlight 的排除列表**：macOS 27 上的准确路径是
+   「系统设置 → Spotlight → **被排除的位置**（英文 *Excluded Locations*）→ 添加要排除的文件夹或磁盘」。
+   注意它**不是左侧的独立菜单项**，而是 Spotlight 面板内往下滚到底部的区块。
+   > 旧版 macOS 该入口叫「搜索隐私…」（`Spotlight.prefPane`），本文档初稿沿用了旧叫法，
+   > 在 macOS 27 上找不到——2026-09-29 由用户指出并更正。
+
+   一次操作、永久生效，
+   产物原地保留。注意该隐私列表落在 `/.Spotlight-V100/VolumeConfiguration.plist`，
+   **脚本化写入需 root**，所以这一步交给人在 GUI 里做，本仓库不自动化。
+
+> 顺带一条与图标无关但会一起冒出来的残留：LS 库里可能挂着**旧的 dmg 临时工作映像**
+> （本次见到 `rw.<pid>.skill-mcp-studio_0.22.0_arm64.dmg` 的引用，该文件早已不存在）。
+> 它不影响功能，`lsregister -kill -r` 重建库可清，但那会全量重扫，代价不值得。
 
 ## 4. 验证（DOD：GUI/CLI 结论完全一致）
 
