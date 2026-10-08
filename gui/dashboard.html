@@ -1869,12 +1869,16 @@ async function runTaskModal(title, run, refresh, stages) {
   // 兜底：局部刷新全部数据块（--management --only），不再回落到全量审计。
   //
   // 历史问题：兜底曾是 loadInternal(false)，即整份 --management 重扫全部技能与
-  // 客户端（约 30 秒、快照约 556KB）。于是任何忘了传 refresh 的调用点，操作一结束
-  // 就会弹出「更新审计：扫描全部技能与客户端（约 30 秒）」——而用户要的只是把
-  // 刚改完的那部分状态刷新出来。用户明确要求：操作之后不需要一次 30 秒审计。
+  // 客户端（快照约 556KB）。于是任何忘了传 refresh 的调用点，操作一结束就会弹出
+  // 「更新审计：扫描全部技能与客户端」并阻塞等待 —— 而用户要的只是把刚改完的那部分
+  // 状态刷新出来。
+  //
+  // 耗时注记：这条路径一度要等 18-30 秒，但主因不是扫描，而是引擎侧
+  // repo_skill_names 缺少缓存（已在 097ad39 修复，现全量约 1.4 秒）。所以「不回落到
+  // 全量」的理由首先是**语义**（操作只该刷新它影响的部分），其次才是速度。
   //
   // 各调用点应尽量显式传入精确的块（如 refreshBlocks(["agents","mcp"])）；
-  // 万一漏传，这里也只做局部刷新，代价是可能少刷某个块，而不是罚等半分钟。
+  // 万一漏传，这里也只做局部刷新，代价是可能少刷某个块，而不是多等一次整份重扫。
   const ALL_BLOCKS = ["agents", "skills", "mcp", "endpoints", "mainstream", "settings"];
   const doRefresh = (typeof refresh === "function") ? refresh : () => refreshBlocks(ALL_BLOCKS);
   doRefresh();
@@ -3956,8 +3960,17 @@ async function doRescan(btnEl) {
 //
 // 用户要求：任何操作与「重新刷新整份审计」没有必然联系。操作结束之后，只需刷新
 // **该操作所产生的那一块**。整份审计（--management 全量）要重扫全部技能与客户端
-// （实测约 8 秒、快照约 556KB，其中 skills+mcp 占 427KB）；而改一个端点只需取
-// 端点库本身（实测 0.26 秒）—— 两者相差约 30 倍，且后者才是「这个操作的结果」。
+// （快照约 556KB，其中 skills+mcp 占 427KB）；而改一个端点只需取端点库本身
+// （实测 0.26 秒）。
+//
+// 耗时的历史变化（2026-10-08 实测复核）：全量一度要 18 秒，其中绝大部分并非扫描
+// 本身（``run_scan`` 只要 0.05 秒），而是 ``repo_skill_names`` 缺少缓存导致的重复
+// 遍历 —— 该缺陷已在 097ad39 修复。现在全量约 1.4 秒、``--only agents,mcp`` 约
+// 1.4 秒、``--only endpoints`` 约 0.9 秒。注意：**局部刷新至今仍省不下多少扫描
+// 时间**，因为 ``core/management_snapshot.py`` 的 ``_ONLY_NO_SCAN`` 只含
+// ``endpoints``，含 agents/skills/mcp 的 ``--only`` 依旧要完整扫描（那几块的数据
+// 来源就是扫描结果，跳过会得到错误的空数据而非「更快」）。局部刷新的价值在于
+// **不重扫语义**与更小的返回体，而非数量级的提速。
 //
 // 与后端的契约：``--management --only <blocks>`` 只返回被请求的块，
 // **未请求的块不出现**（而不是出现空值），因此前端能区分「这块没刷新」与
@@ -4015,7 +4028,10 @@ function loadInternal(discover) {
   return (async () => {
     const args = ["--management", "--format", "json"];
     if (discover) args.push("--discover");
-    const mgmt = await runCli(args, "更新审计：扫描全部技能与客户端（约 30 秒）");
+    // 文案里的耗时与实测保持同步：此处是全量出口（含 --discover），修掉引擎侧重复
+    // 扫描的缺陷（097ad39）后实测约 1-2 秒；此前写「约 30 秒」是准确的，但已过时，
+    // 会让人误以为要等半分钟。
+    const mgmt = await runCli(args, "更新审计：扫描全部技能与客户端（约 2 秒）");
     if (mgmt && mgmt.code === 0) { render(JSON.parse(mgmt.stdout)); clearBanner(); return; }
     // mgmt === null：runCli 已经抛出并显示了具体原因（未检测到 CLI / 安全边界拦截 /
     // 命令执行失败）。此处**不能再覆盖**成「扫描失败」—— 那会把唯一有用的诊断信息抹掉，

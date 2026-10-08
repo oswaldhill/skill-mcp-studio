@@ -7,6 +7,30 @@
 
 ## [Unreleased]
 
+### 修复
+
+- **桌面端：操作收尾不再触发整份重扫**（`gui/dashboard.html`）。`runTaskModal` 有 9 个
+  调用点（移出客户端、删除客户端、修复 Skills、修复 MCP、清理旧 MCP、删除 MCP 条目、
+  清理通道、还原配置、一键修复）把收尾刷新参数传成了 `undefined`，于是回落到兜底
+  `loadInternal(false)` —— 整份 `--management` 重扫全部技能与客户端，操作一结束就弹出
+  「更新审计：扫描全部技能与客户端」并阻塞等待。现改为按操作实际影响的数据块精确刷新
+  （`refreshBlocks`），兜底默认值也改为局部刷新：漏传时最多少刷一块，不再罚等半分钟。
+- **引擎：修复 `repo_skill_names` 缓存装饰器错装导致的重复扫描**
+  （`core/skill_state.py`、`core/skill_merge_exec.py`、`scan.py`）。`lru_cache` 装饰器
+  被误装在 `invalidate_repo_skill_names` 上而非 `repo_skill_names`，后果是双重的：后者
+  完全没有缓存，而它位于「客户端数 × 技能数 × 嵌套层级」的内层循环中，每次都要
+  `listdir` + 逐条目 `isdir` —— 单次快照构建触发 10291 次调用、约 453 万次
+  `posix.stat`；前者承担「清缓存」职责却反被缓存，第二次调用直接返回而不再清理，且其
+  内部的 `repo_skill_names.cache_clear()` 必然抛 `AttributeError`。装饰器现装回缓存实现
+  层并以展开后的绝对路径为缓存键（避免 `~/.skills` 与展开路径形成两把键），同时补上
+  `merge_group` 与 `--delete-skill` 的写后失效。
+  - **实测（209 个技能 × 20 个客户端）**：`--management` 全量 18s → 1.4s，
+    `--management --only agents,mcp` 16s → 1.4s；缓存命中 20581 次、实际扫描 1 次。
+  - **正确性**：修复前后快照逐字节对照，除 `generated_at` 时间戳外完全一致
+    （均为 616701 字节）。
+  - 该修复无需重新构建桌面 App：CLI wrapper（`~/.local/bin/skill-mcp-studio`）直接
+    `exec` 源码树的 `scan.py`，引擎改动即时生效。
+
 ## [v0.24.1] - 2026-09-29
 
 当前发布版本（build 111）。

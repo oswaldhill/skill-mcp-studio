@@ -12,8 +12,17 @@ lib.rs 不解析、不重算、不写盘。
 > `target/release/bundle/macos/skill-mcp-studio.app`；`.dmg` 由
 > `scripts/build_dmg.sh` 产出（`target/release/bundle/dmg/`，2026-09-05 打通）。
 > Rust 工具链（1.98.1）安装于**仓库本地目录**：`.rustup-home/`（RUSTUP_HOME）
-> + `.cargo-home/`（CARGO_HOME，均已在根 .gitignore 排除），不依赖系统路径；
+> + `.cargo-home/`（CARGO_HOME），不依赖系统路径；
 > 使用前 `export PATH="$PWD/../.cargo-home/bin:$PATH"`（在 src-tauri 下）。
+>
+> ⚠️ **更正（2026-10-08 核实）**：此处原写「均已在根 .gitignore 排除」，**与事实不符**。
+> v0.24.0 的 P2-1 移除了这两个目录的忽略条目（缘由见根 `.gitignore` 第 22-25 行注释），
+> 用意是把「工具链指向仓库内」从预期布局改回 `$HOME`。因此它们**并未被忽略**，会一直
+> 出现在 `git status` 的未跟踪列表里（本机两者合计约 736MB），而这不是待提交内容。
+> 桩因（本机现状与 P2-1 的预期不一致）：`$HOME/.cargo` 不存在、`$HOME/.rustup` 存在但
+> 构建实际依赖仓库内这份工具链，所以上述 `export` 仍是本机可用做法。若要回归 P2-1 的
+> 预期布局，请把 `RUSTUP_HOME`/`CARGO_HOME` 指回 `$HOME` 并在那里重新安装工具链。
+> 二者**从未被提交进仓库历史**，因此不涉及任何历史清理。
 
 ## 1. 前置条件
 
