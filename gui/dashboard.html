@@ -1786,7 +1786,8 @@ function confirmTypedKeyModal(title, message, keyName) {
 /**
  * 执行任务并用对话框展示「进度 → 结果」。
  * run: async () => ({ ok, message, detail })  其中 detail 可选，展示为等宽详情块。
- * 结束后调用 refresh（默认 loadInternal(false)）刷新快照。
+ * 结束后调用 refresh 刷新快照。**调用点必须显式传入精确的 refreshBlocks([...])**；
+ * 省略时的兜底也不再做全量审计（见下方 doRefresh），只做一次局部状态刷新。
  */
 function stripAnsi(s) {
   if (s == null) return "";
@@ -1865,7 +1866,17 @@ async function runTaskModal(title, run, refresh, stages) {
     </div>
   </div></div>`);
   $("task-close").onclick = closeModal;
-  const doRefresh = (typeof refresh === "function") ? refresh : () => loadInternal(false);
+  // 兜底：局部刷新全部数据块（--management --only），不再回落到全量审计。
+  //
+  // 历史问题：兜底曾是 loadInternal(false)，即整份 --management 重扫全部技能与
+  // 客户端（约 30 秒、快照约 556KB）。于是任何忘了传 refresh 的调用点，操作一结束
+  // 就会弹出「更新审计：扫描全部技能与客户端（约 30 秒）」——而用户要的只是把
+  // 刚改完的那部分状态刷新出来。用户明确要求：操作之后不需要一次 30 秒审计。
+  //
+  // 各调用点应尽量显式传入精确的块（如 refreshBlocks(["agents","mcp"])）；
+  // 万一漏传，这里也只做局部刷新，代价是可能少刷某个块，而不是罚等半分钟。
+  const ALL_BLOCKS = ["agents", "skills", "mcp", "endpoints", "mainstream", "settings"];
+  const doRefresh = (typeof refresh === "function") ? refresh : () => refreshBlocks(ALL_BLOCKS);
   doRefresh();
 }
 
@@ -6263,7 +6274,7 @@ async function confirmRemoveClient(name) {
     if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
     if (res.code === 0) return { ok: true, message: `${name} 已移出管理` };
     return { ok: false, message: "移出失败", detail: cliErrDetail(res) };
-  }, undefined, ["本机停用", "删除配置文件", "删除 skills 链接", "刷新管理快照"]);
+  }, () => refreshBlocks(["agents", "skills", "mainstream"]), ["本机停用", "删除配置文件", "删除 skills 链接", "刷新管理快照"]);
 }
 
 async function fixSkillsFor(name) {
@@ -6275,7 +6286,7 @@ async function fixSkillsFor(name) {
     if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
     if (res.code === 0) return { ok: true, message: `${name} 的 Skills 链接已修复` };
     return { ok: false, message: "Skills 修复失败", detail: cliFailLines(res) || cliErrDetail(res) };
-  }, undefined, ["扫描 Skills 目录", "重建链接（带备份）", "重新扫描验证"]);
+  }, () => refreshBlocks(["agents", "skills"]), ["扫描 Skills 目录", "重建链接（带备份）", "刷新技能状态"]);
 }
 
 async function fixMcpFor(name) {
@@ -6287,7 +6298,7 @@ async function fixMcpFor(name) {
     if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
     if (res.code === 0) return { ok: true, message: `${name} 的 MCP 配置已修复` };
     return { ok: false, message: "MCP 配置修复失败", detail: cliFailLines(res) || cliErrDetail(res) };
-  }, undefined, ["读取 MCP 配置", "写入统一端点", "校验配置"]);
+  }, () => refreshBlocks(["agents", "mcp"]), ["读取 MCP 配置", "写入统一端点", "校验配置"]);
 }
 
 async function cleanLegacyMcp(name) {
@@ -6305,7 +6316,7 @@ async function cleanLegacyMcp(name) {
       return { ok: false, message: `${name} 未安装，无法清理` };
     }
     return { ok: false, message: "清理未完成", detail: cliFailLines(res) || "未识别到清理结果标记" };
-  }, undefined, ["备份原配置", "移除旧通道条目", "校验回写", "验证结果"]);
+  }, () => refreshBlocks(["agents", "mcp"]), ["备份原配置", "移除旧通道条目", "校验回写", "刷新 MCP 状态"]);
 }
 
 // ---------------- MCP 条目删除 / 批量清理 / 从备份恢复（阶段五） ----------------
@@ -6373,7 +6384,7 @@ async function removeMcpEntry(name, key, high, reason) {
     const res = await runCli(args);
     if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
     return mcpResultToTask(res, `已删除 ${key}`);
-  }, undefined, ["读取 MCP 配置", "备份原配置", "移除条目", "校验回写"]);
+  }, () => refreshBlocks(["agents", "mcp"]), ["读取 MCP 配置", "备份原配置", "移除条目", "校验回写"]);
 }
 
 async function removeMcpClassEntries(name, cls) {
@@ -6393,7 +6404,7 @@ async function removeMcpClassEntries(name, cls) {
     const res = await runCli(args);
     if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
     return mcpResultToTask(res, `${label}已清理`);
-  }, undefined, ["读取 MCP 配置", "备份原配置", "移除条目", "校验回写"]);
+  }, () => refreshBlocks(["agents", "mcp"]), ["读取 MCP 配置", "备份原配置", "移除条目", "校验回写"]);
 }
 
 async function showConfigBackups(name) {
@@ -6432,7 +6443,7 @@ async function restoreConfigBackup(name, path) {
     const res = await runCli(["--restore-config-backup", path, "--client", name, "--format", "json"]);
     if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
     return mcpResultToTask(res, `已还原 ${name} 的配置`);
-  }, undefined, ["校验备份归属", "备份当前配置", "写回备份内容", "解析校验"]);
+  }, () => refreshBlocks(["agents", "mcp"]), ["校验备份归属", "备份当前配置", "写回备份内容", "解析校验"]);
 }
 
 async function cleanupConfigFor(name) {
@@ -6448,7 +6459,7 @@ async function cleanupConfigFor(name) {
       return { ok: true, message: `${name} 删除完成` };
     }
     return { ok: false, message: "删除失败", detail: cliErrDetail(res) };
-  }, undefined, ["定位配置", "定位 skills 链接", "本机停用", "删除文件", "校验"]);
+  }, () => refreshBlocks(["agents", "skills", "mainstream"]), ["定位配置", "定位 skills 链接", "本机停用", "删除文件", "校验"]);
 }
 
 async function fixAllSkillsMcp() {
@@ -6468,7 +6479,7 @@ async function fixAllSkillsMcp() {
     else oks.push("MCP 配置已修复");
     if (errs.length) return { ok: false, message: "一键修复未全部完成", detail: errs.join("\n") };
     return { ok: true, message: "所有客户端的 Skills 与 MCP 已修复", detail: oks.join("\n") };
-  }, undefined, ["修复 Skills 链接", "写入统一 MCP 配置", "重新扫描验证"]);
+  }, () => refreshBlocks(["agents", "skills", "mcp"]), ["修复 Skills 链接", "写入统一 MCP 配置", "刷新状态"]);
 }
 
 // ---------------- sample (browser preview) ----------------
