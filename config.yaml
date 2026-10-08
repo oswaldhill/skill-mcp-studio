@@ -114,6 +114,12 @@ mcp_tools:
   config_path: ~/.codex/config.toml
   format: toml
   mcp_key_path: [mcp_servers]
+  # Codex 已有本地 hermes stdio 桥（~/.codex/config.toml 的 [mcp_servers.hermes]
+  # 指向 hermes 网关的 mcp_stdio_bridge.py）。统一端点必须用独立 key 写入，否则会
+  # 命中同名桥并把它改写成 HTTP 形态 —— 那既破坏本地桥，又因改写后 url 校验不过
+  # 而整条修复回滚（实测报 "validation failed; original configuration was rolled
+  # back"）。与 OpenCode 同一处理。
+  unified_name: hermes-unified
   fix_supported: true
   hooks_config_path: ~/.codex/hooks.json
 - name: Reasonix

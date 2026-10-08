@@ -175,7 +175,7 @@ def fix_mcp_tool(
     token = expected.get("auth_token") or ""
     existed = os.path.isfile(path)
     config_format = tool.get("format", "json")
-    initial = "{}\n" if config_format == "json" else ""
+    initial = "{}\n" if config_format in ("json", "jsonc") else ""
     if config_format == "reasonix":
         key_path = tool.get("mcp_key_path", ["mcpServers"])
         initial = json.dumps({key_path[0]: []}, indent=2) + "\n"

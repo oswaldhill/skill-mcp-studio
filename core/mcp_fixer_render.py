@@ -5,7 +5,7 @@
 import json
 import os
 import re
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from config_codec import parse_cordis_yaml as _parse_cordis_yaml
 from jsonc_text import remove_object_members
 try:
@@ -158,17 +158,35 @@ def _toml_section_tree_ranges(text: str, section_name: str) -> List[Tuple[int, i
 def _render_toml(text: str, name: str, url: str, token: str = "") -> str:
     _toml.loads(text)
     section_name = f"mcp_servers.{name}"
-    ranges = _toml_section_ranges(text, section_name)
-    if len(ranges) > 1:
+    # 正典段唯一性只看父表本身：``_toml_section_ranges`` 不匹配 ``[X.http_headers]``，
+    # 因此「父表出现两次」才是真错误（子表出现不算，见下方 tree_ranges 的合并）。
+    canonical = _toml_section_ranges(text, section_name)
+    if len(canonical) > 1:
         raise ValueError("duplicate canonical MCP sections")
-    if not ranges:
+    if not canonical:
         separator = "" if not text or text.endswith("\n\n") else ("\n" if text.endswith("\n") else "\n\n")
         block = f'[{section_name}]\nurl = {_toml_string(url)}\n'
-        if token:
+        # 文件别处可能已存在 ``[<section>.http_headers]`` 子表（父表尚未声明）。
+        # 这种情形下鉴权头必须写进那个子表 —— 再写一行内联 http_headers 就是重复声明。
+        has_subtable = _toml_subtable_range(text, f"{section_name}.http_headers") is not None
+        if token and not has_subtable:
             block += f'http_headers = {{ Authorization = {_toml_string("Bearer " + token)} }}\n'
-        return text + separator + block
+        rendered = text + separator + block
+        if has_subtable:
+            rendered = _set_toml_subtable_field(
+                rendered,
+                f"{section_name}.http_headers",
+                "Authorization",
+                ("Bearer " + token) if token else None,
+            )
+        _toml.loads(rendered)
+        return rendered
 
-    start, end = ranges[0]
+    # 父表与其点分子表（``[<section>.http_headers]`` 等）属于同一个逻辑段落，必须
+    # 一起切片：只改父表会把子表留在原处，随后写入的内联 http_headers 与它重复声明，
+    # 生成非法 TOML 并让整个修复失败。
+    tree = _toml_section_tree_ranges(text, section_name)
+    start, end = tree[0][0], tree[-1][1]
     section = text[start:end]
     url_line = re.compile(
         r'(?m)^(\s*url\s*=\s*)(["\'])(.*?)(\2)(\s*(?:#.*)?)$'
@@ -189,10 +207,7 @@ def _render_toml(text: str, name: str, url: str, token: str = "") -> str:
     # 鉴权：Codex 官方字段 ``http_headers`` 静态表承载明文 ``Authorization`` 头；
     # 同时清理旧的环境变量引用写法（bearer_token_env_var）。
     section = _remove_toml_field(section, "bearer_token_env_var")
-    if token:
-        section = _set_toml_http_headers(section, token)
-    else:
-        section = _remove_toml_http_headers(section)
+    section = _apply_toml_headers(section, section_name, token)
     rendered = text[:start] + section + text[end:]
     _toml.loads(rendered)
     return rendered
@@ -260,6 +275,67 @@ def _remove_toml_http_headers(block: str) -> str:
     """Drop an ``http_headers = ...`` inline-table line from a TOML section block."""
     line = re.compile(r"(?m)^[ \t]*http_headers\s*=.*(?:\n|$)")
     return line.sub("", block)
+
+
+def _toml_subtable_range(block: str, header_name: str) -> Optional[Tuple[int, int]]:
+    """Return the ``[header_name]`` table block range, or ``None`` when absent.
+
+    The range starts at the ``[header_name]`` header line and ends just before the
+    next table header (or the end of ``block``), i.e. exactly the region that
+    :func:`_set_toml_field` / :func:`_remove_toml_field` may edit in place without
+    bleeding into neighbouring tables.
+    """
+    header = re.compile(r"(?m)^[ \t]*\[" + re.escape(header_name) + r"\][ \t]*(?:#.*)?$")
+    any_header = re.compile(r"(?m)^[ \t]*\[[^\]]+\][ \t]*(?:#.*)?$")
+    match = header.search(block)
+    if not match:
+        return None
+    following = any_header.search(block, match.end())
+    return (match.start(), following.start() if following else len(block))
+
+
+def _set_toml_subtable_field(
+    block: str, header_name: str, field: str, value: Optional[str]
+) -> str:
+    """Set ``field`` inside the dotted subtable ``[header_name]``.
+
+    ``value=None`` deletes the field instead. Returns ``block`` unchanged when the
+    subtable is absent.
+    """
+    span = _toml_subtable_range(block, header_name)
+    if not span:
+        return block
+    start, end = span
+    subtable = block[start:end]
+    subtable = (
+        _set_toml_field(subtable, field, value)
+        if value is not None
+        else _remove_toml_field(subtable, field)
+    )
+    return block[:start] + subtable + block[end:]
+
+
+def _apply_toml_headers(section: str, section_name: str, token: str) -> str:
+    """Maintain the auth header in ``section`` using exactly one declaration form.
+
+    TOML forbids declaring the same table twice, so an inline
+    ``http_headers = { ... }`` line and a ``[<section>.http_headers]`` child table
+    cannot coexist. Writing the inline form into a file that already used the child
+    table produced ``Cannot declare ('mcp_servers', '<name>', 'http_headers') twice``,
+    which aborted the whole fix (Windows agents commonly ship the child-table form).
+    The form already present in the file is preserved; only the other one is cleared.
+    """
+    if _toml_subtable_range(section, f"{section_name}.http_headers"):
+        section = _remove_toml_http_headers(section)
+        return _set_toml_subtable_field(
+            section,
+            f"{section_name}.http_headers",
+            "Authorization",
+            ("Bearer " + token) if token else None,
+        )
+    if token:
+        return _set_toml_http_headers(section, token)
+    return _remove_toml_http_headers(section)
 
 
 def _reasonix_plugin_ranges(text: str) -> List[Tuple[int, int]]:

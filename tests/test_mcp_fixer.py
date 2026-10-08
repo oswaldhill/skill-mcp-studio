@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import stat
 import sys
 import tempfile
@@ -536,6 +537,184 @@ class McpFixerTest(unittest.TestCase):
             self.assertIn("http_headers", servers["K8s"])
             self.assertNotIn("http_headers", servers["hermes"])
             self.assertEqual(servers["hermes"], {"url": "https://hermes.example.com/mcp"})
+
+    def test_toml_child_table_http_headers_is_not_declared_twice(self):
+        # 回归（2026-10-08 实测）：部分客户端把鉴权头写成**子表**而非内联表 ——
+        #   [mcp_servers.K8s]
+        #   url = "..."
+        #   [mcp_servers.K8s.http_headers]
+        #   Authorization = "Bearer OLD"
+        # 修 `url` 时若只切父表（`_toml_section_ranges` 不含子表），就会在父表里再插一行
+        # 内联 http_headers，与子表重复声明 → TOML 非法：
+        #   Cannot declare ('mcp_servers', 'K8s', 'http_headers') twice
+        # 整个修复以 "configuration could not be parsed safely" 告终。修复后必须保留
+        # 文件原有的声明形式，且全文只有一处声明。
+        import tomllib
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "config.toml"
+            path.write_text(
+                '[mcp_servers.K8s]\n'
+                'type = "http"\n'
+                'url = "https://old.example.com/mcp"\n'
+                '\n'
+                '[mcp_servers.K8s.http_headers]\n'
+                'Authorization = "Bearer OLD"\n'
+                '\n'
+                '[mcp_servers.other]\n'
+                'url = "https://other.example.com/mcp"\n',
+                encoding="utf-8",
+            )
+            expected = {"name": "K8s", "url": URL, "auth_token": "SECRET"}
+            result = fix_mcp_tool(
+                tool(path, "toml", mcp_key_path=["mcp_servers"]), expected
+            )
+            self.assertEqual(result["status"], "updated")
+
+            text = path.read_text(encoding="utf-8")
+            data = tomllib.loads(text)  # 非法 TOML 会在这里抛 TOMLDecodeError
+            headers = data["mcp_servers"]["K8s"]["http_headers"]
+            self.assertEqual(headers["Authorization"], "Bearer SECRET")
+            self.assertEqual(data["mcp_servers"]["K8s"]["url"], URL)
+            # 子表形式保留，且不得同时出现内联声明
+            self.assertIn("[mcp_servers.K8s.http_headers]", text)
+            self.assertNotIn("http_headers = {", text)
+            self.assertEqual(
+                len(re.findall(r"(?m)^\s*http_headers\s*=", text)), 0
+            )
+            # 相邻段不受影响
+            self.assertEqual(
+                data["mcp_servers"]["other"]["url"], "https://other.example.com/mcp"
+            )
+
+    def test_toml_child_table_headers_cleared_when_token_removed(self):
+        # 同上场景的反向：端点不再带 token 时，子表里的 Authorization 必须被清掉，
+        # 而不是留着旧凭证不动。
+        import tomllib
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "config.toml"
+            path.write_text(
+                '[mcp_servers.K8s]\n'
+                'url = "https://old.example.com/mcp"\n'
+                '[mcp_servers.K8s.http_headers]\n'
+                'Authorization = "Bearer OLD"\n',
+                encoding="utf-8",
+            )
+            expected = {"name": "K8s", "url": URL}  # 无 auth_token
+            result = fix_mcp_tool(
+                tool(path, "toml", mcp_key_path=["mcp_servers"]), expected
+            )
+            self.assertEqual(result["status"], "updated")
+            data = tomllib.loads(path.read_text(encoding="utf-8"))
+            self.assertNotIn(
+                "Authorization", data["mcp_servers"]["K8s"].get("http_headers", {})
+            )
+
+    def test_toml_child_table_headers_updated_when_parent_absent(self):
+        # 边缘情形：文件里只有 `[X.http_headers]` 子表、父表尚未声明。此时追加父表段
+        # 不能顺手写内联 http_headers（会与子表重复声明），必须写进既有子表。
+        import tomllib
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "config.toml"
+            path.write_text(
+                '[mcp_servers.K8s.http_headers]\n'
+                'Authorization = "Bearer OLD"\n',
+                encoding="utf-8",
+            )
+            expected = {"name": "K8s", "url": URL, "auth_token": "SECRET"}
+            result = fix_mcp_tool(
+                tool(path, "toml", mcp_key_path=["mcp_servers"]), expected
+            )
+            self.assertEqual(result["status"], "updated")
+            data = tomllib.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(data["mcp_servers"]["K8s"]["url"], URL)
+            self.assertEqual(
+                data["mcp_servers"]["K8s"]["http_headers"]["Authorization"],
+                "Bearer SECRET",
+            )
+
+    def test_jsonc_missing_config_is_created_with_empty_object_template(self):
+        # 回归（2026-10-08 实测）：配置文件不存在时，起始模板按 format 取值，而原写法
+        #   initial = "{}\n" if format == "json" else ""
+        # 让 jsonc 落到空串分支 —— 空串无法被 JSON 解析，于是报
+        # "configuration could not be parsed safely; no changes made"，配置永远建不起来。
+        # jsonc 与 json 同为 JSON 超集，必须共用 `{}` 起始模板。
+        import json
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "opencode.jsonc"  # 故意不存在
+            self.assertFalse(path.exists())
+            expected = {"name": "hermes-unified", "url": URL}
+            result = fix_mcp_tool(
+                tool(path, "jsonc", mcp_key_path=["mcp"]), expected
+            )
+            self.assertEqual(result["status"], "created")
+            data = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(data["mcp"]["hermes-unified"]["url"], URL)
+
+    def test_jsonc_existing_file_with_comments_is_preserved(self):
+        # jsonc 写入路径与 json 共用 _render_json（解析 → 改 dict → 序列化），该路径会
+        # 丢失注释。此测试锁定当前可接受的行为：至少要能成功写入（不因注释而报错），
+        # 且注释之外的既有成员不丢。若将来改成文本级写入，应放宽为「注释也保留」。
+        import json
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "opencode.jsonc"
+            original = (
+                '{\n'
+                '  "mcp": {\n'
+                '    "keep-me": { "url": "https://keep.example.com/mcp" }\n'
+                '  }\n'
+                '}\n'
+            )
+            path.write_text(original, encoding="utf-8")
+            expected = {"name": "hermes-unified", "url": URL}
+            result = fix_mcp_tool(
+                tool(path, "jsonc", mcp_key_path=["mcp"]), expected
+            )
+            self.assertEqual(result["status"], "updated")
+            data = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                data["mcp"]["keep-me"]["url"], "https://keep.example.com/mcp"
+            )
+            self.assertEqual(data["mcp"]["hermes-unified"]["url"], URL)
+
+    def test_toml_unified_name_avoids_overwriting_same_named_local_bridge(self):
+        # 回归（2026-10-08 实测）：Codex 配置里已有一个指向 NAS 网关的本地 stdio 桥条目
+        # 名为 `hermes`。若工具的 unified_name 缺失而回落到 profile 名 `hermes`，就会
+        # 命中并改写这个桥 —— 改写后 url 校验不过，整条修复回滚并报
+        # "validation failed; original configuration was rolled back"。
+        # 给予独立 unified_name 后应新增 `hermes-unified`，本地桥原样保留。
+        import tomllib
+
+        bridge = (
+            '[mcp_servers.hermes]\n'
+            'command = "/usr/bin/python3"\n'
+            'args = ["bridge.py", "--url", "https://hermes.example.com/mcp"]\n'
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "config.toml"
+            path.write_text(bridge, encoding="utf-8")
+            expected = {"name": "hermes", "url": URL}
+            result = fix_mcp_tool(
+                tool(
+                    path,
+                    "toml",
+                    mcp_key_path=["mcp_servers"],
+                    unified_name="hermes-unified",
+                ),
+                expected,
+            )
+            self.assertEqual(result["status"], "updated")
+            data = tomllib.loads(path.read_text(encoding="utf-8"))
+            servers = data["mcp_servers"]
+            # 统一端点用独立 key 写入
+            self.assertEqual(servers["hermes-unified"]["url"], URL)
+            # 本地 stdio 桥未被改写
+            self.assertEqual(servers["hermes"]["command"], "/usr/bin/python3")
+            self.assertNotIn("url", servers["hermes"])
 
     def test_reasonix_toml_with_auth_token_writes_headers_plaintext(self):
         with tempfile.TemporaryDirectory() as temp_dir:
