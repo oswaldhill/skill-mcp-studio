@@ -24,26 +24,31 @@ from __future__ import annotations
 
 import os
 from functools import lru_cache
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 from skills_analyser import scan_skills_distribution
 
 
 @lru_cache(maxsize=None)
-def invalidate_repo_skill_names() -> None:
-    """清空 ``repo_skill_names`` 的进程内缓存。
+def _repo_skill_names_cached(expanded_dir: str) -> Tuple[str, ...]:
+    """按**展开后的绝对路径**缓存技能清单（缓存实现层）。
 
-    技能增删/改名/迁移之后必须调用它 —— 否则同一进程内的后续调用会拿到陈旧清单，
-    而该清单是 skill_toggle 存在性校验、技能矩阵与迁移校验的共同输入。
+    单独抽一层缓存而不是直接给 ``repo_skill_names`` 加装饰器，是为了让缓存键唯一：
+    各调用点传入的 ``unified_dir`` 可能是 ``~/.skills``，也可能是展开后的绝对路径，
+    若直接以入参为键会变成两把键、同一目录扫描两次。
+
+    返回 ``tuple`` 而非 ``list``：``lru_cache`` 会把同一对象交给所有调用方，返回
+    可变对象会让任一调用方的就地修改污染缓存内容。
     """
-    repo_skill_names.cache_clear()
+    distribution = scan_skills_distribution(expanded_dir)
+    return tuple(
+        name
+        for name in distribution.get("skill_names", [])
+        if not name.startswith(".")
+    )
 
 
 def repo_skill_names(unified_dir: str) -> List[str]:
-    # 注意：本函数带 lru_cache 且**全仓没有任何调用点会 cache_clear**，而它的返回值
-    # 是多个门禁的输入（skill_toggle 的存在性校验、技能矩阵、迁移校验）。同一进程内
-    # 「先枚举 → 再增删技能」会拿到陈旧清单：新技能被 not_in_repo 挡下、已删技能仍在矩阵。
-    # 连续的写操作请调用 repo_skill_names.cache_clear()（见 invalidate_repo_skill_names）。
     """Return the sorted, non-dot skill directory names under the shared repo.
 
     The inventory is sourced from ``skills_analyser.scan_skills_distribution``
@@ -54,13 +59,29 @@ def repo_skill_names(unified_dir: str) -> List[str]:
     Semantics fixed by decision D11 (决策记录 §11): every non-dot subdir counts
     (2026-09-04 survey: 175/175 carry SKILL.md, incl. _core/bin/scripts/mcp),
     so there is no SKILL.md second-pass filter — L2/L5 inventories stay in sync.
+
+    性能注记（2026-10-08 修复）：本函数位于「客户端数 × 技能数 × 嵌套层级」的
+    内层循环（``classify_skill_state`` 每个 skill 都会调用一次），而底层
+    ``scan_skills_distribution`` 每次都要 listdir + 逐条目 isdir —— 实测单次
+    管理快照构建会触发 10291 次调用、约 453 万次 ``posix.stat``，独占 20 秒以上。
+    因此结果按展开路径缓存。**技能增删/改名/迁移之后必须调用
+    :func:`invalidate_repo_skill_names`**，否则同一进程内会拿到陈旧清单。
     """
-    distribution = scan_skills_distribution(unified_dir)
-    return [
-        name
-        for name in distribution.get("skill_names", [])
-        if not name.startswith(".")
-    ]
+    return list(_repo_skill_names_cached(os.path.expanduser(unified_dir)))
+
+
+def invalidate_repo_skill_names() -> None:
+    """清空 ``repo_skill_names`` 的进程内缓存。
+
+    技能增删/改名/迁移之后必须调用它 —— 否则同一进程内的后续调用会拿到陈旧清单，
+    而该清单是 skill_toggle 存在性校验、技能矩阵与迁移校验的共同输入。
+
+    注意：本函数**绝不能再带 ``lru_cache``**。历史缺陷正是装饰器被误装在此处：
+    于是「清缓存」这个动作自己也被缓存，第二次调用直接返回 ``None`` 而不再清理，
+    同时 ``repo_skill_names`` 反倒完全没有缓存（每次真实扫描）。两者叠加造成了
+    重复扫描的性能塌陷，调用方即便正确调用了本函数也无法失效缓存。
+    """
+    _repo_skill_names_cached.cache_clear()
 
 
 def _read_frontmatter(repo: str, rel_path: str) -> Dict[str, str]:

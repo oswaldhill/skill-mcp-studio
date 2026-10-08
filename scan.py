@@ -532,8 +532,13 @@ def _run_skill_rename(args, config, config_path) -> int:
 
 def _run_skill_delete(args, config, config_path) -> int:
     from skill_ops import soft_delete_skill
+    from skill_state import invalidate_repo_skill_names
 
     result = soft_delete_skill(_unified_dir_from(args, config), args.delete_skill, dry_run=args.dry_run)
+    # 软删除把技能目录移入 _trash/，仓库清单已变；repo_skill_names 带进程内缓存，
+    # 同进程内后续枚举（如紧随其后的校验/矩阵）必须看到最新清单。dry-run 未动盘。
+    if result["status"] == "ok":
+        invalidate_repo_skill_names()
     _print_skill_op(result)
     return 0 if result["status"] in ("ok", "dry-run") else 2
 

@@ -19,6 +19,7 @@ from pathlib import Path
 
 from skill_merge_advisor import scan_advice
 from skill_ops import soft_delete_skill
+from skill_state import invalidate_repo_skill_names
 
 
 def _resolve_dir(skills_dir: Optional[str]) -> Path:
@@ -137,6 +138,12 @@ def merge_group(
                 "step": f"归并 {name}",
                 "message": res.get("message", "未知错误"),
             })
+
+    # 归并把技能目录移出仓库，仓库清单已经变了。repo_skill_names 现在带进程内缓存，
+    # 不清缓存的话同进程内后续的存在性校验/技能矩阵仍会看到已被归并的技能。
+    # dry-run 没有真实动盘，故只在确实写入后失效。
+    if not dry_run and folded:
+        invalidate_repo_skill_names()
 
     # ---- 4. 如实报告 ----------------------------------------------------
     if failed and folded:
