@@ -221,7 +221,11 @@ def format_change_report(changes: Dict[str, Any]) -> str:
     """
     lines = []
     lines.append("=" * 60)
-    lines.append("  变更报告")
+    # 标明适用范围：本报告只比对 **skills 扫描**维度（工具新增/移除/状态、统计摘要），
+    # 不包含任何 MCP 写入结论。此前标题只有「变更报告」，而它常紧跟 `--fix-mcp` 的
+    # 修复结果输出，末尾那句「✅ 无变化」极易被读成「刚才的 MCP 修复没生效」——
+    # 实测确实如此（写盘成功、备份也在，却被判成空跑）。
+    lines.append("  变更报告（Skills 扫描维度）")
     lines.append("=" * 60)
     lines.append("")
 

@@ -2121,6 +2121,31 @@ def main() -> int:
                     repair_errors.append(
                         f"MCP 修复失败 {result['name']}: {result['message']} ({result['path']})"
                     )
+            # MCP 修复的**自身结论**。此前这段结束之后紧跟着 Phase 4 的「变更报告」，
+            # 而那份报告统计的是 **skills 扫描**维度（compute_changes 只比对技能扫描
+            # 结果），与 MCP 写入毫无关系。它照例打印「✅ 无变化」，紧跟在上面这些
+            # updated/created 之后，被直接读成「刚才的修复什么都没做」—— 实测运维时
+            # 正是这样被误导的（写盘成功、备份也在，却被判成空跑）。这里补一句只针对
+            # MCP 的结果汇总，并用一行提示把两件事在输出上分开。
+            _counts: Dict[str, int] = {}
+            for result in mcp_fix_results:
+                _key = result.get("status", "unknown")
+                _counts[_key] = _counts.get(_key, 0) + 1
+            if args.dry_run:
+                # dry-run 下 fix_mcp_tool 返回 "dry-run"（见 mcp_fixer.py:205），
+                # 不是 updated/created；只累加后两者会把真实待写项算成 0。
+                _written = _counts.get("dry-run", 0)
+                _summary = [f"待写入 {_written}"]
+            else:
+                _written = _counts.get("updated", 0) + _counts.get("created", 0)
+                _summary = [f"已写入 {_written}"]
+            for _key in ("unchanged", "dry-run", "not-installed", "missing", "unsupported", "error"):
+                if _counts.get(_key):
+                    _summary.append(f"{_key} {_counts[_key]}")
+            print("")
+            print(f"  MCP 修复结果：{'，'.join(_summary)}（共 {len(mcp_fix_results)} 项）")
+            if _written and not args.dry_run:
+                print("    注：下面的「变更报告」统计 Skills 扫描维度，与本次 MCP 写入无关。")
         except Exception as e:
             print(f"\n  ❌ Unified MCP repair failed: {e}")
             repair_errors.append(f"MCP 修复异常: {e}")
