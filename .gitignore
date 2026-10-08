@@ -23,6 +23,11 @@ dist/
 # 注：曾长期保留 .cargo-home/ 与 .rustup-home/，会让人以为「把 RUSTUP_HOME/
 # CARGO_HOME 指向仓库内」是预期布局。二者已于 v0.24.0 清理（P2-1），故移除条目；
 # 若你在本地又重新生成，请直接把 RUSTUP_HOME/CARGO_HOME 指回 $HOME。
+#
+# ⚠️ 现状核实（2026-10-08）：本机**确实又重新生成**了这两个目录（合计约 736MB），
+# 于是它们会持续出现在 git status 的未跟踪列表里 —— 这是 P2-1 有意留下的可见提醒，
+# 不是遗漏，也不是待提交内容。构建仍在用它们，因为 $HOME/.cargo 不存在；具体做法与
+# 回归预期布局的步骤见 src-tauri/BUILD.md 顶部注记。二者从未进入过仓库历史。
 .npm-cache/
 src-tauri/target/
 src-tauri/gen/
