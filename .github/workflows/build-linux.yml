@@ -100,7 +100,7 @@ jobs:
       # 非 tag 触发（push/PR/manual）：仅上传构建产物作为 artifact 校验
       - name: Upload artifacts (build validation)
         # 总是上传：tag 触发时由 release job 取用（Q0-2 拆 job 后必需）。
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: skill-mcp-studio-linux
           if-no-files-found: error
