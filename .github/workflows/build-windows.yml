@@ -46,7 +46,7 @@ jobs:
       # 恰好自带 python3 所以侥幸通过，Windows 上四段 || 全失败、构建中止
       # （步骤 7 failure，HEAD 7fb4d22）。构建依赖必须显式声明。
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
 
