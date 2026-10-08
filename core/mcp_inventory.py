@@ -78,6 +78,7 @@ def classify_entries(
     endpoint_entries: List[Dict[str, Any]],
     legacy_names: List[str],
     canonical_name: Optional[str] = None,
+    canonical_endpoint_key: Optional[str] = None,
 ) -> List[McpEntry]:
     """Annotate each entry with its classification against the endpoint library.
 
@@ -86,6 +87,12 @@ def classify_entries(
     - ``attached`` when its key matches an endpoint's declared ``name`` (the
       canonical server name the fixer writes) *and* the URL agrees when both are
       set;
+    - ``attached`` when its key equals ``canonical_name`` — the client's
+      ``unified_name`` alias for the **unified endpoint** (``canonical_endpoint_key``,
+      normally the ``active_profile`` key).  ``endpoint_key`` is filled in that
+      branch too: it is the only field ``observed_endpoint_keys`` reads, so leaving
+      it unset made the entry invisible to the attachment audit and produced a
+      false "declared but not mounted" (实测 OpenCode 因此误报 hermes-home 缺失);
     - ``legacy`` when its key is a declared legacy channel name;
     - otherwise ``unmanaged``.
 
@@ -114,6 +121,8 @@ def classify_entries(
             clone.endpoint_key = by_name[entry.key]
         elif canonical_name and entry.key == canonical_name:
             clone.classification = "attached"
+            if canonical_endpoint_key:
+                clone.endpoint_key = canonical_endpoint_key
         classified.append(clone)
     return classified
 
@@ -173,6 +182,7 @@ def inventory_client(
     endpoint_entries: List[Dict[str, Any]],
     legacy_names: List[str],
     canonical_name: Optional[str] = None,
+    canonical_endpoint_key: Optional[str] = None,
 ) -> List[McpEntry]:
     """Load then classify one client's MCP entries (convenience wrapper)."""
     entries = list_client_mcp_entries(tool)
@@ -181,4 +191,5 @@ def inventory_client(
         endpoint_entries=endpoint_entries,
         legacy_names=legacy_names,
         canonical_name=canonical_name or tool.get("unified_name"),
+        canonical_endpoint_key=canonical_endpoint_key,
     )

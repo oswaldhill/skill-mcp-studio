@@ -326,6 +326,8 @@ def _run_list_mcp_inventory(args, config, config_path) -> int:
             tool,
             endpoint_entries=endpoints,
             legacy_names=legacy,
+            # 统一端点 key：用 unified_name 别名写入的条目要能关联回其端点。
+            canonical_endpoint_key=config.get("active_profile"),
         )
         if not entries:
             print(f"    [{name}]（未读到 MCP 条目）")
@@ -2095,6 +2097,9 @@ def main() -> int:
                 dry_run=args.dry_run,
                 profile=profile if explicit_profile else None,
                 client=args.client,
+                # 端点库 key：让「是否统一端点」的判定与全端点路径一致
+                # （见 fix_mcp_clients 的 unified_name 处理）。
+                profile_key=profile_bundle.get("name"),
             )
             marks = {
                 "updated": "✅",

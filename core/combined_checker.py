@@ -217,9 +217,27 @@ def check_agents(
     for tool in registry:
         install = detect_installation(tool)
         servers = _load_tool_servers(tool)
+        # ``unified_name`` 是**统一 Hermes 端点**在该客户端配置里的条目别名（config.yaml：
+        # 「统一端点用独立 key 写入，避免覆盖本地桥」），**只对统一端点成立**。
+        # 它由客户端级字段声明，但端点库里不止一个端点，因此绝不能无条件套用：
+        # 早先的 ``tool.get("unified_name") or expected_name`` 会让审计 K8s 这类工具端点
+        # 时也去查 ``hermes-unified``，读到的是 hermes 的 URL → URL 校验必然失败，把已
+        # 正确接入的端点判成「未配置」（实测 Codex/OpenCode 因此长期停在 1/2）。
+        #
+        # 判据：该端点是否为**统一端点**。统一端点就是 ``active_profile`` 指向的那个
+        # （本机即 hermes-home）。``endpoint_key`` 为 None 时检查的是默认端点，即
+        # active_profile 本身，同样应使用别名。注意不能写成
+        # ``active_key = endpoint_key or config[...]`` —— endpoint_key 非空时该表达式
+        # 恒等于 endpoint_key，比较永远相等，别名会被误用到所有端点上（实测该写法
+        # 就是本次事故的成因）。
+        unified_alias = tool.get("unified_name")
+        if unified_alias:
+            active_key = config.get("active_profile")
+            if endpoint_key is not None and endpoint_key != active_key:
+                unified_alias = None
         mcp = inspect_mcp_configuration(
             servers,
-            expected_name=tool.get("unified_name") or expected_name,
+            expected_name=unified_alias or expected_name,
             expected_url=expected_url,
             legacy_names=_merged_legacy_names(expected, tool),
         )

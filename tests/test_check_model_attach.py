@@ -138,5 +138,86 @@ class OverlayValidationTest(unittest.TestCase):
             os.unlink(path)
 
 
+class UnifiedNameScopeTest(unittest.TestCase):
+    """回归（2026-10-08 实测）：``unified_name`` 只对**统一端点**成立。
+
+    ``unified_name`` 是「统一 Hermes 端点」在该客户端里的条目别名（config.yaml：
+    「统一端点用独立 key 写入，避免覆盖本地桥」），但端点库里不止一个端点。
+    早先的实现写成 ``tool.get("unified_name") or expected_name``，等于把别名无条件
+    套到**每个**端点上 —— 审计 K8s 这类工具端点时也去查 ``hermes-unified``，读到的是
+    hermes 的 URL，URL 校验必然失败，于是把已正确接入的端点判成「未配置」。实测
+    Codex / OpenCode 因此长期停在 1/2（界面上就是「仍然只有一半」）。
+    """
+
+    def _config_with_unified(self):
+        config = {
+            "schema_version": 2,
+            "active_profile": "hermes-home",
+            "profiles": {
+                "K8s-uat": {"name": "K8s", "url": "https://k8s.example.com/mcp",
+                            "required_capabilities": {}},
+                "hermes-home": {"name": "hermes", "url": "https://hermes.example.com/mcp",
+                                "required_capabilities": {}},
+            },
+            "mcp_tools": [
+                {"name": "Cursor", "config_path": "~/.cursor/mcp.json", "format": "json",
+                 "mcp_key_path": ["mcpServers"], "unified_name": "hermes-unified"},
+            ],
+            "tools": [],
+        }
+        return config
+
+    def _servers(self):
+        # 客户端已按「统一端点用别名、其余用正典名」正确落库
+        return {
+            "K8s": {"url": "https://k8s.example.com/mcp"},
+            "hermes-unified": {"url": "https://hermes.example.com/mcp"},
+        }
+
+    def test_non_unified_endpoint_is_not_checked_under_unified_name(self):
+        """审计 K8s 端点时必须查 `K8s`，而不是 `hermes-unified`。"""
+        config = self._config_with_unified()
+        with patch("config_store.load_discovered", return_value=[]), \
+                patch("combined_checker._load_tool_servers", return_value=self._servers()):
+            result = check_agents(
+                config, _scan_result(), live_probe=False,
+                profile=config["profiles"]["K8s-uat"], endpoint_key="K8s-uat",
+            )
+        record = next(r for r in result["records"] if r["name"] == "Cursor")
+        self.assertTrue(
+            record["mcp_configured"],
+            "K8s 端点已按正典名接入，不应因为 unified_name 而判为未配置",
+        )
+        self.assertEqual(record["configured_url"], "https://k8s.example.com/mcp")
+
+    def test_unified_endpoint_still_uses_unified_name(self):
+        """统一端点（active_profile）仍必须用别名核对，保住「不覆盖本地桥」的初衷。"""
+        config = self._config_with_unified()
+        with patch("config_store.load_discovered", return_value=[]), \
+                patch("combined_checker._load_tool_servers", return_value=self._servers()):
+            result = check_agents(
+                config, _scan_result(), live_probe=False,
+                profile=config["profiles"]["hermes-home"], endpoint_key="hermes-home",
+            )
+        record = next(r for r in result["records"] if r["name"] == "Cursor")
+        self.assertTrue(record["mcp_configured"])
+        self.assertEqual(record["configured_url"], "https://hermes.example.com/mcp")
+
+    def test_both_endpoints_report_configured(self):
+        """同一次遍历里两个端点都应判为已接入（即界面上的 2/2，而不是 1/2）。"""
+        config = self._config_with_unified()
+        flags = {}
+        with patch("config_store.load_discovered", return_value=[]), \
+                patch("combined_checker._load_tool_servers", return_value=self._servers()):
+            for key in ("K8s-uat", "hermes-home"):
+                result = check_agents(
+                    config, _scan_result(), live_probe=False,
+                    profile=config["profiles"][key], endpoint_key=key,
+                )
+                rec = next(r for r in result["records"] if r["name"] == "Cursor")
+                flags[key] = rec["mcp_configured"]
+        self.assertEqual(flags, {"K8s-uat": True, "hermes-home": True})
+
+
 if __name__ == "__main__":
     unittest.main()

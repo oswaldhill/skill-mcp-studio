@@ -402,7 +402,14 @@ def build_management_snapshot(
         if detect_installation(tool)["install_state"] == "none":
             continue
         legacy = sorted(profile_legacy | set(tool.get("legacy_names", []) or []))
-        entries = inventory_client(tool, endpoint_entries=endpoints, legacy_names=legacy)
+        entries = inventory_client(
+            tool,
+            endpoint_entries=endpoints,
+            legacy_names=legacy,
+            # 统一端点 key：让用 unified_name 别名写入的条目也能关联回它的端点，
+            # 否则该条目没有 endpoint_key，会被 attachment 审计误判为「未挂载」。
+            canonical_endpoint_key=config.get("active_profile"),
+        )
         # 排序：已挂载(attached) 在上，旧通道(legacy) 次之，未纳管(unmanaged) 沉底。
         # 稳定排序保持同类目下的原始顺序。
         _cls_rank = {"attached": 0, "legacy": 1, "unmanaged": 2}

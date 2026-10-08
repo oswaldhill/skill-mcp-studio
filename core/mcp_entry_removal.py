@@ -57,6 +57,8 @@ def client_entries(config: Dict[str, Any], tool: Dict[str, Any]) -> List[Any]:
         tool,
         endpoint_entries=_endpoint_entries(config),
         legacy_names=_legacy_names(config, tool),
+        # 与 attachment 审计同语义：unified_name 别名要关联回统一端点。
+        canonical_endpoint_key=config.get("active_profile"),
     )
 
 

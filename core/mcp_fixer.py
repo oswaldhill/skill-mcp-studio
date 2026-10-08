@@ -159,8 +159,13 @@ def fix_mcp_tool(
     expected: Dict[str, Any],
     *,
     dry_run: bool = False,
+    use_unified_name: bool = True,
 ) -> Dict[str, str]:
-    """Add or update one canonical MCP entry without removing legacy entries."""
+    """Add or update one canonical MCP entry without removing legacy entries.
+
+    ``use_unified_name`` 控制是否允许使用客户端的 ``unified_name`` 别名（见下）。
+    它由调用方按「该端点是否为统一端点」决定；默认 True 保持既有单测调用面不变。
+    """
     path = os.path.expanduser(tool.get("config_path", ""))
     if not path:
         return _result(tool, "missing", "configuration path is not configured; no changes made")
@@ -168,7 +173,13 @@ def fix_mcp_tool(
         reason = tool.get("fix_unsupported_reason", "repair is not supported for this client")
         return _result(tool, "unsupported", reason)
 
-    name = tool.get("unified_name") or expected.get("name", "hermes")
+    # ``unified_name`` 是**统一 Hermes 端点**的别名（config.yaml：「统一端点用独立
+    # key 写入，避免覆盖本地桥」），只对统一端点成立。端点库里通常不止一个端点，
+    # 若无条件套用，每个端点都会被写成同一个 key、互相覆盖，最后只剩最后一个端点
+    # 的 URL —— 而审计阶段又会拿这个 key 去核对所有端点，于是把已正确接入的端点判为
+    # 未配置。``_endpoint_profiles`` 的既有约定也是「按各自的 name 写入」。
+    name = tool.get("unified_name") if use_unified_name else None
+    name = name or expected.get("name", "hermes")
     url = expected.get("url", "")
     # 鉴权：端点带 auth_token 时以明文 Bearer 头写入客户端配置（本机单用户场景，
     # token 已在本地 profiles 明文存储，环境变量引用在 GUI 应用里时灵时不灵）。
@@ -249,18 +260,22 @@ def fix_mcp_clients(
     dry_run: bool = False,
     profile: Optional[Dict[str, Any]] = None,
     client: Optional[str] = None,
+    profile_key: Optional[str] = None,
 ) -> List[Dict[str, str]]:
     """Repair installed registry clients against every managed MCP endpoint.
 
     When ``profile`` is given, only that single endpoint is written (the
     ``--profile`` path); otherwise every endpoint in the library is written so
     each MCP-capable client ends up configured for all managed endpoints.
+    ``profile_key`` 是该端点在端点库里的 key（``load_profile(...)["name"]``），
+    用于判定它是否为统一端点；缺省时退回 ``active_profile``。
 
     ``client`` narrows the repair to a single registry entry by name
     (normalized comparison); when omitted every installed client is repaired.
     """
+    active_key = config.get("active_profile")
     if profile is not None:
-        endpoint_pairs = [(profile.get("name", "hermes"), profile)]
+        endpoint_pairs = [(profile_key or active_key, profile)]
     else:
         endpoint_pairs = _endpoint_profiles(config)
     wanted = normalized_name(client) if client else None
@@ -278,7 +293,14 @@ def fix_mcp_clients(
             results.append(_result(tool, "not-installed", "客户端未安装，跳过"))
             continue
         for _ep_key, expected in endpoint_pairs:
-            result = fix_mcp_tool(tool, expected, dry_run=dry_run)
+            # 只有统一端点（端点库 key == active_profile）才用 unified_name 别名；
+            # 其余端点按各自的正典名写入，避免所有端点挤进同一个 key 互相覆盖。
+            result = fix_mcp_tool(
+                tool,
+                expected,
+                dry_run=dry_run,
+                use_unified_name=(_ep_key == active_key),
+            )
             results.append(result)
             ops_log(
                 "fix_mcp_result",
