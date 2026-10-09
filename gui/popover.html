@@ -10,104 +10,161 @@
     font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
     font-size: 13px;
     color: #1d1d1f;
-    padding: 6px;
+    padding: 8px;
     -webkit-user-select: none;
     user-select: none;
   }
   .panel {
-    background: rgba(250, 250, 252, 0.84);
-    backdrop-filter: blur(24px) saturate(180%);
-    -webkit-backdrop-filter: blur(24px) saturate(180%);
-    border-radius: 12px;
-    box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.14), 0 10px 34px rgba(0, 0, 0, 0.24);
+    background: rgba(248, 248, 250, 0.88);
+    backdrop-filter: blur(30px) saturate(180%);
+    -webkit-backdrop-filter: blur(30px) saturate(180%);
+    border-radius: 14px;
+    box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 12px 40px rgba(0, 0, 0, 0.28);
     overflow: hidden;
   }
   .head {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 12px 6px;
+    padding: 12px 14px 8px;
   }
-  .title { font-size: 13px; font-weight: 600; }
+  .head-left { display: flex; align-items: center; gap: 8px; }
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #34c759;
+    box-shadow: 0 0 6px rgba(52, 199, 89, 0.4);
+  }
+  .status-dot.alert { background: #ff9500; box-shadow: 0 0 6px rgba(255, 149, 0, 0.4); }
+  .title { font-size: 13px; font-weight: 600; color: #1d1d1f; }
   .refresh {
-    border: none;
-    background: transparent;
-    color: #007aff;
-    font-size: 12px;
-    padding: 2px 5px;
-    border-radius: 5px;
-    cursor: pointer;
+    border: none; background: transparent; color: #007aff;
+    font-size: 12px; padding: 3px 8px; border-radius: 6px; cursor: pointer;
   }
-  .refresh:hover { background: rgba(0, 0, 0, 0.06); }
-  .rows { padding: 2px 0 4px; }
-  .row {
+  .refresh:hover { background: rgba(0, 122, 255, 0.08); }
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    padding: 0 10px 8px;
+  }
+  .card {
+    background: rgba(255, 255, 255, 0.6);
+    border-radius: 8px;
+    padding: 8px 10px;
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 4px 12px;
-    font-size: 12.5px;
+    flex-direction: column;
+    gap: 2px;
   }
-  .row .label { color: #3a3a3c; }
-  .row .num { font-variant-numeric: tabular-nums; color: #8e8e93; font-weight: 500; }
-  .row .num.active { color: #007aff; font-weight: 600; }
-  .sep { height: 1px; background: rgba(0, 0, 0, 0.08); margin: 5px 0; }
-  .list { max-height: 168px; overflow-y: auto; padding-bottom: 5px; }
-  .list::-webkit-scrollbar { width: 5px; }
-  .list::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.18); border-radius: 3px; }
+  .card-label {
+    font-size: 10px;
+    color: #8e8e93;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    font-weight: 500;
+  }
+  .card-value {
+    font-size: 20px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: #1d1d1f;
+    line-height: 1.2;
+  }
+  .card-value.zero { color: #c7c7cc; }
+  .card-value.active { color: #ff9500; }
+  .card-bar {
+    height: 3px;
+    border-radius: 2px;
+    background: #e5e5ea;
+    margin-top: 3px;
+    overflow: hidden;
+  }
+  .card-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: #ff9500;
+    transition: width 0.3s ease;
+  }
+  .sep { height: 1px; background: rgba(0, 0, 0, 0.06); margin: 4px 14px; }
+  .list { max-height: 140px; overflow-y: auto; padding: 2px 0 6px; }
+  .list::-webkit-scrollbar { width: 4px; }
+  .list::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.15); border-radius: 2px; }
   .item {
-    display: flex;
-    gap: 7px;
-    align-items: baseline;
-    padding: 3px 12px;
-    font-size: 12px;
-    line-height: 1.45;
+    display: flex; gap: 8px; align-items: flex-start;
+    padding: 4px 14px; font-size: 12px; line-height: 1.4;
   }
   .dot {
-    flex: 0 0 auto;
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-    background: #8e8e93;
-    position: relative;
-    top: -1px;
+    flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%;
+    background: #8e8e93; margin-top: 4px;
   }
   .dot.added { background: #34c759; }
   .dot.removed { background: #ff3b30; }
   .dot.changed { background: #ff9500; }
   .item .nm { color: #1d1d1f; font-weight: 500; }
   .item .detail { color: #8e8e93; }
-  .empty { padding: 12px; text-align: center; color: #8e8e93; font-size: 12px; }
-  .foot { padding: 4px 10px 10px; }
+  .empty-msg {
+    padding: 10px 14px;
+    text-align: center;
+    color: #8e8e93;
+    font-size: 12px;
+  }
+  .empty-msg .check {
+    display: inline-flex; align-items: center; gap: 5px;
+  }
+  .empty-msg .check svg { width: 14px; height: 14px; }
+  .meta {
+    padding: 6px 14px 4px;
+    font-size: 10px;
+    color: #c0c0c5;
+    text-align: center;
+  }
+  .foot {
+    padding: 6px 12px 12px;
+    display: flex;
+    gap: 8px;
+  }
   .btn {
-    width: 100%;
+    flex: 1;
     border: none;
-    border-radius: 7px;
-    padding: 6px 0;
-    background: rgba(0, 0, 0, 0.06);
-    color: #1d1d1f;
-    font-size: 12.5px;
+    border-radius: 8px;
+    padding: 7px 0;
+    font-size: 12px;
     font-weight: 500;
     cursor: pointer;
+    transition: background 0.15s;
   }
-  .btn:hover { background: rgba(0, 0, 0, 0.1); }
+  .btn-primary {
+    background: #007aff;
+    color: #fff;
+  }
+  .btn-primary:hover { background: #0066d6; }
+  .btn-secondary {
+    background: rgba(0, 0, 0, 0.06);
+    color: #1d1d1f;
+  }
+  .btn-secondary:hover { background: rgba(0, 0, 0, 0.1); }
 </style>
 </head>
 <body>
   <div class="panel">
     <div class="head">
-      <span class="title">变更摘要</span>
+      <div class="head-left">
+        <span class="status-dot" id="status-dot"></span>
+        <span class="title">Skill MCP Studio</span>
+      </div>
       <button class="refresh" id="refresh">刷新</button>
     </div>
-    <div id="content"><div class="empty">加载中...</div></div>
-    <div class="foot"><button class="btn" id="open-full">打开完整面板</button></div>
+    <div id="content"><div class="empty-msg">加载中...</div></div>
+    <div class="foot">
+      <button class="btn btn-secondary" id="open-full">打开主面板</button>
+    </div>
   </div>
 
 <script>
 const DIMS = [
-  ["agents", "IDE/Agent"],
-  ["mcp", "MCP"],
-  ["skills", "Skill"],
-  ["hooks", "Hook"],
+  ["agents", "IDE/Agent", "#5856d6"],
+  ["mcp", "MCP", "#34c759"],
+  ["skills", "Skill", "#ff9500"],
+  ["hooks", "Hook", "#af52de"],
 ];
 
 function esc(s) {
@@ -120,17 +177,12 @@ function esc(s) {
 async function fitWindow() {
   const panel = document.querySelector(".panel");
   if (!panel) return;
-  // 等一帧让浏览器完成布局（backdrop-filter 等可能影响测量）
-  await new Promise(function (r) {
-    requestAnimationFrame(r);
-  });
-  const h = Math.ceil(panel.getBoundingClientRect().height) + 12;
+  await new Promise(function (r) { requestAnimationFrame(r); });
+  const h = Math.ceil(panel.getBoundingClientRect().height) + 16;
   try {
     const tw = window.__TAURI__.window;
-    await tw.getCurrentWindow().setSize(new tw.LogicalSize(320, Math.max(h, 200)));
-  } catch (e) {
-    /* 尺寸调整失败不影响内容展示 */
-  }
+    await tw.getCurrentWindow().setSize(new tw.LogicalSize(300, Math.max(h, 220)));
+  } catch (e) { /* 忽略 */ }
 }
 
 async function render(body) {
@@ -140,39 +192,47 @@ async function render(body) {
 }
 
 function renderDiff(diff) {
+  const dot = document.getElementById("status-dot");
   if (!diff) {
-    render('<div class="empty">无法获取快照</div>');
+    dot.className = "status-dot alert";
+    render('<div class="empty-msg">无法获取快照</div>');
     return;
   }
   if (diff.is_first) {
-    render('<div class="empty">首次快照，已保存基线</div>');
+    dot.className = "status-dot";
+    render('<div class="empty-msg">首次快照，已保存基线</div>');
     return;
   }
   const summary = diff.summary || {};
   const dims = diff.dimensions || {};
   let total = 0;
 
-  let html = '<div class="rows">';
+  let html = '<div class="grid">';
   for (const pair of DIMS) {
     const n = summary[pair[0]] || 0;
     total += n;
+    const cls = n > 0 ? "active" : "zero";
+    const barW = n > 0 ? Math.min(n * 20, 100) : 0;
     html +=
-      '<div class="row"><span class="label">' +
-      pair[1] +
-      '</span><span class="num' +
-      (n > 0 ? " active" : "") +
-      '">' +
-      n +
-      "</span></div>";
+      '<div class="card">' +
+      '<span class="card-label">' + pair[1] + '</span>' +
+      '<span class="card-value ' + cls + '">' + n + '</span>' +
+      '<div class="card-bar"><div class="card-bar-fill" style="width:' + barW + '%;background:' + pair[2] + '"></div></div>' +
+      '</div>';
   }
   html += "</div>";
 
   if (total === 0) {
-    html += '<div class="sep"></div><div class="empty">无变更</div>';
+    dot.className = "status-dot";
+    html += '<div class="sep"></div>';
+    html += '<div class="empty-msg"><span class="check">';
+    html += '<svg viewBox="0 0 24 24" fill="none" stroke="#34c759" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>';
+    html += ' 配置无变更</span></div>';
     render(html);
     return;
   }
 
+  dot.className = "status-dot alert";
   const items = [];
   for (const dim of Object.keys(dims)) {
     const changes = dims[dim];
@@ -181,13 +241,9 @@ function renderDiff(diff) {
       const t = c.type || "";
       const cls = t.indexOf("added") >= 0 ? "added" : t.indexOf("removed") >= 0 ? "removed" : "changed";
       items.push(
-        '<div class="item"><span class="dot ' +
-          cls +
-          '"></span><span><span class="nm">' +
-          esc(c.name || "?") +
-          '</span> <span class="detail">' +
-          esc(c.detail || "") +
-          "</span></span></div>"
+        '<div class="item"><span class="dot ' + cls + '"></span>' +
+        '<span><span class="nm">' + esc(c.name || "?") + '</span> ' +
+        '<span class="detail">' + esc(c.detail || "") + '</span></span></div>'
       );
     }
   }
@@ -198,13 +254,12 @@ function renderDiff(diff) {
 }
 
 async function loadSnapshot() {
-  render('<div class="empty">检查中...</div>');
+  render('<div class="empty-msg">检查中...</div>');
   try {
     const res = await window.__TAURI__.core.invoke("run_cli", {
       args: ["--snapshot", "--format", "json"],
     });
     const out = typeof res === "string" ? res : res && res.stdout ? res.stdout : "";
-    // --snapshot --format json 只输出 diff 本身，直接解析整段
     let diff = null;
     try {
       diff = JSON.parse(out);
@@ -216,32 +271,22 @@ async function loadSnapshot() {
     }
     renderDiff(diff);
   } catch (e) {
-    render('<div class="empty">加载失败</div>');
+    render('<div class="empty-msg">加载失败</div>');
   }
 }
 
 document.getElementById("refresh").addEventListener("click", loadSnapshot);
 document.getElementById("open-full").addEventListener("click", async function () {
-  try {
-    await window.__TAURI__.core.invoke("show_main_window");
-  } catch (e) {
-    /* 主窗口打开失败时保持弹框 */
-  }
+  try { await window.__TAURI__.core.invoke("show_main_window"); } catch (e) { /* 忽略 */ }
 });
 
 window.addEventListener("keydown", function (e) {
   if (e.key === "Escape") {
-    try {
-      window.__TAURI__.window.getCurrentWindow().hide();
-    } catch (err) {
-      /* 忽略 */
-    }
+    try { window.__TAURI__.window.getCurrentWindow().hide(); } catch (err) { /* 忽略 */ }
   }
 });
 
 loadSnapshot();
-
-// 供托盘点击时从 Rust 侧调用：弹框每次显示都取最新快照
 window.__reloadPopover = loadSnapshot;
 </script>
 </body>
