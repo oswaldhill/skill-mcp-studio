@@ -140,6 +140,13 @@ mcp_tools:
   config_path: ~/.config/opencode/opencode.jsonc
   format: jsonc
   mcp_key_path: [mcp]
+  # OpenCode 的 MCP 条目是**判别联合**：官方 schema 里 McpRemoteConfig 要求
+  # required [type, url]、McpLocalConfig 要求 [type, command]，缺 type 会让**整份
+  # 配置**被判无效（实测 `opencode debug config` 报 "Expected { type: local } |
+  # { type: remote }, got {"url": ...} / Missing key ...enabled"）。而 mcpServers 型
+  # 客户端（Claude Code / Cursor / WorkBuddy）的条目只需 url，多写 type 反而多余。
+  # 故连接类型按客户端声明，而不是在渲染层统一硬编码。
+  mcp_entry_type: remote
   # OpenCode 已有本地 hermes stdio 桥（指向 NAS 网关），统一端点用独立 key 写入，避免覆盖本地桥
   unified_name: hermes-unified
   # 本地 stdio 桥条目名为 "hermes"（hermes-bridge.py 指向 NAS 网关），与统一端点

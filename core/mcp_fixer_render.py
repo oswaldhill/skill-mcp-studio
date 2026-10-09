@@ -71,12 +71,34 @@ def _toml_string(value: str) -> str:
     ) + '"'
 
 
-def _render_json(text: str, key_path: List[str], name: str, url: str, token: str = "") -> str:
+def _render_json(
+    text: str,
+    key_path: List[str],
+    name: str,
+    url: str,
+    token: str = "",
+    entry_type: str = "",
+) -> str:
+    """写入一个 JSON/JSONC 客户端配置。
+
+    ``entry_type`` 是客户端声明的连接类型（config.yaml 的 ``mcp_entry_type``）。
+    为什么需要它：OpenCode 的 ``mcp`` 段是**判别联合** —— 官方 schema 里
+    ``McpRemoteConfig`` 的 ``required`` 是 ``[type, url]``、``McpLocalConfig`` 是
+    ``[type, command]``。缺 ``type`` 时 OpenCode 不是忽略该条目，而是把**整份配置**
+    判为无效（实测 ``opencode debug config`` 报
+    ``Expected { type: local } | { type: remote }, got {"url": ...}``），于是所有
+    MCP 端点一起失效。而 ``mcpServers`` 型客户端（Claude Code / Cursor / WorkBuddy）
+    的条目只需 ``url``，多写 ``type`` 是多余字段。故类型由调用方按客户端传入，
+    默认空（= 不写），保持既有客户端的字节级行为不变。
+    """
     data = json.loads(text)
     if not isinstance(data, dict):
         raise ValueError("JSON root must be an object")
     servers = _nested_container(data, key_path)
-    entry = {"url": url}
+    entry: Dict[str, Any] = {}
+    if entry_type:
+        entry["type"] = entry_type
+    entry["url"] = url
     if token:
         entry["headers"] = _bearer_headers(token)
     servers[name] = entry
@@ -470,7 +492,10 @@ def _render(tool: Dict[str, Any], text: str, name: str, url: str, token: str = "
     config_format = tool.get("format", "json")
     key_path = tool.get("mcp_key_path", ["mcpServers"])
     if config_format in ("json", "jsonc"):
-        return _render_json(text, key_path, name, url, token)
+        return _render_json(
+            text, key_path, name, url, token,
+            entry_type=str(tool.get("mcp_entry_type") or ""),
+        )
     if config_format == "toml":
         return _render_toml(text, name, url, token)
     if config_format == "reasonix_toml":
