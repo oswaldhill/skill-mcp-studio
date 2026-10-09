@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Skill MCP Studio</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "SF Pro Text", "PingFang SC", sans-serif;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    padding: 14px 16px;
+    min-width: 320px;
+    max-width: 360px;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #2a2a4a;
+  }
+  .title { font-size: 14px; font-weight: 600; color: #fff; }
+  .refresh-btn {
+    background: #2a2a4a;
+    border: none;
+    color: #a0a0c0;
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .refresh-btn:hover { background: #3a3a5a; color: #fff; }
+  .summary {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .stat {
+    background: #16213e;
+    border-radius: 6px;
+    padding: 10px 12px;
+    text-align: center;
+  }
+  .stat-num { font-size: 22px; font-weight: 700; color: #fff; }
+  .stat-num.zero { color: #555; }
+  .stat-label { font-size: 11px; color: #888; margin-top: 2px; }
+  .stat.agents .stat-num { color: #4fc3f7; }
+  .stat.mcp .stat-num { color: #81c784; }
+  .stat.skills .stat-num { color: #ffb74d; }
+  .stat.hooks .stat-num { color: #ce93d8; }
+  .changes-list { max-height: 240px; overflow-y: auto; }
+  .changes-list::-webkit-scrollbar { width: 4px; }
+  .changes-list::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+  .dim-title {
+    font-size: 11px;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 8px 0 4px;
+  }
+  .change-item {
+    font-size: 12px;
+    color: #ccc;
+    padding: 3px 0;
+    padding-left: 12px;
+    position: relative;
+  }
+  .change-item::before {
+    content: "";
+    position: absolute;
+    left: 2px;
+    top: 8px;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: #666;
+  }
+  .change-item.added::before { background: #4caf50; }
+  .change-item.removed::before { background: #f44336; }
+  .change-item.changed::before { background: #ff9800; }
+  .empty { text-align: center; color: #555; font-size: 13px; padding: 20px 0; }
+  .footer {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid #2a2a4a;
+    text-align: center;
+  }
+  .open-full {
+    background: #0d47a1;
+    border: none;
+    color: #fff;
+    font-size: 12px;
+    padding: 6px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    width: 100%;
+  }
+  .open-full:hover { background: #1565c0; }
+  .loading { text-align: center; color: #555; font-size: 13px; padding: 30px 0; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <span class="title">变更摘要</span>
+    <button class="refresh-btn" id="refresh">刷新</button>
+  </div>
+  <div id="content"><div class="loading">加载中...</div></div>
+  <div class="footer">
+    <button class="open-full" id="open-full">打开完整面板</button>
+  </div>
+
+<script>
+const { invoke } = window.__TAURI__.core;
+
+async function loadSnapshot() {
+  const content = document.getElementById("content");
+  content.innerHTML = '<div class="loading">运行快照对比...</div>';
+  try {
+    const res = await invoke("run_cli", { args: ["--snapshot", "--format", "json"] });
+    const parsed = typeof res === "string" ? JSON.parse(res) : res;
+    if (parsed && parsed.code !== undefined && parsed.stdout !== undefined) {
+      const lines = parsed.stdout.split("\n").filter(l => l.trim().charCodeAt(0) === 123);
+      const diff = lines.length ? JSON.parse(lines[lines.length - 1]) : null;
+      renderDiff(diff);
+    } else {
+      renderDiff(null);
+    }
+  } catch (e) {
+    content.innerHTML = '<div class="empty">加载失败: ' + String(e).substring(0, 60) + '</div>';
+  }
+}
+
+function renderDiff(diff) {
+  const content = document.getElementById("content");
+  if (!diff) {
+    content.innerHTML = '<div class="empty">无法获取快照</div>';
+    return;
+  }
+  if (diff.is_first) {
+    content.innerHTML = '<div class="empty">首次快照，已保存基线</div>';
+    return;
+  }
+  if (!diff.has_changes) {
+    content.innerHTML = '<div class="empty">无变更</div>';
+    return;
+  }
+  const s = diff.summary || {};
+  const dims = diff.dimensions || {};
+  let html = '<div class="summary">';
+  html += statBox("agents", s.agents || 0, "IDE/Agent");
+  html += statBox("mcp", s.mcp || 0, "MCP");
+  html += statBox("skills", s.skills || 0, "Skill");
+  html += statBox("hooks", s.hooks || 0, "Hook");
+  html += '</div>';
+  html += '<div class="changes-list">';
+  for (const [dim, changes] of Object.entries(dims)) {
+    if (!changes || !changes.length) continue;
+    html += '<div class="dim-title">' + esc(dim) + '</div>';
+    for (const c of changes) {
+      const cls = (c.type || "").includes("added") ? "added" :
+                  (c.type || "").includes("removed") ? "removed" : "changed";
+      html += '<div class="change-item ' + cls + '">' + esc(c.name || "?") + ': ' + esc(c.detail || "") + '</div>';
+    }
+  }
+  html += '</div>';
+  content.innerHTML = html;
+}
+
+function statBox(cls, num, label) {
+  return '<div class="stat ' + cls + '"><div class="stat-num ' + (num === 0 ? "zero" : "") + '">' + num + '</div><div class="stat-label">' + label + '</div></div>';
+}
+
+function esc(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+document.getElementById("refresh").addEventListener("click", loadSnapshot);
+document.getElementById("open-full").addEventListener("click", async () => {
+  try { await invoke("show_main_window"); } catch(e) {}
+});
+
+loadSnapshot();
+</script>
+</body>
+</html>

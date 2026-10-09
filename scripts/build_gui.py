@@ -160,6 +160,12 @@ def main(argv: list[str]) -> int:
         shutil.copytree(ASSETS, DIST / "assets", dirs_exist_ok=True)
         n = sum(1 for p in (DIST / "assets").rglob("*") if p.is_file())
         print(f"✓ {ASSETS.relative_to(ROOT)} → dist/assets  ({n} 个文件)")
+
+    # popover.html：托盘左键点击弹出的简易变更摘要窗口（独立页面，无需拆分）
+    popover_src = ROOT / "gui" / "popover.html"
+    if popover_src.is_file():
+        shutil.copy2(popover_src, DIST / "popover.html")
+        print(f"✓ {popover_src.relative_to(ROOT)} → dist/popover.html")
     return 0
 
 

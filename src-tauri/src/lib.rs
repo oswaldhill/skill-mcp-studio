@@ -288,6 +288,16 @@ async fn run_audit() -> Result<String, String> {
 /// reach arbitrary CLI surface (e.g. ``--config <arbitrary>`` to redirect the
 /// engine to a hostile YAML).  ``--config`` itself is rejected outright
 /// (redirection class).  Returned ``stderr`` is truncated to bound size.
+/// 显示主窗口（popover 的「打开完整面板」按钮调用）
+#[tauri::command]
+fn show_main_window(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+    Ok(())
+}
+
 #[tauri::command]
 async fn run_cli(args: Vec<String>) -> Result<String, String> {
     // Subcommand allowlist (first flag in argv).  Read-only + the registered
@@ -474,7 +484,8 @@ pub fn run() {
             run_cli,
             cancel_cli,
             read_scan_progress,
-            open_url
+            open_url,
+            show_main_window
         ])
         // P2-12：开发态直读磁盘上的 dashboard.html。
         //
@@ -509,8 +520,24 @@ pub fn run() {
                     None => eprintln!("[SMS_GUI_DEV] 未找到 label=main 的窗口"),
                 }
             }
+            // ---- popover 简易弹框窗口（Phase E：托盘左键点击弹出变更摘要）----
+            // 独立小窗口，无边框，加载 popover.html；默认隐藏，托盘左键点击时显示。
+            let _popover = tauri::WebviewWindowBuilder::new(
+                app,
+                "popover",
+                tauri::WebviewUrl::App("popover.html".into()),
+            )
+            .title("")
+            .inner_size(360.0, 500.0)
+            .decorations(false)
+            .resizable(false)
+            .visible(false)
+            .skip_taskbar(true)
+            .always_on_top(true)
+            .build()?;
+
             // ---- 托盘常驻（Phase C）----
-            // 左键点击切换窗口显隐；右键弹出菜单（显示主窗口 / 退出）。
+            // 左键点击弹出 popover 简易弹框；右键弹出菜单（显示主窗口 / 退出）。
             // 关闭窗口只隐藏不退出（见 on_window_event），退出走菜单或 Cmd+Q。
             let menu = Menu::with_items(app, &[
                 &MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?,
@@ -561,12 +588,13 @@ pub fn run() {
                     } = event
                     {
                         let app = tray.app_handle();
-                        if let Some(window) = app.get_webview_window("main") {
-                            if window.is_visible().unwrap_or(false) {
-                                let _ = window.hide();
+                        // 左键点击托盘 → 显示 popover 简易弹框（不是主窗口）
+                        if let Some(popover) = app.get_webview_window("popover") {
+                            if popover.is_visible().unwrap_or(false) {
+                                let _ = popover.hide();
                             } else {
-                                let _ = window.show();
-                                let _ = window.set_focus();
+                                let _ = popover.show();
+                                let _ = popover.set_focus();
                             }
                         }
                     }
