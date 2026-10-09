@@ -59,6 +59,38 @@ class DetectBackendTest(unittest.TestCase):
         env = _npx_env("/opt/homebrew/bin/npx")
         self.assertEqual(env["PATH"].split(os.pathsep)[0], "/opt/homebrew/bin")
 
+    def test_npx_env_promotes_dir_already_present_but_not_first(self):
+        """回归：npx 目录**已在 PATH 但不在首位**时，必须提到首位。
+
+        ``env node`` 取 PATH 里第一个 node，而 npx 同目录那个才是配套版本。早先
+        写成 ``if npx_dir not in parts: parts.insert(0, npx_dir)``，本机
+        ``/opt/homebrew/bin`` 恰好在 PATH 第 9 位（首项 ``~/.mimocode/bin``），于是
+        不移动 —— 若首项附近存在另一个 node（nvm/fnm/volta 常见），npx 会解析到
+        错误版本。本机当时是靠「前面几项都没有 node」侥幸可用。
+        """
+        parts = ["/first", "/second", "/opt/homebrew/bin", "/last"]
+        with mock.patch.dict(os.environ, {"PATH": os.pathsep.join(parts)}):
+            env = _npx_env("/opt/homebrew/bin/npx")
+        got = env["PATH"].split(os.pathsep)
+        self.assertEqual(got[0], "/opt/homebrew/bin")
+        self.assertEqual(got.count("/opt/homebrew/bin"), 1, "不得留下重复项")
+        # 原有顺序（去掉被提升的那项）必须保持不变
+        self.assertEqual(got[1:], ["/first", "/second", "/last"])
+
+    def test_npx_env_prepends_when_dir_absent(self):
+        """目录本不在 PATH 时，插到首位（原有行为）。"""
+        parts = ["/first", "/second"]
+        with mock.patch.dict(os.environ, {"PATH": os.pathsep.join(parts)}):
+            env = _npx_env("/opt/homebrew/bin/npx")
+        got = env["PATH"].split(os.pathsep)
+        self.assertEqual(got, ["/opt/homebrew/bin", "/first", "/second"])
+
+    def test_npx_env_handles_empty_path(self):
+        """PATH 为空时不抛异常，只得到 npx 目录。"""
+        with mock.patch.dict(os.environ, {"PATH": ""}):
+            env = _npx_env("/opt/homebrew/bin/npx")
+        self.assertEqual(env["PATH"], "/opt/homebrew/bin")
+
 
 class ReadSourcesTest(unittest.TestCase):
     def test_three_sources_always_present(self):

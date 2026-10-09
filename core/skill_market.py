@@ -44,16 +44,23 @@ _NPX_TIMEOUT = 60
 
 
 def _npx_env(npx: str) -> Dict[str, str]:
-    """构造子进程环境：把 npx 所在目录并入 PATH。
+    """构造子进程环境：把 npx 所在目录**提到 PATH 首位**。
 
     npx 是 `#!/usr/bin/env node` 脚本，只用绝对路径启动仍会因 PATH 里没有
     node 而报 `env: node: No such file or directory`，故必须让其同目录可见。
+
+    必须是**首位**而不是「并入某处」：``env node`` 取 PATH 里**第一个** node，
+    而 npx 同目录那个才是与它配套的版本。早先写成 ``if npx_dir not in parts:
+    parts.insert(0, npx_dir)``，当该目录已在 PATH 中（本机即如此）时不移动，
+    于是 PATH 首项仍是别的目录 —— 若那里存在另一个 node（nvm/fnm/volta 装的
+    常见如此），npx 会解析到**错误的 node 版本**。本机实测：``/opt/homebrew/bin``
+    原本排在 PATH 第 9 位，首项 ``~/.mimocode/bin`` 下没有 node，属侥幸可用。
+    现无论是否已存在都移到首位（已存在时先摘除再插入，避免重复项）。
     """
     env = os.environ.copy()
     npx_dir = str(Path(npx).parent)
-    parts = [p for p in env.get("PATH", "").split(os.pathsep) if p]
-    if npx_dir not in parts:
-        parts.insert(0, npx_dir)
+    parts = [p for p in env.get("PATH", "").split(os.pathsep) if p and p != npx_dir]
+    parts.insert(0, npx_dir)
     env["PATH"] = os.pathsep.join(parts)
     return env
 
