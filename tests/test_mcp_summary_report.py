@@ -18,8 +18,6 @@
    待写项会被算成 0，提示再次失真。
 """
 
-import os
-import re
 import sys
 import unittest
 from collections import Counter
