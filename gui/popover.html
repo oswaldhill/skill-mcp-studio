@@ -120,19 +120,23 @@ function esc(s) {
 async function fitWindow() {
   const panel = document.querySelector(".panel");
   if (!panel) return;
+  // 等一帧让浏览器完成布局（backdrop-filter 等可能影响测量）
+  await new Promise(function (r) {
+    requestAnimationFrame(r);
+  });
   const h = Math.ceil(panel.getBoundingClientRect().height) + 12;
   try {
     const tw = window.__TAURI__.window;
-    await tw.getCurrentWindow().setSize(new tw.LogicalSize(320, Math.max(h, 160)));
+    await tw.getCurrentWindow().setSize(new tw.LogicalSize(320, Math.max(h, 200)));
   } catch (e) {
     /* 尺寸调整失败不影响内容展示 */
   }
 }
 
-function render(body) {
+async function render(body) {
   const content = document.getElementById("content");
   content.innerHTML = body;
-  fitWindow();
+  await fitWindow();
 }
 
 function renderDiff(diff) {
