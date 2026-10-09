@@ -181,7 +181,7 @@ async function fitWindow() {
   const h = Math.ceil(panel.getBoundingClientRect().height) + 16;
   try {
     const tw = window.__TAURI__.window;
-    await tw.getCurrentWindow().setSize(new tw.LogicalSize(300, Math.max(h, 220)));
+    await tw.getCurrentWindow().setSize(new tw.LogicalSize(300, Math.max(h, 200)));
   } catch (e) { /* 忽略 */ }
 }
 

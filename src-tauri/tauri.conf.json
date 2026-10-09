@@ -9,6 +9,7 @@
   },
   "app": {
     "withGlobalTauri": true,
+    "macOSPrivateApi": true,
     "windows": [
       {
         "title": "Skill MCP Studio · 管理台",

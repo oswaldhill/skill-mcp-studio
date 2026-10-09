@@ -344,7 +344,7 @@ fn position_popover(window: &tauri::WebviewWindow) {
     let win = window
         .outer_size()
         .map(|s| s.to_logical::<f64>(scale))
-        .unwrap_or_else(|_| tauri::LogicalSize::new(320.0, 360.0));
+        .unwrap_or_else(|_| tauri::LogicalSize::new(300.0, 300.0));
     let x = (screen.width - win.width - 8.0).max(0.0);
     let y = 30.0;
     let _ = window.set_position(tauri::LogicalPosition::new(x, y));
@@ -582,12 +582,16 @@ pub fn run() {
                 tauri::WebviewUrl::App("popover.html".into()),
             )
             .title("")
-            .inner_size(320.0, 360.0)
+            // 初始给一个与内容相称的高度（fitWindow 会再按实际内容微调）；
+            // transparent 让圆角外的区域真正透明，否则会露出窗口白底。
+            .inner_size(300.0, 300.0)
             .decorations(false)
             .resizable(false)
+            .transparent(true)
             .visible(popover_dev_visible)
             .skip_taskbar(true)
             .always_on_top(true)
+            .shadow(false)
             .build()?;
 
             if popover_dev_visible {
