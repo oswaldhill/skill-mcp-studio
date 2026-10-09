@@ -56,34 +56,31 @@
     gap: 2px;
   }
   .card-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
     font-size: 10px;
     color: #8e8e93;
     text-transform: uppercase;
     letter-spacing: 0.4px;
     font-weight: 500;
   }
+  .card-badge {
+    font-size: 9px;
+    font-weight: 700;
+    color: #fff;
+    padding: 1px 4px;
+    border-radius: 4px;
+    letter-spacing: 0;
+  }
   .card-value {
-    font-size: 20px;
+    font-size: 22px;
     font-weight: 600;
     font-variant-numeric: tabular-nums;
     color: #1d1d1f;
     line-height: 1.2;
   }
   .card-value.zero { color: #c7c7cc; }
-  .card-value.active { color: #ff9500; }
-  .card-bar {
-    height: 3px;
-    border-radius: 2px;
-    background: #e5e5ea;
-    margin-top: 3px;
-    overflow: hidden;
-  }
-  .card-bar-fill {
-    height: 100%;
-    border-radius: 2px;
-    background: #ff9500;
-    transition: width 0.3s ease;
-  }
   .sep { height: 1px; background: rgba(0, 0, 0, 0.06); margin: 4px 14px; }
   .list { max-height: 140px; overflow-y: auto; padding: 2px 0 6px; }
   .list::-webkit-scrollbar { width: 4px; }
@@ -204,25 +201,33 @@ function renderDiff(diff) {
     return;
   }
   const summary = diff.summary || {};
+  const totals = diff.totals || {};
   const dims = diff.dimensions || {};
-  let total = 0;
+  let changed = 0;
 
+  // 卡片主数字显示「当前数量」（totals），有变更时补一个变更数徽标。
+  // 原因：无变更时 diff 的 summary 必然全为 0，只显示变更数会是一片 0，
+  // 看不出系统规模。
   let html = '<div class="grid">';
   for (const pair of DIMS) {
-    const n = summary[pair[0]] || 0;
-    total += n;
-    const cls = n > 0 ? "active" : "zero";
-    const barW = n > 0 ? Math.min(n * 20, 100) : 0;
+    const key = pair[0];
+    const n = totals[key] || 0;
+    const delta = summary[key] || 0;
+    changed += delta;
+    const cls = n > 0 ? "" : "zero";
+    let badge = "";
+    if (delta > 0) {
+      badge = '<span class="card-badge" style="background:' + pair[2] + '">+' + delta + "</span>";
+    }
     html +=
       '<div class="card">' +
-      '<span class="card-label">' + pair[1] + '</span>' +
+      '<span class="card-label">' + pair[1] + badge + '</span>' +
       '<span class="card-value ' + cls + '">' + n + '</span>' +
-      '<div class="card-bar"><div class="card-bar-fill" style="width:' + barW + '%;background:' + pair[2] + '"></div></div>' +
-      '</div>';
+      "</div>";
   }
   html += "</div>";
 
-  if (total === 0) {
+  if (changed === 0) {
     dot.className = "status-dot";
     html += '<div class="sep"></div>';
     html += '<div class="empty-msg"><span class="check">';
@@ -259,7 +264,18 @@ async function loadSnapshot() {
     const res = await window.__TAURI__.core.invoke("run_cli", {
       args: ["--snapshot", "--format", "json"],
     });
-    const out = typeof res === "string" ? res : res && res.stdout ? res.stdout : "";
+    // run_cli 返回的是 JSON 字符串外壳 {code, stdout, stderr, cancelled}，
+    // 真正的 diff 在 stdout 字段里（它是字符串，需要再解析一层）。
+    let payload = res;
+    if (typeof payload === "string") {
+      try { payload = JSON.parse(payload); } catch (e) { payload = null; }
+    }
+    let out = "";
+    if (payload && typeof payload.stdout === "string") {
+      out = payload.stdout;
+    } else if (typeof res === "string") {
+      out = res;
+    }
     let diff = null;
     try {
       diff = JSON.parse(out);

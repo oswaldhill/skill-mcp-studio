@@ -1835,6 +1835,35 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _snapshot_totals(snap) -> dict:
+    """从完整快照里取 4 个维度的「当前数量」，供弹框展示系统规模。
+
+    与 diff 的 summary（变更数）互补：无变更时 diff 必然全是 0，
+    全 0 的界面看不出任何信息，所以另给一组当前状态数量。
+    口径与 GUI 概览卡片保持一致，避免两处数字对不上。
+    """
+    agents = list(snap.get("agents") or [])
+    mainstream = list(snap.get("mainstream_tools") or [])
+    skills = snap.get("skills") or {}
+    mcp = snap.get("mcp") or {}
+    hooks_on = sum(
+        1
+        for a in agents + mainstream
+        if isinstance(a, dict) and a.get("hooks_configured")
+    )
+    # MCP：已发现客户端的条目总数（inventory 展开后的条目数）
+    mcp_entries = 0
+    for c in mcp.get("clients") or []:
+        if isinstance(c, dict):
+            mcp_entries += len(c.get("inventory") or [])
+    return {
+        "agents": len(agents),
+        "mcp": mcp_entries,
+        "skills": len(skills.get("skills") or []),
+        "hooks": hooks_on,
+    }
+
+
 def _run_snapshot_diff(args, config, config_path) -> int:
     """4 维度变更检测：与上次快照对比并保存新基线。
 
@@ -1856,6 +1885,9 @@ def _run_snapshot_diff(args, config, config_path) -> int:
         _old = load_last_snapshot()
         _diff = compare_snapshots(_old, _snap)
         save_last_snapshot(_snap)
+        # 附带当前状态数量：无变更时 diff 的 summary 全为 0，
+        # 弹框若只显示变更数就没有任何信息量。
+        _diff["totals"] = _snapshot_totals(_snap)
         if _as_json:
             print(json.dumps(_diff, ensure_ascii=False, indent=2))
             return 0
