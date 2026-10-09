@@ -298,6 +298,28 @@ fn show_main_window(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// 把 popover 摆到屏幕右上角、菜单栏正下方，贴合托盘图标位置。
+///
+/// macOS 菜单栏高约 25-30pt，右侧留给弹框一个 8pt 边距；
+/// 取不到显示器信息时保持原位，不影响功能。
+fn position_popover(window: &tauri::WebviewWindow) {
+    let monitor = window
+        .current_monitor()
+        .ok()
+        .flatten()
+        .or_else(|| window.primary_monitor().ok().flatten());
+    let Some(monitor) = monitor else { return };
+    let scale = monitor.scale_factor();
+    let screen = monitor.size().to_logical::<f64>(scale);
+    let win = window
+        .outer_size()
+        .map(|s| s.to_logical::<f64>(scale))
+        .unwrap_or_else(|_| tauri::LogicalSize::new(320.0, 360.0));
+    let x = (screen.width - win.width - 8.0).max(0.0);
+    let y = 30.0;
+    let _ = window.set_position(tauri::LogicalPosition::new(x, y));
+}
+
 #[tauri::command]
 async fn run_cli(args: Vec<String>) -> Result<String, String> {
     // Subcommand allowlist (first flag in argv).  Read-only + the registered
@@ -522,19 +544,27 @@ pub fn run() {
             }
             // ---- popover 简易弹框窗口（Phase E：托盘左键点击弹出变更摘要）----
             // 独立小窗口，无边框，加载 popover.html；默认隐藏，托盘左键点击时显示。
+            // 设 SMS_POPOVER_DEV=1 则启动即显示，便于在无法模拟点击的环境里验证渲染。
+            let popover_dev_visible = std::env::var_os("SMS_POPOVER_DEV").is_some();
             let _popover = tauri::WebviewWindowBuilder::new(
                 app,
                 "popover",
                 tauri::WebviewUrl::App("popover.html".into()),
             )
             .title("")
-            .inner_size(360.0, 500.0)
+            .inner_size(320.0, 360.0)
             .decorations(false)
             .resizable(false)
-            .visible(false)
+            .visible(popover_dev_visible)
             .skip_taskbar(true)
             .always_on_top(true)
             .build()?;
+
+            if popover_dev_visible {
+                if let Some(popover) = app.get_webview_window("popover") {
+                    position_popover(&popover);
+                }
+            }
 
             // ---- 托盘常驻（Phase C）----
             // 左键点击弹出 popover 简易弹框；右键弹出菜单（显示主窗口 / 退出）。
@@ -593,8 +623,11 @@ pub fn run() {
                             if popover.is_visible().unwrap_or(false) {
                                 let _ = popover.hide();
                             } else {
+                                // 贴合托盘：摆到屏幕右上角菜单栏下方，再刷新数据
+                                position_popover(&popover);
                                 let _ = popover.show();
                                 let _ = popover.set_focus();
+                                let _ = popover.eval("window.__reloadPopover && window.__reloadPopover()");
                             }
                         }
                     }

@@ -2,190 +2,243 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Skill MCP Studio</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { background: transparent; }
   body {
-    font-family: -apple-system, "SF Pro Text", "PingFang SC", sans-serif;
-    background: #1a1a2e;
-    color: #e0e0e0;
-    padding: 14px 16px;
-    min-width: 320px;
-    max-width: 360px;
+    font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+    font-size: 13px;
+    color: #1d1d1f;
+    padding: 6px;
     -webkit-user-select: none;
     user-select: none;
   }
-  .header {
+  .panel {
+    background: rgba(250, 250, 252, 0.84);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border-radius: 12px;
+    box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.14), 0 10px 34px rgba(0, 0, 0, 0.24);
+    overflow: hidden;
+  }
+  .head {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 12px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid #2a2a4a;
+    padding: 10px 12px 6px;
   }
-  .title { font-size: 14px; font-weight: 600; color: #fff; }
-  .refresh-btn {
-    background: #2a2a4a;
+  .title { font-size: 13px; font-weight: 600; }
+  .refresh {
     border: none;
-    color: #a0a0c0;
+    background: transparent;
+    color: #007aff;
     font-size: 12px;
-    padding: 4px 10px;
-    border-radius: 4px;
+    padding: 2px 5px;
+    border-radius: 5px;
     cursor: pointer;
   }
-  .refresh-btn:hover { background: #3a3a5a; color: #fff; }
-  .summary {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-    margin-bottom: 12px;
+  .refresh:hover { background: rgba(0, 0, 0, 0.06); }
+  .rows { padding: 2px 0 4px; }
+  .row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 12px;
+    font-size: 12.5px;
   }
-  .stat {
-    background: #16213e;
-    border-radius: 6px;
-    padding: 10px 12px;
-    text-align: center;
-  }
-  .stat-num { font-size: 22px; font-weight: 700; color: #fff; }
-  .stat-num.zero { color: #555; }
-  .stat-label { font-size: 11px; color: #888; margin-top: 2px; }
-  .stat.agents .stat-num { color: #4fc3f7; }
-  .stat.mcp .stat-num { color: #81c784; }
-  .stat.skills .stat-num { color: #ffb74d; }
-  .stat.hooks .stat-num { color: #ce93d8; }
-  .changes-list { max-height: 240px; overflow-y: auto; }
-  .changes-list::-webkit-scrollbar { width: 4px; }
-  .changes-list::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
-  .dim-title {
-    font-size: 11px;
-    color: #888;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin: 8px 0 4px;
-  }
-  .change-item {
+  .row .label { color: #3a3a3c; }
+  .row .num { font-variant-numeric: tabular-nums; color: #8e8e93; font-weight: 500; }
+  .row .num.active { color: #007aff; font-weight: 600; }
+  .sep { height: 1px; background: rgba(0, 0, 0, 0.08); margin: 5px 0; }
+  .list { max-height: 168px; overflow-y: auto; padding-bottom: 5px; }
+  .list::-webkit-scrollbar { width: 5px; }
+  .list::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.18); border-radius: 3px; }
+  .item {
+    display: flex;
+    gap: 7px;
+    align-items: baseline;
+    padding: 3px 12px;
     font-size: 12px;
-    color: #ccc;
-    padding: 3px 0;
-    padding-left: 12px;
-    position: relative;
+    line-height: 1.45;
   }
-  .change-item::before {
-    content: "";
-    position: absolute;
-    left: 2px;
-    top: 8px;
-    width: 4px;
-    height: 4px;
+  .dot {
+    flex: 0 0 auto;
+    width: 5px;
+    height: 5px;
     border-radius: 50%;
-    background: #666;
+    background: #8e8e93;
+    position: relative;
+    top: -1px;
   }
-  .change-item.added::before { background: #4caf50; }
-  .change-item.removed::before { background: #f44336; }
-  .change-item.changed::before { background: #ff9800; }
-  .empty { text-align: center; color: #555; font-size: 13px; padding: 20px 0; }
-  .footer {
-    margin-top: 12px;
-    padding-top: 10px;
-    border-top: 1px solid #2a2a4a;
-    text-align: center;
-  }
-  .open-full {
-    background: #0d47a1;
-    border: none;
-    color: #fff;
-    font-size: 12px;
-    padding: 6px 16px;
-    border-radius: 4px;
-    cursor: pointer;
+  .dot.added { background: #34c759; }
+  .dot.removed { background: #ff3b30; }
+  .dot.changed { background: #ff9500; }
+  .item .nm { color: #1d1d1f; font-weight: 500; }
+  .item .detail { color: #8e8e93; }
+  .empty { padding: 12px; text-align: center; color: #8e8e93; font-size: 12px; }
+  .foot { padding: 4px 10px 10px; }
+  .btn {
     width: 100%;
+    border: none;
+    border-radius: 7px;
+    padding: 6px 0;
+    background: rgba(0, 0, 0, 0.06);
+    color: #1d1d1f;
+    font-size: 12.5px;
+    font-weight: 500;
+    cursor: pointer;
   }
-  .open-full:hover { background: #1565c0; }
-  .loading { text-align: center; color: #555; font-size: 13px; padding: 30px 0; }
+  .btn:hover { background: rgba(0, 0, 0, 0.1); }
 </style>
 </head>
 <body>
-  <div class="header">
-    <span class="title">变更摘要</span>
-    <button class="refresh-btn" id="refresh">刷新</button>
-  </div>
-  <div id="content"><div class="loading">加载中...</div></div>
-  <div class="footer">
-    <button class="open-full" id="open-full">打开完整面板</button>
+  <div class="panel">
+    <div class="head">
+      <span class="title">变更摘要</span>
+      <button class="refresh" id="refresh">刷新</button>
+    </div>
+    <div id="content"><div class="empty">加载中...</div></div>
+    <div class="foot"><button class="btn" id="open-full">打开完整面板</button></div>
   </div>
 
 <script>
-const { invoke } = window.__TAURI__.core;
+const DIMS = [
+  ["agents", "IDE/Agent"],
+  ["mcp", "MCP"],
+  ["skills", "Skill"],
+  ["hooks", "Hook"],
+];
 
-async function loadSnapshot() {
-  const content = document.getElementById("content");
-  content.innerHTML = '<div class="loading">运行快照对比...</div>';
+function esc(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+async function fitWindow() {
+  const panel = document.querySelector(".panel");
+  if (!panel) return;
+  const h = Math.ceil(panel.getBoundingClientRect().height) + 12;
   try {
-    const res = await invoke("run_cli", { args: ["--snapshot", "--format", "json"] });
-    const parsed = typeof res === "string" ? JSON.parse(res) : res;
-    if (parsed && parsed.code !== undefined && parsed.stdout !== undefined) {
-      const lines = parsed.stdout.split("\n").filter(l => l.trim().charCodeAt(0) === 123);
-      const diff = lines.length ? JSON.parse(lines[lines.length - 1]) : null;
-      renderDiff(diff);
-    } else {
-      renderDiff(null);
-    }
+    const tw = window.__TAURI__.window;
+    await tw.getCurrentWindow().setSize(new tw.LogicalSize(320, Math.max(h, 160)));
   } catch (e) {
-    content.innerHTML = '<div class="empty">加载失败: ' + String(e).substring(0, 60) + '</div>';
+    /* 尺寸调整失败不影响内容展示 */
   }
+}
+
+function render(body) {
+  const content = document.getElementById("content");
+  content.innerHTML = body;
+  fitWindow();
 }
 
 function renderDiff(diff) {
-  const content = document.getElementById("content");
   if (!diff) {
-    content.innerHTML = '<div class="empty">无法获取快照</div>';
+    render('<div class="empty">无法获取快照</div>');
     return;
   }
   if (diff.is_first) {
-    content.innerHTML = '<div class="empty">首次快照，已保存基线</div>';
+    render('<div class="empty">首次快照，已保存基线</div>');
     return;
   }
-  if (!diff.has_changes) {
-    content.innerHTML = '<div class="empty">无变更</div>';
-    return;
-  }
-  const s = diff.summary || {};
+  const summary = diff.summary || {};
   const dims = diff.dimensions || {};
-  let html = '<div class="summary">';
-  html += statBox("agents", s.agents || 0, "IDE/Agent");
-  html += statBox("mcp", s.mcp || 0, "MCP");
-  html += statBox("skills", s.skills || 0, "Skill");
-  html += statBox("hooks", s.hooks || 0, "Hook");
-  html += '</div>';
-  html += '<div class="changes-list">';
-  for (const [dim, changes] of Object.entries(dims)) {
+  let total = 0;
+
+  let html = '<div class="rows">';
+  for (const pair of DIMS) {
+    const n = summary[pair[0]] || 0;
+    total += n;
+    html +=
+      '<div class="row"><span class="label">' +
+      pair[1] +
+      '</span><span class="num' +
+      (n > 0 ? " active" : "") +
+      '">' +
+      n +
+      "</span></div>";
+  }
+  html += "</div>";
+
+  if (total === 0) {
+    html += '<div class="sep"></div><div class="empty">无变更</div>';
+    render(html);
+    return;
+  }
+
+  const items = [];
+  for (const dim of Object.keys(dims)) {
+    const changes = dims[dim];
     if (!changes || !changes.length) continue;
-    html += '<div class="dim-title">' + esc(dim) + '</div>';
     for (const c of changes) {
-      const cls = (c.type || "").includes("added") ? "added" :
-                  (c.type || "").includes("removed") ? "removed" : "changed";
-      html += '<div class="change-item ' + cls + '">' + esc(c.name || "?") + ': ' + esc(c.detail || "") + '</div>';
+      const t = c.type || "";
+      const cls = t.indexOf("added") >= 0 ? "added" : t.indexOf("removed") >= 0 ? "removed" : "changed";
+      items.push(
+        '<div class="item"><span class="dot ' +
+          cls +
+          '"></span><span><span class="nm">' +
+          esc(c.name || "?") +
+          '</span> <span class="detail">' +
+          esc(c.detail || "") +
+          "</span></span></div>"
+      );
     }
   }
-  html += '</div>';
-  content.innerHTML = html;
+  if (items.length) {
+    html += '<div class="sep"></div><div class="list">' + items.join("") + "</div>";
+  }
+  render(html);
 }
 
-function statBox(cls, num, label) {
-  return '<div class="stat ' + cls + '"><div class="stat-num ' + (num === 0 ? "zero" : "") + '">' + num + '</div><div class="stat-label">' + label + '</div></div>';
-}
-
-function esc(s) {
-  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+async function loadSnapshot() {
+  render('<div class="empty">检查中...</div>');
+  try {
+    const res = await window.__TAURI__.core.invoke("run_cli", {
+      args: ["--snapshot", "--format", "json"],
+    });
+    const out = typeof res === "string" ? res : res && res.stdout ? res.stdout : "";
+    // --snapshot --format json 只输出 diff 本身，直接解析整段
+    let diff = null;
+    try {
+      diff = JSON.parse(out);
+    } catch (e) {
+      const lines = out.split("\n").filter(function (l) {
+        return l.trim().charCodeAt(0) === 123;
+      });
+      diff = lines.length ? JSON.parse(lines[0]) : null;
+    }
+    renderDiff(diff);
+  } catch (e) {
+    render('<div class="empty">加载失败</div>');
+  }
 }
 
 document.getElementById("refresh").addEventListener("click", loadSnapshot);
-document.getElementById("open-full").addEventListener("click", async () => {
-  try { await invoke("show_main_window"); } catch(e) {}
+document.getElementById("open-full").addEventListener("click", async function () {
+  try {
+    await window.__TAURI__.core.invoke("show_main_window");
+  } catch (e) {
+    /* 主窗口打开失败时保持弹框 */
+  }
+});
+
+window.addEventListener("keydown", function (e) {
+  if (e.key === "Escape") {
+    try {
+      window.__TAURI__.window.getCurrentWindow().hide();
+    } catch (err) {
+      /* 忽略 */
+    }
+  }
 });
 
 loadSnapshot();
+
+// 供托盘点击时从 Rust 侧调用：弹框每次显示都取最新快照
+window.__reloadPopover = loadSnapshot;
 </script>
 </body>
 </html>

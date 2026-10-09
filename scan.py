@@ -1835,6 +1835,52 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _run_snapshot_diff(args, config, config_path) -> int:
+    """4 维度变更检测：与上次快照对比并保存新基线。
+
+    必须是独立早返回出口：本命令支持 --format json，且 GUI 直接解析整个
+    stdout；若落到通用快照路由（_run_single_profile_snapshot）会被截走，
+    GUI 拿到的就是完整快照而不是 diff。处理方式同 --market / --skill-insight。
+    带 --format json 时**只**输出 diff 的 JSON，便于机读。
+    """
+    _as_json = getattr(args, "format", None) == "json"
+    if not _as_json:
+        print("")
+        print("=" * 60)
+        print("  Snapshot diff (4-dimension change detection)")
+        print("=" * 60)
+    try:
+        from snapshot_diff import load_last_snapshot, compare_snapshots, save_last_snapshot
+        from management_snapshot import build_management_snapshot
+        _snap = build_management_snapshot(config, config_path, live_probe=False, only=args.only)
+        _old = load_last_snapshot()
+        _diff = compare_snapshots(_old, _snap)
+        save_last_snapshot(_snap)
+        if _as_json:
+            print(json.dumps(_diff, ensure_ascii=False, indent=2))
+            return 0
+        if _diff.get("is_first"):
+            print("  ℹ️ 首次快照，已保存基线（data/last_snapshot.yaml）")
+        elif not _diff.get("has_changes"):
+            print("  ✅ 无变更")
+        else:
+            _summary = _diff.get("summary", {})
+            print(f"  检测到变更：agents={_summary.get('agents', 0)} mcp={_summary.get('mcp', 0)} skills={_summary.get('skills', 0)} hooks={_summary.get('hooks', 0)}")
+            for _dim_name, _dim_changes in (_diff.get("dimensions") or {}).items():
+                if not _dim_changes:
+                    continue
+                print(f"\n  [{_dim_name}]")
+                for _c in _dim_changes:
+                    print(f"    • {_c.get('name', '?')}: {_c.get('detail', '')}")
+        return 0
+    except Exception as e:
+        if _as_json:
+            print(json.dumps({"error": str(e)}, ensure_ascii=False, indent=2))
+        else:
+            print(f"\n  ❌ Snapshot diff failed: {e}")
+        return 1
+
+
 def main() -> int:
     args = resolve_modes(build_parser().parse_args())
 
@@ -1983,6 +2029,11 @@ def main() -> int:
     # 在通用快照之前优先走固定 JSON 出口，供 GUI 渲染成表格 + 分页。
     if args.fix_skills and getattr(args, "format", None) == "json":
         return _run_fix_skills_preview(args, config, config_path)
+
+    # 变更检测（B 阶段）：只读 + 支持 --format json，GUI 解析整个 stdout，
+    # 必须排在通用快照路由之前，否则输出会被快照截走。
+    if getattr(args, "snapshot", False):
+        return _run_snapshot_diff(args, config, config_path)
 
     if getattr(args, "format", None) in ("json", "csv", "md"):
         return _run_single_profile_snapshot(args, config, config_path)
@@ -2285,37 +2336,6 @@ def main() -> int:
         except Exception as e:
             print(f"\n  ❌ Hook removal failed: {e}")
             repair_errors.append(f"Hook removal: {e}")
-
-    if args.snapshot:
-        print("")
-        print("=" * 60)
-        print("  Snapshot diff (4-dimension change detection)")
-        print("=" * 60)
-        try:
-            from snapshot_diff import load_last_snapshot, compare_snapshots, save_last_snapshot
-            from management_snapshot import build_management_snapshot
-            _snap = build_management_snapshot(config, config_path, live_probe=False, only=args.only)
-            _old = load_last_snapshot()
-            _diff = compare_snapshots(_old, _snap)
-            save_last_snapshot(_snap)
-            if _diff.get("is_first"):
-                print("  ℹ️ 首次快照，已保存基线（data/last_snapshot.yaml）")
-            elif not _diff.get("has_changes"):
-                print("  ✅ 无变更")
-            else:
-                _summary = _diff.get("summary", {})
-                print(f"  检测到变更：agents={_summary.get('agents', 0)} mcp={_summary.get('mcp', 0)} skills={_summary.get('skills', 0)} hooks={_summary.get('hooks', 0)}")
-                for _dim_name, _dim_changes in (_diff.get("dimensions") or {}).items():
-                    if not _dim_changes:
-                        continue
-                    print(f"\n  [{_dim_name}]")
-                    for _c in _dim_changes:
-                        print(f"    • {_c.get('name', '?')}: {_c.get('detail', '')}")
-            if args.format == "json":
-                print(json.dumps(_diff, ensure_ascii=False, indent=2))
-        except Exception as e:
-            print(f"\n  ❌ Snapshot diff failed: {e}")
-            repair_errors.append(f"Snapshot diff: {e}")
 
     if args.set_setting:
         print("")

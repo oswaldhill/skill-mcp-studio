@@ -6525,9 +6525,12 @@ async function runSnapshot() {
     if (res.code !== 0 && res.code !== 2) return { ok: false, message: "快照对比失败", detail: cliFailLines(res) || cliErrDetail(res) };
     let diff = null;
     try {
-      const jsonLine = res.stdout.split("\n").filter(l => l.trim().charCodeAt(0) === 123).pop();
-      diff = JSON.parse(jsonLine || String.fromCharCode(123, 125));
-    } catch(e) { diff = null; }
+      // --snapshot --format json 只输出 diff 本身，直接解析整段
+      diff = JSON.parse(res.stdout);
+    } catch(e) {
+      const jsonLine = res.stdout.split("\n").filter(l => l.trim().charCodeAt(0) === 123)[0];
+      try { diff = JSON.parse(jsonLine || String.fromCharCode(123, 125)); } catch(e2) { diff = null; }
+    }
     const el = $("changes-result");
     if (el && diff) {
       if (diff.is_first) {
