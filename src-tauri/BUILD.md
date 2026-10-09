@@ -41,8 +41,11 @@ lib.rs 不解析、不重算、不写盘。
 #     ~/.local/bin/skill-mcp-studio --all-profiles --format json | head
 which skill-mcp-studio || ls ~/.local/bin/skill-mcp-studio || pipx install skill-mcp-studio
 
-# Rust 工具链：安装于仓库本地目录（不碰系统路径；根 .gitignore 已排除
-# .cargo-home/ .rustup-home/ src-tauri/target/）。首次安装：
+# Rust 工具链：安装于仓库本地目录（不碰系统路径）。
+# 忽略状态：src-tauri/target/ 由根 .gitignore 排除；.cargo-home/ 与 .rustup-home/
+# 是**本机环境产物**（因 $HOME/.cargo 不存在才落到仓库内），由本机专属的
+# .git/info/exclude 忽略 —— 详见本文档顶部注记与根 .gitignore 的说明段。
+# 首次安装：
 #   curl -sSf https://static.rust-lang.org/rustup/dist/aarch64-apple-darwin/rustup-init \
 #     -o .cargo-home/rustup-init && chmod +x .cargo-home/rustup-init
 #   RUSTUP_HOME="$PWD/.rustup-home" CARGO_HOME="$PWD/.cargo-home" \

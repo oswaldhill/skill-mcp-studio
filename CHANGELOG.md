@@ -102,6 +102,54 @@
     `updated+created`。
   - 新增 `tests/test_mcp_summary_report.py`（10 个用例，含源码级契约）。反向验证：
     把标题与 dry-run 计数还原成事故代码后，3 个用例立即失败。
+- **技能库：把 `_backup/`、`_trash/` 从技能枚举中排除**
+  （`core/paths.py`、`core/skills_analyser.py`、`core/skill_state.py`、
+  `core/skill_market.py`、`core/skill_merge_advisor.py`）。这两个目录是
+  `skill_ops` 的操作落地目录（前者存备份副本、导出还会产生同名 `.zip`，后者存软删除
+  后的目录），内部带着 `SKILL.md`（备份的就是真实技能），而各处一级枚举只筛「是不是
+  目录 / 有没有 `SKILL.md`」，于是它们被当成技能：实测本机 209 个技能清单里混着
+  `_backup` 与 `_trash`，各自的 4 个备份副本还被算成嵌套技能（管理快照里 `_backup`
+  出现 69 次、`_trash` 53 次）。
+  - **修法是在路径解析的单一入口加精确名单**：`core/paths.py` 新增
+    `RESERVED_SKILL_DIRS = {"_backup", "_trash"}` 与判据 `is_reserved_skill_dir()`，
+    5 处一级枚举统一接入，避免同样的漏筛在别处复发。
+  - **为什么用精确名单而不是「下划线前缀」这类规则**：`_core` 同样以下划线开头，但它是
+    **真实技能**（带规范前言的 `SKILL.md`，内容是核心规范文档），必须保留。名单式还能让
+    「新增保留目录」成为一次显式决定，而不是被一条宽规则悄悄带过。
+  - **效果（本机实测）**：技能数 `209 → 207`；`_backup`/`_trash` 从技能清单、
+    `skill_meta`、`skill_nesting` 三处全部消失，`_core` 保留。未删除任何文件 ——
+    这两个目录是软删除/备份机制的一部分（技能误删可由此恢复），只做「不当作技能」。
+  - 新增 `tests/test_reserved_skill_dirs.py`（9 个用例 + 5 个子测试），覆盖判据本身、
+    5 处枚举点的端到端排除、以及「`_core` 不得误伤」。反向验证：把
+    `RESERVED_SKILL_DIRS` 置空模拟缺陷后 6 个用例立即失败；其中嵌套用例特意在备份副本里
+    再造一层嵌套技能，否则空结果会让它假通过。
+- **MCP：修 OpenCode「配置无效却显示已接入」的假阳性**（`config.yaml`、
+  `core/mcp_fixer_render.py`）。OpenCode 的 `mcp` 段是**判别联合** —— 官方 schema
+  （`opencode.ai/config.json`）里 `McpRemoteConfig` 的 `required` 是 `[type, url]`、
+  `McpLocalConfig` 是 `[type, command]`。缺 `type` 时 OpenCode **不是忽略该条目，而是
+  把整份配置判为无效**：
+  - **实测报错**：`opencode debug config` →
+    `Error: Configuration is invalid at ~/.config/opencode/opencode.json` /
+    `Expected { "type": "local", ... } | { "type": "remote", ... }, got {"url": ...}
+    mcp.hermes-unified` / `Missing key mcp.hermes-unified.enabled`。后果是**所有** MCP
+    端点一起失效，而面板仍按「URL 字符串匹配」显示 `2/2` —— 这是「以设置中的 MCP 为准」
+    口径下最危险的一类假阳性：**字符串对上了，配置其实加载不了**。
+  - **根因**：`_render_json` 一律只写 `entry = {"url": url}`，而它被 `json` 与 `jsonc`
+    两种格式共用，服务 4 个客户端。
+  - **修法是按客户端声明连接类型**（`config.yaml` 新增 `mcp_entry_type: remote`，
+    `_render_json` 新增 `entry_type` 形参，键序 `type → url → headers`），**而不是在渲染
+    层统一硬编码** —— 因为 `mcpServers` 型客户端（Claude Code / Cursor / WorkBuddy）的条目
+    **只需 `url`**，多写 `type` 是多余字段（用户手写的 WorkBuddy 条目就是 `{"url": ...}`）。
+    默认空 = 不写，故这三个客户端的输出**保持字节级不变**。
+  - **效果**：修复后 `opencode debug config` 退出码 `0`，实际加载 4 个端点，
+    `hermes-unified` / `K8s-uat` 均为 `type=remote, enabled=true`。
+  - 新增 `tests/test_mcp_entry_type.py`（8 个用例 + 7 个子测试）。反向验证：把
+    `entry_type` 处理去掉还原成旧行为后，5 个用例立即失败。
+- **文档：`src-tauri/BUILD.md` 与 `.gitignore` 的统一**
+  （`src-tauri/BUILD.md`、`.gitignore`）。BUILD.md 第 44-45 行仍写「根 .gitignore 已排除
+  `.cargo-home/` `.rustup-home/` `src-tauri/target/`」，而 `git check-ignore` 实测前两者
+  **未忽略** —— 该句与同文档顶部第 18-25 行的更正**自相矛盾**。现改为与实际一致，并把
+  「本机工具链落在仓库内」的现状与回归 `$HOME` 布局的步骤交叉引用。
 
 ## [v0.24.1] - 2026-09-29
 
