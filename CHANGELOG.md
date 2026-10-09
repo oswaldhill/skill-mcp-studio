@@ -66,6 +66,14 @@
   - `lib.rs` 后台线程：每隔 60 秒检查 `patrol_enabled`，若启用则运行
     `--snapshot`，检测到变更时更新托盘 tooltip 为「检测到变更，点击查看」
   - 托盘菜单新增「切换后台巡检」项，一键开关巡检
+- **变更通知：系统通知与变更详情面板**（`src-tauri/Cargo.toml`、
+  `src-tauri/src/lib.rs`、`gui/dashboard.html`）。此前后台巡检检测到变更
+  只更新托盘 tooltip，用户不易察觉。现新增：
+  - `tauri-plugin-notification` 依赖：后台巡检检测到变更时弹系统通知
+    「检测到配置变更，点击查看详情」
+  - GUI 新增「变更详情」tab（`data-page="changes"`）：`renderChanges()`
+    初始占位 + `runSnapshot()` 调用 `--snapshot --format json` 解析 diff
+    并渲染 4 维度变更列表（agents / mcp / skills / hooks）
 
 ### 修复
 

@@ -468,6 +468,7 @@ fn open_url(url: String) -> Result<(), String> {
 pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .invoke_handler(tauri::generate_handler![
             run_audit,
             run_cli,
@@ -602,6 +603,16 @@ pub fn run() {
                                 } else {
                                     "Skill MCP Studio"
                                 }));
+                            }
+                            // 检测到变更时发系统通知（Phase E）
+                            if has_changes {
+                                use tauri_plugin_notification::NotificationExt;
+                                let _ = patrol_handle
+                                    .notification()
+                                    .builder()
+                                    .title("Skill MCP Studio")
+                                    .body("检测到配置变更，点击查看详情")
+                                    .show();
                             }
                         }
                         Err(_) => continue,

@@ -1485,6 +1485,10 @@
         Hook<span class="count" id="count-hooks">0</span>
       </button>
       <button class="nav-group-label push" type="button" data-group="system" aria-expanded="true"><span>系统</span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+      <button class="nav-item" data-page="changes" id="nav-changes">
+        <svg class="nv-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Z"/><path d="M12 8v4M12 16h.01"/></svg>
+        变更详情
+      </button>
       <button class="nav-item" data-page="settings" id="nav-settings">
         <svg class="nv-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M19.8 4.2l-2.1 2.1M6.3 17.7l-2.1 2.1"/></svg>
         设置
@@ -1636,6 +1640,18 @@
         </div>
       </div>
       <div id="hooks-clients"></div>
+    </section>
+
+    <!-- ===== 变更详情（Phase E：4 维度快照对比结果） ===== -->
+    <section id="page-changes" class="hidden">
+      <div class="page-head">
+        <div class="hd"><h2>变更详情</h2><div class="hint">4 维度快照对比（IDE/Agent / MCP / Skill / Hook）；点击「运行快照对比」刷新</div></div>
+        <div class="page-actions">
+          <button class="btn-soft" data-action="run-snapshot">运行快照对比</button>
+          <button class="btn-soft" data-action="refresh">刷新</button>
+        </div>
+      </div>
+      <div id="changes-result"></div>
     </section>
 
     <!-- ===== 设置（通用：目录 / 端点库 / 自动发现 / 关于） ===== -->
@@ -3695,6 +3711,12 @@ function renderHooks() {
   </tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
+function renderChanges() {
+  const el = $("changes-result");
+  if (!el) return;
+  el.innerHTML = '<div class="hint">点击「运行快照对比」获取最新变更详情</div>';
+}
+
 function renderSettings() {
   const el = $("settings-body");
   if (!el) return;
@@ -3803,6 +3825,7 @@ function renderAll() {
   renderSkills();
   renderMcp();
   renderHooks();
+  renderChanges();
   renderSettings();
   const app = (SNAP && SNAP.app) || {};
   const fv = $("foot-version");
@@ -3812,7 +3835,7 @@ function renderAll() {
 // ---------------- page switching ----------------
 const PAGES = {
   overview: "page-overview", agents: "page-agents", skills: "page-skills",
-  mcp: "page-mcp", hooks: "page-hooks", settings: "page-settings",
+  mcp: "page-mcp", hooks: "page-hooks", changes: "page-changes", settings: "page-settings",
 };
 let ACTIVE_PAGE = "overview";
 function switchPage(page) {
@@ -6220,6 +6243,7 @@ document.addEventListener("click", (e) => {
     else if (a === "fix-hooks") fixHooksFor(act.dataset.name);
     else if (a === "remove-hooks") removeHooksFor(act.dataset.name);
     else if (a === "fix-hooks-all") fixHooksAll();
+    else if (a === "run-snapshot") runSnapshot();
     else if (a === "show-mcp-class") showMcpClass(act.dataset.name, act.dataset.class);
     else if (a === "remove-mcp-entry") removeMcpEntry(act.dataset.name, act.dataset.key, act.dataset.high === "1", act.dataset.reason);
     else if (a === "remove-mcp-class") removeMcpClassEntries(act.dataset.name, act.dataset.class);
@@ -6492,6 +6516,40 @@ async function fixHooksAll() {
     if (res.code === 0) return { ok: true, message: "Hook 批量写入完成" };
     return { ok: false, message: "Hook 批量写入失败", detail: cliFailLines(res) || cliErrDetail(res) };
   }, () => refreshBlocks(["agents", "mainstream"]), ["读取全部 Hook 配置", "批量写入标准模板", "校验回写", "刷新状态"]);
+}
+
+async function runSnapshot() {
+  await runTaskModal("运行快照对比", async () => {
+    const res = await runCli(["--snapshot", "--format", "json"]);
+    if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
+    if (res.code !== 0 && res.code !== 2) return { ok: false, message: "快照对比失败", detail: cliFailLines(res) || cliErrDetail(res) };
+    let diff = null;
+    try {
+      const jsonLine = res.stdout.split("\n").filter(l => l.trim().charCodeAt(0) === 123).pop();
+      diff = JSON.parse(jsonLine || String.fromCharCode(123, 125));
+    } catch(e) { diff = null; }
+    const el = $("changes-result");
+    if (el && diff) {
+      if (diff.is_first) {
+        el.innerHTML = '<div class="hint">首次快照，已保存基线（data/last_snapshot.yaml）</div>';
+      } else if (!diff.has_changes) {
+        el.innerHTML = '<div class="hint">无变更</div>';
+      } else {
+        const s = diff.summary || {};
+        let html = `<div class="hint">检测到变更：agents=${s.agents||0} mcp=${s.mcp||0} skills=${s.skills||0} hooks=${s.hooks||0}</div>`;
+        for (const [dim, changes] of Object.entries(diff.dimensions || {})) {
+          if (!changes || !changes.length) continue;
+          html += `<h3>${dim}</h3><ul>`;
+          for (const c of changes) {
+            html += `<li>${escapeHtml(c.name || "?")}: ${escapeHtml(c.detail || "")}</li>`;
+          }
+          html += "</ul>";
+        }
+        el.innerHTML = html;
+      }
+    }
+    return { ok: true, message: "快照对比完成" };
+  }, () => {}, ["运行 --snapshot", "解析 diff", "渲染变更详情"]);
 }
 
 async function removeMcpEntry(name, key, high, reason) {
