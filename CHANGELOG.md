@@ -176,6 +176,23 @@
   - 新增 `CandidateMergeTest`（5 用例）与 `CandidateMergeEndToEndTest`（3 用例）。
     反向验证：把 `_prefer_url_entry` 短路成恒返回 `incoming`（等价旧语义）后，
     `test_stdio_does_not_clobber_http` 与端到端用例立即失败。
+- **技能市场：`npx` 同目录必须提到 `PATH` 首位**
+  （`core/skill_market.py` 的 `_npx_env`）。文档说「必须让其同目录可见」，实现却只在
+  该目录**完全不在** `PATH` 时才插到首位：
+  - `if npx_dir not in parts: parts.insert(0, npx_dir)` —— 目录已在 `PATH` 中（本机即
+    如此）时**不移动**，语义弱于文档意图。
+  - `npx` 是 `#!/usr/bin/env node` 脚本，`env node` 取 `PATH` 里**第一个** node，而 `npx`
+    同目录那个才是配套版本。若前面的目录里存在另一个 node（nvm / fnm / volta 常见），
+    `npx` 会解析到**错误的 node 版本**。
+  - 本机实测：`/opt/homebrew/bin/node`（26.11.0）落在 `PATH` **第 9 位**，首项
+    `~/.mimocode/bin` 下没有 node —— 属**侥幸可用**。
+  - **修法**：无论是否已存在都移到首位；已存在时先摘除再插入，避免重复项。
+  - 这同时修掉了既有用例 `test_npx_env_exposes_node_next_to_npx` 的失败 —— 该用例本来
+    就是对的（断言首项 == npx 目录）。
+  - 新增 3 个用例覆盖三个分支（已在但不在首位 / 不在 / `PATH` 为空），并断言提升后不留
+    重复项、其余顺序不变。反向验证：还原成 `if npx_dir not in parts` 后，上述两个用例
+    立即失败。
+  - 至此全量测试 **1053 passed / 1 skipped / 0 failed**，不再有已知失败项。
 
 ## [v0.24.1] - 2026-09-29
 
