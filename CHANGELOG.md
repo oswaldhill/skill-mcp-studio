@@ -150,6 +150,32 @@
   `.cargo-home/` `.rustup-home/` `src-tauri/target/`」，而 `git check-ignore` 实测前两者
   **未忽略** —— 该句与同文档顶部第 18-25 行的更正**自相矛盾**。现改为与实际一致，并把
   「本机工具链落在仓库内」的现状与回归 `$HOME` 布局的步骤交叉引用。
+- **MCP：候选配置的同名条目不得用「另一种方式」抹掉真实接入**
+  （`core/combined_checker.py`）。DeepSeek Harness 长期停在 `1/2`，根因是
+  `_load_tool_servers` 的合并顺序**覆盖**掉了真实接入的 URL：
+  - **两处同名但不同方式**：主配置 `cordis.patch.yml` 的 `hermes` 是
+    `transport: streamable-http` + 正确 url（真实接入统一端点 `hermes-home`）；候选
+    `~/.dsh/mcp.json` 的 `hermes` 是本地 **stdio 桥**（`command` + `args`，**无 url**）。
+    旧实现一律 `servers.update(candidate_servers)`，候选的无 url 条目把主配置的 url
+    覆盖成空，交出的 `hermes` 无 url ⇒ `hermes-home` 被判 `configured=False`。
+  - **这与该函数自己文档声明的「任一位置命中即算」自相矛盾**（原文：*report the client
+    as configured whenever the canonical endpoint is present in any of the expected
+    locations*）—— 是**假阴性**，把已正确接入的端点报成未接入。
+  - **正是「以设置中的 MCP 为准」口径的反面**：同名条目走了另一种方式（stdio 桥），
+    不能据此把 HTTP 接入判成未接入。
+  - **修法**：新增 `_prefer_url_entry(existing, incoming)`，合并候选时**有 url 的胜出**。
+    两者都有 url 时仍以候选（后合并）为准，保持「候选是更权威覆盖层」的既有意图；
+    候选的正当用途（补上主配置没有的端点）未受影响，已加用例锁定。
+  - **证据（本机实测）**：`cordis.patch.yml` 顶部自述 *patch layer ... applied after
+    every bundle layer*；`cordis.yml` 无 MCP 配置；`~/.dsh/mcp.json` 未被任何 DSH 配置
+    引用，且 DSH 应用包内 `mcp.json` 命中 **0 次**（`strings app.asar`）—— 即它是遗留
+    文件，不是活跃配置。
+  - **效果**：DSH `hermes-home` `False → True`，DSH `2/2`；真实 `scan.py --management`
+    实测 6 个客户端（Codex / DSH / OpenCode / Reasonix / VS Code / WorkBuddy）**全部
+    2/2**，其余 5 个未受影响。
+  - 新增 `CandidateMergeTest`（5 用例）与 `CandidateMergeEndToEndTest`（3 用例）。
+    反向验证：把 `_prefer_url_entry` 短路成恒返回 `incoming`（等价旧语义）后，
+    `test_stdio_does_not_clobber_http` 与端到端用例立即失败。
 
 ## [v0.24.1] - 2026-09-29
 
