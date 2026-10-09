@@ -9,6 +9,12 @@
 
 ### 新增
 
+- _暂无_
+
+## [v0.25.0] - 2026-10-09
+
+### 新增
+
 - **Hook 管理：生命周期 hook 配置的审计、写入与移除**（`config.yaml`、`core/hooks_inventory.py`、
   `core/hooks_fixer.py`、`core/management_snapshot.py`、`scan.py`、`src-tauri/src/lib.rs`、
   `gui/dashboard.html`）。此前 ai-memory 的生命周期 hook（SessionStart / SessionEnd / Stop 等）
@@ -33,6 +39,16 @@
     展示状态 / 已接入事件 / 条目数 / 缺关键事件，行内按钮触发 `fixHooksFor` /
     `removeHooksFor`（confirmModal + runTaskModal + runCli 三段式），顶部「一键写入 Hook」
     批量执行 `--fix-hooks`。
+- **变更检测：4 维度快照对比与持久化**（`core/snapshot_diff.py`、`scan.py`、
+  `src-tauri/src/lib.rs`）。此前 `change_tracker` 只比 skills 工具增减，维度极窄且
+  不持久化 management_snapshot。新增 `core/snapshot_diff.py`，对比 4 个维度：
+  - **IDE/Agent**：安装状态翻转、新增/消失客户端
+  - **MCP**：端点挂载变化、inventory 条目增减
+  - **Skill**：新增/删除技能、客户端启用数量变化
+  - **Hook**：hooks_configured 翻转、hook_events 变化
+  新增 CLI 出口 `--snapshot`（复用 `build_management_snapshot`，`live_probe=False`，
+  只读不探活），产出持久化快照 `data/last_snapshot.yaml` 并与上次对比；
+  `lib.rs` 的 `run_cli` ALLOWED 白名单已登记。
 
 ### 修复
 
@@ -223,7 +239,7 @@
 
 ## [v0.24.1] - 2026-09-29
 
-当前发布版本（build 111）。
+当前发布版本（build 112）。
 
 ### 变更
 

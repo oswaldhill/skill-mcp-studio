@@ -322,6 +322,8 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
         "--list-hooks",
         "--fix-hooks",
         "--remove-hooks",
+        // 变更检测（B 阶段）：产出持久化快照并与上次对比（只读不探活）。
+        "--snapshot",
         "--cleanup-config",
         // 阶段五增量：MCP 条目删除 / 批量清理 / 配置备份列出与还原。
         "--remove-mcp-entry",

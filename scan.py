@@ -1503,6 +1503,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="移除 ai-memory 生命周期 hook（保留非 ai-memory hooks，带备份，支持 --dry-run / --client）",
     )
     parser.add_argument(
+        "--snapshot", action="store_true",
+        help="产出持久化快照 data/last_snapshot.yaml 并与上次对比（4 维度变更检测，只读不探活）",
+    )
+    parser.add_argument(
         "--profile", type=str, default=None,
         help="指定 endpoint profile（覆盖 config.yaml 的 active_profile）",
     )
@@ -2273,6 +2277,37 @@ def main() -> int:
         except Exception as e:
             print(f"\n  ❌ Hook removal failed: {e}")
             repair_errors.append(f"Hook removal: {e}")
+
+    if args.snapshot:
+        print("")
+        print("=" * 60)
+        print("  Snapshot diff (4-dimension change detection)")
+        print("=" * 60)
+        try:
+            from snapshot_diff import load_last_snapshot, compare_snapshots, save_last_snapshot
+            from management_snapshot import build_management_snapshot
+            _snap = build_management_snapshot(config, config_path, live_probe=False, only=args.only)
+            _old = load_last_snapshot()
+            _diff = compare_snapshots(_old, _snap)
+            save_last_snapshot(_snap)
+            if _diff.get("is_first"):
+                print("  ℹ️ 首次快照，已保存基线（data/last_snapshot.yaml）")
+            elif not _diff.get("has_changes"):
+                print("  ✅ 无变更")
+            else:
+                _summary = _diff.get("summary", {})
+                print(f"  检测到变更：agents={_summary.get('agents', 0)} mcp={_summary.get('mcp', 0)} skills={_summary.get('skills', 0)} hooks={_summary.get('hooks', 0)}")
+                for _dim_name, _dim_changes in (_diff.get("dimensions") or {}).items():
+                    if not _dim_changes:
+                        continue
+                    print(f"\n  [{_dim_name}]")
+                    for _c in _dim_changes:
+                        print(f"    • {_c.get('name', '?')}: {_c.get('detail', '')}")
+            if args.format == "json":
+                print(json.dumps(_diff, ensure_ascii=False, indent=2))
+        except Exception as e:
+            print(f"\n  ❌ Snapshot diff failed: {e}")
+            repair_errors.append(f"Snapshot diff: {e}")
 
     # ================================================================
     # 阶段 4: 变更追踪
