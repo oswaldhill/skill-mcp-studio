@@ -11,6 +11,8 @@ import os
 import re
 from typing import Dict, Any, List, Set
 
+from paths import is_reserved_skill_dir
+
 
 def scan_skills_distribution(unified_dir: str) -> Dict[str, Any]:
     """
@@ -52,6 +54,9 @@ def scan_skills_distribution(unified_dir: str) -> Dict[str, Any]:
 
     try:
         for item in sorted(os.listdir(expanded)):
+            # _backup/_trash 是操作落地目录而非技能，不能计入一级清单
+            if is_reserved_skill_dir(item):
+                continue
             item_path = os.path.join(expanded, item)
             if os.path.isdir(item_path):
                 subdirs.append(item)
@@ -167,7 +172,7 @@ def find_skills_without_skillmd(unified_dir: str) -> List[str]:
 
     try:
         for item in sorted(os.listdir(expanded)):
-            if item.startswith("."):
+            if item.startswith(".") or is_reserved_skill_dir(item):
                 continue
             item_path = os.path.join(expanded, item)
             if os.path.isdir(item_path):

@@ -80,3 +80,25 @@ def override(path: Path) -> Iterator[Path]:
         yield home_root()
     finally:
         _injected = previous
+
+
+#: 技能库根目录下**不是技能**、但会被一级枚举扫到的保留目录。
+#:
+#: ``_backup`` 与 ``_trash`` 是 ``skill_ops`` 的落地目录：前者存技能的备份副本
+#: （导出还会产生同名 ``.zip``），后者存软删除后的目录。二者**不含**真实技能，
+#: 但内部副本带 ``SKILL.md``，若只按「是不是目录 / 有没有 SKILL.md」筛选，它们会
+#: 混进技能清单，还会把副本里的嵌套技能一并算进去。
+#:
+#: 注意与 ``_core`` 的区别：``_core`` 名字同样以下划线开头，但它是一个**真实技能**
+#: （带规范前言的 ``SKILL.md``，内容是核心规范文档），不能一并排除。所以这里用
+#: **精确名单**而不是「下划线前缀」这类规则，避免误伤 —— 新增保留目录时必须显式登记。
+RESERVED_SKILL_DIRS = frozenset({"_backup", "_trash"})
+
+
+def is_reserved_skill_dir(name: str) -> bool:
+    """``name`` 是否为技能库根目录下的保留目录（备份 / 回收站）。
+
+    只判名字，不碰文件系统 —— 调用方通常已持有目录项。大小写敏感：macOS 默认
+    文件系统不区分大小写，但技能名按原样存续，这里沿用同一口径。
+    """
+    return name in RESERVED_SKILL_DIRS

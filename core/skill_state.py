@@ -26,6 +26,7 @@ import os
 from functools import lru_cache
 from typing import Dict, List, Tuple
 
+from paths import is_reserved_skill_dir
 from skills_analyser import scan_skills_distribution
 
 
@@ -193,7 +194,8 @@ def scan_skill_nesting(unified_dir: str) -> Dict[str, List[str]]:
     if not os.path.isdir(expanded):
         return result
     for top in sorted(os.listdir(expanded)):
-        if top.startswith("."):
+        # _backup/_trash 内部是备份副本，不是技能，其嵌套项也不该出现
+        if top.startswith(".") or is_reserved_skill_dir(top):
             continue
         top_path = os.path.join(expanded, top)
         if not os.path.isdir(top_path):

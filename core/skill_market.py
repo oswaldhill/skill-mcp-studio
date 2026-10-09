@@ -22,6 +22,8 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from paths import is_reserved_skill_dir
+
 import paths
 from tool_registry import which_with_fallback
 
@@ -152,6 +154,7 @@ def list_installed(
         hashes = {
             d.name for d in skills_dir.iterdir()
             if d.is_dir() and not d.name.startswith(".")
+            and not is_reserved_skill_dir(d.name)
         }
 
     installed: List[Dict[str, Any]] = []

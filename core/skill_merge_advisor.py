@@ -392,6 +392,7 @@ def load_metas(skills_dir: Optional[Path] = None,
         return []
     names = sorted(d.name for d in skills_dir.iterdir()
                    if d.is_dir() and not d.name.startswith(".")
+                   and not paths.is_reserved_skill_dir(d.name)
                    and (d / "SKILL.md").is_file())
     reg: Dict[str, dict] = {i["name"]: i for i in (installed or [])
                             if i.get("registered")}
