@@ -31,6 +31,78 @@
   - 该修复无需重新构建桌面 App：CLI wrapper（`~/.local/bin/skill-mcp-studio`）直接
     `exec` 源码树的 `scan.py`，引擎改动即时生效。
 
+
+- **MCP：修 TOML 子表重复声明、jsonc 起始模板，Codex 改用独立统一端点名**
+  （`core/mcp_fixer_render.py`、`core/mcp_fixer.py`、`config.yaml`）。三个独立缺陷让
+  「一键修复所有 Skills 与 MCP」在 Codex 与 OpenCode 上必然失败（实测报 4 处错）。
+  - **TOML 鉴权头被重复声明（主因）**：Windows 系客户端把鉴权头写成**子表**
+    （`[X.http_headers]`）而非内联表，而 `_render_toml` 用的 `_toml_section_ranges`
+    只匹配父表本身，子表被留在切片区之外 —— 改完父表 url 又插入一行内联
+    `http_headers`，与段外子表重复声明，产出非法 TOML：
+    `Cannot declare ('mcp_servers', 'K8s-uat', 'http_headers') twice`。
+    切片改用一直没被接上的 `_toml_section_tree_ranges`，并新增
+    `_toml_subtable_range` / `_set_toml_subtable_field` / `_apply_toml_headers`：
+    按文件原有声明形式维护鉴权头（原来是子表就继续写子表，原来没有才用内联，
+    两种形式永不并存），端点不再带 token 时清掉子表里的旧 `Authorization`。
+    触发条件是「该端点带 auth_token」—— 这正是 K8s-uat（有 token）失败、
+    无 token 端点不受影响的原因。
+  - **jsonc 缺少起始模板**：`initial = "{}\n" if config_format == "json" else ""`
+    让 jsonc 落到空串分支，空串无法被 JSON 解析，配置文件根本建不起来。jsonc 与
+    json 同为 JSON 超集（`_render` 里二者本就共用 `_render_json`），必须共用 `{}`。
+  - **Codex 缺 `unified_name`，会改写用户的本地桥**：Codex 已有指向 NAS 网关的
+    本地 stdio 桥条目 `hermes`，工具回落到 profile 名就命中并改写它，改写后 url
+    校验不过，整条修复回滚并报 `validation failed; original configuration was
+    rolled back`。现给予独立 `unified_name: hermes-unified`（与 OpenCode 同一处理）。
+  - 新增 6 个回归测试；反向验证时还原两处修复，其中 3 个立即失败
+    （`'error' != 'updated'`），确认测试守在缺陷上而非空转。
+- **MCP：`unified_name` 只作用于统一端点，修「修复后仍显示 1/2」**
+  （`core/combined_checker.py`、`core/mcp_fixer.py`、`core/mcp_inventory.py`、
+  `core/management_snapshot.py`、`core/mcp_entry_removal.py`、`scan.py`）。
+  上一项修好了「修复过程报错」，这一项修好「修复看似成功但判定不认」。
+  - **根因**：`unified_name` 在 config.yaml 里的定义是「**统一 Hermes 端点**在该
+    客户端里的条目别名」（OpenCode 条目注释：「统一端点用独立 key 写入，避免覆盖
+    本地桥」），但它是**客户端级**字段，而端点库通常不止一个端点（本机：K8s-uat
+    与 hermes-home）。三处代码都无条件套用了这个别名：
+    1. 审计侧把 K8s-uat 也拿去查 `hermes-unified`，读到 hermes 的 URL，与
+       K8s-uat 的 `expected_url` 不等 → URL 校验必然失败 → 把**已正确接入**的
+       端点判成「未配置」（实测 `mcp_configured=False` 而
+       `configured_url=https://hermes-mcp.pd-h.top/mcp`，正是「拿错条目」的铁证）。
+    2. 写入侧遍历端点库时每个端点都写进同一个 key、互相覆盖，最终只剩最后一个
+       端点的 URL（实测配置里根本没有 K8s-uat 条目）。
+    3. 清单侧 canonical 分支只标 `attached`、漏设 `endpoint_key`，而
+       `observed_endpoint_keys` 只读该字段 → 用别名写入的条目对附件审计不可见，
+       误报「声明要挂却没挂」（实测 OpenCode 报 `missing=[K8s-uat, hermes-home]`，
+       其中 hermes-home 是误报）。
+  - **修复**：判定统一端点为「端点库 key == `active_profile`」；`endpoint_key` 为
+    None（检查默认端点）时同样适用别名。`fix_mcp_tool` 增 `use_unified_name` 形参由
+    `fix_mcp_clients` 按上述判据传入，后者增 `profile_key` 供 `--profile` 单端点路径
+    使用；`classify_entries` / `inventory_client` 增 `canonical_endpoint_key`，
+    三个调用点传入 `active_profile`。
+  - ⚠️ **注意**：不可写成 `active_key = endpoint_key or config["active_profile"]`
+    —— `endpoint_key` 非空时该表达式恒等于它，比较永远相等，别名会被误用到所有
+    端点上（第一版即如此，实测仍然 1/2，已改掉并把坑写进注释）。
+  - **效果（真实配置端到端）**：Codex `1/2 → 2/2`（K8s-uat=OK hermes-home=OK）；
+    OpenCode 的 dry-run 变为 K8s-uat「would be updated」+
+    hermes-unified「already configured」，两个端点各写各的名字、不再互相覆盖。
+  - 新增 `tests/test_unified_name_scope.py`（7 个用例）与
+    `tests/test_check_model_attach.py::UnifiedNameScopeTest`（3 个用例）。
+    反向验证：临时还原三处修复后，这批测试有 6 个立即失败。
+- **报告：分离「MCP 修复结果」与 Skills 变更报告，并修 dry-run 待写计数**
+  （`scan.py`、`core/change_tracker.py`）。修复看似写盘成功，收尾却打印
+  「变更报告：✅ 无变化」，用户据此以为空跑。
+  - **根因是「两个维度的结论被印在相邻位置」**：`compute_changes` 只比对
+    **skills 扫描**维度，与本次 MCP 写入无关，却紧跟在 MCP 修复段之后，读起来像
+    是对刚才那次操作的总结。
+  - MCP 修复段现在**补印自身结论**（`MCP 修复结果：已写入 N，unchanged M（共 X 项）`），
+    并在确有写入时加一行提示把两件事在输出上分开；`format_change_report` 的标题改为
+    **「变更报告（Skills 扫描维度）」**（GUI 折叠区取自同一函数，界面同步受益）。
+  - **顺带修掉一个自测发现的真实缺陷**：dry-run 下 `fix_mcp_tool` 返回的状态是
+    `"dry-run"` 而非 `updated`/`created`，旧公式只累加后两者，会把**真实待写项算成
+    0** —— 又是一句失真提示。现按 `args.dry_run` 分支分别取 `"dry-run"` 与
+    `updated+created`。
+  - 新增 `tests/test_mcp_summary_report.py`（10 个用例，含源码级契约）。反向验证：
+    把标题与 dry-run 计数还原成事故代码后，3 个用例立即失败。
+
 ## [v0.24.1] - 2026-09-29
 
 当前发布版本（build 111）。
