@@ -228,6 +228,89 @@ fi
 note "✓ 文本文件：无 BOM、无 CRLF、末尾恰好一个换行"
 
 note ""
+# 1d-2) 密钥泄露自检 —— 拦截「明文凭据被提交进仓库」。
+#     为什么需要：config.yaml 曾一度携带真实 auth_token（44 字符的网关令牌），
+#     而它未被 .gitignore 忽略、每次 git add . 都可能被带进提交。个人端点与
+#     凭据的正确归处是仓库外的 profile_sources 覆盖文件（见
+#     core/profile_loader.py 的 "trunk config.yaml stays free of personal
+#     endpoints"），主干 config.yaml 只应保留 auth_token_env 这类环境变量引用。
+#     实现取两段式而不是单条大正则：先抓「敏感键: 值」行，再在 Python 里判定
+#     该值是不是占位符/环境变量名。单条正则串联多个负向先行断言时，空分支会
+#     让断言恒真，曾出现「探针文件含真实 token 却判定通过」的假阴性。
+note "== 密钥泄露自检 =="
+if ! "$PY" - <<'INNER'
+import re
+import subprocess
+import sys
+
+SKIP_SUFFIX = (
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".icns",
+    ".pdf", ".zip", ".gz", ".woff", ".woff2", ".ttf", ".otf",
+    ".dmg", ".exe", ".msi", ".deb", ".rpm", ".so", ".dylib",
+    ".lock",
+)
+
+# 敏感键后面跟一个非空值（不含注释/空白）
+SENSITIVE_LINE = re.compile(
+    r"""(?im)^[ \t-]*"""
+    r"""(auth_token|api_key|apikey|secret|password|passwd|access_token)\s*:\s*"""
+    r"""["']?([^"'\s#]+)"""
+)
+
+# 占位符 / 环境变量引用 / 显式空值：都不算泄露
+PLACEHOLDER = re.compile(
+    r"""^(?:null|~|none|xxx+|\*+|\$\{?[A-Za-z_][A-Za-z0-9_]*\}?"""
+    r"""|[A-Z][A-Z0-9_]{3,}|CHANGEME|REDACTED|your[-_].*|example.*)$""",
+    re.I,
+)
+
+# 高置信度的明文凭据前缀（与键名无关也要拦）
+PREFIX_PATTERNS = (
+    re.compile(r"\bsk-[A-Za-z0-9]{16,}\b"),
+    re.compile(r"\bghp_[A-Za-z0-9]{20,}\b"),
+    re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
+)
+
+files = subprocess.run(
+    ["git", "ls-files"], capture_output=True, text=True, check=True
+).stdout.split()
+problems = []
+for f in files:
+    if f.lower().endswith(SKIP_SUFFIX):
+        continue
+    try:
+        text = open(f, encoding="utf-8", errors="ignore").read()
+    except OSError:
+        continue
+    for m in SENSITIVE_LINE.finditer(text):
+        key, val = m.group(1), m.group(2)
+        if PLACEHOLDER.match(val):
+            continue
+        if len(val) < 16:
+            continue
+        line_no = text[: m.start()].count("\n") + 1
+        # 只回显键名与长度，绝不回显凭据本身
+        problems.append(f"{f}:{line_no}: 疑似明文凭据（键 {key}，{len(val)} 字符）")
+    for rx in PREFIX_PATTERNS:
+        for m in rx.finditer(text):
+            line_no = text[: m.start()].count("\n") + 1
+            problems.append(f"{f}:{line_no}: 疑似明文凭据（匹配前缀 {m.group(0)[:3]}***）")
+
+if problems:
+    print("发现疑似明文凭据：")
+    for item in sorted(set(problems)):
+        print("  - " + item)
+    print("  修法：把凭据移到仓库外的 profile_sources 覆盖文件，")
+    print("        或在主干配置里改用 auth_token_env 环境变量引用。")
+    sys.exit(1)
+print("✓ 已跟踪文件中无明文凭据")
+INNER
+then
+  note "==> 失败：密钥泄露自检未通过。"
+  exit 1
+fi
+
+note ""
 # 1e) ruff 静态检查（P1-11）——与 CI 的 lint-ruff job 同判据、同路径。
 #     为什么放进本脚本：此前 ruff 只存在于 CI workflow，本地跑不到；
 #     而本仓库只做本地提交、从不推送 → CI 从未运行 → **ruff 实际从未被强制过**。
