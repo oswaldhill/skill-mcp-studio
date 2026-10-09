@@ -326,6 +326,9 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
         "--remove-hooks",
         // 变更检测（B 阶段）：产出持久化快照并与上次对比（只读不探活）。
         "--snapshot",
+        // 后台巡检设置（D 阶段）：读写 config.yaml 的 settings 段。
+        "--set-setting",
+        "--get-setting",
         "--cleanup-config",
         // 阶段五增量：MCP 条目删除 / 批量清理 / 配置备份列出与还原。
         "--remove-mcp-entry",
@@ -510,9 +513,10 @@ pub fn run() {
             // 关闭窗口只隐藏不退出（见 on_window_event），退出走菜单或 Cmd+Q。
             let menu = Menu::with_items(app, &[
                 &MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?,
+                &MenuItem::with_id(app, "toggle-patrol", "切换后台巡检", true, None::<&str>)?,
                 &MenuItem::with_id(app, "quit", "退出 Skill MCP Studio", true, None::<&str>)?,
             ])?;
-            let _tray = TrayIconBuilder::new()
+            let _tray = TrayIconBuilder::with_id("main")
                 .icon(app.default_window_icon().unwrap().clone())
                 .tooltip("Skill MCP Studio")
                 .menu(&menu)
@@ -524,6 +528,23 @@ pub fn run() {
                                 let _ = window.show();
                                 let _ = window.set_focus();
                             }
+                        }
+                        "toggle-patrol" => {
+                            // 读取当前 patrol_enabled，取反后写回
+                            let get_args = vec!["--get-setting".to_string(), "patrol_enabled".to_string()];
+                            let current = match spawn(&get_args) {
+                                Ok((_, stdout, _)) => {
+                                    stdout.contains("patrol_enabled = True")
+                                        || stdout.contains("patrol_enabled = true")
+                                }
+                                Err(_) => false,
+                            };
+                            let new_val = if current { "false" } else { "true" };
+                            let set_args = vec![
+                                "--set-setting".to_string(),
+                                format!("patrol_enabled={}", new_val),
+                            ];
+                            let _ = spawn(&set_args);
                         }
                         "quit" => {
                             app.exit(0);
@@ -550,6 +571,44 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
+            // ---- 后台巡检（Phase D）----
+            // 独立线程每隔 60 秒检查一次：读取 patrol_enabled，若启用则运行 --snapshot，
+            // 检测到变更时更新托盘 tooltip 提示用户。
+            let patrol_handle = app.handle().clone();
+            std::thread::spawn(move || {
+                loop {
+                    std::thread::sleep(std::time::Duration::from_secs(60));
+                    // 1. 检查 patrol_enabled
+                    let get_args = vec!["--get-setting".to_string(), "patrol_enabled".to_string()];
+                    let enabled = match spawn(&get_args) {
+                        Ok((_, stdout, _)) => {
+                            stdout.contains("patrol_enabled = True")
+                                || stdout.contains("patrol_enabled = true")
+                        }
+                        Err(_) => false,
+                    };
+                    if !enabled {
+                        continue;
+                    }
+                    // 2. 运行 --snapshot
+                    let snap_args = vec!["--snapshot".to_string()];
+                    match spawn(&snap_args) {
+                        Ok((_, stdout, _)) => {
+                            let has_changes = stdout.contains("检测到变更");
+                            if let Some(tray) = patrol_handle.tray_by_id("main") {
+                                let _ = tray.set_tooltip(Some(if has_changes {
+                                    "Skill MCP Studio（检测到变更，点击查看）"
+                                } else {
+                                    "Skill MCP Studio"
+                                }));
+                            }
+                        }
+                        Err(_) => continue,
+                    }
+                }
+            });
+
             Ok(())
         })
         .on_window_event(|window, event| {

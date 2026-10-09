@@ -1507,6 +1507,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="产出持久化快照 data/last_snapshot.yaml 并与上次对比（4 维度变更检测，只读不探活）",
     )
     parser.add_argument(
+        "--set-setting", type=str, default=None, metavar="KEY=VALUE",
+        help="设置 config.yaml 的 settings 段键值（如 patrol_enabled=true / patrol_interval_minutes=30），带备份",
+    )
+    parser.add_argument(
+        "--get-setting", type=str, default=None, metavar="KEY",
+        help="读取 config.yaml 的 settings 段键值后退出",
+    )
+    parser.add_argument(
         "--profile", type=str, default=None,
         help="指定 endpoint profile（覆盖 config.yaml 的 active_profile）",
     )
@@ -2308,6 +2316,54 @@ def main() -> int:
         except Exception as e:
             print(f"\n  ❌ Snapshot diff failed: {e}")
             repair_errors.append(f"Snapshot diff: {e}")
+
+    if args.set_setting:
+        print("")
+        print("=" * 60)
+        print("  Set setting")
+        print("=" * 60)
+        try:
+            from file_atomic import atomic_write, backup_path
+            import yaml
+            _parts = args.set_setting.split("=", 1)
+            if len(_parts) != 2:
+                raise ValueError(f"格式错误，需 KEY=VALUE，得到: {args.set_setting}")
+            _key, _val = _parts[0].strip(), _parts[1].strip()
+            _allowed = {"patrol_enabled", "patrol_interval_minutes"}
+            if _key not in _allowed:
+                raise ValueError(f"不支持的设置键: {_key}（允许: {', '.join(sorted(_allowed))}）")
+            if _key == "patrol_enabled":
+                _val_norm = _val.lower() in ("true", "1", "yes", "on")
+            elif _key == "patrol_interval_minutes":
+                _val_norm = max(5, int(_val))
+            else:
+                _val_norm = _val
+            config.setdefault("settings", {})
+            config["settings"][_key] = _val_norm
+            _bak = backup_path(config_path)
+            _content = yaml.safe_dump(config, default_flow_style=False, allow_unicode=True, sort_keys=False)
+            atomic_write(config_path, _content)
+            print(f"  ✅ {_key} = {_val_norm}")
+            if _bak:
+                print(f"  备份: {_bak}")
+        except Exception as e:
+            print(f"\n  ❌ Set setting failed: {e}")
+            repair_errors.append(f"Set setting: {e}")
+
+    if args.get_setting:
+        print("")
+        print("=" * 60)
+        print("  Get setting")
+        print("=" * 60)
+        try:
+            _val = (config.get("settings") or {}).get(args.get_setting)
+            if _val is None:
+                print(f"  ⚠️ {args.get_setting} 未设置")
+            else:
+                print(f"  {args.get_setting} = {_val}")
+        except Exception as e:
+            print(f"\n  ❌ Get setting failed: {e}")
+            repair_errors.append(f"Get setting: {e}")
 
     # ================================================================
     # 阶段 4: 变更追踪

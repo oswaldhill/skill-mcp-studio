@@ -329,3 +329,11 @@ hooks:
     fix_supported: false
     plugin: true
     note: OpenCode 用 TS 插件（plugins/ai-memory.ts）而非 JSON hooks，不支持模板注入
+
+# ── 后台巡检设置（Phase D）──────────────────────────────────
+# patrol_enabled：后台巡检总开关，默认关闭；启用后每隔 patrol_interval_minutes
+#   自动运行一次 --snapshot，检测到变更时更新托盘图标状态。
+# patrol_interval_minutes：巡检间隔（分钟），默认 15，最小 5。
+settings:
+  patrol_enabled: false
+  patrol_interval_minutes: 15

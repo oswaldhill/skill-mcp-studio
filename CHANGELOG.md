@@ -56,6 +56,16 @@
   - **左键点击**切换窗口显隐（可见则隐藏，隐藏则显示并聚焦）
   - **右键菜单**「显示主窗口」「退出 Skill MCP Studio」
   - 关闭窗口仍只隐藏不退出，退出走托盘菜单或 Cmd+Q
+- **后台巡检：定时快照对比与托盘状态联动**（`config.yaml`、`scan.py`、
+  `src-tauri/src/lib.rs`）。此前变更检测只能手动触发 `--snapshot`。
+  现新增：
+  - `config.yaml` 的 `settings` 段：`patrol_enabled`（默认 false）、
+    `patrol_interval_minutes`（默认 15，最小 5）
+  - CLI 出口 `--set-setting KEY=VALUE` / `--get-setting KEY`（走 backup →
+    atomic_write 安全链，白名单键 patrol_enabled / patrol_interval_minutes）
+  - `lib.rs` 后台线程：每隔 60 秒检查 `patrol_enabled`，若启用则运行
+    `--snapshot`，检测到变更时更新托盘 tooltip 为「检测到变更，点击查看」
+  - 托盘菜单新增「切换后台巡检」项，一键开关巡检
 
 ### 修复
 
