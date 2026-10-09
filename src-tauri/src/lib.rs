@@ -29,6 +29,8 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use tauri::{Manager, RunEvent, WindowEvent};
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 
 /// 置位后表示应用正在退出（Cmd+Q / ExitRequested），此时放行窗口关闭；
 /// 否则单窗口的 CloseRequested（Cmd+W / 红色关闭钮）只隐藏窗口，不退出。
@@ -503,6 +505,51 @@ pub fn run() {
                     None => eprintln!("[SMS_GUI_DEV] 未找到 label=main 的窗口"),
                 }
             }
+            // ---- 托盘常驻（Phase C）----
+            // 左键点击切换窗口显隐；右键弹出菜单（显示主窗口 / 退出）。
+            // 关闭窗口只隐藏不退出（见 on_window_event），退出走菜单或 Cmd+Q。
+            let menu = Menu::with_items(app, &[
+                &MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?,
+                &MenuItem::with_id(app, "quit", "退出 Skill MCP Studio", true, None::<&str>)?,
+            ])?;
+            let _tray = TrayIconBuilder::new()
+                .icon(app.default_window_icon().unwrap().clone())
+                .tooltip("Skill MCP Studio")
+                .menu(&menu)
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app, event| {
+                    match event.id.as_ref() {
+                        "show" => {
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                        }
+                        "quit" => {
+                            app.exit(0);
+                        }
+                        _ => {}
+                    }
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        let app = tray.app_handle();
+                        if let Some(window) = app.get_webview_window("main") {
+                            if window.is_visible().unwrap_or(false) {
+                                let _ = window.hide();
+                            } else {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                        }
+                    }
+                })
+                .build(app)?;
             Ok(())
         })
         .on_window_event(|window, event| {

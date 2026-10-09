@@ -49,6 +49,13 @@
   新增 CLI 出口 `--snapshot`（复用 `build_management_snapshot`，`live_probe=False`，
   只读不探活），产出持久化快照 `data/last_snapshot.yaml` 并与上次对比；
   `lib.rs` 的 `run_cli` ALLOWED 白名单已登记。
+- **托盘常驻：系统托盘图标与菜单**（`src-tauri/Cargo.toml`、`src-tauri/src/lib.rs`）。
+  此前关闭窗口只隐藏不退出（`EXITING` 标志位），但无系统托盘入口——用户隐藏窗口后
+  无法重新打开（只能靠 Dock 图标）。现启用 tauri `tray-icon` feature，在 `setup` 里
+  构建托盘图标 + 菜单（显示主窗口 / 退出）：
+  - **左键点击**切换窗口显隐（可见则隐藏，隐藏则显示并聚焦）
+  - **右键菜单**「显示主窗口」「退出 Skill MCP Studio」
+  - 关闭窗口仍只隐藏不退出，退出走托盘菜单或 Cmd+Q
 
 ### 修复
 
