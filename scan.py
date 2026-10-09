@@ -2342,7 +2342,7 @@ def main() -> int:
             config["settings"][_key] = _val_norm
             _bak = backup_path(config_path)
             _content = yaml.safe_dump(config, default_flow_style=False, allow_unicode=True, sort_keys=False)
-            atomic_write(config_path, _content)
+            atomic_write(config_path, _content, 0o644)
             print(f"  ✅ {_key} = {_val_norm}")
             if _bak:
                 print(f"  备份: {_bak}")
