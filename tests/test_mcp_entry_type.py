@@ -21,6 +21,9 @@ OpenCode **不是忽略该条目，而是把整份配置判为无效**：
 
 反向验证：把 ``_render_json`` 里的 ``entry_type`` 处理去掉（回到
 ``entry = {"url": url}``），``OpenCodeEntryTypeTest`` 会立即失败。
+
+本文件另含 ``CandidateMergeTest`` / ``CandidateMergeEndToEndTest``：候选配置的同名
+条目不得用「另一种方式」抹掉真实接入（详见该类的 docstring）。
 """
 
 import json
@@ -33,6 +36,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "core"))
 
 import mcp_fixer_render as render  # noqa: E402
+from combined_checker import (  # noqa: E402
+    _load_tool_servers as load_tool_servers,
+    _prefer_url_entry as prefer_url_entry,
+)
 
 
 #: OpenCode 的工具定义（取自 config.yaml 的 mcp_tools OpenCode 条目）
@@ -147,10 +154,170 @@ class RealConfigTest(unittest.TestCase):
             fmt = tool.get("format")
             if fmt in ("json", "jsonc") and tool.get("mcp_key_path") == ["mcpServers"]:
                 with self.subTest(tool=tool.get("name")):
-                    self.assertFalsy(tool.get("mcp_entry_type"))
+                    self.assertFalse(
+                        tool.get("mcp_entry_type"),
+                        f"mcpServers 型客户端不应声明 mcp_entry_type，得到 "
+                        f"{tool.get('mcp_entry_type')!r}",
+                    )
 
-    def assertFalsy(self, value):
-        self.assertFalse(value, f"mcpServers 型客户端不应声明 mcp_entry_type，得到 {value!r}")
+
+class CandidateMergeTest(unittest.TestCase):
+    """候选配置的同名条目不得用「另一种方式」抹掉真实接入。
+
+    缺陷（本机实测，DeepSeek Harness）：主配置 ``cordis.patch.yml`` 的 ``hermes`` 是
+    ``transport: streamable-http`` + 正确 url（真实接入统一端点），而候选
+    ``~/.dsh/mcp.json`` 的 ``hermes`` 是本地 **stdio 桥**（``command`` + ``args``，
+    无 url）。旧实现一律 ``servers.update(candidate_servers)``，候选的无 url 条目把主
+    配置的 url 覆盖成空，``hermes-home`` 被判 ``configured=False`` —— 与
+    ``_load_tool_servers`` 文档声明的「任一位置命中即算」**自相矛盾**，把已正确接入的
+    端点报成未接入（实测 DSH 因此停在 1/2）。
+
+    这正是用户口径的反面：「不能因为有同名的内容是其他的方式，就认为正确」——
+    反过来，同名条目走了另一种方式（stdio）时，也不能把 HTTP 接入判成未接入。
+
+    反向验证：把 ``_prefer_url_entry`` 换成无条件的 ``servers[name] = entry``
+    （即还原成旧语义），本类前两个用例立即失败。
+    """
+
+    HTTP = {"url": "https://hermes-mcp.pd-h.top/mcp"}
+    STDIO = {"command": "/venv/bin/python", "args": ["bridge.py"]}
+
+    def test_stdio_does_not_clobber_http(self):
+        """核心：候选的无 url 条目不得覆盖已有的 url。"""
+        self.assertEqual(prefer_url_entry(self.HTTP, self.STDIO), self.HTTP)
+
+    def test_http_incoming_wins_over_stdio_existing(self):
+        """反向：候选带 url 时应覆盖主配置里的 stdio。"""
+        self.assertEqual(prefer_url_entry(self.STDIO, self.HTTP), self.HTTP)
+
+    def test_later_candidate_wins_when_both_have_url(self):
+        """两者都有 url：保持「候选是更权威覆盖层」的既有意图。"""
+        a = {"url": "https://k8s.carobo.cn/mcp"}
+        b = {"url": "https://hermes-mcp.pd-h.top/mcp"}
+        self.assertEqual(prefer_url_entry(a, b), b)
+
+    def test_both_without_url_falls_through_to_incoming(self):
+        self.assertEqual(
+            prefer_url_entry({"command": "/a"}, {"command": "/b"}), {"command": "/b"}
+        )
+
+    def test_non_dict_and_empty_url_are_tolerated(self):
+        self.assertEqual(prefer_url_entry(None, self.HTTP), self.HTTP)
+        self.assertEqual(prefer_url_entry({"url": ""}, self.HTTP), self.HTTP)
+
+
+class CandidateMergeEndToEndTest(unittest.TestCase):
+    """端到端：合并主配置与候选，HTTP 接入必须存活。"""
+
+    def test_keeps_http_over_stdio_candidate(self):
+        import tempfile
+        import textwrap as _tw
+        from pathlib import Path as _P
+
+        with tempfile.TemporaryDirectory() as d:
+            tmp = _P(d)
+            (tmp / "cordis.patch.yml").write_text(
+                _tw.dedent(
+                    """\
+                    - id: mcp-hermes
+                      name: '@deepseek-ai/dsh-mcp-client'
+                      config:
+                        serverName: hermes
+                        transport: streamable-http
+                        url: https://hermes-mcp.pd-h.top/mcp
+                    - id: mcp-K8s-uat
+                      config:
+                        serverName: K8s-uat
+                        transport: streamable-http
+                        url: https://k8s.carobo.cn/mcp
+                    """
+                ),
+                encoding="utf-8",
+            )
+            (tmp / "mcp.json").write_text(
+                '{"mcpServers": {"hermes": {"command": "/venv/bin/python",'
+                ' "args": ["bridge.py"]}}}',
+                encoding="utf-8",
+            )
+            tool = {
+                "name": "DeepSeek Harness",
+                "config_path": str(tmp / "cordis.patch.yml"),
+                "format": "cordis_yaml",
+                "mcp_key_path": ["hermes"],
+                "config_candidates": [
+                    {
+                        "path": str(tmp / "mcp.json"),
+                        "format": "json",
+                        "key_path": ["mcpServers"],
+                    }
+                ],
+            }
+            merged = load_tool_servers(tool)
+            with self.subTest("hermes 保留 url"):
+                self.assertEqual(
+                    merged["hermes"].get("url"), "https://hermes-mcp.pd-h.top/mcp"
+                )
+            with self.subTest("K8s-uat 不受影响"):
+                self.assertEqual(
+                    merged["K8s-uat"].get("url"), "https://k8s.carobo.cn/mcp"
+                )
+
+    def test_candidate_still_fills_in_missing_endpoint(self):
+        """候选的正当用途不能被误伤：主配置没有的端点仍由候选补上。"""
+        import tempfile
+        import textwrap as _tw
+        from pathlib import Path as _P
+
+        with tempfile.TemporaryDirectory() as d:
+            tmp = _P(d)
+            (tmp / "cordis.patch.yml").write_text(
+                _tw.dedent(
+                    """\
+                    - id: mcp-K8s-uat
+                      config:
+                        serverName: K8s-uat
+                        url: https://k8s.carobo.cn/mcp
+                    """
+                ),
+                encoding="utf-8",
+            )
+            (tmp / "mcp.json").write_text(
+                '{"mcpServers": {"hermes": {"url": "https://hermes-mcp.pd-h.top/mcp"}}}',
+                encoding="utf-8",
+            )
+            tool = {
+                "name": "DSH",
+                "config_path": str(tmp / "cordis.patch.yml"),
+                "format": "cordis_yaml",
+                "mcp_key_path": ["hermes"],
+                "config_candidates": [
+                    {
+                        "path": str(tmp / "mcp.json"),
+                        "format": "json",
+                        "key_path": ["mcpServers"],
+                    }
+                ],
+            }
+            merged = load_tool_servers(tool)
+            self.assertEqual(merged["hermes"].get("url"), "https://hermes-mcp.pd-h.top/mcp")
+            self.assertEqual(merged["K8s-uat"].get("url"), "https://k8s.carobo.cn/mcp")
+
+    def test_real_registry_declares_mcp_json_candidate(self):
+        """真实 config.yaml：DSH 必须声明 ~/.dsh/mcp.json 候选（本机同名的来源）。"""
+        import yaml
+
+        cfg = yaml.safe_load((ROOT / "config.yaml").read_text(encoding="utf-8"))
+        dsh = next(
+            (t for t in (cfg.get("mcp_tools") or []) if t.get("name") == "DeepSeek Harness"),
+            None,
+        )
+        self.assertIsNotNone(dsh, "config.yaml 应有 DeepSeek Harness 条目")
+        paths = [
+            c.get("path")
+            for c in (dsh.get("config_candidates") or [])
+            if isinstance(c, dict)
+        ]
+        self.assertIn("~/.dsh/mcp.json", paths)
 
 
 if __name__ == "__main__":

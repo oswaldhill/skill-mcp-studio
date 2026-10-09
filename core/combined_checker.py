@@ -103,8 +103,29 @@ def _load_tool_servers(tool: Dict[str, Any]) -> Dict[str, Any]:
             candidate.get("format", "json"),
             candidate.get("key_path", tool.get("mcp_key_path", ["mcpServers"])),
         )
-        servers.update(candidate_servers)
+        for name, entry in candidate_servers.items():
+            servers[name] = _prefer_url_entry(servers.get(name), entry)
     return servers
+
+
+def _prefer_url_entry(existing: Any, incoming: Any) -> Any:
+    """合并候选配置的同名条目时，别让「另一种方式」抹掉真实接入。
+
+    候选文件与主配置可能**同名但不同方式**。本机实测（DeepSeek Harness）：主配置
+    ``cordis.patch.yml`` 的 ``hermes`` 是 ``transport: streamable-http`` + 正确 url
+    （真实接入统一端点），而候选 ``~/.dsh/mcp.json`` 的 ``hermes`` 是本地 **stdio 桥**
+    （``command`` + ``args``，**没有 url**）。旧写法一律 ``servers.update(...)``，于是
+    候选的无 url 条目把主配置的 url 覆盖成空，``hermes-home`` 被判
+    ``configured=False`` —— 与本函数上方注释声明的「任一位置命中即算」**自相矛盾**，
+    把已正确接入的端点报成未接入（假阴性）。
+
+    判据：**有 url 的条目胜出**。两者都有 url 时仍以候选（后合并）为准，保持「候选
+    是更权威覆盖层」的既有意图；两者都无 url 时同样以候选为准。
+    """
+    if isinstance(existing, dict) and existing.get("url"):
+        if not (isinstance(incoming, dict) and incoming.get("url")):
+            return existing
+    return incoming
 
 
 def _skill_state_fields(name: str, scan_result: Dict[str, Any], tool: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
