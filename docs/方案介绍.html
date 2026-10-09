@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Skill MCP Studio · 新功能方案</title>
+<style>
+  :root{
+    --bg:#0d1117; --bg2:#161b22; --bg3:#1c2330; --border:#30363d;
+    --text:#e6edf3; --muted:#8b949e; --dim:#6e7681;
+    --blue:#58a6ff; --green:#3fb950; --red:#f85149; --yellow:#d29922; --purple:#bc8cff; --cyan:#39d2c0;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    background:var(--bg); color:var(--text); line-height:1.7; font-size:15px;
+    -webkit-font-smoothing:antialiased;
+  }
+  code,pre,.mono{font-family:"SF Mono","JetBrains Mono",Consolas,monospace}
+  .wrap{max-width:1080px; margin:0 auto; padding:0 24px}
+
+  /* Hero */
+  .hero{
+    padding:72px 0 56px; border-bottom:1px solid var(--border);
+    background:linear-gradient(180deg,#0d1117 0%, #0d1117 60%, rgba(88,166,255,.04) 100%);
+  }
+  .hero .tag{display:inline-block; font-size:12px; color:var(--blue); border:1px solid var(--blue);
+    border-radius:20px; padding:3px 12px; margin-bottom:18px; letter-spacing:.5px}
+  .hero h1{font-size:38px; font-weight:700; line-height:1.25; letter-spacing:-.5px}
+  .hero h1 .accent{background:linear-gradient(90deg,var(--blue),var(--purple)); -webkit-background-clip:text; -webkit-text-fill-color:transparent}
+  .hero .sub{color:var(--muted); font-size:17px; margin-top:14px; max-width:680px}
+  .hero .meta{display:flex; gap:24px; margin-top:28px; flex-wrap:wrap}
+  .hero .meta div{font-size:13px; color:var(--dim)}
+  .hero .meta b{color:var(--text); font-weight:600}
+
+  /* Section */
+  section{padding:56px 0; border-bottom:1px solid var(--border)}
+  section h2{font-size:24px; font-weight:700; margin-bottom:8px; display:flex; align-items:center; gap:10px}
+  section h2 .num{color:var(--blue); font-family:"SF Mono",monospace; font-size:18px}
+  section .lead{color:var(--muted); margin-bottom:28px; font-size:15px}
+
+  /* Table */
+  table{width:100%; border-collapse:collapse; font-size:14px; margin:8px 0}
+  th,td{padding:11px 14px; text-align:left; border-bottom:1px solid var(--border); vertical-align:top}
+  th{color:var(--muted); font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.5px; background:var(--bg2)}
+  td code{background:var(--bg3); padding:1px 6px; border-radius:4px; font-size:12.5px; color:var(--cyan)}
+  .ok{color:var(--green)} .bad{color:var(--red)} .warn{color:var(--yellow)}
+
+  /* Architecture diagram */
+  .arch{display:flex; flex-direction:column; gap:14px; margin:12px 0}
+  .arch .layer{
+    border:1px solid var(--border); border-radius:10px; padding:18px 20px; background:var(--bg2);
+    position:relative;
+  }
+  .arch .layer .ltitle{font-weight:700; font-size:15px; margin-bottom:10px; display:flex; align-items:center; gap:8px}
+  .arch .layer .ltitle .dot{width:8px;height:8px;border-radius:50%}
+  .arch .layer ul{list-style:none; font-size:13.5px; color:var(--muted)}
+  .arch .layer ul li{padding:2px 0}
+  .arch .layer ul li .new{color:var(--green); font-size:11px; border:1px solid var(--green); border-radius:3px; padding:0 5px; margin-left:6px}
+  .arch .arrow{text-align:center; color:var(--dim); font-size:18px; line-height:1}
+  .arch .layer.tray{border-color:var(--purple)}
+  .arch .layer.tray .dot{background:var(--purple)}
+  .arch .layer.tauri{border-color:var(--blue)}
+  .arch .layer.tauri .dot{background:var(--blue)}
+  .arch .layer.engine{border-color:var(--green)}
+  .arch .layer.engine .dot{background:var(--green)}
+
+  /* Feature cards */
+  .features{display:grid; grid-template-columns:repeat(2,1fr); gap:18px; margin:8px 0}
+  .feat{
+    border:1px solid var(--border); border-radius:12px; padding:22px; background:var(--bg2);
+    transition:border-color .2s;
+  }
+  .feat:hover{border-color:var(--blue)}
+  .feat .icon{font-size:26px; margin-bottom:10px}
+  .feat h3{font-size:17px; font-weight:700; margin-bottom:6px}
+  .feat .fid{color:var(--blue); font-family:"SF Mono",monospace; font-size:12px}
+  .feat p{color:var(--muted); font-size:13.5px; margin-bottom:12px}
+  .feat .pts{list-style:none; font-size:13px}
+  .feat .pts li{padding:3px 0; color:var(--muted); padding-left:16px; position:relative}
+  .feat .pts li:before{content:"▸"; color:var(--blue); position:absolute; left:0}
+  .feat .pts li b{color:var(--text); font-weight:600}
+
+  /* Timeline */
+  .tl{position:relative; padding-left:28px; margin:8px 0}
+  .tl:before{content:""; position:absolute; left:8px; top:6px; bottom:6px; width:2px; background:var(--border)}
+  .tl .step{position:relative; padding:0 0 26px 0}
+  .tl .step:before{content:""; position:absolute; left:-24px; top:4px; width:14px; height:14px; border-radius:50%; background:var(--bg); border:2px solid var(--blue)}
+  .tl .step .stitle{font-weight:700; font-size:15px; display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+  .tl .step .stitle .badge{font-size:11px; padding:1px 8px; border-radius:10px; border:1px solid var(--dim); color:var(--dim)}
+  .tl .step .stitle .badge.rebuild{border-color:var(--yellow); color:var(--yellow)}
+  .tl .step .sdesc{color:var(--muted); font-size:13.5px; margin-top:4px}
+  .tl .step.dep{opacity:.6}
+  .tl .step.dep:before{border-color:var(--dim)}
+
+  /* Decisions */
+  .dec{list-style:none; counter-reset:dc}
+  .dec li{
+    counter-increment:dc; padding:16px 18px 16px 52px; margin-bottom:10px;
+    border:1px solid var(--border); border-radius:10px; background:var(--bg2); position:relative;
+  }
+  .dec li:before{content:counter(dc); position:absolute; left:16px; top:16px; width:24px; height:24px;
+    border-radius:50%; background:var(--blue); color:#fff; font-size:13px; font-weight:700;
+    display:flex; align-items:center; justify-content:center; font-family:"SF Mono",monospace}
+  .dec li .q{font-weight:600; font-size:14.5px}
+  .dec li .sug{color:var(--muted); font-size:13px; margin-top:4px}
+  .dec li .sug b{color:var(--green)}
+
+  /* Risk */
+  .risk{display:grid; grid-template-columns:1fr 1.4fr; gap:0; font-size:13.5px}
+  .risk .rcell{padding:12px 14px; border-bottom:1px solid var(--border)}
+  .risk .rcell.l{background:var(--bg2); color:var(--muted); font-weight:600}
+  .risk .rcell.r{color:var(--text)}
+
+  /* Principle banner */
+  .principle{
+    border:1px solid var(--green); border-radius:10px; padding:16px 20px; background:rgba(63,185,80,.06);
+    margin:8px 0 24px; font-size:14px;
+  }
+  .principle b{color:var(--green)}
+
+  footer{padding:40px 0 60px; text-align:center; color:var(--dim); font-size:13px}
+  footer a{color:var(--blue); text-decoration:none}
+
+  @media(max-width:720px){
+    .features{grid-template-columns:1fr}
+    .hero h1{font-size:28px}
+    .risk{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="tag">DESIGN PROPOSAL · v0.25.0 路线</span>
+    <h1>托盘常驻 · 后台巡检 ·<br><span class="accent">变更通知 · Hook 管理</span></h1>
+    <p class="sub">在现有「CLI 引擎 + Tauri 壳」架构上，新增四个能力：状态栏常驻、后台定时检测、变更推送通知、以及把 Hook 提升为独立管理域。不破坏现有数据契约。</p>
+    <div class="meta">
+      <div>分支 <b>develop</b></div>
+      <div>基线 <b>4eafb16</b></div>
+      <div>测试 <b>1053 passed</b></div>
+      <div>阶段 <b>A → B → C → D → E</b></div>
+    </div>
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <h2><span class="num">01</span> 现状摸底</h2>
+    <p class="lead">三个子代理已读完 change_tracker / management_snapshot / lib.rs / hooks_checker / dashboard.html，结论如下。</p>
+    <table>
+      <thead><tr><th>维度</th><th>现状</th><th>缺口</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>Tauri 桌面壳</b></td>
+          <td>单窗口；已有"关窗隐藏不退出"；CLI 子进程调度成熟（白名单安全边界）</td>
+          <td class="bad">无 tray-icon、无 notification、无 autostart、无后台定时器</td>
+        </tr>
+        <tr>
+          <td><b>变更检测</b></td>
+          <td><code>change_tracker</code> 已有 <code>compute_changes</code>，存 <code>data/state.yaml</code></td>
+          <td class="bad">维度极窄（只比 skills 工具增减）；<code>management_snapshot</code> 丰富快照不持久化、不对比；无定时/后台</td>
+        </tr>
+        <tr>
+          <td><b>Hook</b></td>
+          <td><code>hooks_config_path</code> 已声明 5 处；<code>combined_checker</code> 已读它做合规检测</td>
+          <td class="bad">管理台不透传、CLI 无编辑参数、GUI 无入口——管理/修复完全未消费</td>
+        </tr>
+        <tr>
+          <td><b>UI 范式</b></td>
+          <td><code>runCli → SNAP → renderXxx</code>；<code>data-action → confirmModal → runTaskModal</code></td>
+          <td class="warn">配置面板只覆盖 MCP 字段，无 hooks 编辑入口</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="principle">
+      <b>核心架构原则（必须延续）</b>：CLI 是唯一数据源（ADR: one engine, one data contract），Rust 壳只 spawn <code>skill-mcp-studio</code> 子进程，不在 Rust 里重写业务逻辑；所有写操作走 CLI 的 <b>backup → atomic-write → validate → rollback</b> 安全链。
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2><span class="num">02</span> 总体架构</h2>
+    <p class="lead">三层结构，自上而下：托盘 → Tauri 壳 → Python 引擎。新增部分标 <span style="color:var(--green)">新增</span>。</p>
+    <div class="arch">
+      <div class="layer tray">
+        <div class="ltitle"><span class="dot"></span> macOS 状态栏（Tray Icon）</div>
+        <ul>
+          <li>菜单：显示/隐藏 · 立即巡检 · 暂停/恢复 · 间隔 · 退出 <span class="new">新增</span></li>
+          <li>图标态：空闲🟢 / 巡检中🔄 / 发现变更🔴(badge) <span class="new">新增</span></li>
+        </ul>
+      </div>
+      <div class="arrow">↓ 唤起 / 状态显示</div>
+      <div class="layer tauri">
+        <div class="ltitle"><span class="dot"></span> Tauri 壳（src-tauri/src/lib.rs）</div>
+        <ul>
+          <li>后台巡检循环（tokio::time::interval） <span class="new">新增</span></li>
+          <li>定时 spawn CLI 只读审计 → 对比快照 → 发通知 <span class="new">新增</span></li>
+          <li>通知推送（tauri-plugin-notification） <span class="new">新增</span></li>
+          <li>现有：run_audit / run_cli / cancel_cli / open_url</li>
+          <li>新增命令：start_daemon / stop_daemon / daemon_status <span class="new">新增</span></li>
+        </ul>
+      </div>
+      <div class="arrow">↓ Command::new("skill-mcp-studio")</div>
+      <div class="layer engine">
+        <div class="ltitle"><span class="dot"></span> Python 引擎（scan.py + core/）</div>
+        <ul>
+          <li>现有：scan / --management / --fix-mcp / --fix-skills</li>
+          <li>--snapshot（轻量只读快照，供后台巡检） <span class="new">新增</span></li>
+          <li>snapshot_diff（对比持久化快照，产出变更清单） <span class="new">新增</span></li>
+          <li>Hook 管理域（--list-hooks / --fix-hooks / ...） <span class="new">新增</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2><span class="num">03</span> 四个功能</h2>
+    <p class="lead">每个功能都建立在现有范式之上，不引入新的数据通路。</p>
+    <div class="features">
+
+      <div class="feat">
+        <div class="icon">📍</div>
+        <div class="fid">功能 1</div>
+        <h3>状态栏显示</h3>
+        <p>macOS Menu Bar 常驻，关窗不退出，托盘提供唯一退出入口。</p>
+        <ul class="pts">
+          <li>启用 <b>tray-icon feature</b> + 模板图标（随深浅色自适应）</li>
+          <li>菜单：显示管理台 / 立即巡检 / 开关后台 / 间隔选择 / 退出</li>
+          <li>三态图标：<b>空闲🟢 / 巡检中🔄 / 发现变更🔴</b></li>
+          <li><b>点击弹框</b>：单击 tray → 概览浮窗（客户端数/技能数/MCP/Hook/变更状态/上次巡检）</li>
+          <li>浮窗底部：「打开管理台」「立即巡检」；失焦自动关闭</li>
+          <li>保留现有"关窗隐藏" + Dock Reopen</li>
+        </ul>
+      </div>
+
+      <div class="feat">
+        <div class="icon">🔄</div>
+        <div class="fid">功能 2</div>
+        <h3>后台检测</h3>
+        <p>长期后台定时巡检，只读不修复，让用户决定。</p>
+        <ul class="pts">
+          <li>Rust 侧 <b>tokio::time::interval</b> 定时循环</li>
+          <li>新增 <code>--snapshot</code> 轻量出口（不探活，~1.4s/次）</li>
+          <li><b>设置面板可配</b>：开关 + 间隔（5/15/30/60）+ 通知开关，持久化到 <code>config.yaml</code> 的 <code>daemon</code> 段</li>
+          <li>tray 菜单与设置面板<b>双向同步</b>，任一处改都即时生效</li>
+          <li>每次 spawn CLI 子进程，结束即退，不常驻 Python</li>
+          <li>只写 <code>data/last_snapshot.yaml</code>，绝不改客户端配置</li>
+        </ul>
+      </div>
+
+      <div class="feat">
+        <div class="icon">🔔</div>
+        <div class="fid">功能 3</div>
+        <h3>变更通知</h3>
+        <p>检测到变更推送系统通知，点击查看详情，用户选修复或保持。</p>
+        <ul class="pts">
+          <li><b>tauri-plugin-notification</b> 推送系统通知</li>
+          <li>点击通知 → 唤起窗口 + 跳变更详情面板</li>
+          <li><b>四维度检测</b>：IDE/Agent · MCP · Skill · Hook</li>
+          <li>同变更只通知一次；"保持"后不再骚扰</li>
+          <li>每条变更两个按钮：<b>修复</b> / <b>保持</b></li>
+        </ul>
+      </div>
+
+      <div class="feat">
+        <div class="icon">🪝</div>
+        <div class="fid">功能 4</div>
+        <h3>Hook 管理</h3>
+        <p>参照 MCP/skill 范式，把 Hook 从附属字段提升为独立管理域。</p>
+        <ul class="pts">
+          <li>config.yaml 新增 <code>hooks</code> 段（events + clients + template）</li>
+          <li>新增 <code>hooks_inventory</code> / <code>hooks_fixer</code> 模块</li>
+          <li>新增 <code>--list-hooks</code> / <code>--fix-hooks</code> / <code>--remove-hooks</code></li>
+          <li>management_snapshot 透传 hooks 字段</li>
+          <li>GUI 新增 Hook 面板（客户端×事件矩阵）</li>
+        </ul>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2><span class="num">04</span> 变更检测维度（核心扩展）</h2>
+    <p class="lead">当前 change_tracker 只比 skills 工具增减——必须扩展为四维度。新增 <code>core/snapshot_diff.py</code>。</p>
+    <table>
+      <thead><tr><th>维度</th><th>检测什么</th><th>来源字段</th></tr></thead>
+      <tbody>
+        <tr><td><b>IDE/Agent</b></td><td>安装状态翻转、新增/消失客户端</td><td><code>agents[].installed</code> · <code>agents[].name</code></td></tr>
+        <tr><td><b>MCP</b></td><td>端点挂载变化、inventory 增减、drift 漂移</td><td><code>mcp.clients[].inventory</code> · <code>observed_attach</code></td></tr>
+        <tr><td><b>Skill</b></td><td>链接形式变化、启用数量变化、新增/删除</td><td><code>skills.skills[]</code> · <code>clients_states[]</code></td></tr>
+        <tr><td><b>Hook</b></td><td>hooks_configured 翻转、hook_events 变化</td><td><code>agents[].hooks_configured</code> · <code>hook_events</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2><span class="num">05</span> 实现路径</h2>
+    <p class="lead">分 5 阶段，每阶段独立可交付。A/B 可并行，D 依赖 B，E 依赖 B+D。</p>
+    <div class="tl">
+      <div class="step">
+        <div class="stitle">A · Hook 管理 <span class="badge rebuild">需重建 APP</span></div>
+        <div class="sdesc">config.yaml hooks 段 + hooks_inventory/hooks_fixer + --list-hooks/--fix-hooks + management_snapshot 透传 + GUI Hook 面板 + 配置编辑入口</div>
+      </div>
+      <div class="step">
+        <div class="stitle">B · 变更检测扩展 <span class="badge">引擎即时生效</span></div>
+        <div class="sdesc">core/snapshot_diff.py + --snapshot 出口 + data/last_snapshot.yaml 持久化 + 四维度 diff</div>
+      </div>
+      <div class="step">
+        <div class="stitle">C · 托盘常驻 <span class="badge rebuild">需重建 APP</span></div>
+        <div class="sdesc">tray-icon feature + tray 菜单 + 图标三态 + 退出入口</div>
+      </div>
+      <div class="step dep">
+        <div class="stitle">D · 后台巡检 <span class="badge rebuild">需重建 APP</span> <span class="badge">依赖 B</span></div>
+        <div class="sdesc">tokio 定时循环 + start_daemon/stop_daemon 命令 + tray 开关</div>
+      </div>
+      <div class="step dep">
+        <div class="stitle">E · 变更通知 <span class="badge rebuild">需重建 APP</span> <span class="badge">依赖 B+D</span></div>
+        <div class="sdesc">tauri-plugin-notification + 通知点击交互 + 变更详情面板 + 忽略清单</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2><span class="num">06</span> 风险与边界</h2>
+    <p class="lead">每条风险都有对应应对，不留裸奔项。</p>
+    <div class="risk">
+      <div class="rcell l">后台巡检开销</div><div class="rcell r">默认 15 分钟、不探活、~1.4s/次；tray 可暂停</div>
+      <div class="rcell l">通知骚扰</div><div class="rcell r">同变更只通知一次；聚合窗口；"保持"后不再通知</div>
+      <div class="rcell l">macOS 通知权限</div><div class="rcell r">首次发通知系统弹权限请求；tray 菜单加"开启通知"引导</div>
+      <div class="rcell l">后台误判</div><div class="rcell r">变更详情展示旧值→新值，用户可"保持"忽略</div>
+      <div class="rcell l">tray 跨平台</div><div class="rcell r">本期只做 macOS；Tauri 2 API 已统一，后续可平滑支持 Win/Linux</div>
+      <div class="rcell l">Hook 写入破坏配置</div><div class="rcell r">复用 MCP 的 backup→atomic-write→validate→rollback；--fix-hooks 支持 --dry-run</div>
+      <div class="rcell l">硬编码重复</div><div class="rcell r">ai_memory_checker 的 AI_MEMORY_HOOKS_PATHS 改为从 config.yaml 读取</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2><span class="num">07</span> 需要你确认的决策点</h2>
+    <p class="lead">确认后我按阶段开始实现。</p>
+    <ol class="dec">
+      <li>
+        <div class="q">巡检默认间隔（已纳入设置面板）</div>
+        <div class="sug">默认 15 分钟合适？还是更短/更长？<b>建议 15 分钟</b></div>
+      </li>
+      <li>
+        <div class="q">Hook 管理面板放哪</div>
+        <div class="sug">独立一个 tab，还是并入 MCP 面板作为子区？<b>建议独立 tab</b>（维度不同）</div>
+      </li>
+      <li>
+        <div class="q">--snapshot 出口</div>
+        <div class="sug">新建轻量出口，还是直接复用 --management？<b>建议新建</b>（后台巡检不需要 skills 全量）</div>
+      </li>
+      <li>
+        <div class="q">通知的"修复"按钮行为</div>
+        <div class="sug">点击后直接执行修复，还是跳详情面板再确认？<b>建议后者</b>（符合现有 confirmModal 二次确认范式）</div>
+      </li>
+      <li>
+        <div class="q">阶段顺序</div>
+        <div class="sug">A→B→C→D→E 可以？还是先做托盘常驻（C）看效果？<b>建议 A→B→C→D→E</b></div>
+      </li>
+      <li>
+        <div class="q">是否要开机自启（tauri-plugin-autostart）</div>
+        <div class="sug">"长期后台"的配套，但会改系统登录项。<b>建议加，但默认关闭</b>，tray 菜单可开</div>
+      </li>
+      <li>
+        <div class="q">概览浮窗形态（新增需求 1）</div>
+        <div class="sug">Tauri 独立小 webview（跨平台、内容灵活），还是 macOS 原生 NSPopover（更轻、仅 macOS）？<b>建议独立小 webview</b>（跨平台可扩展，复用前端渲染）</div>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    Skill MCP Studio · 新功能方案 · 基于 develop @ 4eafb16<br>
+    完整文档见 <a href="方案-托盘常驻与Hook管理.md">docs/方案-托盘常驻与Hook管理.md</a>
+  </div>
+</footer>
+
+</body>
+</html>

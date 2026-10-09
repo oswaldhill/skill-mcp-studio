@@ -253,3 +253,79 @@ tools:
   - ~/.cc-switch/skills
   type: 配置工具
 unified_skills_dir: ~/.skills-manager/skills
+
+# ── Hook 管理域（参照 mcp_tools / tools 范式）──────────────────────────
+# 各 IDE/Agent 的生命周期 hook 配置位置、事件签名与标准注入模板。
+# 此前 ai_memory_checker.AI_MEMORY_HOOKS_PATHS 是硬编码，现提升为声明式
+# 配置：management_snapshot 优先读本段产出 hooks inventory，hooks_fixer
+# 据此写入标准 hook 模板（backup → atomic-write → validate → rollback）。
+# mcp_tools[].hooks_config_path 作为兼容字段保留，本段为权威来源。
+hooks:
+  # 标准事件签名（跨客户端归一；写入时按各客户端 event_format 转大小写）
+  events:
+  - name: SessionStart
+    description: 会话开始
+  - name: UserPromptSubmit
+    description: 用户提交提示
+  - name: SessionEnd
+    description: 会话结束
+  - name: Stop
+    description: 停止
+  # 各客户端的 hook 配置位置与写入规范
+  clients:
+  - name: Claude Code
+    config_path: ~/.claude/settings.json
+    format: json
+    hook_key_path: [hooks]
+    event_format: pascal_case
+    events: [SessionStart, UserPromptSubmit, SessionEnd, Stop]
+    fix_supported: true
+    note: Claude Code 生命周期 hooks（settings.json）
+    # 标准注入模板：事件 → ai-memory hook 命令
+    template:
+      SessionStart: ai-memory hook --event session_start
+      SessionEnd: ai-memory hook --event session_end
+      Stop: ai-memory hook --event stop
+  - name: Cursor
+    config_path: ~/.cursor/hooks.json
+    format: json
+    hook_key_path: [hooks]
+    event_format: camel_case
+    events: [sessionStart, sessionEnd, stop]
+    fix_supported: true
+    note: Cursor 生命周期 hooks（hooks.json；事件名为小写 camelCase）
+    template:
+      sessionStart: ai-memory hook --event session_start
+      sessionEnd: ai-memory hook --event session_end
+      stop: ai-memory hook --event stop
+  - name: WorkBuddy
+    config_path: ~/.workbuddy/settings.json
+    format: json
+    hook_key_path: [hooks]
+    event_format: pascal_case
+    events: [PreToolUse, UserPromptSubmit, PostToolUse, SessionStart, Notification, SubagentStop, PreCompact, SubagentStart, SessionEnd, Stop]
+    fix_supported: true
+    note: WorkBuddy 生命周期 hooks（settings.json；Claude 派生架构）
+    template:
+      SessionStart: ai-memory hook --event session_start
+      SessionEnd: ai-memory hook --event session_end
+      Stop: ai-memory hook --event stop
+  - name: Codex
+    config_path: ~/.codex/hooks.json
+    format: json
+    hook_key_path: [hooks]
+    event_format: pascal_case
+    events: [SessionStart, UserPromptSubmit, Stop]
+    fix_supported: true
+    note: Codex 生命周期 hooks（hooks.json；无 true SessionEnd）
+    template:
+      SessionStart: ai-memory hook --event session_start
+      Stop: ai-memory hook --event stop
+  - name: OpenCode
+    config_path: ~/.config/opencode/plugins/ai-memory.ts
+    format: plugin
+    hook_key_path: []
+    events: []
+    fix_supported: false
+    plugin: true
+    note: OpenCode 用 TS 插件（plugins/ai-memory.ts）而非 JSON hooks，不支持模板注入

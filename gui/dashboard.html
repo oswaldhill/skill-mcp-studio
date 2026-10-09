@@ -1480,6 +1480,10 @@
         <svg class="nv-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M19.1 4.9l-2.8 2.8M7.7 16.3l-2.8 2.8"/></svg>
         MCP<span class="count" id="count-mcp">0</span>
       </button>
+      <button class="nav-item" data-page="hooks" id="nav-hooks">
+        <svg class="nv-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a4 4 0 0 1 4 4v6a4 4 0 1 1-8 0V6a4 4 0 0 1 4-4Z"/><path d="M6 14h12"/></svg>
+        Hook<span class="count" id="count-hooks">0</span>
+      </button>
       <button class="nav-group-label push" type="button" data-group="system" aria-expanded="true"><span>系统</span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
       <button class="nav-item" data-page="settings" id="nav-settings">
         <svg class="nv-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M19.8 4.2l-2.1 2.1M6.3 17.7l-2.1 2.1"/></svg>
@@ -1620,6 +1624,18 @@
         <div class="hd"><h2>MCP</h2><div class="hint">每客户端挂载与 MCP 清单；「自动」= 未显式声明 mcp_attach，按端点库全集期望；端点库请在「设置」中管理</div></div>
       </div>
       <div id="mcp-clients"></div>
+    </section>
+
+    <!-- ===== Hook（生命周期 hook 配置状态与修复） ===== -->
+    <section id="page-hooks" class="hidden">
+      <div class="page-head">
+        <div class="hd"><h2>Hook</h2><div class="hint">生命周期 hook 配置状态与修复；ai-memory 自动交接依赖 hooks（SessionStart / SessionEnd / Stop 等）</div></div>
+        <div class="page-actions">
+          <button class="btn-soft" data-action="fix-hooks-all">一键写入 Hook</button>
+          <button class="btn-soft" data-action="refresh">刷新</button>
+        </div>
+      </div>
+      <div id="hooks-clients"></div>
     </section>
 
     <!-- ===== 设置（通用：目录 / 端点库 / 自动发现 / 关于） ===== -->
@@ -3625,6 +3641,60 @@ const USAGE_AUTO_KEY = "skill-mcp-usage-auto-min";
 const USAGE_AUTO_DEFAULT = 15;          // 分钟；0 = 关闭自动统计
 const USAGE_AUTO_OPTS = [0, 5, 15, 30, 60];
 
+// ---------------- Hook 管理（生命周期 hook 配置状态与修复） ----------------
+function _hooksEntries() {
+  const mainstream = (SNAP && SNAP.mainstream_tools) || [];
+  const agentList = _agentsForPanel();
+  const seen = new Set();
+  const out = [];
+  for (const a of mainstream.concat(agentList)) {
+    const hcp = a.hooks_config_path;
+    if (!hcp) continue;
+    const key = a.name + "|" + hcp;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(a);
+  }
+  return out;
+}
+
+function renderHooks() {
+  const entries = _hooksEntries();
+  $("count-hooks").textContent = entries.length;
+  const el = $("hooks-clients");
+  if (!el) return;
+  if (!entries.length) { el.innerHTML = '<div class="empty">无 Hook 配置数据</div>'; return; }
+  const rows = entries.map((a) => {
+    const configured = a.hooks_configured;
+    const fixSupported = a.hooks_fix_supported;
+    const events = (a.hook_events || []).join(", ") || "无";
+    const invCount = (a.hooks_inventory || []).length;
+    const missing = a.missing_key_events || [];
+    const icon = configured ? "🟢" : (fixSupported ? "⚠️" : "⚪");
+    const statusText = configured ? "已接入" : (fixSupported ? "未接入" : "不支持");
+    const actions = [];
+    if (fixSupported) {
+      if (!configured) {
+        actions.push(`<button class="btn-soft btn-sm" data-action="fix-hooks" data-name="${escapeHtml(a.name)}">写入 Hook</button>`);
+      } else {
+        actions.push(`<button class="btn-soft btn-sm" data-action="remove-hooks" data-name="${escapeHtml(a.name)}">移除 Hook</button>`);
+      }
+    }
+    return `<tr>
+      <td>${icon} ${escapeHtml(a.name)}</td>
+      <td class="mono">${escapeHtml(a.hooks_config_path)}</td>
+      <td>${statusText}</td>
+      <td>${escapeHtml(events)}</td>
+      <td>${invCount}</td>
+      <td>${missing.length ? escapeHtml(missing.join(", ")) : "无"}</td>
+      <td style="white-space:nowrap">${actions.join(" ")}</td>
+    </tr>`;
+  }).join("");
+  el.innerHTML = `<div class="table-scroll"><table class="mcp-table"><thead><tr>
+    <th>客户端</th><th>配置路径</th><th>状态</th><th>已接入事件</th><th>条目数</th><th>缺关键事件</th><th style="width:120px">操作</th>
+  </tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
 function renderSettings() {
   const el = $("settings-body");
   if (!el) return;
@@ -3732,6 +3802,7 @@ function renderAll() {
   renderAgents();
   renderSkills();
   renderMcp();
+  renderHooks();
   renderSettings();
   const app = (SNAP && SNAP.app) || {};
   const fv = $("foot-version");
@@ -3741,7 +3812,7 @@ function renderAll() {
 // ---------------- page switching ----------------
 const PAGES = {
   overview: "page-overview", agents: "page-agents", skills: "page-skills",
-  mcp: "page-mcp", settings: "page-settings",
+  mcp: "page-mcp", hooks: "page-hooks", settings: "page-settings",
 };
 let ACTIVE_PAGE = "overview";
 function switchPage(page) {
@@ -6146,6 +6217,9 @@ document.addEventListener("click", (e) => {
     else if (a === "fix-mcp") fixMcpFor(act.dataset.name);
     else if (a === "cleanup-config") cleanupConfigFor(act.dataset.name);
     else if (a === "clean-legacy") cleanLegacyMcp(act.dataset.name);
+    else if (a === "fix-hooks") fixHooksFor(act.dataset.name);
+    else if (a === "remove-hooks") removeHooksFor(act.dataset.name);
+    else if (a === "fix-hooks-all") fixHooksAll();
     else if (a === "show-mcp-class") showMcpClass(act.dataset.name, act.dataset.class);
     else if (a === "remove-mcp-entry") removeMcpEntry(act.dataset.name, act.dataset.key, act.dataset.high === "1", act.dataset.reason);
     else if (a === "remove-mcp-class") removeMcpClassEntries(act.dataset.name, act.dataset.class);
@@ -6384,6 +6458,40 @@ function mcpResultToTask(res, okMessage) {
     default: // 未知状态（CLI 新增 status 时兜底）
       return { ok: false, message: "操作未完成（" + payload.status + "）", detail: payload.message || cliErrDetail(res) };
   }
+}
+
+// ---------------- Hook 管理：写入 / 移除 / 批量 ----------------
+async function fixHooksFor(name) {
+  const ok = await confirmModal("写入 Hook", `将对 ${name} 写入标准 ai-memory 生命周期 hook 模板（SessionStart / SessionEnd / Stop 等）。\n原配置会先备份。继续？`, false);
+  if (!ok) return;
+  await runTaskModal(`写入 ${name} 的 Hook`, async () => {
+    const res = await runCli(["--fix-hooks", "--client", name]);
+    if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
+    if (res.code === 0) return { ok: true, message: `${name} 的 Hook 已写入` };
+    return { ok: false, message: "Hook 写入失败", detail: cliFailLines(res) || cliErrDetail(res) };
+  }, () => refreshBlocks(["agents", "mainstream"]), ["读取 Hook 配置", "写入标准模板", "校验回写", "刷新状态"]);
+}
+
+async function removeHooksFor(name) {
+  const ok = await confirmModal("移除 Hook", `将移除 ${name} 的 ai-memory 生命周期 hook（保留非 ai-memory hooks）。\n原配置会先备份。继续？`, true);
+  if (!ok) return;
+  await runTaskModal(`移除 ${name} 的 Hook`, async () => {
+    const res = await runCli(["--remove-hooks", "--client", name]);
+    if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
+    if (res.code === 0) return { ok: true, message: `${name} 的 Hook 已移除` };
+    return { ok: false, message: "Hook 移除失败", detail: cliFailLines(res) || cliErrDetail(res) };
+  }, () => refreshBlocks(["agents", "mainstream"]), ["备份原配置", "移除 ai-memory hook", "校验回写", "刷新状态"]);
+}
+
+async function fixHooksAll() {
+  const ok = await confirmModal("一键写入 Hook", "将对所有支持模板注入的客户端写入标准 ai-memory 生命周期 hook 模板。\n原配置会先备份。继续？", false);
+  if (!ok) return;
+  await runTaskModal("一键写入 Hook", async () => {
+    const res = await runCli(["--fix-hooks"]);
+    if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
+    if (res.code === 0) return { ok: true, message: "Hook 批量写入完成" };
+    return { ok: false, message: "Hook 批量写入失败", detail: cliFailLines(res) || cliErrDetail(res) };
+  }, () => refreshBlocks(["agents", "mainstream"]), ["读取全部 Hook 配置", "批量写入标准模板", "校验回写", "刷新状态"]);
 }
 
 async function removeMcpEntry(name, key, high, reason) {

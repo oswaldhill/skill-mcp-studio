@@ -35,6 +35,7 @@ from tool_registry import (
     read_cli_versions,
 )
 from tool_registry import effective_tools as _tool_registry_effective_tools
+from hooks_inventory import inventory_for_tool
 
 
 def _drift_payload(config_path: str, missing: List[str]) -> Dict[str, Any]:
@@ -163,6 +164,7 @@ def _agent_entry(tool: Dict[str, Any], config: Dict[str, Any], scan_result: Dict
     # counts as explicit too) is the authoritative signal; absence = default-all.
     resolved_attach = resolve_client_attach(tool, config)
     has_explicit = bool(tool.get("mcp_attach"))
+    hooks_inv = inventory_for_tool(tool, config)
     return {
         "name": tool.get("name", "Unknown"),
         "type": tool_type,
@@ -177,6 +179,13 @@ def _agent_entry(tool: Dict[str, Any], config: Dict[str, Any], scan_result: Dict
         "config_paths": install["config_paths"],
         # 客户端 MCP 配置文件路径（与 install 证据的 config_paths 区分）
         "mcp_config_path": tool.get("config_path", ""),
+        # Hook 管理域（参照 mcp 系列字段命名）：inventory_for_tool 从
+        # config["hooks"]["clients"] 读取，产出 hooks 状态与清单。
+        "hooks_config_path": hooks_inv["hooks_config_path"],
+        "hooks_configured": hooks_inv["hooks_configured"],
+        "hook_events": hooks_inv["hook_events"],
+        "hooks_fix_supported": hooks_inv["hooks_fix_supported"],
+        "hooks_inventory": hooks_inv["hooks_inventory"],
         "aliases": tool.get("aliases", []) or [],
         "mcp_attach": resolved_attach,
         "has_explicit_attach": has_explicit,
@@ -505,6 +514,7 @@ def build_management_snapshot(
         for mt in mainstream_list:
             inst = detect_installation(mt)
             norm = "".join(c for c in mt["name"].lower() if c.isalnum())
+            hooks_inv = inventory_for_tool(mt, config)
             mainstream_tools.append({
                 "name": mt["name"],
                 "type": mt.get("type", ""),
@@ -520,6 +530,12 @@ def build_management_snapshot(
                 "registered": norm in registered_names,
                 "installed": bool(inst["installed"]),
                 "install_state": inst["install_state"],
+                # Hook 管理域（与 agents 块对齐）
+                "hooks_config_path": hooks_inv["hooks_config_path"],
+                "hooks_configured": hooks_inv["hooks_configured"],
+                "hook_events": hooks_inv["hook_events"],
+                "hooks_fix_supported": hooks_inv["hooks_fix_supported"],
+                "hooks_inventory": hooks_inv["hooks_inventory"],
             })
     except Exception:
         mainstream_tools = []

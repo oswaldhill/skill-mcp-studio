@@ -318,6 +318,10 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
         "--migrate-skill-links",
         "--mcp",
         "--remove-legacy-mcp",
+        // Hook 管理域（A 阶段）：生命周期 hook 的列出 / 写入 / 移除。
+        "--list-hooks",
+        "--fix-hooks",
+        "--remove-hooks",
         "--cleanup-config",
         // 阶段五增量：MCP 条目删除 / 批量清理 / 配置备份列出与还原。
         "--remove-mcp-entry",

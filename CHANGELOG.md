@@ -7,6 +7,33 @@
 
 ## [Unreleased]
 
+### 新增
+
+- **Hook 管理：生命周期 hook 配置的审计、写入与移除**（`config.yaml`、`core/hooks_inventory.py`、
+  `core/hooks_fixer.py`、`core/management_snapshot.py`、`scan.py`、`src-tauri/src/lib.rs`、
+  `gui/dashboard.html`）。此前 ai-memory 的生命周期 hook（SessionStart / SessionEnd / Stop 等）
+  配置散落在 `ai_memory_checker.AI_MEMORY_HOOKS_PATHS` 的硬编码字典里，且只读不写——
+  「写入标准 hook 模板」从未实现。现按 MCP / Skill 的配置驱动管理范式重构：
+  - **配置层**：`config.yaml` 新增 `hooks:` 顶层段（`events[]` + `clients[]` + `template`），
+    5 个客户端（Claude Code / Cursor / WorkBuddy / Codex / OpenCode）各声明 `config_path` /
+    `format` / `hook_key_path` / `events` / `fix_supported` / `template`；`mcp_tools[].hooks_config_path`
+    保留为兼容回落。
+  - **审计层**：`hooks_inventory.inventory_for_tool` 从 `config["hooks"]["clients"]` 按名匹配，
+    读取各客户端 hook 配置（JSON / TOML / 插件文件），产出 `{hooks_config_path, hooks_configured,
+    hook_events, hooks_fix_supported, hooks_inventory, missing_key_events}`；`management_snapshot`
+    的 `_agent_entry` 与 `mainstream_tools` 块均透传这些字段。
+  - **写入层**：`hooks_fixer.fix_hooks_tool` 按 `template` 渲染标准 ai-memory hook 条目
+    （`{matcher:"*", hooks:[{type:"command", command:...}]}`），走 backup → atomic_write →
+    re-parse validate → rollback 安全链；`remove_hooks_tool` 移除 ai-memory hook 但保留
+    非 ai-memory hooks。
+  - **CLI**：新增 `--list-hooks` / `--fix-hooks` / `--remove-hooks`（支持 `--client` 过滤、
+    `--dry-run` 预演、`--format json`）；`lib.rs` 的 `run_cli` ALLOWED 白名单已登记。
+  - **GUI**：新增「Hook」独立 tab（导航栏 + `page-hooks` section），`renderHooks` 从
+    `SNAP.mainstream_tools` + `_agentsForPanel()` 提取有 `hooks_config_path` 的条目，
+    展示状态 / 已接入事件 / 条目数 / 缺关键事件，行内按钮触发 `fixHooksFor` /
+    `removeHooksFor`（confirmModal + runTaskModal + runCli 三段式），顶部「一键写入 Hook」
+    批量执行 `--fix-hooks`。
+
 ### 修复
 
 - **桌面端：操作收尾不再触发整份重扫**（`gui/dashboard.html`）。`runTaskModal` 有 9 个
