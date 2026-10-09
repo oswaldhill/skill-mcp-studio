@@ -29,7 +29,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use tauri::{Manager, RunEvent, WindowEvent};
-use tauri::menu::{Menu, MenuItem};
+use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 
 /// 置位后表示应用正在退出（Cmd+Q / ExitRequested），此时放行窗口关闭；
@@ -288,6 +288,36 @@ async fn run_audit() -> Result<String, String> {
 /// reach arbitrary CLI surface (e.g. ``--config <arbitrary>`` to redirect the
 /// engine to a hostile YAML).  ``--config`` itself is rejected outright
 /// (redirection class).  Returned ``stderr`` is truncated to bound size.
+/// 读取后台巡检当前是否启用（CLI 为唯一事实来源）。
+///
+/// 托盘菜单的勾选态与后台线程的判定都走这里，避免两处各解析一份字符串。
+fn patrol_enabled_now() -> bool {
+    let args = vec!["--get-setting".to_string(), "patrol_enabled".to_string()];
+    match spawn(&args) {
+        Ok((_, stdout, _)) => {
+            stdout.contains("patrol_enabled = True") || stdout.contains("patrol_enabled = true")
+        }
+        Err(_) => false,
+    }
+}
+
+/// 菜单栏模板图标：单色（黑+alpha），由 macOS 依据菜单栏明暗与高亮状态自动着色。
+///
+/// 为什么要模板图标而不是应用图标：应用图标是**全不透明的深色方块**
+/// （32×32 四角均为 #0D1121），放进菜单栏就是一个深色块，在深色菜单栏上
+/// 几乎糊成一团。模板图标只带形状，系统负责取色，明暗两种菜单栏都清晰。
+///
+/// 取 @2x（32px）让 Retina 屏有足量像素；源图缺失时回退到应用图标，
+/// 保证不会因为资源问题导致托盘起不来。
+fn tray_icon() -> tauri::image::Image<'static> {
+    const TEMPLATE_2X: &[u8] = include_bytes!("../icons/trayTemplate@2x.png");
+    match tauri::image::Image::from_bytes(TEMPLATE_2X) {
+        Ok(img) => img,
+        Err(_) => tauri::image::Image::from_bytes(include_bytes!("../icons/32x32.png"))
+            .expect("托盘图标资源缺失"),
+    }
+}
+
 /// 显示主窗口（popover 的「打开完整面板」按钮调用）
 #[tauri::command]
 fn show_main_window(app: tauri::AppHandle) -> Result<(), String> {
@@ -567,19 +597,44 @@ pub fn run() {
             }
 
             // ---- 托盘常驻（Phase C）----
-            // 左键点击弹出 popover 简易弹框；右键弹出菜单（显示主窗口 / 退出）。
+            // 左键点击弹出 popover 简易弹框；右键弹出菜单。
             // 关闭窗口只隐藏不退出（见 on_window_event），退出走菜单或 Cmd+Q。
+            //
+            // 菜单结构：主操作 → 分隔 → 巡检开关（可勾选，勾选态即真实状态）
+            // → 分隔 → 检查变更 → 分隔 → 退出。
+            // 「后台巡检」用 CheckMenuItem 而不是普通项：菜单一打开就能看出
+            // 当前是开是关，不必点一下才知道（原来的「切换后台巡检」是动作式，
+            // 无法显示状态）。勾选态在每次弹出前按 CLI 实际值同步。
+            let patrol_item = CheckMenuItem::with_id(
+                app,
+                "toggle-patrol",
+                "后台巡检",
+                true,
+                patrol_enabled_now(),
+                None::<&str>,
+            )?;
             let menu = Menu::with_items(app, &[
-                &MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?,
-                &MenuItem::with_id(app, "toggle-patrol", "切换后台巡检", true, None::<&str>)?,
+                &MenuItem::with_id(app, "show", "打开主面板", true, None::<&str>)?,
+                &PredefinedMenuItem::separator(app)?,
+                &patrol_item,
+                &MenuItem::with_id(app, "snapshot", "检查变更", true, None::<&str>)?,
+                &PredefinedMenuItem::separator(app)?,
                 &MenuItem::with_id(app, "quit", "退出 Skill MCP Studio", true, None::<&str>)?,
             ])?;
+
+            // 勾选态需在三处同步：菜单点击后、托盘弹出前、后台线程每轮。
+            // CheckMenuItem 内部是 Arc，克隆只是共享同一实例。
+            let patrol_for_menu = patrol_item.clone();
+            let patrol_for_tray = patrol_item.clone();
+            let patrol_for_thread = patrol_item.clone();
+
             let _tray = TrayIconBuilder::with_id("main")
-                .icon(app.default_window_icon().unwrap().clone())
+                .icon(tray_icon())
+                .icon_as_template(true)
                 .tooltip("Skill MCP Studio")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
-                .on_menu_event(|app, event| {
+                .on_menu_event(move |app, event| {
                     match event.id.as_ref() {
                         "show" => {
                             if let Some(window) = app.get_webview_window("main") {
@@ -588,21 +643,30 @@ pub fn run() {
                             }
                         }
                         "toggle-patrol" => {
-                            // 读取当前 patrol_enabled，取反后写回
-                            let get_args = vec!["--get-setting".to_string(), "patrol_enabled".to_string()];
-                            let current = match spawn(&get_args) {
-                                Ok((_, stdout, _)) => {
-                                    stdout.contains("patrol_enabled = True")
-                                        || stdout.contains("patrol_enabled = true")
-                                }
-                                Err(_) => false,
-                            };
-                            let new_val = if current { "false" } else { "true" };
+                            let new_val = if patrol_enabled_now() { "false" } else { "true" };
                             let set_args = vec![
                                 "--set-setting".to_string(),
                                 format!("patrol_enabled={}", new_val),
                             ];
                             let _ = spawn(&set_args);
+                            // 回读，勾选态以 CLI 实际落盘结果为准
+                            let _ = patrol_for_menu.set_checked(patrol_enabled_now());
+                        }
+                        "snapshot" => {
+                            // 与弹框同一动作：跑一次快照对比并让弹框显示结果
+                            let snap_args = vec![
+                                "--snapshot".to_string(),
+                                "--format".to_string(),
+                                "json".to_string(),
+                            ];
+                            let _ = spawn(&snap_args);
+                            if let Some(popover) = app.get_webview_window("popover") {
+                                position_popover(&popover);
+                                let _ = popover.show();
+                                let _ = popover.set_focus();
+                                let _ = popover
+                                    .eval("window.__reloadPopover && window.__reloadPopover()");
+                            }
                         }
                         "quit" => {
                             app.exit(0);
@@ -610,26 +674,38 @@ pub fn run() {
                         _ => {}
                     }
                 })
-                .on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::Click {
-                        button: MouseButton::Left,
-                        button_state: MouseButtonState::Up,
-                        ..
-                    } = event
-                    {
-                        let app = tray.app_handle();
+                .on_tray_icon_event(move |tray, event| {
+                    let app = tray.app_handle();
+                    match event {
+                        // 右键弹出菜单前同步勾选态，避免显示过期状态
+                        TrayIconEvent::Click {
+                            button: MouseButton::Right,
+                            button_state: MouseButtonState::Up,
+                            ..
+                        } => {
+                            let _ = patrol_for_tray.set_checked(patrol_enabled_now());
+                        }
                         // 左键点击托盘 → 显示 popover 简易弹框（不是主窗口）
-                        if let Some(popover) = app.get_webview_window("popover") {
-                            if popover.is_visible().unwrap_or(false) {
-                                let _ = popover.hide();
-                            } else {
-                                // 贴合托盘：摆到屏幕右上角菜单栏下方，再刷新数据
-                                position_popover(&popover);
-                                let _ = popover.show();
-                                let _ = popover.set_focus();
-                                let _ = popover.eval("window.__reloadPopover && window.__reloadPopover()");
+                        TrayIconEvent::Click {
+                            button: MouseButton::Left,
+                            button_state: MouseButtonState::Up,
+                            ..
+                        } => {
+                            if let Some(popover) = app.get_webview_window("popover") {
+                                if popover.is_visible().unwrap_or(false) {
+                                    let _ = popover.hide();
+                                } else {
+                                    // 贴合托盘：摆到屏幕右上角菜单栏下方，再刷新数据
+                                    position_popover(&popover);
+                                    let _ = popover.show();
+                                    let _ = popover.set_focus();
+                                    let _ = popover.eval(
+                                        "window.__reloadPopover && window.__reloadPopover()",
+                                    );
+                                }
                             }
                         }
+                        _ => {}
                     }
                 })
                 .build(app)?;
@@ -637,19 +713,15 @@ pub fn run() {
             // ---- 后台巡检（Phase D）----
             // 独立线程每隔 60 秒检查一次：读取 patrol_enabled，若启用则运行 --snapshot，
             // 检测到变更时更新托盘 tooltip 提示用户。
+            // 同时把菜单勾选态同步为 CLI 实际值——这样即使用户在命令行改过
+            // patrol_enabled，菜单最多 60 秒后也会显示正确状态。
             let patrol_handle = app.handle().clone();
             std::thread::spawn(move || {
                 loop {
                     std::thread::sleep(std::time::Duration::from_secs(60));
                     // 1. 检查 patrol_enabled
-                    let get_args = vec!["--get-setting".to_string(), "patrol_enabled".to_string()];
-                    let enabled = match spawn(&get_args) {
-                        Ok((_, stdout, _)) => {
-                            stdout.contains("patrol_enabled = True")
-                                || stdout.contains("patrol_enabled = true")
-                        }
-                        Err(_) => false,
-                    };
+                    let enabled = patrol_enabled_now();
+                    let _ = patrol_for_thread.set_checked(enabled);
                     if !enabled {
                         continue;
                     }
