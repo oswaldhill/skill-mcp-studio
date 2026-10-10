@@ -439,7 +439,7 @@ fn show_main_window(app: tauri::AppHandle, page: Option<String>) -> Result<(), S
 ///
 /// macOS 菜单栏高约 25-30pt，右侧留给弹框一个 8pt 边距；
 /// 取不到显示器信息时保持原位，不影响功能。
-fn position_popover(window: &tauri::WebviewWindow) {
+fn position_popover(window: &tauri::WebviewWindow, anchor: Option<&tauri::Rect>) {
     let monitor = window
         .current_monitor()
         .ok()
@@ -452,8 +452,30 @@ fn position_popover(window: &tauri::WebviewWindow) {
         .outer_size()
         .map(|s| s.to_logical::<f64>(scale))
         .unwrap_or_else(|_| tauri::LogicalSize::new(300.0, 300.0));
-    let x = (screen.width - win.width - 8.0).max(0.0);
-    let y = 30.0;
+
+    // 菜单栏高度：macOS 约 25pt，其余平台给一个小边距。
+    let bar_h = if cfg!(target_os = "macos") { 25.0 } else { 8.0 };
+    // 弹框与图标水平居中对齐；没有锚点时退回右上角（无图标信息可用）。
+    let x = match anchor {
+        Some(rect) => {
+            let pos = rect.position.to_logical::<f64>(scale);
+            let size = rect.size.to_logical::<f64>(scale);
+            pos.x + size.width / 2.0 - win.width / 2.0
+        }
+        None => screen.width - win.width - 8.0,
+    };
+    // 贴住屏幕边缘时收拢，避免弹框被裁掉（含 8pt 边距）。
+    let max_x = (screen.width - win.width - 8.0).max(0.0);
+    let x = x.min(max_x).max(8.0);
+    // y 取图标底边与菜单栏底边的较大者：图标 rect 在菜单栏内时即贴栏下方。
+    let y = match anchor {
+        Some(rect) => {
+            let pos = rect.position.to_logical::<f64>(scale);
+            let size = rect.size.to_logical::<f64>(scale);
+            (pos.y + size.height).max(bar_h)
+        }
+        None => bar_h,
+    };
     let _ = window.set_position(tauri::LogicalPosition::new(x, y));
 }
 
@@ -708,7 +730,7 @@ pub fn run() {
 
             if popover_dev_visible {
                 if let Some(popover) = app.get_webview_window("popover") {
-                    position_popover(&popover);
+                    position_popover(&popover, None);
                 }
             }
 
@@ -779,7 +801,8 @@ pub fn run() {
                             ];
                             let _ = spawn(&snap_args);
                             if let Some(popover) = app.get_webview_window("popover") {
-                                position_popover(&popover);
+                                // 菜单触发时没有图标坐标，退回右上角
+                                position_popover(&popover, None);
                                 let _ = popover.show();
                                 let _ = popover.set_focus();
                                 let _ = popover
@@ -807,14 +830,18 @@ pub fn run() {
                         TrayIconEvent::Click {
                             button: MouseButton::Left,
                             button_state: MouseButtonState::Up,
+                            rect,
                             ..
                         } => {
                             if let Some(popover) = app.get_webview_window("popover") {
                                 if popover.is_visible().unwrap_or(false) {
                                     let _ = popover.hide();
                                 } else {
-                                    // 贴合托盘：摆到屏幕右上角菜单栏下方，再刷新数据
-                                    position_popover(&popover);
+                                    // 贴合托盘：用事件里的图标矩形做锚点，
+                                    // 水平居中于图标、垂直贴菜单栏下方。
+                                    // 此前写死「屏幕右上角」，在图标不靠右时
+                                    // 会明显偏离（实测偏到 x=1612 而图标在 719）。
+                                    position_popover(&popover, Some(&rect));
                                     let _ = popover.show();
                                     let _ = popover.set_focus();
                                     let _ = popover.eval(
