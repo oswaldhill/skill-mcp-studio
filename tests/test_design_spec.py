@@ -171,5 +171,74 @@ class ContrastTokenTest(unittest.TestCase):
         self.assertIn("--on-solid:", c)
 
 
+SPEC_HTML = ROOT / "docs" / "DESIGN.html"
+
+
+class HtmlMirrorTest(unittest.TestCase):
+    """规范的 HTML 可读版必须与 Markdown 正文保持同步。
+
+    为什么要这条：`docs/DESIGN.html` 是给人读的规范，`docs/DESIGN.md` 是
+    唯一设计依据。两份一旦分叉，读 HTML 的人会照着过期规则写代码。此前
+    没有任何测试检查 HTML，属于典型的「会静默失效」的缺口。
+
+    判据刻意取**粗粒度**（章节标题与关键 token 名），理由是：
+    HTML 是重新排版的呈现层，逐字比对 Markdown 会因排版差异产生海量误报，
+    最终被绕过。这里只保证「MD 里的每个小节在 HTML 里都能找到」。
+    """
+
+    def test_html_mirror_exists(self):
+        self.assertTrue(SPEC_HTML.is_file(), "缺少 docs/DESIGN.html（规范的 HTML 可读版）")
+
+    def test_every_md_section_appears_in_html(self):
+        md = SPEC.read_text(encoding="utf-8")
+        html = SPEC_HTML.read_text(encoding="utf-8")
+        heads = [h.strip() for h in re.findall(r"^#{2,3}\s+(.+)$", md, re.M)]
+        self.assertTrue(heads, "DESIGN.md 里没有解析到任何小节标题")
+        missing = []
+        for h in heads:
+            # 去掉 markdown 记号与编号前缀后取核心词
+            core = re.sub(r"[`*]", "", h)
+            core = core.split("（")[0].strip()
+            core = re.sub(r"^[0-9a-z.]+\s*", "", core).strip()
+            if core and core not in html:
+                missing.append(h)
+        self.assertEqual(
+            missing,
+            [],
+            "以下小节只存在于 DESIGN.md，HTML 可读版未同步：%r" % (missing,),
+        )
+
+    def test_html_declares_both_themes(self):
+        """规范要求「深浅两套 token 同步维护」，可读版自己也必须做到。
+
+        判据必须是**真正的 CSS 规则块**，而不是「页面里出现过 html.dark
+        这个字符串」：实测该串在样式注释里也有一处，只查子串会让断言在
+        删掉整个深色块后依然通过（反向验证当场抓到）。
+        这里改为要求规则块存在、且块内确实重新定义了深色取值。
+        """
+        html = SPEC_HTML.read_text(encoding="utf-8")
+        blocks = re.findall(r"html\.dark\s*\{(.*?)\}", html, re.S)
+        self.assertTrue(blocks, "HTML 可读版缺少 html.dark 规则块（深色主题）")
+        dark = blocks[0]
+        # 深色块必须真的覆盖表面与文字色，而不是空壳
+        for token in ("--bg:", "--panel:", "--text:", "--accent:"):
+            with self.subTest(token=token):
+                self.assertIn(
+                    token, dark,
+                    f"html.dark 块内未重定义 {token}，深色主题不完整",
+                )
+
+    def test_html_uses_project_tokens_not_literal_colors(self):
+        """可读版必须用项目 token，否则它自己就成了反例。"""
+        html = SPEC_HTML.read_text(encoding="utf-8")
+        for token in ("--accent", "--line", "--text", "--r-control", "--r-card"):
+            with self.subTest(token=token):
+                self.assertIn(token, html, f"HTML 可读版未使用项目 token {token}")
+
+    def test_html_respects_reduced_motion(self):
+        html = SPEC_HTML.read_text(encoding="utf-8")
+        self.assertIn("prefers-reduced-motion", html, "HTML 可读版没有减少动效兜底")
+
+
 if __name__ == "__main__":
     unittest.main()

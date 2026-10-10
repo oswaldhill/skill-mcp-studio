@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>界面规范 · Skill MCP Studio 管理台</title>
+<style>
+  /* ── Token 体系：与 gui/dashboard.html 的 :root / html.dark 逐值对齐 ──
+     本页是规范的「可读版」，因此本身必须遵守规范：取值全部走 token、
+     深浅两套同步、无字面值散落。 */
+  :root {
+    color-scheme: light;
+    --bg: #FAFAFA;
+    --bg-elev: #F4F4F5;
+    --panel: #FFFFFF;
+    --panel-2: #F4F4F5;
+    --line: #E4E4E7;
+    --line-strong: #D4D4D8;
+    --text: #18181B;
+    --muted: #52525B;
+    --faint: #8B8B94;
+    --accent: #2563EB;
+    --accent-strong: #1D4ED8;
+    --on-accent: #FFFFFF;
+    --accent-bg: rgba(37,99,235,.08);
+    --accent-border: rgba(37,99,235,.28);
+    --ok: #047857;
+    --warn: #B45309;
+    --err: #DC2626;
+    --ok-bg: rgba(5,150,105,.08);
+    --warn-bg: rgba(180,83,9,.07);
+    --err-bg: rgba(220,38,38,.07);
+    --ok-border: rgba(5,150,105,.25);
+    --warn-border: rgba(180,83,9,.25);
+    --err-border: rgba(220,38,38,.25);
+    --shadow-card: 0 1px 2px rgba(24,24,27,.04);
+    --shadow-card-hover: 0 4px 12px rgba(24,24,27,.07);
+    --shadow-modal: 0 24px 64px -16px rgba(24,24,27,.28);
+    --backdrop: rgba(24,24,27,.45);
+    --fs-2xs: 11px;
+    --fs-xs: 12px;
+    --fs-sm: 13px;
+    --fs-base: 14px;
+    --fs-md: 16px;
+    --fs-lg: 22px;
+    --fs-xl: 30px;
+    --r-hair: 3px;
+    --r-control: 8px;
+    --r-card: 12px;
+    --r-pill: 999px;
+    --ease: cubic-bezier(.16, 1, .3, 1);
+    --sans: "SF Pro Text", -apple-system, BlinkMacSystemFont, "PingFang SC",
+            "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --display: var(--sans);
+  }
+  html.dark {
+    color-scheme: dark;
+    --bg: #0C0C0F;
+    --bg-elev: #0F0F13;
+    --panel: #131317;
+    --panel-2: #17171E;
+    --line: #1C1C22;
+    --line-strong: #26262E;
+    --text: #F4F4F5;
+    --muted: #A1A1AA;
+    --faint: #71717A;
+    --accent: #60A5FA;
+    --accent-strong: #3B82F6;
+    --on-accent: #0A1220;
+    --accent-bg: rgba(96,165,250,.12);
+    --accent-border: rgba(96,165,250,.30);
+    --ok: #34D399;
+    --warn: #FBBF24;
+    --err: #F87171;
+    --ok-bg: rgba(16,185,129,.08);
+    --warn-bg: rgba(251,191,36,.07);
+    --err-bg: rgba(248,113,113,.07);
+    --ok-border: rgba(16,185,129,.25);
+    --warn-border: rgba(251,191,36,.25);
+    --err-border: rgba(248,113,113,.25);
+    --shadow-card: 0 1px 2px rgba(0,0,0,.3);
+    --shadow-card-hover: 0 4px 14px rgba(0,0,0,.45);
+    --shadow-modal: 0 24px 64px -16px rgba(0,0,0,.7);
+    --backdrop: rgba(0,0,0,.6);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: var(--sans);
+    font-size: var(--fs-base);
+    line-height: 1.7;
+    color: var(--text);
+    background: var(--bg);
+    -webkit-font-smoothing: antialiased;
+  }
+  code, kbd, .mono { font-family: var(--mono); font-size: .92em; }
+
+  /* ── 布局：左侧固定目录 + 右侧正文 ── */
+  .shell { display: flex; min-height: 100vh; }
+  .toc {
+    width: 244px; flex: 0 0 244px;
+    position: sticky; top: 0; align-self: flex-start;
+    height: 100vh; overflow-y: auto;
+    padding: 22px 14px 22px 20px;
+    background: var(--bg-elev);
+    border-right: 1px solid var(--line);
+  }
+  .toc-title {
+    font-size: var(--fs-xs); font-weight: 600; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--faint);
+    margin-bottom: 10px; padding-left: 8px;
+  }
+  .toc a {
+    display: block; padding: 6px 8px; border-radius: var(--r-control);
+    color: var(--muted); text-decoration: none; font-size: var(--fs-sm);
+    transition: background .18s var(--ease), color .18s var(--ease);
+  }
+  .toc a:hover { background: var(--panel); color: var(--text); }
+  .toc a:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .toc a.sub { padding-left: 20px; font-size: var(--fs-xs); }
+  .toc hr { border: 0; border-top: 1px solid var(--line); margin: 12px 8px; }
+
+  .main { flex: 1; min-width: 0; padding: 36px 44px 96px; max-width: 960px; }
+
+  /* ── 页头 ── */
+  .page-head { padding-bottom: 22px; border-bottom: 1px solid var(--line); margin-bottom: 30px; }
+  .page-head h1 { font-size: var(--fs-xl); font-weight: 600; letter-spacing: -.015em; line-height: 1.25; }
+  .page-sub { color: var(--muted); font-size: var(--fs-base); margin-top: 8px; }
+  .meta-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; align-items: center; }
+  .meta-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: var(--r-pill);
+    background: var(--panel); border: 1px solid var(--line);
+    font-size: var(--fs-xs); color: var(--muted);
+  }
+  .meta-pill b { color: var(--text); font-weight: 600; }
+  .theme-btn {
+    margin-left: auto;
+    min-height: 32px; padding: 0 12px;
+    border: 1px solid var(--line-strong); border-radius: var(--r-control);
+    background: var(--panel); color: var(--text);
+    font-family: inherit; font-size: var(--fs-xs); cursor: pointer;
+    transition: background .18s var(--ease), border-color .18s var(--ease);
+  }
+  .theme-btn:hover { background: var(--bg-elev); }
+  .theme-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ── 章节 ── */
+  section { scroll-margin-top: 20px; margin-bottom: 40px; }
+  h2 {
+    font-size: var(--fs-lg); font-weight: 600; letter-spacing: -.01em;
+    padding-bottom: 8px; margin-bottom: 16px;
+    border-bottom: 1px solid var(--line);
+  }
+  h2 .num {
+    display: inline-block; min-width: 26px;
+    font-family: var(--mono); font-size: var(--fs-md);
+    color: var(--accent); font-weight: 500;
+  }
+  h3 { font-size: var(--fs-md); font-weight: 600; margin: 24px 0 10px; }
+  h3 code { color: var(--accent); }
+  p { margin: 10px 0; }
+  p, li { color: var(--muted); }
+  strong { color: var(--text); font-weight: 600; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-hair); }
+
+  ul, ol { margin: 10px 0 10px 22px; }
+  li { margin: 5px 0; }
+
+  /* ── 表格 ── */
+  .table-wrap { overflow-x: auto; margin: 14px 0; border: 1px solid var(--line); border-radius: var(--r-card); }
+  table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); background: var(--panel); }
+  thead th {
+    text-align: left; font-weight: 600; font-size: var(--fs-xs);
+    color: var(--faint); background: var(--bg-elev);
+    padding: 9px 14px; white-space: nowrap;
+    border-bottom: 1px solid var(--line);
+  }
+  tbody td { padding: 9px 14px; border-bottom: 1px solid var(--line); color: var(--muted); vertical-align: top; }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr:hover td { background: var(--bg-elev); }
+  td code, th code { color: var(--accent); }
+  /* 相邻 code 之间给间距：token 表里一行有 4-5 个 code，
+     不加间距会挤成一团（实测 "--bg--bg-elev--panel" 无法分辨） */
+  td code + code, li code + code, p code + code { margin-left: 5px; }
+  td strong { color: var(--text); }
+
+  /* ── 代码 / ASCII 示意 ── */
+  pre {
+    font-family: var(--mono); font-size: var(--fs-xs); line-height: 1.6;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--r-card); padding: 14px 16px;
+    overflow-x: auto; color: var(--muted); margin: 12px 0;
+  }
+  p code, li code {
+    background: var(--bg-elev); border: 1px solid var(--line);
+    border-radius: var(--r-hair); padding: 1px 5px; color: var(--accent);
+  }
+
+  /* ── 引用块（提示） ── */
+  blockquote {
+    margin: 14px 0; padding: 12px 16px;
+    background: var(--accent-bg); border: 1px solid var(--accent-border);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--r-card);
+    font-size: var(--fs-sm);
+  }
+  blockquote p { color: var(--muted); margin: 0; }
+  blockquote code { background: transparent; border: 0; padding: 0; }
+
+  /* ── 硬规则卡片 ── */
+  .rules { display: grid; gap: 10px; margin: 14px 0; }
+  .rule {
+    display: flex; gap: 12px; align-items: flex-start;
+    padding: 12px 16px; border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--r-card); background: var(--panel);
+    box-shadow: var(--shadow-card);
+    transition: border-color .18s var(--ease), box-shadow .18s var(--ease);
+  }
+  .rule:hover { box-shadow: var(--shadow-card-hover); }
+  .rule .tag {
+    flex: 0 0 auto; font-size: var(--fs-2xs); font-weight: 700;
+    letter-spacing: .04em; text-transform: uppercase;
+    padding: 2px 7px; border-radius: var(--r-hair);
+    background: var(--accent-bg); color: var(--accent);
+    border: 1px solid var(--accent-border);
+    position: relative; top: 3px;
+  }
+  .rule.ok { border-left-color: var(--ok); }
+  .rule.ok .tag { background: var(--ok-bg); color: var(--ok); border-color: var(--ok-border); }
+  .rule.warn { border-left-color: var(--warn); }
+  .rule.warn .tag { background: var(--warn-bg); color: var(--warn); border-color: var(--warn-border); }
+  .rule.err { border-left-color: var(--err); }
+  .rule.err .tag { background: var(--err-bg); color: var(--err); border-color: var(--err-border); }
+  .rule p { margin: 0; font-size: var(--fs-sm); }
+
+  /* ── 检查清单 ── */
+  .checklist { display: grid; gap: 16px; margin-top: 16px; }
+  .cl-group { border: 1px solid var(--line); border-radius: var(--r-card); background: var(--panel); overflow: hidden; }
+  .cl-group > h4 {
+    font-size: var(--fs-xs); font-weight: 600; letter-spacing: .04em;
+    text-transform: uppercase; color: var(--faint);
+    padding: 10px 16px; background: var(--bg-elev);
+    border-bottom: 1px solid var(--line);
+  }
+  .cl-group ul { list-style: none; margin: 0; padding: 6px 0; }
+  .cl-group li {
+    display: flex; gap: 10px; align-items: flex-start;
+    padding: 7px 16px; font-size: var(--fs-sm); margin: 0;
+    transition: background .15s var(--ease);
+  }
+  .cl-group li:hover { background: var(--bg-elev); }
+  .cl-box {
+    flex: 0 0 auto; width: 15px; height: 15px; margin-top: 4px;
+    border: 1.5px solid var(--line-strong); border-radius: var(--r-hair);
+    background: var(--bg);
+  }
+
+  /* ── 章节锚点 ── */
+  .anchor {
+    color: var(--faint); text-decoration: none; font-weight: 400;
+    margin-left: 8px; opacity: 0; font-size: var(--fs-sm);
+    transition: opacity .15s var(--ease);
+  }
+  h2:hover .anchor, h2:focus-within .anchor { opacity: 1; }
+  .anchor:focus-visible { opacity: 1; outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ── 页脚 ── */
+  .page-foot {
+    margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--line);
+    font-size: var(--fs-xs); color: var(--faint);
+    display: flex; gap: 12px; flex-wrap: wrap; align-items: center;
+  }
+  .page-foot code { background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--r-hair); padding: 1px 5px; }
+
+  /* ── 响应式 ── */
+  @media (max-width: 900px) {
+    .shell { flex-direction: column; }
+    .toc {
+      width: 100%; flex: none; height: auto; position: static;
+      border-right: 0; border-bottom: 1px solid var(--line);
+      padding: 16px;
+    }
+    .toc a { display: inline-block; margin: 2px 4px 2px 0; }
+    .toc a.sub { display: none; }
+    .main { padding: 24px 20px 64px; }
+    .theme-btn { margin-left: 0; }
+    h2 { font-size: var(--fs-md); }
+    .page-head h1 { font-size: var(--fs-lg); }
+  }
+
+  /* ── 可访问性：尊重减少动效（规范第 3b 节要求）── */
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .toc a, .rule, .theme-btn, .cl-group li, .anchor { transition: none; }
+  }
+
+  @media print {
+    .toc, .theme-btn { display: none; }
+    .main { max-width: none; padding: 0; }
+    body { background: #fff; }
+    .rule, .cl-group, table, pre { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <nav class="toc" aria-label="规范目录">
+    <div class="toc-title">目录</div>
+    <a href="#s0">0. 设计判断</a>
+    <a href="#s1">1. Token 体系</a>
+    <a href="#s2">2. 组件规约</a>
+    <a href="#s2-1" class="sub">2.1 按钮</a>
+    <a href="#s2-2" class="sub">2.2 列表行</a>
+    <a href="#s2-3" class="sub">2.3 卡片</a>
+    <a href="#s2-4" class="sub">2.4 元信息与数字</a>
+    <a href="#s2-5" class="sub">2.5 状态覆盖</a>
+    <a href="#s2-6" class="sub">2.6 工具条</a>
+    <a href="#s2-7" class="sub">2.7 变更卡片</a>
+    <a href="#s2-8" class="sub">2.8 托盘弹框</a>
+    <a href="#s3">3. 排版与间距</a>
+    <a href="#s3b">3b. 可访问性</a>
+    <a href="#s4">4. 落地页配方（不采用）</a>
+    <a href="#s5">5. 检查清单</a>
+    <hr>
+    <a href="#enforce">附：双轨强制机制</a>
+  </nav>
+
+  <main class="main">
+
+    <header class="page-head">
+      <h1>界面规范（Skill MCP Studio 管理台）</h1>
+      <p class="page-sub">
+        本文件是 <code>gui/dashboard.html</code> 的唯一设计依据。所有页面与弹窗都必须遵守；
+        新增界面时先在这里找现成组件，找不到再补，并把补的那条写回来。
+      </p>
+      <div class="meta-row">
+        <span class="meta-pill"><b>7</b> 章节</span>
+        <span class="meta-pill"><b>18</b> 检查项</span>
+        <span class="meta-pill"><b>28</b> 项测试兜底</span>
+        <span class="meta-pill">来源 <code>docs/DESIGN.md</code></span>
+        <button class="theme-btn" id="theme-toggle" type="button" aria-label="切换深浅主题">切换主题</button>
+      </div>
+    </header>
+
+    <!-- ═══ 0 ═══ -->
+    <section id="s0">
+      <h2><span class="num">0</span>设计判断（Design Read）<a class="anchor" href="#s0" aria-label="锚点">#</a></h2>
+
+      <div class="rules">
+        <div class="rule">
+          <span class="tag">定位</span>
+          <p>桌面端开发者工具管理台（dense product UI / admin panel），
+             面向同时使用多个 AI Agent、需要统一管技能与 MCP 的开发者。</p>
+        </div>
+      </div>
+
+      <p><strong>三档标尺</strong>（本项目取值，非通用默认）：</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>标尺</th><th>取值</th><th>理由</th></tr></thead>
+          <tbody>
+            <tr><td><code>DESIGN_VARIANCE</code></td><td><strong>3</strong></td>
+                <td>管理台要可预测。左右对齐、栅格稳定，不做非对称艺术排版。</td></tr>
+            <tr><td><code>MOTION_INTENSITY</code></td><td><strong>3</strong></td>
+                <td>工具界面。只保留 hover / active / 展开收起的状态反馈，不做入场编排。</td></tr>
+            <tr><td><code>VISUAL_DENSITY</code></td><td><strong>6</strong></td>
+                <td>数据密集但仍需呼吸感。信息分区块、留白分层，不排成电子表。</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p><strong>与 taste-skill 的关系</strong>：taste-skill 第 13 节把 dashboard / admin panel 列为
+         out of scope，并将此类界面指向 Fluent / Carbon / Polaris 等设计系统。本项目
+         <strong>不引入外部框架</strong>，沿用自身 token 体系；只采用 taste-skill 中与界面类型无关的
+         质量规则：颜色一致性锁、形状一致性锁、按钮与表单对比度、完整状态覆盖、
+         卡片克制、内容密度、禁用 em-dash。</p>
+    </section>
+
+    <!-- ═══ 1 ═══ -->
+    <section id="s1">
+      <h2><span class="num">1</span>Token 体系（唯一取值来源）<a class="anchor" href="#s1" aria-label="锚点">#</a></h2>
+
+      <p>所有颜色、字号、圆角、阴影、缓动<strong>必须</strong>取自 <code>:root</code>，不得写字面值。</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>类别</th><th>Token</th><th>用途</th></tr></thead>
+          <tbody>
+            <tr><td>表面</td><td><code>--bg</code> <code>--bg-elev</code> <code>--panel</code> <code>--panel-2</code></td><td>页面底 / 抬高面 / 卡片 / 次级卡片</td></tr>
+            <tr><td>描边</td><td><code>--line</code> <code>--line-strong</code></td><td>分隔线 / 控件描边</td></tr>
+            <tr><td>文字</td><td><code>--text</code> <code>--muted</code> <code>--faint</code></td><td>主文 / 次要 / 弱化元信息</td></tr>
+            <tr><td>强调</td><td><code>--accent</code> <code>--accent-strong</code> <code>--on-accent</code> <code>--accent-bg</code> <code>--accent-border</code></td><td>唯一强调色，全站只用这一个</td></tr>
+            <tr><td>语义</td><td><code>--ok</code> <code>--warn</code> <code>--err</code> + 各自 <code>-bg</code> / <code>-border</code></td><td>成功 / 注意 / 失败</td></tr>
+            <tr><td>字号</td><td><code>--fs-2xs</code> <code>--fs-xs</code> <code>--fs-sm</code> <code>--fs-base</code> <code>--fs-md</code> <code>--fs-lg</code> <code>--fs-xl</code></td><td>11 / 12 / 13 / 14 / 16 / 22 / 30</td></tr>
+            <tr><td>圆角</td><td><code>--r-control</code>(8) <code>--r-card</code>(12) <code>--r-pill</code>(999) <code>--r-hair</code>(3)</td><td>控件 / 卡片 / 胶囊 / 徽标</td></tr>
+            <tr><td>阴影</td><td><code>--shadow-card</code> <code>--shadow-card-hover</code> <code>--shadow-modal</code></td><td>卡片 / 悬停 / 弹窗</td></tr>
+            <tr><td>缓动</td><td><code>--ease</code></td><td>所有 transition</td></tr>
+            <tr><td>字体</td><td><code>--sans</code> <code>--display</code> <code>--mono</code></td><td>正文 / 标题 / 数字与代码</td></tr>
+            <tr><td>遮罩</td><td><code>--backdrop</code></td><td>模态背板</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <blockquote>
+        <p>圆角四档都要用：<code>--r-hair</code> 专给 10-11px 的小徽标（如变更面板的维度标签），
+           它比 <code>--r-control</code> 更贴合小尺寸；不要用字面值 <code>4px</code> 凑合。</p>
+      </blockquote>
+
+      <div class="rules">
+        <div class="rule"><span class="tag">颜色锁</span>
+          <p>强调色只有 <code>--accent</code> 一个。任何新界面不得引入第二强调色。</p></div>
+        <div class="rule"><span class="tag">形状锁</span>
+          <p>圆角只用上表四档。控件 8px，卡片 12px，胶囊用 pill，小徽标用 hair。</p></div>
+        <div class="rule"><span class="tag">主题锁</span>
+          <p>浅色与深色两套 token 同步维护，不得只改一侧。</p></div>
+        <div class="rule"><span class="tag">字体锁</span>
+          <p>正文用 <code>--sans</code>；数字、路径、包名、代码用 <code>--mono</code>。</p></div>
+      </div>
+    </section>
+
+    <!-- ═══ 2 ═══ -->
+    <section id="s2">
+      <h2><span class="num">2</span>组件规约<a class="anchor" href="#s2" aria-label="锚点">#</a></h2>
+
+      <h3 id="s2-1">2.1 按钮<a class="anchor" href="#s2-1" aria-label="锚点">#</a></h3>
+      <p><strong>基础按钮</strong>（全局 <code>button</code> 元素样式已提供：面板底、描边、圆角 <code>--r-control</code>、悬停变色、按压回落）：</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>类</th><th>用途</th><th>规则</th></tr></thead>
+          <tbody>
+            <tr><td><code>button.primary</code></td><td>一屏一个主操作</td><td><code>--accent</code> 底 + <code>--on-accent</code> 字</td></tr>
+            <tr><td><code>button.btn-soft</code></td><td>次级操作（最常用）</td><td>面板底 + <code>--line-strong</code> 描边</td></tr>
+            <tr><td><code>button.ghost</code></td><td>三级/文字按钮</td><td>无底无边，悬停才显形</td></tr>
+            <tr><td><code>button.danger</code> / <code>.btn-soft.danger</code></td><td>破坏性操作</td><td><code>--err</code> 字与边，悬停实心红 + <code>--on-accent</code> 字</td></tr>
+            <tr><td><code>button.sm</code></td><td>紧凑场合（表格行内）</td><td>与基础按钮叠加使用，如 <code>btn-soft sm</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p><strong>场景化变体</strong>（只在特定容器内使用，不跨场景复用）：</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>类</th><th>限定场景</th></tr></thead>
+          <tbody>
+            <tr><td><code>btn-save</code> / <code>btn-cancel</code></td><td>表单弹窗底部的主/次操作</td></tr>
+            <tr><td><code>cfm-btn-danger</code> / <code>cfm-btn-cancel</code></td><td>确认框的两个出口</td></tr>
+            <tr><td><code>ad-clean-btn</code> / <code>ad-clean</code></td><td>整理建议卡的清理动作</td></tr>
+            <tr><td><code>adv-all-btn</code> / <code>adv-merge-btn</code></td><td>整理建议的批量合并动作</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p><strong>不是按钮的控件</strong>（不要按按钮规范要求它们）：
+         <code>seg-btn</code>、<code>view-btn</code>、<code>settings-tab</code>、<code>nav-item</code>、<code>pm-item</code>、<code>pal-item</code>。
+         这些是分段控件 / 视图切换 / 导航项 / 菜单项，各有自己的选中态表达。</p>
+
+      <div class="rules">
+        <div class="rule warn"><span class="tag">硬规则</span>
+          <p>一屏只允许一个 <code>primary</code>。</p></div>
+        <div class="rule warn"><span class="tag">硬规则</span>
+          <p>破坏性操作必须用 <code>danger</code> 变体，不得用 <code>primary</code> 伪装。</p></div>
+        <div class="rule warn"><span class="tag">硬规则</span>
+          <p>按钮文字不得换行（<code>white-space: nowrap</code> 已全局声明）；对比度满足 WCAG AA
+             （正文 4.5:1，18px 以上 3:1）。</p></div>
+        <div class="rule warn"><span class="tag">硬规则</span>
+          <p>新增按钮变体时必须回来登记到本表。</p></div>
+      </div>
+
+      <h3 id="s2-2">2.2 列表行（<code>.list-row</code>）<a class="anchor" href="#s2-2" aria-label="锚点">#</a></h3>
+      <p>用于「多条同类条目 + 每行一个操作」的场景。<strong>这是市场、更新检查、技能列表的统一形态。</strong></p>
+      <pre>┌──────────────────────────────────────────────┐
+│ 主标题（--text, --fs-base, mono 用于包名）      [操作] │
+│ 元信息（--faint, --fs-xs）                            │
+└──────────────────────────────────────────────┘</pre>
+      <ul>
+        <li>行与行之间用 <code>--line</code> 分隔，<strong>不用每行一个卡片</strong>（卡片会撑高列表）。</li>
+        <li>主标题可截断（<code>text-overflow: ellipsis</code>），完整值放 <code>title</code> 属性。</li>
+        <li>操作按钮右对齐，纵向居中；同一列表内按钮文案一致。</li>
+      </ul>
+
+      <h3 id="s2-3">2.3 卡片（<code>.card</code>）<a class="anchor" href="#s2-3" aria-label="锚点">#</a></h3>
+      <p>只在需要表达「独立实体」时使用（技能卡、MCP 服务卡）。
+         <strong>不要</strong>用卡片堆一长串同类条目，那是列表行的职责。</p>
+
+      <h3 id="s2-4">2.4 元信息与数字<a class="anchor" href="#s2-4" aria-label="锚点">#</a></h3>
+      <ul>
+        <li>数字、包名、路径、版本号一律 <code>--mono</code> + <code>--faint</code> 或 <code>--muted</code>。</li>
+        <li>数量单位用中文（「3.6 万次安装」），不直接透出上游英文原文。</li>
+        <li>不得展示假精确数字；来自上游的原始值如实标注。</li>
+      </ul>
+
+      <h3 id="s2-5">2.5 状态覆盖（每个数据区都必须有）<a class="anchor" href="#s2-5" aria-label="锚点">#</a></h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>状态</th><th>要求</th></tr></thead>
+          <tbody>
+            <tr><td><strong>加载中</strong></td><td>有明确文案说明在做什么、大概多久</td></tr>
+            <tr><td><strong>空</strong></td><td>说明「为什么空」以及「怎么让它不空」，不留白屏</td></tr>
+            <tr><td><strong>错误</strong></td><td>就地显示原因，不弹窗、不吞掉</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 id="s2-6">2.6 工具条（<code>.toolbar</code>）<a class="anchor" href="#s2-6" aria-label="锚点">#</a></h3>
+      <p>搜索框 + 操作按钮同排。搜索框占满剩余宽度，按钮固定宽度，间距 8px。
+         输入框必须有 <code>placeholder</code> 与 <code>aria-label</code>。</p>
+
+      <h3 id="s2-7">2.7 变更卡片（<code>.chg-card</code>）<a class="anchor" href="#s2-7" aria-label="锚点">#</a></h3>
+      <p>用于「变更详情」面板：每条变更一行决策（修复 / 保持）。</p>
+      <pre>┌────────────────────────────────────────────────┐
+│▌[维度] 名称                          [修复][保持]│
+│  详情（旧值 -> 新值）                            │
+└────────────────────────────────────────────────┘</pre>
+      <ul>
+        <li><strong>左侧 3px 状态条</strong>表达变更类型：<code>added</code> 绿 / <code>removed</code> 红 / 其余橙。
+            颜色是<strong>辅助</strong>信息，名称与详情文字必须独立可读（色盲可用）。</li>
+        <li>维度标签用 <code>--r-hair</code> 圆角 + <code>--faint</code> 字，<strong>不要</strong>做成彩色胶囊
+            （那会与 <code>--accent</code> 抢注意力）。</li>
+        <li>动作按钮最小高度 32px（触达目标），主操作「修复」用 <code>.chg-btn.primary</code>。</li>
+        <li>卡片悬停只改边框与阴影，<strong>不用 scale</strong>，避免列表位移。</li>
+        <li>统计行用 <code>.chg-pill</code>：显示<strong>当前数量</strong>；有变更时才追加 <code>+N</code> 徽标并转为
+            <code>hot</code>（<code>--warn-bg</code>）。没有变更时也必须显示数量，不能是一排 0。</li>
+      </ul>
+
+      <h3 id="s2-8">2.8 托盘弹框（<code>gui/popover.html</code>）<a class="anchor" href="#s2-8" aria-label="锚点">#</a></h3>
+      <p>独立的 macOS 风格浮层，<strong>不复用管理台的 token</strong>（它是叠在系统菜单栏上的
+         另一套视觉：毛玻璃、无边框圆角窗）。</p>
+      <ul>
+        <li>面板：<code>rgba(248,248,250,.88)</code> + <code>backdrop-filter: blur(30px)</code>，
+            圆角 14px，窗口开启 <code>transparent</code> 让圆角外真正透明。</li>
+        <li>状态点三态：绿（已同步）/ 橙（有变更）/ <strong>灰 + 呼吸动画（显示的是缓存，
+            正在刷新）</strong>。缓存态必须给出提示，不能让用户把旧数据当成实时结果。</li>
+        <li>窗口高度由内容决定（<code>fitWindow</code> 量完面板高度再 <code>setSize</code>），
+            最小 200px；<strong>首屏先用 localStorage 缓存渲染</strong>，再后台刷新。</li>
+        <li>定位由 Rust 侧负责：水平居中对齐托盘图标、垂直贴菜单栏下方；
+            没有图标坐标时（菜单触发）退回右上角。</li>
+      </ul>
+    </section>
+
+    <!-- ═══ 3 ═══ -->
+    <section id="s3">
+      <h2><span class="num">3</span>排版与间距<a class="anchor" href="#s3" aria-label="锚点">#</a></h2>
+      <ul>
+        <li>区块间距用 <code>16 / 20 / 24px</code> 三档，同一页面保持同一节奏。</li>
+        <li>面板内边距 <code>20px</code>；卡片内边距 <code>16px</code>；列表行内边距 <code>12px 16px</code>。</li>
+        <li>一行元信息里的分隔符最多一个，优先用换行或留白，不用符号堆砌。</li>
+        <li>中文正文不手动加空格；中英文混排不加空格，靠字体回退处理。</li>
+        <li><strong>禁用 em-dash</strong>：正文、标题、标签、按钮文案一律用普通连字符或改写句子。</li>
+      </ul>
+    </section>
+
+    <!-- ═══ 3b ═══ -->
+    <section id="s3b">
+      <h2><span class="num">3b</span>可访问性（硬要求，非可选）<a class="anchor" href="#s3b" aria-label="锚点">#</a></h2>
+      <p>这几条由测试或明确的交互约束兜底，新界面必须满足。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>要求</th><th>做法</th><th>为什么</th></tr></thead>
+          <tbody>
+            <tr><td><strong>键盘可达</strong></td>
+                <td>交互元素保留 <code>:focus-visible</code> 外环（<code>2px solid --accent</code>，偏移 2px）</td>
+                <td>无鼠标用户需要知道焦点在哪</td></tr>
+            <tr><td><strong>抑制 outline 必须给替代</strong></td>
+                <td>若写了 <code>outline: none</code>，同一条规则里必须补 <code>box-shadow</code> 焦点态</td>
+                <td>否则键盘用户完全看不到焦点</td></tr>
+            <tr><td><strong>尊重减少动效</strong></td>
+                <td>所有 <code>animation</code> / <code>transition</code> 在 <code>@media (prefers-reduced-motion: reduce)</code> 里关闭</td>
+                <td>前庭敏感用户会因动效不适</td></tr>
+            <tr><td><strong>触达目标</strong></td>
+                <td>可点元素最小 32px 高（弹框内）/ 44px（移动端）</td>
+                <td>误触率</td></tr>
+            <tr><td><strong>不靠颜色单独表意</strong></td>
+                <td>状态同时有文字或形状（如变更卡的状态条 + 文字详情）</td>
+                <td>色盲可用</td></tr>
+            <tr><td><strong>图标用 SVG</strong></td>
+                <td>不用 emoji 当 UI 图标；统一 <code>viewBox="0 0 24 24"</code></td>
+                <td>跨平台渲染一致</td></tr>
+            <tr><td><strong>可点元素有指针</strong></td>
+                <td><code>cursor: pointer</code></td>
+                <td>可发现性</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="rules">
+        <div class="rule"><span class="tag">已知例外</span>
+          <p><code>.status-dot</code> 的呼吸动画是「正在刷新」的唯一视觉提示，
+             在 reduced-motion 下关闭动画，但 <code>title</code> 文案仍在，语义不丢失。</p></div>
+      </div>
+    </section>
+
+    <!-- ═══ 4 ═══ -->
+    <section id="s4">
+      <h2><span class="num">4</span>落地页配方（不适用于本项目）<a class="anchor" href="#s4" aria-label="锚点">#</a></h2>
+      <p>以下 taste-skill 条目<strong>本项目不采用</strong>，仅记录以便区分：</p>
+      <ul>
+        <li>Hero / 首屏构图、bento 网格、marquee、滚动编排、大字号展示标题；</li>
+        <li>图片资产策略（生成图 / Picsum 占位）、logo 墙；</li>
+        <li>落地页文案密度与「每屏一个卖点」。</li>
+      </ul>
+      <p>本项目是常驻工具界面，不做首屏叙事。</p>
+    </section>
+
+    <!-- ═══ 5 ═══ -->
+    <section id="s5">
+      <h2><span class="num">5</span>检查清单（改完界面逐条过）<a class="anchor" href="#s5" aria-label="锚点">#</a></h2>
+      <div class="checklist">
+        <div class="cl-group">
+          <h4>取值与一致性</h4>
+          <ul>
+            <li><span class="cl-box" aria-hidden="true"></span>颜色/字号/圆角/阴影全部取自 token，无字面值</li>
+            <li><span class="cl-box" aria-hidden="true"></span>强调色只有一个</li>
+            <li><span class="cl-box" aria-hidden="true"></span>圆角只用四档且用法一致（小徽标用 <code>--r-hair</code>）</li>
+            <li><span class="cl-box" aria-hidden="true"></span>按钮对比度达标，一屏一个 primary</li>
+            <li><span class="cl-box" aria-hidden="true"></span>数字/包名用 mono，单位已中文化</li>
+          </ul>
+        </div>
+        <div class="cl-group">
+          <h4>结构与状态</h4>
+          <ul>
+            <li><span class="cl-box" aria-hidden="true"></span>同类条目用列表行，不是一长串卡片</li>
+            <li><span class="cl-box" aria-hidden="true"></span>加载 / 空 / 错误三态齐备</li>
+            <li><span class="cl-box" aria-hidden="true"></span><strong>空态也要有信息量</strong>：不要出现「一排全 0」而无说明的界面</li>
+            <li><span class="cl-box" aria-hidden="true"></span>无重复渲染（同一信息不在同屏出现两次）</li>
+            <li><span class="cl-box" aria-hidden="true"></span>无 em-dash</li>
+          </ul>
+        </div>
+        <div class="cl-group">
+          <h4>交互与可达性</h4>
+          <ul>
+            <li><span class="cl-box" aria-hidden="true"></span>可点元素有 <code>cursor: pointer</code> 与悬停反馈</li>
+            <li><span class="cl-box" aria-hidden="true"></span>键盘焦点可见（<code>:focus-visible</code>），抑制 outline 处已补替代</li>
+            <li><span class="cl-box" aria-hidden="true"></span>动效在 <code>prefers-reduced-motion</code> 下关闭</li>
+            <li><span class="cl-box" aria-hidden="true"></span>状态不只靠颜色表达</li>
+            <li><span class="cl-box" aria-hidden="true"></span>弹层能自然关闭（失焦收起 / Esc）</li>
+          </ul>
+        </div>
+        <div class="cl-group">
+          <h4>主题与验证</h4>
+          <ul>
+            <li><span class="cl-box" aria-hidden="true"></span>深浅两套主题都过一遍</li>
+            <li><span class="cl-box" aria-hidden="true"></span>跑 <code>python3 -m unittest tests.test_design_spec tests.test_dashboard_design_tokens</code></li>
+            <li><span class="cl-box" aria-hidden="true"></span>若新增组件或变体，已回写本文件对应章节</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ 附 ═══ -->
+    <section id="enforce">
+      <h2>附：双轨强制机制<a class="anchor" href="#enforce" aria-label="锚点">#</a></h2>
+      <p>规范要真正拦住后续功能脱离，靠的是<strong>文档 + 测试双轨</strong>，而不是自觉。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>层</th><th>载体</th><th>有效力</th></tr></thead>
+          <tbody>
+            <tr><td>规则</td><td><code>~/.dsh/AGENTS.md</code> 的三条强制规则（语言 / UI 技能 / UI 规范双轨）</td>
+                <td><strong>每次会话强制加载</strong></td></tr>
+            <tr><td>规范</td><td><code>docs/DESIGN.md</code>（本文档的来源）</td><td>需主动读</td></tr>
+            <tr><td>门禁</td>
+                <td><code>tests/test_design_spec.py</code> + <code>tests/test_dashboard_design_tokens.py</code>（28 项）</td>
+                <td><strong>CI 强制</strong></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="rules">
+        <div class="rule ok"><span class="tag">双轨</span>
+          <p>任何 UI 改动必须<strong>同时</strong>更新规范文档与补一条<strong>能真正失败</strong>的断言，缺一视为未完成。</p></div>
+        <div class="rule warn"><span class="tag">反向验证</span>
+          <p>加完断言后必须故意制造一次违规，确认测试<strong>确实报错</strong>，再恢复。
+             只看到测试通过不算验证通过；永远通过的测试等于没有测试。</p></div>
+        <div class="rule err"><span class="tag">粒度</span>
+          <p>只守住有独立语义的顶层组件与不变量。不要为每个内部类名建门禁：
+             单页内部 CSS 类可达数百个，全覆盖只会产生海量误报，最终被绕过。</p></div>
+      </div>
+    </section>
+
+    <footer class="page-foot">
+      <span>来源：<code>docs/DESIGN.md</code></span>
+      <span>可读版：<code>docs/DESIGN.html</code></span>
+      <span>本页自身遵守本规范（token 取值、深浅双主题、焦点可见、减少动效）</span>
+    </footer>
+
+  </main>
+</div>
+
+<script>
+// 主题切换：默认跟随系统，手动切换后记住选择。
+// 用 localStorage 持久化；隐私模式下读写失败则静默降级为仅本次生效。
+(function () {
+  var KEY = "sms.design.theme";
+  var root = document.documentElement;
+  var btn = document.getElementById("theme-toggle");
+
+  function apply(dark) {
+    root.classList.toggle("dark", dark);
+    btn.setAttribute("aria-pressed", dark ? "true" : "false");
+    btn.textContent = dark ? "浅色主题" : "深色主题";
+  }
+
+  var saved = null;
+  try { saved = localStorage.getItem(KEY); } catch (e) { /* 忽略 */ }
+
+  if (saved === "dark" || saved === "light") {
+    apply(saved === "dark");
+  } else {
+    var prefersDark = window.matchMedia &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches;
+    apply(!!prefersDark);
+  }
+
+  btn.addEventListener("click", function () {
+    var dark = !root.classList.contains("dark");
+    apply(dark);
+    try { localStorage.setItem(KEY, dark ? "dark" : "light"); } catch (e) { /* 忽略 */ }
+  });
+})();
+</script>
+</body>
+</html>
