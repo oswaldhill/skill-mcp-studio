@@ -35,6 +35,9 @@
     box-shadow: 0 0 6px rgba(52, 199, 89, 0.4);
   }
   .status-dot.alert { background: #ff9500; box-shadow: 0 0 6px rgba(255, 149, 0, 0.4); }
+  /* 缓存态：灰点 + 轻微呼吸，表示「这是旧数据，正在刷新」 */
+  .status-dot.stale { background: #c7c7cc; box-shadow: none; animation: stalePulse 1.2s ease-in-out infinite; }
+  @keyframes stalePulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
   .title { font-size: 13px; font-weight: 600; color: #1d1d1f; }
   .refresh {
     border: none; background: transparent; color: #007aff;
@@ -139,6 +142,17 @@
     color: #1d1d1f;
   }
   .btn-secondary:hover { background: rgba(0, 0, 0, 0.1); }
+
+  /* 键盘可达性：无鼠标也能操作（UI 技能规范要求可见焦点环） */
+  .refresh:focus-visible, .btn:focus-visible {
+    outline: 2px solid #007aff;
+    outline-offset: 2px;
+  }
+
+  /* 尊重系统「减少动态效果」偏好 */
+  @media (prefers-reduced-motion: reduce) {
+    .status-dot.stale { animation: none; }
+  }
 </style>
 </head>
 <body>
@@ -192,8 +206,18 @@ async function render(body) {
   await fitWindow();
 }
 
-function renderDiff(diff) {
+function renderDiff(diff, fromCache) {
   const dot = document.getElementById("status-dot");
+  // 缓存渲染时状态点转灰并标记，避免用户把旧数据当成实时结果；
+  // 非缓存路径先把 stale 类与提示清掉，否则提前 return 的分支
+  // （!diff / is_first）会把「正在刷新」的提示残留下来。
+  if (fromCache) {
+    dot.className = "status-dot stale";
+    dot.title = "显示的是上次结果，正在刷新";
+  } else {
+    dot.className = "status-dot";
+    dot.title = "";
+  }
   if (!diff) {
     dot.className = "status-dot alert";
     render('<div class="empty-msg">无法获取快照</div>');
@@ -236,6 +260,7 @@ function renderDiff(diff) {
 
   if (changed === 0) {
     dot.className = "status-dot";
+    dot.title = "";
     html += '<div class="sep"></div>';
     html += '<div class="empty-msg"><span class="check">';
     html += '<svg viewBox="0 0 24 24" fill="none" stroke="#34c759" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>';
@@ -245,6 +270,7 @@ function renderDiff(diff) {
   }
 
   dot.className = "status-dot alert";
+  dot.title = "";
   const items = [];
   for (const dim of Object.keys(dims)) {
     const changes = dims[dim];
@@ -265,8 +291,37 @@ function renderDiff(diff) {
   render(html);
 }
 
-async function loadSnapshot() {
-  render('<div class="empty-msg">检查中...</div>');
+// 上次结果的本地缓存键。为什么要缓存：--snapshot 实测约 1.6 秒，
+// 用户点开弹框若直接显示「检查中...」会有一段空等。改为先用上次结果
+// 立即出图，再在后台刷新，感知延迟降到 0。
+const CACHE_KEY = "sms.popover.lastDiff";
+
+function readCache() {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    return null;   // 隐私模式/配额满时静默降级为无缓存
+  }
+}
+
+function writeCache(diff) {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify(diff));
+  } catch (e) {
+    /* 写不进去不影响功能，只是下次仍需现算 */
+  }
+}
+
+async function loadSnapshot(opts) {
+  const showSpinner = opts && opts.spinner;
+  const cached = readCache();
+  // 有缓存就先渲染，用户立刻看到内容；没有才显示等待提示
+  if (cached) {
+    renderDiff(cached, true);
+  } else if (showSpinner !== false) {
+    render('<div class="empty-msg">检查中...</div>');
+  }
   try {
     const res = await window.__TAURI__.core.invoke("run_cli", {
       args: ["--snapshot", "--format", "json"],
@@ -292,9 +347,11 @@ async function loadSnapshot() {
       });
       diff = lines.length ? JSON.parse(lines[0]) : null;
     }
+    if (diff) writeCache(diff);
     renderDiff(diff);
   } catch (e) {
-    render('<div class="empty-msg">加载失败</div>');
+    // 有缓存时保留旧内容而不是清空 —— 暂时拿不到新数据不该让界面变空
+    if (!cached) render('<div class="empty-msg">加载失败</div>');
   }
 }
 
