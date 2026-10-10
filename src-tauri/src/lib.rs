@@ -349,15 +349,21 @@ fn snapshot_has_changes(stdout: &str) -> Option<bool> {
 /// - `Idle`：空闲。单色模板图，由 macOS 依菜单栏明暗自动着色，最规整。
 /// - `Alert`：检测到变更。字形 + 右上角红点（浅色菜单栏用深色字形）。
 /// - `AlertDark`：同上但字形为浅色，用于深色菜单栏。
+/// - `Scanning`：巡检进行中。仍用模板图（保持明暗自适应），靠 tooltip 说明。
 ///
 /// 为什么 Alert 态不能继续用模板图：模板模式会**强制单色**，红点会被系统
 /// 抹成同色，角标就失去「一眼看出有变更」的作用。所以告警态改用非模板图，
 /// 代价是失去自动明暗适配 —— 用明/暗两版字形 + 运行时按主题选取来补偿。
+///
+/// 为什么 Scanning 不做旋转动画：菜单栏图标换图频率受限，逐帧切换在
+/// macOS 上开销明显且易被系统节流；而巡检只持续 1~2 秒，动画还没转完就
+/// 结束了。用 tooltip 表达「正在巡检」既清晰又不引额外资源。
 #[derive(Clone, Copy, PartialEq)]
 enum TrayState {
     Idle,
     Alert,
     AlertDark,
+    Scanning,
 }
 
 /// 菜单栏图标：单色模板（空闲）或带红点角标（有变更）。
@@ -375,7 +381,9 @@ fn tray_icon(state: TrayState) -> tauri::image::Image<'static> {
     const FALLBACK: &[u8] = include_bytes!("../icons/32x32.png");
 
     let bytes = match state {
-        TrayState::Idle => TEMPLATE_2X,
+        // Scanning 复用模板图：巡检中不需要额外图形，
+        // 差别体现在 tooltip（见 apply_tray_state）。
+        TrayState::Idle | TrayState::Scanning => TEMPLATE_2X,
         TrayState::Alert => ALERT_2X,
         TrayState::AlertDark => ALERT_DARK_2X,
     };
@@ -390,13 +398,14 @@ fn tray_icon(state: TrayState) -> tauri::image::Image<'static> {
 /// 模板标志必须跟着图标一起切：告警图是非模板的彩色图，若沿用
 /// `icon_as_template(true)`，macOS 会把红点也抹成单色。
 fn apply_tray_state(tray: &tauri::tray::TrayIcon, state: TrayState, has_changes: bool) {
-    let is_template = state == TrayState::Idle;
+    // Scanning 也用模板模式：它复用模板图，非模板模式会让它失去明暗自适应
+    let is_template = matches!(state, TrayState::Idle | TrayState::Scanning);
     let _ = tray.set_icon(Some(tray_icon(state)));
     let _ = tray.set_icon_as_template(is_template);
-    let _ = tray.set_tooltip(Some(if has_changes {
-        "Skill MCP Studio（检测到变更，点击查看）"
-    } else {
-        "Skill MCP Studio"
+    let _ = tray.set_tooltip(Some(match state {
+        TrayState::Scanning => "Skill MCP Studio（正在巡检…）",
+        _ if has_changes => "Skill MCP Studio（检测到变更，点击查看）",
+        _ => "Skill MCP Studio",
     }));
 }
 
@@ -889,7 +898,12 @@ pub fn run() {
                     if !enabled {
                         continue;
                     }
-                    // 2. 运行 --snapshot，用 JSON 判据而非匹配中文文案
+                    // 2. 先切到「巡检中」再跑命令：--snapshot 约 1~2 秒，
+                    // 这段窗口里用户能从 tooltip 看出它在工作，而不是
+                    // 「点了没反应」。结束时会按结果切回 Idle/Alert。
+                    if let Some(tray) = patrol_handle.tray_by_id("main") {
+                        apply_tray_state(&tray, TrayState::Scanning, false);
+                    }
                     let snap_args = vec![
                         "--snapshot".to_string(),
                         "--format".to_string(),
@@ -901,7 +915,14 @@ pub fn run() {
                             // 把状态误清掉（CLI 升级/输出异常时更安全）。
                             let has_changes = match snapshot_has_changes(&stdout) {
                                 Some(v) => v,
-                                None => continue,
+                                None => {
+                                    // 读不懂输出时不能停在「正在巡检」，
+                                    // 复位成无变更态，下一轮再试。
+                                    if let Some(tray) = patrol_handle.tray_by_id("main") {
+                                        apply_tray_state(&tray, TrayState::Idle, false);
+                                    }
+                                    continue;
+                                }
                             };
                             if let Some(tray) = patrol_handle.tray_by_id("main") {
                                 // 三态：有变更 → 带红点角标（按主题选字形）；
@@ -924,7 +945,13 @@ pub fn run() {
                                     .show();
                             }
                         }
-                        Err(_) => continue,
+                        Err(_) => {
+                            // 命令起不来时同样复位，避免卡在「正在巡检」
+                            if let Some(tray) = patrol_handle.tray_by_id("main") {
+                                apply_tray_state(&tray, TrayState::Idle, false);
+                            }
+                            continue;
+                        }
                     }
                 }
             });
@@ -1132,6 +1159,18 @@ mod tests {
         assert_eq!(snapshot_has_changes(r#"{"summary": {}}"#), None);
         // 类型不符（字符串 "true"）也不认
         assert_eq!(snapshot_has_changes(r#"{"has_changes": "true"}"#), None);
+    }
+
+    #[test]
+    fn scanning_state_uses_template_icon() {
+        // Scanning 复用模板图并与 Idle 区分（tooltip 不同），
+        // 且必须走模板模式，否则会丢掉菜单栏明暗自适应。
+        assert!(TrayState::Scanning != TrayState::Idle);
+        assert!(TrayState::Scanning != TrayState::Alert);
+        let a = tray_icon(TrayState::Scanning);
+        let b = tray_icon(TrayState::Idle);
+        assert_eq!(a.width(), b.width(), "Scanning 应复用模板图尺寸");
+        assert_eq!(a.height(), b.height());
     }
 
     #[test]

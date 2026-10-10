@@ -99,5 +99,51 @@ class TestFocusFallback(unittest.TestCase):
         )
 
 
+POPOVER = ROOT / "gui" / "popover.html"
+
+
+class TestAccessibilityContract(unittest.TestCase):
+    """docs/DESIGN.md 第 3b 节的可访问性硬要求。
+
+    规范里承诺了「键盘焦点可见」与「尊重减少动效」，但这两条此前没有门禁。
+    规范自己的话说得很清楚：「没有测试的约定会在下一次改动里失效」。
+    这里把它们钉死，新增动画或焦点样式时不会再悄悄漏掉。
+    """
+
+    def _pages(self):
+        # dashboard 走 _gui_source（S10 后脚本已外置），popover 是独立页面
+        return (("dashboard", HTML), ("popover", POPOVER.read_text(encoding="utf-8")))
+
+    def test_every_page_respects_reduced_motion(self):
+        for name, css in self._pages():
+            with self.subTest(page=name):
+                self.assertIn(
+                    "prefers-reduced-motion",
+                    css,
+                    f"{name} 有动画/过渡却没有 prefers-reduced-motion 兜底",
+                )
+
+    def test_interactive_pages_declare_focus_visible(self):
+        for name, css in self._pages():
+            with self.subTest(page=name):
+                self.assertIn(
+                    "focus-visible",
+                    css,
+                    f"{name} 缺少 :focus-visible 焦点反馈",
+                )
+
+    def test_reduced_motion_actually_disables_animation(self):
+        """光有 media query 不够，里面必须真的关掉动画。"""
+        for name, css in self._pages():
+            with self.subTest(page=name):
+                idx = css.find("prefers-reduced-motion")
+                block = css[idx: idx + 400] if idx >= 0 else ""
+                self.assertTrue(
+                    "animation: none" in block or "animation:none" in block
+                    or "transition: none" in block or "transition:none" in block,
+                    f"{name} 的 prefers-reduced-motion 块没有实际关闭动画/过渡",
+                )
+
+
 if __name__ == "__main__":
     unittest.main()

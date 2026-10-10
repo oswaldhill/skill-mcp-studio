@@ -1954,6 +1954,127 @@ def _render_scalar(value) -> str:
     return str(value)
 
 
+def _run_hooks(args, config, config_path) -> int:
+    """Hook 管理域的统一出口：--list-hooks / --fix-hooks / --remove-hooks。
+
+    为什么必须早返回：这三个命令都支持 ``--format json``，而 GUI 会直接
+    JSON.parse 整个 stdout。它们原先排在通用快照路由
+    （``_run_single_profile_snapshot``）之后，带 ``--format json`` 时会被
+    快照截走 —— 实测 ``--list-hooks --format json`` 返回的是 4000 多行的
+    完整快照而不是 hook inventory。与 ``--snapshot`` / ``--get-setting``
+    是同一类缺陷（见各自注释）。
+
+    顺带收益：``--fix-hooks`` / ``--remove-hooks`` 是写操作，早返回后不再
+    继续跑后续无关阶段，更快且副作用面更小。
+
+    任何一段抛异常都映射到退出码 2（工具执行失败），与修复类写操作的既有
+    约定一致 —— GUI 按退出码判断成功与否。
+    """
+    _as_json = getattr(args, "format", None) == "json"
+    _failed = False
+
+    if getattr(args, "list_hooks", False):
+        if not _as_json:
+            print("")
+            print("=" * 60)
+            print("  Hook inventory (ai-memory lifecycle hooks)")
+            print("=" * 60)
+        try:
+            from hooks_inventory import inventory_all
+            _tools = effective_tools(config)
+            _hook_results = inventory_all(config, _tools)
+            if _as_json:
+                print(json.dumps(_hook_results, ensure_ascii=False, indent=2))
+            else:
+                for r in _hook_results:
+                    _mark = "🟢" if r["hooks_configured"] else ("⚪" if not r["hooks_config_path"] else "⚠️")
+                    print(f"  {_mark} {r['name']} ({r['hooks_config_path']})")
+                    if r["hooks_configured"]:
+                        print(f"      ✅ 已接入: {', '.join(r['hook_events'])}")
+                    elif r["hooks_config_path"]:
+                        _missing = r.get("missing_key_events", [])
+                        if _missing:
+                            print(f"      ⚠️ 缺关键事件: {', '.join(_missing)}")
+                        else:
+                            print("      ⚠️ 未接入 ai-memory")
+        except Exception as e:
+            if _as_json:
+                print(json.dumps({"error": str(e)}, ensure_ascii=False, indent=2))
+            else:
+                print(f"\n  ❌ Hook inventory failed: {e}")
+            _failed = True
+
+    if getattr(args, "fix_hooks", False):
+        if not _as_json:
+            print("")
+            print("=" * 60)
+            print("  Hook repair (ai-memory lifecycle hooks)")
+            print("=" * 60)
+        try:
+            from hooks_fixer import fix_hooks_all
+            _tools = effective_tools(config)
+            _hook_fix_results = fix_hooks_all(
+                config, _tools, dry_run=args.dry_run, client=args.client or ""
+            )
+            if _as_json:
+                print(json.dumps(_hook_fix_results, ensure_ascii=False, indent=2))
+            else:
+                _marks = {
+                    "updated": "✅", "created": "✅", "unchanged": "✅",
+                    "dry-run": "🔍", "missing": "⚠️", "unsupported": "⏭️", "error": "❌",
+                }
+                for result in _hook_fix_results:
+                    _mark = _marks.get(result["status"], "•")
+                    print(f"  {_mark} {result['name']}: {result['status']} - {result['message']}")
+            if any(r.get("status") == "error" for r in _hook_fix_results):
+                _failed = True
+        except Exception as e:
+            if _as_json:
+                print(json.dumps({"error": str(e)}, ensure_ascii=False, indent=2))
+            else:
+                print(f"\n  ❌ Hook repair failed: {e}")
+            _failed = True
+
+    if getattr(args, "remove_hooks", False):
+        if not _as_json:
+            print("")
+            print("=" * 60)
+            print("  Hook removal (ai-memory lifecycle hooks)")
+            print("=" * 60)
+        try:
+            from hooks_fixer import remove_hooks_tool
+            from hooks_inventory import hooks_client_config
+            _tools = effective_tools(config)
+            _hook_rm_results = []
+            for tool in _tools:
+                _tname = tool.get("name", "")
+                if not hooks_client_config(config, _tname):
+                    continue
+                if args.client and normalized_name(_tname) != normalized_name(args.client):
+                    continue
+                _hook_rm_results.append(remove_hooks_tool(tool, config, dry_run=args.dry_run))
+            if _as_json:
+                print(json.dumps(_hook_rm_results, ensure_ascii=False, indent=2))
+            else:
+                _marks = {
+                    "updated": "✅", "unchanged": "✅", "dry-run": "🔍",
+                    "missing": "⚠️", "error": "❌",
+                }
+                for result in _hook_rm_results:
+                    _mark = _marks.get(result["status"], "•")
+                    print(f"  {_mark} {result['name']}: {result['status']} - {result['message']}")
+            if any(r.get("status") == "error" for r in _hook_rm_results):
+                _failed = True
+        except Exception as e:
+            if _as_json:
+                print(json.dumps({"error": str(e)}, ensure_ascii=False, indent=2))
+            else:
+                print(f"\n  ❌ Hook removal failed: {e}")
+            _failed = True
+
+    return 2 if _failed else 0
+
+
 def _run_get_setting(args, config) -> int:
     """读取 config.yaml 的 settings 段单个键。
 
@@ -2288,6 +2409,15 @@ def main() -> int:
     if args.fix_skills and getattr(args, "format", None) == "json":
         return _run_fix_skills_preview(args, config, config_path)
 
+    # Hook 管理域（A 阶段）：三个命令都支持 --format json，GUI 直接
+    # JSON.parse 整个 stdout，必须排在通用快照路由之前。
+    if (
+        getattr(args, "list_hooks", False)
+        or getattr(args, "fix_hooks", False)
+        or getattr(args, "remove_hooks", False)
+    ):
+        return _run_hooks(args, config, config_path)
+
     # 忽略清单增删查（E 阶段）：--list-ignored 支持 --format json，
     # 必须排在通用快照路由之前，否则输出会被快照截走。
     if (
@@ -2528,86 +2658,7 @@ def main() -> int:
             print(f"\n  ❌ Legacy MCP cleanup failed: {e}")
             repair_errors.append(f"Legacy MCP cleanup: {e}")
 
-    if args.list_hooks:
-        print("")
-        print("=" * 60)
-        print("  Hook inventory (ai-memory lifecycle hooks)")
-        print("=" * 60)
-        try:
-            from hooks_inventory import inventory_all
-            _tools = effective_tools(config)
-            _hook_results = inventory_all(config, _tools)
-            if args.format == "json":
-                print(json.dumps(_hook_results, ensure_ascii=False, indent=2))
-            else:
-                for r in _hook_results:
-                    _mark = "🟢" if r["hooks_configured"] else ("⚪" if not r["hooks_config_path"] else "⚠️")
-                    print(f"  {_mark} {r['name']} ({r['hooks_config_path']})")
-                    if r["hooks_configured"]:
-                        print(f"      ✅ 已接入: {', '.join(r['hook_events'])}")
-                    elif r["hooks_config_path"]:
-                        _missing = r.get("missing_key_events", [])
-                        if _missing:
-                            print(f"      ⚠️ 缺关键事件: {', '.join(_missing)}")
-                        else:
-                            print("      ⚠️ 未接入 ai-memory")
-        except Exception as e:
-            print(f"\n  ❌ Hook inventory failed: {e}")
-            repair_errors.append(f"Hook inventory: {e}")
-
-    if args.fix_hooks:
-        print("")
-        print("=" * 60)
-        print("  Hook repair (ai-memory lifecycle hooks)")
-        print("=" * 60)
-        try:
-            from hooks_fixer import fix_hooks_all
-            _tools = effective_tools(config)
-            _hook_fix_results = fix_hooks_all(
-                config, _tools, dry_run=args.dry_run, client=args.client or ""
-            )
-            _marks = {
-                "updated": "✅", "created": "✅", "unchanged": "✅",
-                "dry-run": "🔍", "missing": "⚠️", "unsupported": "⏭️", "error": "❌",
-            }
-            for result in _hook_fix_results:
-                _mark = _marks.get(result["status"], "•")
-                print(f"  {_mark} {result['name']}: {result['status']} - {result['message']}")
-                if result.get("status") == "error":
-                    repair_errors.append(f"Hook 修复失败 {result['name']}: {result['message']}")
-        except Exception as e:
-            print(f"\n  ❌ Hook repair failed: {e}")
-            repair_errors.append(f"Hook repair: {e}")
-
-    if args.remove_hooks:
-        print("")
-        print("=" * 60)
-        print("  Hook removal (ai-memory lifecycle hooks)")
-        print("=" * 60)
-        try:
-            from hooks_fixer import remove_hooks_tool
-            from hooks_inventory import hooks_client_config
-            _tools = effective_tools(config)
-            _hook_rm_results = []
-            for tool in _tools:
-                _tname = tool.get("name", "")
-                if not hooks_client_config(config, _tname):
-                    continue
-                if args.client and normalized_name(_tname) != normalized_name(args.client):
-                    continue
-                _hook_rm_results.append(remove_hooks_tool(tool, config, dry_run=args.dry_run))
-            _marks = {
-                "updated": "✅", "unchanged": "✅", "dry-run": "🔍",
-                "missing": "⚠️", "error": "❌",
-            }
-            for result in _hook_rm_results:
-                _mark = _marks.get(result["status"], "•")
-                print(f"  {_mark} {result['name']}: {result['status']} - {result['message']}")
-                if result.get("status") == "error":
-                    repair_errors.append(f"Hook 移除失败 {result['name']}: {result['message']}")
-        except Exception as e:
-            print(f"\n  ❌ Hook removal failed: {e}")
-            repair_errors.append(f"Hook removal: {e}")
+    # hook 三命令已在早期出口处理（_run_hooks），此处不再重复。
 
     if args.set_setting:
         print("")
