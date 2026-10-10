@@ -473,6 +473,7 @@ def add_discovered_client(
     mcp_attach: Optional[List[str]] = None,
     install: Optional[Dict[str, Any]] = None,
     aliases: Optional[List[str]] = None,
+    hooks_config_path: Optional[str] = None,
     dry_run: bool = False,
 ) -> Dict[str, str]:
     """Append one manually-added client to ``data/discovered_tools.yaml``.
@@ -516,6 +517,10 @@ def add_discovered_client(
     # 整改: persist install detection block (app_bundles/commands/config_paths)
     if install:
         entry["install"] = install
+    # A6: 生命周期 hook 配置文件路径。此前只能在 config.yaml 的 hooks 段手写，
+    # 手动注册的客户端因此无法接入 Hook 管理（hooks_inventory 读不到它）。
+    if hooks_config_path:
+        entry["hooks_config_path"] = hooks_config_path
 
     new_list = discovered + [entry]
     rendered = yaml.safe_dump(new_list, allow_unicode=True, default_flow_style=False)
@@ -544,6 +549,7 @@ def update_discovered_client(
     skills_path: Optional[str] = None,
     mcp_config_path: Optional[str] = None,
     scan_dir: Optional[str] = None,
+    hooks_config_path: Optional[str] = None,
     dry_run: bool = False,
 ) -> Dict[str, str]:
     """Update a client recorded in ``data/discovered_tools.yaml`` in place.
@@ -578,6 +584,7 @@ def update_discovered_client(
             skills_path=skills_path,
             config_path=mcp_config_path,
             install=install,
+            hooks_config_path=hooks_config_path,
             dry_run=dry_run,
         )
 
@@ -601,6 +608,9 @@ def update_discovered_client(
     # Scan dir (FEAT-1 extension; persisted verbatim).
     if scan_dir is not None:
         entry["scan_dir"] = scan_dir
+    # A6: 生命周期 hook 配置路径（与 add 对称，支持后续修正）
+    if hooks_config_path is not None:
+        entry["hooks_config_path"] = hooks_config_path
 
     discovered[idx] = entry
     rendered = yaml.safe_dump(discovered, allow_unicode=True, default_flow_style=False)

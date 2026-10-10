@@ -164,6 +164,10 @@ const DIMS = [
   ["hooks", "Hook", "#af52de"],
 ];
 
+// 供「打开主面板」决定落点：有变更 → 变更详情，无变更 → 概览。
+// 声明在顶部：renderDiff 会写它，若留在文件末尾的 let 会触发 TDZ。
+let LAST_HAD_CHANGES = false;
+
 function esc(s) {
   return String(s)
     .replace(/&/g, "&amp;")
@@ -226,6 +230,9 @@ function renderDiff(diff) {
       "</div>";
   }
   html += "</div>";
+
+  // 供「打开主面板」决定落点：有变更 → 变更详情，无变更 → 概览
+  LAST_HAD_CHANGES = changed > 0;
 
   if (changed === 0) {
     dot.className = "status-dot";
@@ -292,8 +299,13 @@ async function loadSnapshot() {
 }
 
 document.getElementById("refresh").addEventListener("click", loadSnapshot);
+// 有变更时直接落到「变更详情」并刷新那次对比，用户少点一次；
+// 无变更时回概览，避免打开一个空页面。
 document.getElementById("open-full").addEventListener("click", async function () {
-  try { await window.__TAURI__.core.invoke("show_main_window"); } catch (e) { /* 忽略 */ }
+  const page = LAST_HAD_CHANGES ? "changes" : "overview";
+  try {
+    await window.__TAURI__.core.invoke("show_main_window", { page: page });
+  } catch (e) { /* 忽略 */ }
 });
 
 window.addEventListener("keydown", function (e) {

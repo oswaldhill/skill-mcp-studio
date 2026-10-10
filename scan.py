@@ -434,6 +434,7 @@ def _run_add_client(args, config, config_path) -> int:
         mcp_key_path=getattr(args, "client_mcp_key_path", None),
         mcp_attach=[k.strip() for k in mcp_attach.split(",")] if mcp_attach else None,
         install=install or None,
+        hooks_config_path=getattr(args, "client_hooks_config_path", None),
         dry_run=args.dry_run,
     )
     _print_store_result(result)
@@ -455,6 +456,7 @@ def _run_update_client(args, config, config_path) -> int:
         skills_path=getattr(args, "skills_path", None),
         mcp_config_path=getattr(args, "mcp_config_path", None),
         scan_dir=getattr(args, "scan_dir", None),
+        hooks_config_path=getattr(args, "hooks_config_path", None),
         dry_run=args.dry_run,
     )
     _print_store_result(result)
@@ -1507,6 +1509,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="产出持久化快照 data/last_snapshot.yaml 并与上次对比（4 维度变更检测，只读不探活）",
     )
     parser.add_argument(
+        "--ignore-change", type=str, default=None, metavar="DIM:NAME:TYPE",
+        help="把一条变更加入忽略清单（幂等）；配合 --snapshot 后按提示的维度/名称/类型填写",
+    )
+    parser.add_argument(
+        "--unignore-change", type=str, default=None, metavar="DIM:NAME:TYPE",
+        help="从忽略清单移除一条变更",
+    )
+    parser.add_argument(
+        "--list-ignored", action="store_true",
+        help="列出当前忽略清单（支持 --format json）",
+    )
+    parser.add_argument(
+        "--prune-ignored", action="store_true",
+        help="清除忽略清单里「当前快照已不再报告」的条目（显式执行，避免误清）",
+    )
+    parser.add_argument(
         "--set-setting", type=str, default=None, metavar="KEY=VALUE",
         help="设置 config.yaml 的 settings 段键值（如 patrol_enabled=true / patrol_interval_minutes=30），带备份",
     )
@@ -1750,8 +1768,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="配合 --add-client：安装检测用的配置文件路径，逗号分隔（如 ~/.foo/mcp.json,~/.foo/settings.json）",
     )
     parser.add_argument(
+        "--client-hooks-config-path", type=str, default=None,
+        help="配合 --add-client：生命周期 hook 配置文件路径（如 ~/.foo/hooks.json）；登记后该客户端纳入 Hook 管理",
+    )
+    parser.add_argument(
         "--update-client", type=str, default=None, metavar="NAME",
-        help="更新已注册客户端的安装证据/目录设置（配合 --app-bundles/--commands/--config-paths/--skills-path/--mcp-config-path/--scan-dir；写操作，支持 --dry-run）",
+        help="更新已注册客户端的安装证据/目录设置（配合 --app-bundles/--commands/--config-paths/--skills-path/--mcp-config-path/--scan-dir/--hooks-config-path；写操作，支持 --dry-run）",
+    )
+    parser.add_argument(
+        "--hooks-config-path", type=str, default=None,
+        help="配合 --update-client：生命周期 hook 配置文件路径（A6）",
     )
     parser.add_argument(
         "--app-bundles", type=str, default=None,
@@ -1962,6 +1988,89 @@ def _run_get_setting(args, config) -> int:
     return 0
 
 
+def _parse_fingerprint(raw: str):
+    """解析 ``DIM:NAME:TYPE`` 形式的变更指纹。
+
+    名称本身可能含冒号（罕见但可能），故只按前两个冒号切分，其余归 TYPE。
+    """
+    parts = raw.split(":", 2)
+    if len(parts) != 3 or not all(p.strip() for p in parts):
+        raise ValueError(
+            f"格式错误，需 DIM:NAME:TYPE，得到: {raw}（例：hooks:Cursor:hooks_configured_changed）"
+        )
+    return parts[0].strip(), parts[1].strip(), parts[2].strip()
+
+
+def _run_ignored(args) -> int:
+    """忽略清单的列出 / 增删出口（只读列出 + 幂等增删）。
+
+    独立早返回出口：``--list-ignored`` 支持 ``--format json``，
+    若落到通用快照路由会被截走（同 ``--snapshot`` / ``--get-setting`` 的坑）。
+    """
+    from ignored_changes import (
+        DEFAULT_IGNORED_PATH,
+        add_ignored,
+        load_ignored,
+        remove_ignored,
+    )
+
+    _as_json = getattr(args, "format", None) == "json"
+
+    if getattr(args, "ignore_change", None):
+        try:
+            dim, name, ctype = _parse_fingerprint(args.ignore_change)
+        except ValueError as exc:
+            print(f"  ❌ {exc}")
+            return 2
+        items = add_ignored(dim, name, ctype)
+        if _as_json:
+            print(json.dumps(
+                {"action": "ignore", "added": {"dim": dim, "name": name, "type": ctype},
+                 "count": len(items)},
+                ensure_ascii=False, indent=2,
+            ))
+        else:
+            print(f"  ✅ 已忽略: {dim} / {name} / {ctype}")
+            print(f"  清单现有 {len(items)} 条（{DEFAULT_IGNORED_PATH}）")
+        return 0
+
+    if getattr(args, "unignore_change", None):
+        try:
+            dim, name, ctype = _parse_fingerprint(args.unignore_change)
+        except ValueError as exc:
+            print(f"  ❌ {exc}")
+            return 2
+        items = remove_ignored(dim, name, ctype)
+        if _as_json:
+            print(json.dumps(
+                {"action": "unignore", "removed": {"dim": dim, "name": name, "type": ctype},
+                 "count": len(items)},
+                ensure_ascii=False, indent=2,
+            ))
+        else:
+            print(f"  ✅ 已取消忽略: {dim} / {name} / {ctype}")
+            print(f"  清单现有 {len(items)} 条")
+        return 0
+
+    # 列出
+    items = load_ignored()
+    if _as_json:
+        print(json.dumps({"count": len(items), "ignored": items}, ensure_ascii=False, indent=2))
+        return 0
+
+    print("")
+    print("=" * 60)
+    print("  Ignored changes")
+    print("=" * 60)
+    if not items:
+        print("  （空）")
+    else:
+        for it in items:
+            print(f"  • {it.get('dim')} / {it.get('name')} / {it.get('type')}")
+        print(f"  共 {len(items)} 条")
+    return 0
+
+
 def _run_snapshot_diff(args, config, config_path) -> int:
     """4 维度变更检测：与上次快照对比并保存新基线。
 
@@ -1983,6 +2092,25 @@ def _run_snapshot_diff(args, config, config_path) -> int:
         _old = load_last_snapshot()
         _diff = compare_snapshots(_old, _snap)
         save_last_snapshot(_snap)
+        # 应用忽略清单：被用户「保持」的变更不再计入，避免每轮巡检重复打扰。
+        #
+        # 刻意**不**在这里自动 prune。prune 的语义是「变更消失即清理」，但
+        # 「消失」有两种成因：变更真的被修复了，或基线刚刚被本轮 save_last_snapshot
+        # 推进过。在同一轮里无法区分二者——实测后果是用户刚「保持」的变更
+        # 下一轮就被清掉，忽略形同失效。清理改为显式命令（--prune-ignored），
+        # 由用户确认变更确实不再出现时执行。
+        from ignored_changes import filter_changes, load_ignored
+        _raw_diff = _diff  # 保留未过滤版本，供 prune 判断「变更是否还在」
+        _diff = filter_changes(_diff, load_ignored())
+        # --prune-ignored：清理「当前快照已不再报告」的条目。
+        # 必须用**未过滤**的 _raw_diff：过滤后的集合里恰好不含被忽略的变更，
+        # 拿它去 prune 会把用户刚「保持」的条目全部误清。
+        if getattr(args, "prune_ignored", False):
+            from ignored_changes import prune_ignored
+            _before = len(load_ignored())
+            _after = prune_ignored(_raw_diff)
+            if not _as_json:
+                print(f"  🧹 清理忽略清单: {_before} → {len(_after)} 条")
         # 附带当前状态数量：无变更时 diff 的 summary 全为 0，
         # 弹框若只显示变更数就没有任何信息量。
         _diff["totals"] = _snapshot_totals(_snap)
@@ -2159,6 +2287,15 @@ def main() -> int:
     # 在通用快照之前优先走固定 JSON 出口，供 GUI 渲染成表格 + 分页。
     if args.fix_skills and getattr(args, "format", None) == "json":
         return _run_fix_skills_preview(args, config, config_path)
+
+    # 忽略清单增删查（E 阶段）：--list-ignored 支持 --format json，
+    # 必须排在通用快照路由之前，否则输出会被快照截走。
+    if (
+        getattr(args, "list_ignored", False)
+        or getattr(args, "ignore_change", None)
+        or getattr(args, "unignore_change", None)
+    ):
+        return _run_ignored(args)
 
     # 读取单个 setting（D 阶段）：只读 + 支持 --format json，Rust 侧巡检与
     # 菜单勾选态都按结构化字段取值，必须排在通用快照路由之前。

@@ -1443,10 +1443,65 @@
 
   .empty .empty-cta { margin-top: 12px; display: flex; gap: 8px; justify-content: center; align-items: center; flex-wrap: wrap; }
 
+  /* ── 变更详情（E 阶段）───────────────────────────────────────────
+     为什么不用纯 <ul> 列表：变更需要「逐条决策」（修复 / 保持），列表项
+     没有承载按钮与状态色的结构，且长文本换行后旧值/新值会糊在一起。
+     卡片式：左侧状态条 + 维度徽标，右侧两个动作按钮，符合
+     ui-ux-pro-max 的 touch-target（按钮 ≥ 32px 高）与对比度要求。 */
+  .chg-toolbar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+  .chg-summary { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chg-pill {
+    display: inline-flex; align-items: baseline; gap: 5px;
+    padding: 4px 10px; border-radius: var(--r-pill);
+    background: var(--bg-elev); border: 1px solid var(--line);
+    font-size: var(--fs-xs); color: var(--muted);
+  }
+  .chg-pill b { font-size: var(--fs-base); color: var(--text); font-variant-numeric: tabular-nums; }
+  .chg-pill.hot { background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn); }
+  .chg-pill.hot b { color: var(--warn); }
+
+  .chg-list { display: flex; flex-direction: column; gap: 8px; }
+  .chg-card {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 10px 12px; border-radius: var(--r-card);
+    background: var(--panel); border: 1px solid var(--line);
+    border-left: 3px solid var(--warn);
+    /* 悬停只改边框/阴影，不用 scale —— 避免布局位移（技能规范） */
+    transition: border-color .15s ease, box-shadow .15s ease;
+  }
+  .chg-card:hover { border-color: var(--line-strong); box-shadow: var(--shadow-card); }
+  .chg-card.ok { border-left-color: var(--ok); }
+  .chg-card.err { border-left-color: var(--err); }
+  .chg-main { flex: 1; min-width: 0; }
+  .chg-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 2px; }
+  .chg-dim {
+    font-size: var(--fs-2xs); font-weight: 600; letter-spacing: .4px; text-transform: uppercase;
+    color: var(--faint); padding: 1px 6px; border-radius: var(--r-hair); background: var(--bg-elev);
+  }
+  .chg-name { font-size: var(--fs-sm); font-weight: 600; color: var(--text); }
+  .chg-detail { font-size: var(--fs-xs); color: var(--muted); line-height: 1.5; word-break: break-word; }
+  .chg-actions { display: flex; gap: 6px; flex-shrink: 0; }
+  .chg-btn {
+    min-height: 32px; padding: 0 10px; border-radius: var(--r-control); cursor: pointer;
+    font-size: var(--fs-xs); font-weight: 500; border: 1px solid var(--line);
+    background: var(--panel); color: var(--text);
+    transition: background .15s ease, border-color .15s ease;
+  }
+  .chg-btn:hover { background: var(--bg-elev); border-color: var(--line-strong); }
+  .chg-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .chg-btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  .chg-btn.primary:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
+  .chg-btn[disabled] { opacity: .5; cursor: not-allowed; }
+  .chg-note { font-size: var(--fs-xs); color: var(--faint); margin-top: 8px; }
+
   @media (prefers-reduced-motion: reduce) {
     .sk-line, .sheet, .palette, .pop-menu, .toast, .switch .sw-knob { animation: none !important; }
     button, .card, .skill-card, .nav-item { transition: none; }
     .usage-row, .chip.more { transition: none; }
+    .chg-card, .chg-btn { transition: none; }
   }
 </style>
 </head>
@@ -3562,6 +3617,9 @@ function openAgentSettings(name) {
   const skillsPath = (t.skills_paths || [])[0] || "";
   const mcpConfigPath = t.config_path || "";
   const scanDir = t.scan_dir || "";
+  // A9：生命周期 hook 配置文件路径。此前只能在 config.yaml 的 hooks 段手写，
+  // GUI 无法查看/修改，导致手动纳入的客户端接不上 Hook 管理。
+  const hooksConfigPath = t.hooks_config_path || "";
 
   function renderPathFields(id, arr, placeholder) {
     return arr.map((v, i) => `<div class="path-field-row" data-idx="${i}">
@@ -3594,6 +3652,7 @@ function openAgentSettings(name) {
       <div class="form-field"><label>Skills 路径</label><input type="text" id="as-skills" value="${escapeHtml(skillsPath)}" placeholder="~/.app/skills" /></div>
       <div class="form-field"><label>MCP 配置文件</label><input type="text" id="as-mcp-cfg" value="${escapeHtml(mcpConfigPath)}" placeholder="~/.app/mcp.json" /></div>
       <div class="form-field"><label>默认扫描目录</label><input type="text" id="as-scan" value="${escapeHtml(scanDir)}" placeholder="~/.config/app/skills" /></div>
+      <div class="form-field"><label>Hook 配置文件</label><input type="text" id="as-hooks" value="${escapeHtml(hooksConfigPath)}" placeholder="~/.app/hooks.json" /></div>
     </div>
 
     <div class="form-actions">
@@ -3636,6 +3695,7 @@ function openAgentSettings(name) {
     const newSkills = $("as-skills").value.trim();
     const newMcpCfg = $("as-mcp-cfg").value.trim();
     const newScan = $("as-scan").value.trim();
+    const newHooks = $("as-hooks").value.trim();
 
     const args = ["--update-client", name];
     if (newApp.length) args.push("--app-bundles", newApp.join(","));
@@ -3644,6 +3704,7 @@ function openAgentSettings(name) {
     if (newSkills) args.push("--skills-path", newSkills);
     if (newMcpCfg) args.push("--mcp-config-path", newMcpCfg);
     if (newScan) args.push("--scan-dir", newScan);
+    if (newHooks) args.push("--hooks-config-path", newHooks);
 
     const res = await runCli(args);
     closeModal();
@@ -6244,6 +6305,8 @@ document.addEventListener("click", (e) => {
     else if (a === "remove-hooks") removeHooksFor(act.dataset.name);
     else if (a === "fix-hooks-all") fixHooksAll();
     else if (a === "run-snapshot") runSnapshot();
+    else if (a === "ignore-change") ignoreChange(act.dataset.dim, act.dataset.name, act.dataset.type);
+    else if (a === "fix-change") fixChange(act.dataset.dim, act.dataset.name, act.dataset.type);
     else if (a === "show-mcp-class") showMcpClass(act.dataset.name, act.dataset.class);
     else if (a === "remove-mcp-entry") removeMcpEntry(act.dataset.name, act.dataset.key, act.dataset.high === "1", act.dataset.reason);
     else if (a === "remove-mcp-class") removeMcpClassEntries(act.dataset.name, act.dataset.class);
@@ -6533,26 +6596,105 @@ async function runSnapshot() {
     }
     const el = $("changes-result");
     if (el && diff) {
-      if (diff.is_first) {
-        el.innerHTML = '<div class="hint">首次快照，已保存基线（data/last_snapshot.yaml）</div>';
-      } else if (!diff.has_changes) {
-        el.innerHTML = '<div class="hint">无变更</div>';
-      } else {
-        const s = diff.summary || {};
-        let html = `<div class="hint">检测到变更：agents=${s.agents||0} mcp=${s.mcp||0} skills=${s.skills||0} hooks=${s.hooks||0}</div>`;
-        for (const [dim, changes] of Object.entries(diff.dimensions || {})) {
-          if (!changes || !changes.length) continue;
-          html += `<h3>${dim}</h3><ul>`;
-          for (const c of changes) {
-            html += `<li>${escapeHtml(c.name || "?")}: ${escapeHtml(c.detail || "")}</li>`;
-          }
-          html += "</ul>";
-        }
-        el.innerHTML = html;
-      }
+      renderChangesResult(el, diff);
     }
     return { ok: true, message: "快照对比完成" };
   }, () => {}, ["运行 --snapshot", "解析 diff", "渲染变更详情"]);
+}
+
+// 缓存最近一次 diff，供「修复 / 保持」按钮取变更指纹（避免二次请求）
+let LAST_DIFF = null;
+
+function renderChangesResult(el, diff) {
+  LAST_DIFF = diff;
+  if (diff.is_first) {
+    el.innerHTML = '<div class="hint">首次快照，已保存基线（data/last_snapshot.yaml）</div>';
+    return;
+  }
+  const s = diff.summary || {};
+  const totals = diff.totals || {};
+  const total = (s.agents || 0) + (s.mcp || 0) + (s.skills || 0) + (s.hooks || 0);
+
+  // 顶部：当前规模 + 变更数（无变更时也有信息量，不是一片 0）
+  const dims = [["agents", "IDE/Agent"], ["mcp", "MCP"], ["skills", "Skill"], ["hooks", "Hook"]];
+  let toolbar = '<div class="chg-toolbar"><div class="chg-summary">';
+  for (const [k, label] of dims) {
+    const n = totals[k] || 0;
+    const d = s[k] || 0;
+    toolbar += `<span class="chg-pill${d > 0 ? " hot" : ""}">${label} <b>${n}</b>${d > 0 ? ` +${d}` : ""}</span>`;
+  }
+  toolbar += "</div>";
+  if (diff.ignored_count > 0) {
+    toolbar += `<span class="hint">已忽略 ${diff.ignored_count} 条</span>`;
+  }
+  toolbar += "</div>";
+
+  if (total === 0) {
+    el.innerHTML = toolbar + '<div class="hint">配置无变更</div>';
+    return;
+  }
+
+  let html = toolbar + '<div class="chg-list">';
+  for (const [dim, changes] of Object.entries(diff.dimensions || {})) {
+    if (!changes || !changes.length) continue;
+    for (const c of changes) {
+      const name = escapeHtml(c.name || "?");
+      const detail = escapeHtml(c.detail || "");
+      const type = escapeHtml(c.type || "");
+      // 用类型判断状态色：新增=ok，移除=err，其余=warn
+      const cls = /added/.test(c.type || "") ? "ok" : /removed/.test(c.type || "") ? "err" : "";
+      html +=
+        `<div class="chg-card ${cls}">` +
+        '<div class="chg-main">' +
+        `<div class="chg-head"><span class="chg-dim">${escapeHtml(dim)}</span>` +
+        `<span class="chg-name">${name}</span></div>` +
+        `<div class="chg-detail">${detail}</div>` +
+        "</div>" +
+        '<div class="chg-actions">' +
+        `<button class="chg-btn primary" data-action="fix-change" data-dim="${escapeHtml(dim)}" data-name="${name}" data-type="${type}" title="按标准模板修复这条变更">修复</button>` +
+        `<button class="chg-btn" data-action="ignore-change" data-dim="${escapeHtml(dim)}" data-name="${name}" data-type="${type}" title="保持现状，不再重复提醒">保持</button>` +
+        "</div></div>";
+    }
+  }
+  html += "</div>";
+  el.innerHTML = html;
+}
+
+/** 「保持」：把一条变更加入忽略清单，然后刷新面板。 */
+async function ignoreChange(dim, name, type) {
+  const fp = `${dim}:${name}:${type}`;
+  const res = await runCli(["--ignore-change", fp]);
+  if (!res || res.code !== 0) {
+    showBanner("err", "加入忽略清单失败：" + (cliFailLines(res) || cliErrDetail(res)));
+    return;
+  }
+  showBanner("ok", `已保持「${name}」，后续不再提醒这条变更。`);
+  await runSnapshot();
+}
+
+/** 「修复」：按变更所属维度调用对应的既有修复命令。 */
+async function fixChange(dim, name, type) {
+  // 只有 hooks 维度有按客户端的标准模板写入命令（--fix-hooks --client X）。
+  // 其它维度的「修复」没有通用语义，明确告知而不是假装成功。
+  if (dim !== "hooks") {
+    showBanner(
+      "warn",
+      `「${name}」属于 ${dim} 维度，暂无自动修复动作。可用「保持」忽略它，或到对应面板手动处理。`
+    );
+    return;
+  }
+  const ok = await confirmModal(
+    "修复 Hook 配置",
+    `将按标准模板为「${name}」写入 ai-memory 生命周期 hook。\n原配置会先备份。继续？`,
+    false
+  );
+  if (!ok) return;
+  await runTaskModal(`修复 ${name} 的 Hook`, async () => {
+    const res = await runCli(["--fix-hooks", "--client", name]);
+    if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
+    if (res.code === 0) return { ok: true, message: "Hook 写入完成" };
+    return { ok: false, message: "Hook 写入失败", detail: cliFailLines(res) || cliErrDetail(res) };
+  }, () => refreshBlocks(["agents", "mainstream"]), ["读取 Hook 配置", "写入标准模板", "校验回写"]);
 }
 
 async function removeMcpEntry(name, key, high, reason) {

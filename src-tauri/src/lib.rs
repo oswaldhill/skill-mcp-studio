@@ -334,7 +334,23 @@ fn snapshot_has_changes(stdout: &str) -> Option<bool> {
     value.get("has_changes").and_then(|v| v.as_bool())
 }
 
-/// 菜单栏模板图标：单色（黑+alpha），由 macOS 依据菜单栏明暗与高亮状态自动着色。
+/// 托盘图标的三态。
+///
+/// - `Idle`：空闲。单色模板图，由 macOS 依菜单栏明暗自动着色，最规整。
+/// - `Alert`：检测到变更。字形 + 右上角红点（浅色菜单栏用深色字形）。
+/// - `AlertDark`：同上但字形为浅色，用于深色菜单栏。
+///
+/// 为什么 Alert 态不能继续用模板图：模板模式会**强制单色**，红点会被系统
+/// 抹成同色，角标就失去「一眼看出有变更」的作用。所以告警态改用非模板图，
+/// 代价是失去自动明暗适配 —— 用明/暗两版字形 + 运行时按主题选取来补偿。
+#[derive(Clone, Copy, PartialEq)]
+enum TrayState {
+    Idle,
+    Alert,
+    AlertDark,
+}
+
+/// 菜单栏图标：单色模板（空闲）或带红点角标（有变更）。
 ///
 /// 为什么要模板图标而不是应用图标：应用图标是**全不透明的深色方块**
 /// （32×32 四角均为 #0D1121），放进菜单栏就是一个深色块，在深色菜单栏上
@@ -342,21 +358,79 @@ fn snapshot_has_changes(stdout: &str) -> Option<bool> {
 ///
 /// 取 @2x（32px）让 Retina 屏有足量像素；源图缺失时回退到应用图标，
 /// 保证不会因为资源问题导致托盘起不来。
-fn tray_icon() -> tauri::image::Image<'static> {
+fn tray_icon(state: TrayState) -> tauri::image::Image<'static> {
     const TEMPLATE_2X: &[u8] = include_bytes!("../icons/trayTemplate@2x.png");
-    match tauri::image::Image::from_bytes(TEMPLATE_2X) {
+    const ALERT_2X: &[u8] = include_bytes!("../icons/trayAlert@2x.png");
+    const ALERT_DARK_2X: &[u8] = include_bytes!("../icons/trayAlertDark@2x.png");
+    const FALLBACK: &[u8] = include_bytes!("../icons/32x32.png");
+
+    let bytes = match state {
+        TrayState::Idle => TEMPLATE_2X,
+        TrayState::Alert => ALERT_2X,
+        TrayState::AlertDark => ALERT_DARK_2X,
+    };
+    match tauri::image::Image::from_bytes(bytes) {
         Ok(img) => img,
-        Err(_) => tauri::image::Image::from_bytes(include_bytes!("../icons/32x32.png"))
-            .expect("托盘图标资源缺失"),
+        Err(_) => tauri::image::Image::from_bytes(FALLBACK).expect("托盘图标资源缺失"),
     }
 }
 
-/// 显示主窗口（popover 的「打开完整面板」按钮调用）
+/// 把托盘切到指定状态（图标 + 模板标志 + tooltip 一起改）。
+///
+/// 模板标志必须跟着图标一起切：告警图是非模板的彩色图，若沿用
+/// `icon_as_template(true)`，macOS 会把红点也抹成单色。
+fn apply_tray_state(tray: &tauri::tray::TrayIcon, state: TrayState, has_changes: bool) {
+    let is_template = state == TrayState::Idle;
+    let _ = tray.set_icon(Some(tray_icon(state)));
+    let _ = tray.set_icon_as_template(is_template);
+    let _ = tray.set_tooltip(Some(if has_changes {
+        "Skill MCP Studio（检测到变更，点击查看）"
+    } else {
+        "Skill MCP Studio"
+    }));
+}
+
+/// 按当前窗口主题选告警态字形：深色菜单栏配浅色字形，反之亦然。
+///
+/// 取窗口主题而非系统外观：托盘挂在应用上，菜单栏取色通常跟随应用的
+/// effective appearance；取不到时按浅色（默认）处理。
+fn alert_state_for_app(app: &tauri::AppHandle) -> TrayState {
+    let dark = app
+        .get_webview_window("main")
+        .and_then(|w| w.theme().ok())
+        .map(|t| t == tauri::Theme::Dark)
+        .unwrap_or(false);
+    if dark {
+        TrayState::AlertDark
+    } else {
+        TrayState::Alert
+    }
+}
+
+/// 显示主窗口（popover 的「打开完整面板」按钮调用）。
+///
+/// `page` 可选：给了就在显示后切到该页并刷新对应内容，用于把用户从
+/// 通知/popover 直接带到「变更详情」。
+///
+/// 为什么不做「点通知直接跳转」：Tauri 2 的 notification 插件只提供发送
+/// 能力，没有点击回调（`Builder` 上没有 on_action/on_click 一类方法）。
+/// 因此改由 popover 承担跳转入口——用户从通知看到提示后点托盘弹框，
+/// 一次点击即可落到变更详情。
 #[tauri::command]
-fn show_main_window(app: tauri::AppHandle) -> Result<(), String> {
+fn show_main_window(app: tauri::AppHandle, page: Option<String>) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
         let _ = window.set_focus();
+        if let Some(page) = page {
+            // 只允许页面名（字母数字），避免把任意 JS 拼进 eval。
+            if page.chars().all(|c| c.is_ascii_alphanumeric()) {
+                let js = format!(
+                    "if (typeof switchPage === 'function') {{ switchPage('{page}'); }} \
+                     if ('{page}' === 'changes' && typeof runSnapshot === 'function') {{ runSnapshot(); }}"
+                );
+                let _ = window.eval(&js);
+            }
+        }
     }
     Ok(())
 }
@@ -424,6 +498,11 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
         // 后台巡检设置（D 阶段）：读写 config.yaml 的 settings 段。
         "--set-setting",
         "--get-setting",
+        // 变更忽略清单（E 阶段）：列出 / 忽略 / 取消忽略 / 清理。
+        "--list-ignored",
+        "--ignore-change",
+        "--unignore-change",
+        "--prune-ignored",
         "--cleanup-config",
         // 阶段五增量：MCP 条目删除 / 批量清理 / 配置备份列出与还原。
         "--remove-mcp-entry",
@@ -666,7 +745,9 @@ pub fn run() {
             let patrol_for_thread = patrol_item.clone();
 
             let _tray = TrayIconBuilder::with_id("main")
-                .icon(tray_icon())
+                // 初始为 Idle 态：单色模板图，由系统按菜单栏明暗自适应。
+                // 巡检发现变更后会切到带红点的非模板告警图（见 apply_tray_state）。
+                .icon(tray_icon(TrayState::Idle))
                 .icon_as_template(true)
                 .tooltip("Skill MCP Studio")
                 .menu(&menu)
@@ -777,11 +858,14 @@ pub fn run() {
                                 None => continue,
                             };
                             if let Some(tray) = patrol_handle.tray_by_id("main") {
-                                let _ = tray.set_tooltip(Some(if has_changes {
-                                    "Skill MCP Studio（检测到变更，点击查看）"
+                                // 三态：有变更 → 带红点角标（按主题选字形）；
+                                // 无变更 → 回到单色模板图。
+                                let state = if has_changes {
+                                    alert_state_for_app(&patrol_handle)
                                 } else {
-                                    "Skill MCP Studio"
-                                }));
+                                    TrayState::Idle
+                                };
+                                apply_tray_state(&tray, state, has_changes);
                             }
                             // 检测到变更时发系统通知（Phase E）
                             if has_changes {
@@ -981,6 +1065,19 @@ mod tests {
         assert_eq!(snapshot_has_changes(r#"{"summary": {}}"#), None);
         // 类型不符（字符串 "true"）也不认
         assert_eq!(snapshot_has_changes(r#"{"has_changes": "true"}"#), None);
+    }
+
+    #[test]
+    fn tray_states_load_and_are_distinguishable() {
+        // 三个状态的资源都必须能解码（解码失败会回退到应用图标，也是 32px）
+        for state in [TrayState::Idle, TrayState::Alert, TrayState::AlertDark] {
+            let img = tray_icon(state);
+            assert!(img.width() > 0 && img.height() > 0, "图标尺寸不应为 0");
+        }
+        // 状态必须互不相等 —— 否则 apply_tray_state 的模板标志判断会失去意义
+        assert!(TrayState::Idle != TrayState::Alert);
+        assert!(TrayState::Alert != TrayState::AlertDark);
+        assert!(TrayState::Idle != TrayState::AlertDark);
     }
 
     #[test]
