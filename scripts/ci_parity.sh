@@ -34,6 +34,32 @@ PY="${PYTHON:-python3}"
 
 note() { printf '%s\n' "$*"; }
 
+# ── 失败累加器（Q0-6 加固，2026-10-10）──────────────────────────────────────
+# 此前每个「工具门禁」（PyYAML / 卫生自检 / 密钥扫描 / ruff / node / cargo）
+# 一旦失败就立刻 `exit 1`，于是**后面的 Python 单元测试根本不会跑**。
+# 回归实测：漏装 ruff 时输出停在「ruff 不可用」，一条测试都没跑 ——
+# 这极易被误读成「测试失败」，而实际是「测试未执行」，两者处置完全不同。
+# 现在改为：能跑的门禁全部跑完，各自记录，最后统一汇总；退出码仍为非零。
+# 注意：只有「无论如何都跑不下去」的前置条件（无解释器 / 版本过低）才立即退出。
+FAILED_GATES=()
+record_failure() { FAILED_GATES+=("$1"); }
+
+print_summary_and_exit() {
+  if [ "${#FAILED_GATES[@]}" -eq 0 ]; then
+    note ""
+    note "==> 全部通过"
+    exit 0
+  fi
+  note ""
+  note "==> 失败：${#FAILED_GATES[@]} 个门禁未通过"
+  for gate in "${FAILED_GATES[@]}"; do
+    note "   ✗ ${gate}"
+  done
+  note "    （各项的详细输出见上文；本汇总把未通过项集中列出，"
+  note "      以免先失败的那个门禁遮住后面门禁的结论。）"
+  exit 1
+}
+
 note "== CI 等价基线检查 =="
 
 # 1) Python 解释器
@@ -82,11 +108,16 @@ if ! command -v node >/dev/null 2>&1; then
     fi
   done
   if ! command -v node >/dev/null 2>&1; then
-    note "  请先安装 node 后重试"
-    exit 1
+    # 不在此处 exit：node 缺失是「覆盖缺口」，不是「跑不下去」。
+    # 记失败后继续 —— 让 Python 用例仍然跑完（跳过的用例会由末尾的
+    # skipped 基线比对再抓一次），避免「一个前置就是没跑测试」的盲区。
+    note "  请先安装 node（本次仍会跑 Python 用例，但结论不代表 CI）"
+    record_failure "node 不在 PATH（渲染护栏用例将跳过）"
   fi
 fi
-note "✓ node    $(node --version 2>&1)  [$(command -v node)]"
+if command -v node >/dev/null 2>&1; then
+  note "✓ node    $(node --version 2>&1)  [$(command -v node)]"
+fi
 
 # 3) 运行时依赖（缺失时相关用例同样会 skip）
 # Q0-6：缺依赖必须**硬失败**。此前只打一行 ✗ 就继续跑 —— 相关用例会 skip，
@@ -96,9 +127,7 @@ if "$PY" -c 'import yaml' >/dev/null 2>&1; then
 else
   note "✗ 缺少 PyYAML —— 相关用例会 skip，本地结论无法代表 CI"
   note "  安装：$PY -m pip install PyYAML"
-  note ""
-  note "==> 失败：依赖不满足（Q0-6）。本脚本的用途是复现 CI 结论，缺依赖时必须停下。"
-  exit 1
+  record_failure "缺少 PyYAML（相关用例会 skip，与 CI 不等价）"
 fi
 
 # 1c) 脚本卫生自检（P2-18）—— 这两条都是「会伪装成测试失败」的缺陷，必须前置拦截。
@@ -173,8 +202,8 @@ fi
 
 if [ "$hygiene_fail" -ne 0 ]; then
   note ""
-  note "==> 失败：脚本卫生自检未通过（P2-18 / P0-6）。此类缺陷会伪装成「测试失败」或「门禁本不存在」，故在跑测试前拦截。"
-  exit 1
+  note "✗ 脚本卫生自检未通过（P2-18 / P0-6）。此类缺陷会伪装成「测试失败」或「门禁本不存在」。"
+  record_failure "脚本卫生自检（P2-18 / P0-6）"
 fi
 
 
@@ -221,11 +250,12 @@ if problems:
     sys.exit(1)
 INNER
 then
-  note "==> 失败：文本卫生自检未通过（P2-17 / P2-14）。"
-  note "    修法：补齐/去掉末尾换行，或去掉 BOM、把 CRLF 转为 LF。"
-  exit 1
+  note "✗ 文本卫生自检未通过（P2-17 / P2-14）。"
+  note "  修法：补齐/去掉末尾换行，或去掉 BOM、把 CRLF 转为 LF。"
+  record_failure "文本卫生自检（P2-17 / P2-14）"
+else
+  note "✓ 文本文件：无 BOM、无 CRLF、末尾恰好一个换行"
 fi
-note "✓ 文本文件：无 BOM、无 CRLF、末尾恰好一个换行"
 
 note ""
 # 1d-2) 密钥泄露自检 —— 拦截「明文凭据被提交进仓库」。
@@ -306,8 +336,8 @@ if problems:
 print("✓ 已跟踪文件中无明文凭据")
 INNER
 then
-  note "==> 失败：密钥泄露自检未通过。"
-  exit 1
+  note "✗ 密钥泄露自检未通过。"
+  record_failure "密钥泄露自检（疑似明文凭据）"
 fi
 
 note ""
@@ -332,12 +362,14 @@ elif "$PY" -m ruff --version >/dev/null 2>&1; then
 fi
 if [ -z "$RUFF_BIN" ]; then
   # 原注释写「本地缺此步不会让结论与 CI 相反」—— 这句是错的：lint 有错时
-  # 本地绿、CI 红，正是 P1-11 要根治的盲区。缺 ruff 必须硬失败。
+  # 本地绿、CI 红，正是 P1-11 要根治的盲区。缺 ruff 必须计入失败。
+  #
+  # 但**不要在这里 exit**（2026-10-10 回归修正）：此前一 `exit 1`，后面的
+  # Python 单元测试就完全没跑，输出停在「ruff 不可用」—— 实测被误读成
+  # 「测试失败」，而真相是「测试未执行」。现在记为失败并继续往下跑。
   note "✗ 未找到 ruff —— 静态检查无法执行，本地结论不能代表 CI"
   note "  安装：$PY -m pip install \"ruff==${RUFF_VERSION}\""
-  note ""
-  note "==> 失败：ruff 不可用（Q0-6）。"
-  exit 1
+  record_failure "ruff 不可用（P1-11 / Q0-6）"
 else
   have="$($RUFF_BIN --version 2>&1 | awk '{print $2}')"
   if [ "$have" != "$RUFF_VERSION" ]; then
@@ -345,10 +377,11 @@ else
   fi
   if ! $RUFF_BIN check core tests scan.py scripts setup.py; then
     note ""
-    note "==> 失败：ruff 静态检查未通过（P1-11）。CI 的 lint-ruff 会用同一命令拦下。"
-    exit 1
+    note "✗ ruff 静态检查未通过（P1-11）。CI 的 lint-ruff 会用同一命令拦下。"
+    record_failure "ruff 静态检查（P1-11）"
+  else
+    note "✓ ruff check 通过（$(printf '%s' "$RUFF_BIN")）"
   fi
-  note "✓ ruff check 通过（$(printf '%s' "$RUFF_BIN")）"
 fi
 note ""
 
@@ -369,16 +402,19 @@ if [ -n "$LOCAL_NODE_MAJOR" ] && [ "$LOCAL_NODE_MAJOR" != "$CI_NODE_MAJOR" ]; th
   note "    node --test 跨大版本的报告格式/API 行为有差异，本地结论未必等价于 CI。"
 fi
 if ! command -v node >/dev/null 2>&1; then
-  note "  ⚠ node 不在 PATH，跳过 JS 用例（上面已尝试并入 /opt/homebrew/bin）"
+  note "  ✗ node 不在 PATH，跳过 JS 用例（上面已尝试并入 /opt/homebrew/bin）"
+  record_failure "JS 用例未执行（node 不在 PATH，T-3 覆盖缺口）"
 elif [ ! -f tests/gui_helpers.test.mjs ]; then
-  note "  ⚠ 找不到 tests/gui_helpers.test.mjs，跳过"
+  note "  ✗ 找不到 tests/gui_helpers.test.mjs"
+  record_failure "JS 用例未执行（缺 tests/gui_helpers.test.mjs）"
 else
   if ! node --test tests/gui_helpers.test.mjs; then
     note ""
-    note "==> 失败：JS 用例未通过（T-3）。CI 的 test-js 会用同一命令拦下。"
-    exit 1
+    note "✗ JS 用例未通过（T-3）。CI 的 test-js 会用同一命令拦下。"
+    record_failure "JS 用例（T-3，node --test）"
+  else
+    note "✓ node --test tests/gui_helpers.test.mjs 通过"
   fi
-  note "✓ node --test tests/gui_helpers.test.mjs 通过"
 fi
 note ""
 
@@ -388,16 +424,18 @@ note ""
 #     lib.rs 的 run_cli/open_url 安全边界回归在本地永远看不见（本地绿、CI 红）。
 note "== Rust 单元测试（Q0-5，CI test-rust 同命令）=="
 if ! command -v cargo >/dev/null 2>&1; then
-  note "  ⚠ 未找到 cargo，跳过 cargo test —— 本次结果**不含** Rust 侧（lib.rs）"
+  note "  ✗ 未找到 cargo，cargo test 未执行 —— 本次结果**不含** Rust 侧（lib.rs）"
   note "     这是覆盖缺口，不是通过：CI 的 test-rust 仍会跑。"
   note "     安装 Rust：https://rustup.rs"
+  record_failure "Rust 单元测试未执行（cargo 不在 PATH，Q0-5 覆盖缺口）"
 else
   if ! (cd src-tauri && cargo test --quiet); then
     note ""
-    note "==> 失败：cargo test 未通过（Q0-5）。CI 的 test-rust 会用同一命令拦下。"
-    exit 1
+    note "✗ cargo test 未通过（Q0-5）。CI 的 test-rust 会用同一命令拦下。"
+    record_failure "Rust 单元测试（cargo test）"
+  else
+    note "✓ cargo test 通过（src-tauri）"
   fi
-  note "✓ cargo test 通过（src-tauri）"
 fi
 note ""
 
@@ -413,27 +451,23 @@ skipped="$(printf '%s\n' "$out" | sed -n 's/.*skipped=\([0-9][0-9]*\)).*/\1/p' |
 
 note ""
 if [ "$rc" -ne 0 ]; then
-  note "==> 失败（exit=${rc}）"
-  exit "$rc"
+  note "✗ 单元测试未通过（exit=${rc}）"
+  record_failure "Python 单元测试（unittest discover，exit=${rc}）"
+elif [ -z "$skipped" ]; then
+  note "· 未能从汇总行解析 skipped 数，跳过基线比对"
+elif [ "$skipped" -eq "$CI_BASELINE_SKIPPED" ]; then
+  note "✓ 单元测试通过，skipped=${skipped}，与 CI 基线一致"
+else
+  note "✗ skipped=$skipped ≠ CI 基线 $CI_BASELINE_SKIPPED"
+  note "    多出的 skip 表示有用例没真正执行，本地结论不足以代表 CI。"
+  note "    最常见原因：node 不在 PATH（见上），或缺少可选依赖。"
+  if [ "${CI_ALLOW_SKIP_DRIFT:-}" = "1" ]; then
+    note "    CI_ALLOW_SKIP_DRIFT=1 已显式豁免，按通过处理。"
+  else
+    note "    Q0-6：这一不一致本身就是失败信号（此前仍以 0 退出）。"
+    note "    确认无碍时用 CI_ALLOW_SKIP_DRIFT=1 显式豁免。"
+    record_failure "skipped=${skipped} 与 CI 基线 ${CI_BASELINE_SKIPPED} 不一致"
+  fi
 fi
 
-if [ -z "$skipped" ]; then
-  note "==> 通过，但未能从汇总行解析 skipped 数"
-  exit 0
-fi
-
-if [ "$skipped" -eq "$CI_BASELINE_SKIPPED" ]; then
-  note "==> 通过，skipped=${skipped}，与 CI 基线一致"
-  exit 0
-fi
-
-note "==> skipped=$skipped ≠ CI 基线 $CI_BASELINE_SKIPPED"
-note "    多出的 skip 表示有用例没真正执行，本地结论不足以代表 CI。"
-note "    最常见原因：node 不在 PATH（见上），或缺少可选依赖。"
-if [ "${CI_ALLOW_SKIP_DRIFT:-}" = "1" ]; then
-  note "    CI_ALLOW_SKIP_DRIFT=1 已显式豁免，按通过处理。"
-  exit 0
-fi
-note "    Q0-6：这一不一致本身就是失败信号（此前仍以 0 退出）。"
-note "    确认无碍时用 CI_ALLOW_SKIP_DRIFT=1 显式豁免。"
-exit 1
+print_summary_and_exit
