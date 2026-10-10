@@ -75,6 +75,30 @@
     --display: var(--sans);
     --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     --ease: cubic-bezier(.16, 1, .3, 1);
+
+    /* spacing — 间距 token（S16 整改：此前 gap 有 14 种散落值，
+       padding 有 20 种；没有 token 可用，每次手填。现收敛到以下档位。）
+       gap 用于 flex/grid 间距；sp 用于 padding/margin 的竖直分量。 */
+    --gap-0: 0px;    /* 紧贴：图标与文字之间 <4px */
+    --gap-1: 4px;    /* 微间距：徽标内边、控件内细节 */
+    --gap-2: 6px;    /* 常用小间距：卡片内元素 */
+    --gap-3: 8px;    /* 常用间距：按钮组、工具条 */
+    --gap-4: 10px;   /* 行间间距：列表行、导航项 */
+    --gap-5: 16px;   /* 区块间距：卡片之间 */
+
+    --sp-1: 4px;     /* 紧凑控件内边（按钮 .sm 竖向） */
+    --sp-2: 6px;     /* 小内边距（徽标、标签） */
+    --sp-3: 8px;     /* 标准控件内边 */
+    --sp-4: 10px;    /* 列表行竖向 */
+    --sp-5: 12px;    /* 卡片竖向 */
+    --sp-6: 14px;    /* 面板竖向 */
+    --sp-7: 16px;    /* 卡片标准内边 */
+    --sp-8: 20px;    /* 面板标准内边 */
+    --sp-9: 24px;    /* 大区块内边（main 顶/底） */
+
+    /* 圆角微调：补充 --r-popover 给 popover 用（它不复用管理台 token，
+       但也不该裸写 14px；管理台这边只做声明，popover 自己引用） */
+    --r-popover: 14px;
   }
   html.dark {
     --bg: #0C0C0F;

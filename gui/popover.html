@@ -4,148 +4,231 @@
 <meta charset="UTF-8">
 <title>Skill MCP Studio</title>
 <style>
+  /* ── Popover 自有 token 体系 ──────────────────────────────────
+     规范说 popover 不复用管理台 token，但不等于不定义。
+     此前所有取值裸写散落在样式里（14px/6px/8px/4px/2px 圆角、
+     13/12/10/9/22px 字号、#1d1d1f/#34c759/#ff9500 等颜色），
+     改一处要全文搜替换。现在集中定义，浅深两套同步。 */
+  :root {
+    color-scheme: light;
+    /* 表面 */
+    --pop-bg: rgba(248, 248, 250, 0.88);
+    --pop-panel: rgba(255, 255, 255, 0.6);
+    --pop-sep: rgba(0, 0, 0, 0.06);
+    --pop-scrollbar: rgba(0, 0, 0, 0.15);
+    --pop-btn-secondary-bg: rgba(0, 0, 0, 0.06);
+    --pop-btn-secondary-hover: rgba(0, 0, 0, 0.1);
+    --pop-refresh-hover: rgba(0, 122, 255, 0.08);
+    /* 文字 */
+    --pop-text: #1d1d1f;
+    --pop-text-muted: #8e8e93;
+    --pop-text-faint: #c0c0c5;
+    --pop-text-zero: #c7c7cc;
+    --pop-on-btn: #fff;
+    /* 强调 */
+    --pop-accent: #007aff;
+    --pop-accent-strong: #0066d6;
+    /* 语义 */
+    --pop-ok: #34c759;
+    --pop-warn: #ff9500;
+    --pop-err: #ff3b30;
+    --pop-gray: #c7c7cc;
+    /* 阴影 */
+    --pop-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 12px 40px rgba(0, 0, 0, 0.28);
+    --pop-dot-glow-ok: 0 0 6px rgba(52, 199, 89, 0.4);
+    --pop-dot-glow-warn: 0 0 6px rgba(255, 149, 0, 0.4);
+    /* 字号 */
+    --pop-fs-title: 13px;
+    --pop-fs-body: 12px;
+    --pop-fs-label: 10px;
+    --pop-fs-badge: 9px;
+    --pop-fs-value: 22px;
+    /* 圆角 */
+    --pop-r-panel: 14px;
+    --pop-r-control: 8px;
+    --pop-r-hair: 4px;
+    --pop-r-pill: 50%;
+    /* 间距 */
+    --pop-gap-1: 4px;
+    --pop-gap-2: 6px;
+    --pop-gap-3: 8px;
+    --pop-pad-body: 8px;
+    --pop-pad-head: 12px 14px 8px;
+    --pop-pad-grid: 0 10px 8px;
+    --pop-pad-card: 8px 10px;
+    --pop-pad-sep: 4px 14px;
+    --pop-pad-item: 4px 14px;
+    --pop-pad-empty: 10px 14px;
+    --pop-pad-foot: 6px 12px 12px;
+    /* 动效 */
+    --pop-ease: ease-in-out;
+  }
+  html.dark {
+    color-scheme: dark;
+    --pop-bg: rgba(30, 30, 34, 0.88);
+    --pop-panel: rgba(50, 50, 55, 0.6);
+    --pop-sep: rgba(255, 255, 255, 0.08);
+    --pop-scrollbar: rgba(255, 255, 255, 0.18);
+    --pop-btn-secondary-bg: rgba(255, 255, 255, 0.08);
+    --pop-btn-secondary-hover: rgba(255, 255, 255, 0.12);
+    --pop-refresh-hover: rgba(0, 122, 255, 0.16);
+    --pop-text: #f4f4f5;
+    --pop-text-muted: #a1a1aa;
+    --pop-text-faint: #71717a;
+    --pop-text-zero: #3a3a3e;
+    --pop-on-btn: #0a1220;
+    --pop-accent: #60a5fa;
+    --pop-accent-strong: #3b82f6;
+    --pop-ok: #34c759;
+    --pop-warn: #fbbf24;
+    --pop-err: #f87171;
+    --pop-gray: #52525b;
+    --pop-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.08), 0 12px 40px rgba(0, 0, 0, 0.5);
+    --pop-dot-glow-ok: 0 0 6px rgba(52, 199, 89, 0.3);
+    --pop-dot-glow-warn: 0 0 6px rgba(251, 191, 36, 0.3);
+  }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { background: transparent; }
   body {
     font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
-    font-size: 13px;
-    color: #1d1d1f;
-    padding: 8px;
+    font-size: var(--pop-fs-title);
+    color: var(--pop-text);
+    padding: var(--pop-pad-body);
     -webkit-user-select: none;
     user-select: none;
   }
   .panel {
-    background: rgba(248, 248, 250, 0.88);
+    background: var(--pop-bg);
     backdrop-filter: blur(30px) saturate(180%);
     -webkit-backdrop-filter: blur(30px) saturate(180%);
-    border-radius: 14px;
-    box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 12px 40px rgba(0, 0, 0, 0.28);
+    border-radius: var(--pop-r-panel);
+    box-shadow: var(--pop-shadow);
     overflow: hidden;
   }
   .head {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 14px 8px;
+    padding: var(--pop-pad-head);
   }
-  .head-left { display: flex; align-items: center; gap: 8px; }
+  .head-left { display: flex; align-items: center; gap: var(--pop-gap-3); }
   .status-dot {
-    width: 8px; height: 8px; border-radius: 50%;
-    background: #34c759;
-    box-shadow: 0 0 6px rgba(52, 199, 89, 0.4);
+    width: 8px; height: 8px; border-radius: var(--pop-r-pill);
+    background: var(--pop-ok);
+    box-shadow: var(--pop-dot-glow-ok);
   }
-  .status-dot.alert { background: #ff9500; box-shadow: 0 0 6px rgba(255, 149, 0, 0.4); }
+  .status-dot.alert { background: var(--pop-warn); box-shadow: var(--pop-dot-glow-warn); }
   /* 缓存态：灰点 + 轻微呼吸，表示「这是旧数据，正在刷新」 */
-  .status-dot.stale { background: #c7c7cc; box-shadow: none; animation: stalePulse 1.2s ease-in-out infinite; }
+  .status-dot.stale { background: var(--pop-gray); box-shadow: none; animation: stalePulse 1.2s var(--pop-ease) infinite; }
   @keyframes stalePulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
-  .title { font-size: 13px; font-weight: 600; color: #1d1d1f; }
+  .title { font-size: var(--pop-fs-title); font-weight: 600; color: var(--pop-text); }
   .refresh {
-    border: none; background: transparent; color: #007aff;
-    font-size: 12px; padding: 3px 8px; border-radius: 6px; cursor: pointer;
+    border: none; background: transparent; color: var(--pop-accent);
+    font-size: var(--pop-fs-body); padding: 3px var(--pop-gap-3); border-radius: var(--pop-r-control); cursor: pointer;
   }
-  .refresh:hover { background: rgba(0, 122, 255, 0.08); }
+  .refresh:hover { background: var(--pop-refresh-hover); }
   .grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 6px;
-    padding: 0 10px 8px;
+    gap: var(--pop-gap-2);
+    padding: var(--pop-pad-grid);
   }
   .card {
-    background: rgba(255, 255, 255, 0.6);
-    border-radius: 8px;
-    padding: 8px 10px;
+    background: var(--pop-panel);
+    border-radius: var(--pop-r-control);
+    padding: var(--pop-pad-card);
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: var(--pop-gap-1);
   }
   .card-label {
     display: flex;
     align-items: center;
-    gap: 5px;
-    font-size: 10px;
-    color: #8e8e93;
+    gap: var(--pop-gap-1);
+    font-size: var(--pop-fs-label);
+    color: var(--pop-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.4px;
     font-weight: 500;
   }
   .card-badge {
-    font-size: 9px;
+    font-size: var(--pop-fs-badge);
     font-weight: 700;
-    color: #fff;
+    color: var(--pop-on-btn);
     padding: 1px 4px;
-    border-radius: 4px;
+    border-radius: var(--pop-r-hair);
     letter-spacing: 0;
   }
   .card-value {
-    font-size: 22px;
+    font-size: var(--pop-fs-value);
     font-weight: 600;
     font-variant-numeric: tabular-nums;
-    color: #1d1d1f;
+    color: var(--pop-text);
     line-height: 1.2;
   }
-  .card-value.zero { color: #c7c7cc; }
-  .sep { height: 1px; background: rgba(0, 0, 0, 0.06); margin: 4px 14px; }
+  .card-value.zero { color: var(--pop-text-zero); }
+  .sep { height: 1px; background: var(--pop-sep); margin: var(--pop-pad-sep); }
   .list { max-height: 140px; overflow-y: auto; padding: 2px 0 6px; }
   .list::-webkit-scrollbar { width: 4px; }
-  .list::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.15); border-radius: 2px; }
+  .list::-webkit-scrollbar-thumb { background: var(--pop-scrollbar); border-radius: var(--pop-r-hair); }
   .item {
-    display: flex; gap: 8px; align-items: flex-start;
-    padding: 4px 14px; font-size: 12px; line-height: 1.4;
+    display: flex; gap: var(--pop-gap-3); align-items: flex-start;
+    padding: var(--pop-pad-item); font-size: var(--pop-fs-body); line-height: 1.4;
   }
   .dot {
-    flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%;
-    background: #8e8e93; margin-top: 4px;
+    flex: 0 0 auto; width: 6px; height: 6px; border-radius: var(--pop-r-pill);
+    background: var(--pop-text-muted); margin-top: 4px;
   }
-  .dot.added { background: #34c759; }
-  .dot.removed { background: #ff3b30; }
-  .dot.changed { background: #ff9500; }
-  .item .nm { color: #1d1d1f; font-weight: 500; }
-  .item .detail { color: #8e8e93; }
+  .dot.added { background: var(--pop-ok); }
+  .dot.removed { background: var(--pop-err); }
+  .dot.changed { background: var(--pop-warn); }
+  .item .nm { color: var(--pop-text); font-weight: 500; }
+  .item .detail { color: var(--pop-text-muted); }
   .empty-msg {
-    padding: 10px 14px;
+    padding: var(--pop-pad-empty);
     text-align: center;
-    color: #8e8e93;
-    font-size: 12px;
+    color: var(--pop-text-muted);
+    font-size: var(--pop-fs-body);
   }
   .empty-msg .check {
     display: inline-flex; align-items: center; gap: 5px;
   }
   .empty-msg .check svg { width: 14px; height: 14px; }
   .meta {
-    padding: 6px 14px 4px;
-    font-size: 10px;
-    color: #c0c0c5;
+    padding: var(--pop-pad-item);
+    font-size: var(--pop-fs-label);
+    color: var(--pop-text-faint);
     text-align: center;
   }
   .foot {
-    padding: 6px 12px 12px;
+    padding: var(--pop-pad-foot);
     display: flex;
     gap: 8px;
   }
   .btn {
     flex: 1;
     border: none;
-    border-radius: 8px;
+    border-radius: var(--pop-r-control);
     padding: 7px 0;
-    font-size: 12px;
+    font-size: var(--pop-fs-body);
     font-weight: 500;
     cursor: pointer;
-    transition: background 0.15s;
+    transition: background 0.15s var(--pop-ease);
   }
   .btn-primary {
-    background: #007aff;
-    color: #fff;
+    background: var(--pop-accent);
+    color: var(--pop-on-btn);
   }
-  .btn-primary:hover { background: #0066d6; }
+  .btn-primary:hover { background: var(--pop-accent-strong); }
   .btn-secondary {
-    background: rgba(0, 0, 0, 0.06);
-    color: #1d1d1f;
+    background: var(--pop-btn-secondary-bg);
+    color: var(--pop-text);
   }
-  .btn-secondary:hover { background: rgba(0, 0, 0, 0.1); }
+  .btn-secondary:hover { background: var(--pop-btn-secondary-hover); }
 
   /* 键盘可达性：无鼠标也能操作（UI 技能规范要求可见焦点环） */
   .refresh:focus-visible, .btn:focus-visible {
-    outline: 2px solid #007aff;
+    outline: 2px solid var(--pop-accent);
     outline-offset: 2px;
   }
 
@@ -172,10 +255,10 @@
 
 <script>
 const DIMS = [
-  ["agents", "IDE/Agent", "#5856d6"],
-  ["mcp", "MCP", "#34c759"],
-  ["skills", "Skill", "#ff9500"],
-  ["hooks", "Hook", "#af52de"],
+  ["agents", "IDE/Agent", "var(--pop-accent)"],
+  ["mcp", "MCP", "var(--pop-ok)"],
+  ["skills", "Skill", "var(--pop-warn)"],
+  ["hooks", "Hook", "var(--pop-accent)"],
 ];
 
 // 供「打开主面板」决定落点：有变更 → 变更详情，无变更 → 概览。
@@ -263,7 +346,7 @@ function renderDiff(diff, fromCache) {
     dot.title = "";
     html += '<div class="sep"></div>';
     html += '<div class="empty-msg"><span class="check">';
-    html += '<svg viewBox="0 0 24 24" fill="none" stroke="#34c759" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>';
+    html += '<svg viewBox="0 0 24 24" fill="none" stroke="var(--pop-ok)" style="stroke: var(--pop-ok)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>';
     html += ' 配置无变更</span></div>';
     render(html);
     return;

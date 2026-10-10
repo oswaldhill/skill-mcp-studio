@@ -441,6 +441,11 @@
     <a href="#s2-3" class="sub">2.3 卡片</a>
     <a href="#s2-4" class="sub">2.4 元信息与数字</a>
     <a href="#s2-5" class="sub">2.5 状态覆盖</a>
+    <a href="#s2-5b" class="sub">2.5b 弹窗容器</a>
+    <a href="#s2-5c" class="sub">2.5c 开关</a>
+    <a href="#s2-5d" class="sub">2.5d 分页</a>
+    <a href="#s2-5e" class="sub">2.5e 路径字段行</a>
+    <a href="#s2-5f" class="sub">2.5f 洞察弹窗</a>
     <a href="#s2-6" class="sub">2.6 工具条</a>
     <a href="#s2-7" class="sub">2.7 变更卡片</a>
     <a href="#s2-8" class="sub">2.8 托盘弹框</a>
@@ -833,6 +838,50 @@
           </tbody>
         </table>
       </div>
+
+      <h3 id="s2-5b">2.5b 弹窗容器（<code>.modal</code> / <code>.cfm-card</code> / <code>.sheet</code>）<a class="anchor" href="#s2-5b" aria-label="锚点">#</a></h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>类</th><th>用途</th><th>结构要点</th></tr></thead>
+          <tbody>
+            <tr><td><code>.modal</code></td><td>表单弹窗</td><td>居中浮层 + <code>--backdrop</code>；标题 <code>--display</code> + <code>--fs-md</code>；宽 <code>min(560px,100%)</code></td></tr>
+            <tr><td><code>.cfm-card</code></td><td>确认弹窗</td><td>更窄；出口按钮 <code>cfm-btn-danger</code> / <code>cfm-btn-cancel</code></td></tr>
+            <tr><td><code>.sheet</code></td><td>侧拉面板</td><td>从右侧滑入；<code>--shadow-modal</code>；内部有 <code>.sheet-head</code> 工具条</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <ul>
+        <li>弹窗的 <code>z-index</code> 统一用 100（遮罩 90）。</li>
+        <li>弹窗内表单字段间距用 <code>--gap-3</code>(8px)。</li>
+        <li><code>.sheet</code> 宽度 <code>min(480px, 40vw)</code>，不影响主区域布局。</li>
+      </ul>
+
+      <h3 id="s2-5c">2.5c 开关（<code>.switch</code>）<a class="anchor" href="#s2-5c" aria-label="锚点">#</a></h3>
+      <ul>
+        <li>轨道：宽 36px 高 20px，<code>--r-pill</code>，关闭态 <code>--line-strong</code> 底</li>
+        <li>旋钮：16px 圆点，<code>--on-solid</code> 底，<code>transition: transform</code></li>
+        <li>开启态轨道变 <code>--accent</code>，旋钮右移</li>
+      </ul>
+
+      <h3 id="s2-5d">2.5d 分页（<code>.pagination</code>）<a class="anchor" href="#s2-5d" aria-label="锚点">#</a></h3>
+      <ul>
+        <li>按钮尺寸：<code>padding: 4px 9px</code>，<code>--fs-xs</code>（比标准 <code>.sm</code> 更紧凑）</li>
+        <li>当前页不可点，用 <code>--accent-bg</code> 高亮</li>
+        <li>与表格底边对齐，不悬浮</li>
+      </ul>
+
+      <h3 id="s2-5e">2.5e 路径字段行（<code>.path-field-row</code>）<a class="anchor" href="#s2-5e" aria-label="锚点">#</a></h3>
+      <ul>
+        <li>每行一个 <code>&lt;input&gt;</code> + 一个 <code>×</code> 删除按钮</li>
+        <li>删除按钮：<code>padding: 4px 8px</code>，<code>--fs-2xs</code>，<code>ghost</code> 风格</li>
+        <li>底部一个「+ 添加路径」按钮</li>
+      </ul>
+
+      <h3 id="s2-5f">2.5f 洞察弹窗（<code>.insight-dialog</code>）<a class="anchor" href="#s2-5f" aria-label="锚点">#</a></h3>
+      <ul>
+        <li>最大宽 <code>min(1040px, 100%)</code>，内部两级滚动（工具条钉顶 + 结果区滚动）</li>
+        <li>不复用 <code>.modal</code> 的居中浮层样式，是独立的结构</li>
+      </ul>
 
       <h3 id="s2-6">2.6 工具条（<code>.toolbar</code>）<a class="anchor" href="#s2-6" aria-label="锚点">#</a></h3>
       <p>搜索框 + 操作按钮同排。搜索框占满剩余宽度，按钮固定宽度，间距 8px。
