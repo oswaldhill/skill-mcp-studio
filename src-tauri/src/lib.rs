@@ -36,6 +36,16 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 /// 否则单窗口的 CloseRequested（Cmd+W / 红色关闭钮）只隐藏窗口，不退出。
 static EXITING: AtomicBool = AtomicBool::new(false);
 
+/// popover 最近一次显示的时刻。
+///
+/// 为什么要它：失焦即收起是 macOS 弹框的惯例，但 `show()` 到 `set_focus()`
+/// 之间窗口还不是 key window，会先抛一次 `Focused(false)`。若不设防，弹框
+/// 会「闪现即消失」。这里给显示后的一小段时间设抑制窗，窗口稳定获得焦点后
+/// 再恢复正常的失焦收起行为。
+static POPOVER_SHOWN_AT: Mutex<Option<std::time::Instant>> = Mutex::new(None);
+/// 显示后的失焦抑制时长；取值要盖住 `show()` → `set_focus()` 的生效延迟。
+const POPOVER_FOCUS_GRACE: Duration = Duration::from_millis(400);
+
 /// Candidate CLI launch targets: PATH name first, then common install locations.
 ///
 /// Cross-platform (three targets):
@@ -439,6 +449,13 @@ fn show_main_window(app: tauri::AppHandle, page: Option<String>) -> Result<(), S
 ///
 /// macOS 菜单栏高约 25-30pt，右侧留给弹框一个 8pt 边距；
 /// 取不到显示器信息时保持原位，不影响功能。
+/// 记录 popover 显示时刻，开启失焦抑制窗（见 `POPOVER_SHOWN_AT`）。
+fn mark_popover_shown() {
+    if let Ok(mut guard) = POPOVER_SHOWN_AT.lock() {
+        *guard = Some(std::time::Instant::now());
+    }
+}
+
 fn position_popover(window: &tauri::WebviewWindow, anchor: Option<&tauri::Rect>) {
     let monitor = window
         .current_monitor()
@@ -803,6 +820,7 @@ pub fn run() {
                             if let Some(popover) = app.get_webview_window("popover") {
                                 // 菜单触发时没有图标坐标，退回右上角
                                 position_popover(&popover, None);
+                                mark_popover_shown();
                                 let _ = popover.show();
                                 let _ = popover.set_focus();
                                 let _ = popover
@@ -842,6 +860,7 @@ pub fn run() {
                                     // 此前写死「屏幕右上角」，在图标不靠右时
                                     // 会明显偏离（实测偏到 x=1612 而图标在 719）。
                                     position_popover(&popover, Some(&rect));
+                                    mark_popover_shown();
                                     let _ = popover.show();
                                     let _ = popover.set_focus();
                                     let _ = popover.eval(
@@ -913,13 +932,34 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { api, .. } = event {
-                // 单窗口常驻：Cmd+W / 红色关闭钮只隐藏窗口，不退出应用；
-                // Cmd+Q 走 ExitRequested 置位 EXITING 后放行真正的窗口关闭。
-                if !EXITING.load(Ordering::SeqCst) {
-                    api.prevent_close();
-                    let _ = window.hide();
+            match event {
+                WindowEvent::CloseRequested { api, .. } => {
+                    // 单窗口常驻：Cmd+W / 红色关闭钮只隐藏窗口，不退出应用；
+                    // Cmd+Q 走 ExitRequested 置位 EXITING 后放行真正的窗口关闭。
+                    if !EXITING.load(Ordering::SeqCst) {
+                        api.prevent_close();
+                        let _ = window.hide();
+                    }
                 }
+                WindowEvent::Focused(false) => {
+                    // 失焦即收起 popover —— 与 macOS 原生弹框一致（控制中心、
+                    // 输入法候选框都是点外部就关）。此前没有这段，弹框只能靠
+                    // 再次点托盘图标或按 Esc 关闭，点桌面其它地方它一直悬着。
+                    //
+                    // 只对 popover 生效：主窗口是常驻控制台，失焦不该被收起。
+                    if window.label() == "popover" {
+                        let within_grace = POPOVER_SHOWN_AT
+                            .lock()
+                            .ok()
+                            .and_then(|guard| *guard)
+                            .map(|t| t.elapsed() < POPOVER_FOCUS_GRACE)
+                            .unwrap_or(false);
+                        if !within_grace {
+                            let _ = window.hide();
+                        }
+                    }
+                }
+                _ => {}
             }
         })
         .build(tauri::generate_context!())
