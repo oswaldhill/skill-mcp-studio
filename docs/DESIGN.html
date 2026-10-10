@@ -300,6 +300,125 @@
     .toc a, .rule, .theme-btn, .cl-group li, .anchor { transition: none; }
   }
 
+  /* ── 可视化样例（§1b）─────────────────────────────────────────
+     规范里写「--fs-sm 是 13px」，读者仍不知道 13px 长什么样。这里把每个
+     取值渲染成实物，并标出实际像素尺寸。样例本身也必须用 token，否则
+     它就成了规范的反例。 */
+  .spec-block {
+    border: 1px solid var(--line); border-radius: var(--r-card);
+    background: var(--panel); overflow: hidden; margin: 16px 0;
+  }
+  .spec-block > .spec-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; flex-wrap: wrap;
+    padding: 9px 16px; background: var(--bg-elev);
+    border-bottom: 1px solid var(--line);
+    font-size: var(--fs-xs); color: var(--faint);
+  }
+  .spec-block > .spec-head b { color: var(--text); font-weight: 600; }
+  .spec-body { padding: 16px; }
+  .spec-note { font-size: var(--fs-xs); color: var(--faint); margin-top: 10px; }
+
+  /* 字号阶梯 */
+  .fs-row {
+    display: flex; align-items: baseline; gap: 14px;
+    padding: 8px 0; border-bottom: 1px dashed var(--line);
+  }
+  .fs-row:last-child { border-bottom: 0; }
+  .fs-meta {
+    flex: 0 0 132px; font-family: var(--mono); font-size: var(--fs-2xs);
+    color: var(--faint);
+  }
+  .fs-meta b { color: var(--accent); font-weight: 600; }
+  .fs-demo { color: var(--text); }
+  .fs-use { margin-left: auto; font-size: var(--fs-2xs); color: var(--faint); text-align: right; }
+
+  /* 控件样例排布 */
+  .ctl-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .ctl-row + .ctl-row { margin-top: 12px; }
+  .ctl-label {
+    flex: 0 0 132px; font-family: var(--mono);
+    font-size: var(--fs-2xs); color: var(--faint);
+  }
+
+  /* 尺寸标尺：用真实盒子把 padding/高度画出来 */
+  .ruler { display: flex; align-items: flex-end; gap: 22px; flex-wrap: wrap; }
+  .ruler-item { text-align: center; }
+  .ruler-box {
+    background: var(--accent-bg); border: 1px solid var(--accent-border);
+    border-radius: var(--r-hair); margin: 0 auto 6px;
+  }
+  .ruler-cap { font-family: var(--mono); font-size: var(--fs-2xs); color: var(--faint); }
+
+  /* 圆角对照 */
+  .radius-row { display: flex; gap: 18px; flex-wrap: wrap; }
+  .radius-item { text-align: center; }
+  .radius-swatch {
+    width: 62px; height: 46px; margin: 0 auto 6px;
+    background: var(--accent-bg); border: 1px solid var(--accent-border);
+  }
+
+  /* 语义色对照 */
+  .sem-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); gap: 10px; }
+  .sem-chip {
+    border-radius: var(--r-control); padding: 10px 12px;
+    font-size: var(--fs-xs); display: flex; align-items: center; gap: 8px;
+  }
+  .sem-chip .dot { width: 9px; height: 9px; border-radius: var(--r-pill); flex: 0 0 auto; }
+  .sem-ok { background: var(--ok-bg); border: 1px solid var(--ok-border); color: var(--ok); }
+  .sem-ok .dot { background: var(--ok); }
+  .sem-warn { background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn); }
+  .sem-warn .dot { background: var(--warn); }
+  .sem-err { background: var(--err-bg); border: 1px solid var(--err-border); color: var(--err); }
+  .sem-err .dot { background: var(--err); }
+  .sem-accent { background: var(--accent-bg); border: 1px solid var(--accent-border); color: var(--accent); }
+  .sem-accent .dot { background: var(--accent); }
+  .sem-chip code { background: transparent; border: 0; padding: 0; color: inherit; }
+
+  /* 图标样例 */
+  .icon-row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .icon-cell {
+    width: 58px; padding: 8px 0; text-align: center;
+    border: 1px solid var(--line); border-radius: var(--r-control);
+    background: var(--bg);
+  }
+  .icon-cell svg { display: block; margin: 0 auto 4px; stroke: var(--muted); fill: none;
+                   stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  .icon-cell span { font-family: var(--mono); font-size: var(--fs-2xs); color: var(--faint); }
+
+  /* 样例区里的按钮：与管理台真实按钮同构（同 padding/圆角/字号），
+     让读者看到的就是最终形态。全部走 token。 */
+  .demo-btn {
+    min-height: 32px; padding: 7px 12px;
+    border-radius: var(--r-control); border: 1px solid var(--line);
+    background: var(--panel); color: var(--text);
+    font-family: var(--sans); font-size: var(--fs-sm); font-weight: 500;
+    cursor: pointer; white-space: nowrap;
+    transition: background .15s var(--ease), border-color .15s var(--ease);
+  }
+  .demo-btn:hover { background: var(--panel-2); border-color: var(--line-strong); }
+  .demo-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .demo-btn.primary { background: var(--accent); border-color: var(--accent-border); color: var(--on-accent); font-weight: 600; }
+  .demo-btn.primary:hover { background: var(--accent-strong); }
+  .demo-btn.btn-soft { background: var(--panel-2); border-color: var(--line-strong); }
+  .demo-btn.ghost { background: transparent; border-color: transparent; color: var(--muted); }
+  .demo-btn.ghost:hover { background: var(--panel-2); color: var(--text); }
+  .demo-btn.danger { background: var(--err-bg); border-color: var(--err-border); color: var(--err); }
+  .demo-btn.danger:hover { border-color: var(--err); }
+  .demo-btn.sm { min-height: 26px; padding: 3px 10px; font-size: var(--fs-2xs); }
+  .demo-btn[disabled] { opacity: .5; cursor: not-allowed; }
+  .demo-btn[disabled]:hover { background: var(--panel); border-color: var(--line); }
+
+  /* 列表行样例 */
+  .demo-listrow { border: 1px solid var(--line); border-radius: var(--r-control); overflow: hidden; background: var(--panel); }
+  .demo-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 10px 14px; border-bottom: 1px solid var(--line);
+  }
+  .demo-row:last-child { border-bottom: 0; }
+  .demo-row-title { font-size: var(--fs-base); color: var(--text); }
+  .demo-row-meta { font-family: var(--mono); font-size: var(--fs-xs); color: var(--faint); margin-top: 2px; }
+
   @media print {
     .toc, .theme-btn { display: none; }
     .main { max-width: none; padding: 0; }
@@ -315,6 +434,7 @@
     <div class="toc-title">目录</div>
     <a href="#s0">0. 设计判断</a>
     <a href="#s1">1. Token 体系</a>
+    <a href="#s1b" class="sub">1b 可视化样例</a>
     <a href="#s2">2. 组件规约</a>
     <a href="#s2-1" class="sub">2.1 按钮</a>
     <a href="#s2-2" class="sub">2.2 列表行</a>
@@ -423,6 +543,212 @@
         <div class="rule"><span class="tag">字体锁</span>
           <p>正文用 <code>--sans</code>；数字、路径、包名、代码用 <code>--mono</code>。</p></div>
       </div>
+    </section>
+
+    <!-- ═══ 1b ═══ -->
+    <section id="s1b">
+      <h2><span class="num">1b</span>可视化样例<a class="anchor" href="#s1b" aria-label="锚点">#</a></h2>
+      <p>规范里写「<code>--fs-sm</code> 是 13px」，读者仍不知道 13px 长什么样。
+         这一节把每个取值渲染成<strong>实物</strong>并标出实际像素尺寸，供实现时对照。
+         样例本身也全部取自 token，否则它就成了规范的反例。</p>
+
+      <!-- 字号阶梯 -->
+      <div class="spec-block">
+        <div class="spec-head"><b>字号阶梯</b><span>7 档，全部来自 <code>--fs-*</code></span></div>
+        <div class="spec-body">
+          <div class="fs-row">
+            <div class="fs-meta">--fs-2xl <b>30px</b></div>
+            <div class="fs-demo" style="font-size: var(--fs-xl)">界面规范</div>
+            <div class="fs-use">页面主标题</div>
+          </div>
+          <div class="fs-row">
+            <div class="fs-meta">--fs-lg <b>22px</b></div>
+            <div class="fs-demo" style="font-size: var(--fs-lg)">界面规范</div>
+            <div class="fs-use">章节标题 h2</div>
+          </div>
+          <div class="fs-row">
+            <div class="fs-meta">--fs-md <b>16px</b></div>
+            <div class="fs-demo" style="font-size: var(--fs-md)">界面规范</div>
+            <div class="fs-use">小节标题 h3</div>
+          </div>
+          <div class="fs-row">
+            <div class="fs-meta">--fs-base <b>14px</b></div>
+            <div class="fs-demo" style="font-size: var(--fs-base)">界面规范 Skill MCP Studio</div>
+            <div class="fs-use">正文默认</div>
+          </div>
+          <div class="fs-row">
+            <div class="fs-meta">--fs-sm <b>13px</b></div>
+            <div class="fs-demo" style="font-size: var(--fs-sm)">界面规范 Skill MCP Studio</div>
+            <div class="fs-use">按钮 / 表格 / 列表行</div>
+          </div>
+          <div class="fs-row">
+            <div class="fs-meta">--fs-xs <b>12px</b></div>
+            <div class="fs-demo" style="font-size: var(--fs-xs)">界面规范 Skill MCP Studio</div>
+            <div class="fs-use">元信息 / 表头 / 提示</div>
+          </div>
+          <div class="fs-row">
+            <div class="fs-meta">--fs-2xs <b>11px</b></div>
+            <div class="fs-demo" style="font-size: var(--fs-2xs)">界面规范 Skill MCP Studio</div>
+            <div class="fs-use">徽标 / 标签 / 紧凑按钮</div>
+          </div>
+          <p class="spec-note">正文最小不低于 <code>--fs-base</code>(14px)；
+             11px 只用于徽标等极短文本，不承载连续阅读。</p>
+        </div>
+      </div>
+
+      <!-- 按钮族 -->
+      <div class="spec-block">
+        <div class="spec-head"><b>按钮族</b><span>默认高 32px / 紧凑 <code>.sm</code> 高 26px</span></div>
+        <div class="spec-body">
+          <div class="ctl-row">
+            <div class="ctl-label">primary</div>
+            <button class="demo-btn primary" type="button">主操作</button>
+            <button class="demo-btn btn-soft" type="button">次级操作</button>
+            <button class="demo-btn ghost" type="button">文字按钮</button>
+            <button class="demo-btn danger" type="button">删除</button>
+          </div>
+          <div class="ctl-row">
+            <div class="ctl-label">紧凑 .sm</div>
+            <button class="demo-btn btn-soft sm" type="button">刷新</button>
+            <button class="demo-btn btn-soft sm" type="button">检查</button>
+            <button class="demo-btn ghost sm" type="button">忽略</button>
+          </div>
+          <div class="ctl-row">
+            <div class="ctl-label">禁用态</div>
+            <button class="demo-btn btn-soft" type="button" disabled>不可用</button>
+            <span class="spec-note" style="margin:0">降低不透明度 + <code>cursor: not-allowed</code></span>
+          </div>
+          <p class="spec-note">一屏只允许一个 <code>primary</code>；
+             破坏性操作用 <code>danger</code>，不得用 primary 伪装。</p>
+        </div>
+      </div>
+
+      <!-- 尺寸标尺 -->
+      <div class="spec-block">
+        <div class="spec-head"><b>尺寸标尺</b><span>按真实像素绘制</span></div>
+        <div class="spec-body">
+          <div class="ruler">
+            <div class="ruler-item">
+              <div class="ruler-box" style="width:26px;height:26px"></div>
+              <div class="ruler-cap">26 × 26<br>button.sm 高</div>
+            </div>
+            <div class="ruler-item">
+              <div class="ruler-box" style="width:32px;height:32px"></div>
+              <div class="ruler-cap">32 × 32<br>按钮最小高</div>
+            </div>
+            <div class="ruler-item">
+              <div class="ruler-box" style="width:16px;height:16px"></div>
+              <div class="ruler-cap">16 × 16<br>导航图标</div>
+            </div>
+            <div class="ruler-item">
+              <div class="ruler-box" style="width:24px;height:24px"></div>
+              <div class="ruler-cap">24 × 24<br>SVG viewBox</div>
+            </div>
+            <div class="ruler-item">
+              <div class="ruler-box" style="width:3px;height:34px"></div>
+              <div class="ruler-cap">3px<br>变更卡状态条</div>
+            </div>
+          </div>
+          <p class="spec-note">可点元素最小 <strong>32px</strong> 高（弹框内）/ <strong>44px</strong>（移动端）；
+             <code>.chg-card</code> 左侧状态条固定 3px，是变更类型的唯一形状线索。</p>
+        </div>
+      </div>
+
+      <!-- 圆角对照 -->
+      <div class="spec-block">
+        <div class="spec-head"><b>圆角四档</b><span>不得出现第五种取值</span></div>
+        <div class="spec-body">
+          <div class="radius-row">
+            <div class="radius-item">
+              <div class="radius-swatch" style="border-radius: var(--r-hair)"></div>
+              <div class="ruler-cap">--r-hair<br>3px<br>小徽标</div>
+            </div>
+            <div class="radius-item">
+              <div class="radius-swatch" style="border-radius: var(--r-control)"></div>
+              <div class="ruler-cap">--r-control<br>8px<br>控件/按钮</div>
+            </div>
+            <div class="radius-item">
+              <div class="radius-swatch" style="border-radius: var(--r-card)"></div>
+              <div class="ruler-cap">--r-card<br>12px<br>卡片/区块</div>
+            </div>
+            <div class="radius-item">
+              <div class="radius-swatch" style="border-radius: var(--r-pill)"></div>
+              <div class="ruler-cap">--r-pill<br>999px<br>胶囊/徽标</div>
+            </div>
+          </div>
+          <p class="spec-note">10-11px 的小徽标用 <code>--r-hair</code>；
+             不要用字面值 <code>4px</code> 凑合（圆角锁由测试强制）。</p>
+        </div>
+      </div>
+
+      <!-- 语义色 -->
+      <div class="spec-block">
+        <div class="spec-head"><b>语义色与强调色</b><span>各自成对：前景 + 背景 + 描边</span></div>
+        <div class="spec-body">
+          <div class="sem-row">
+            <div class="sem-chip sem-accent"><span class="dot"></span><code>--accent</code> 强调（唯一）</div>
+            <div class="sem-chip sem-ok"><span class="dot"></span><code>--ok</code> 成功 / 已接入</div>
+            <div class="sem-chip sem-warn"><span class="dot"></span><code>--warn</code> 注意 / 有变更</div>
+            <div class="sem-chip sem-err"><span class="dot"></span><code>--err</code> 失败 / 已移除</div>
+          </div>
+          <p class="spec-note">状态<strong>不得只靠颜色</strong>表达：上面的圆点旁都带文字，
+             变更卡另配 3px 状态条作为形状线索。</p>
+        </div>
+      </div>
+
+      <!-- 列表行与卡片 -->
+      <div class="spec-block">
+        <div class="spec-head"><b>列表行 vs 卡片</b><span>同类多条用列表行，独立实体才用卡片</span></div>
+        <div class="spec-body">
+          <div class="demo-listrow">
+            <div class="demo-row">
+              <div>
+                <div class="demo-row-title">skill-mcp-studio</div>
+                <div class="demo-row-meta">v0.25.0 · 已接入 17/38</div>
+              </div>
+              <button class="demo-btn btn-soft sm" type="button">操作</button>
+            </div>
+            <div class="demo-row">
+              <div>
+                <div class="demo-row-title">another-skill</div>
+                <div class="demo-row-meta">3.6 万次安装</div>
+              </div>
+              <button class="demo-btn btn-soft sm" type="button">操作</button>
+            </div>
+          </div>
+          <p class="spec-note">列表行内边距 <code>10px 14px</code>，行间用 <code>--line</code> 分隔，
+             不给每行套卡片（会把列表撑高）。</p>
+        </div>
+      </div>
+
+      <!-- 图标样例 -->
+      <div class="spec-block">
+        <div class="spec-head"><b>图标</b><span>统一 <code>viewBox="0 0 24 24"</code>，描边 1.7</span></div>
+        <div class="spec-body">
+          <div class="icon-row">
+            <div class="icon-cell">
+              <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+              <span>16px</span>
+            </div>
+            <div class="icon-cell">
+              <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a4 4 0 0 1 4 4v6a4 4 0 1 1-8 0V6a4 4 0 0 1 4-4Z"/><path d="M6 14h12"/></svg>
+              <span>20px</span>
+            </div>
+            <div class="icon-cell">
+              <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+              <span>24px</span>
+            </div>
+          </div>
+          <p class="spec-note">不用 emoji 当 UI 图标；同一界面内图标尺寸保持一致，
+             描边宽度固定 <code>1.7</code>，<code>stroke-linecap: round</code>。</p>
+        </div>
+      </div>
+
+      <blockquote>
+        <p>本节的每个样例都可直接对照实现。若发现代码里的实际取值与样例不符，
+           以 <code>gui/dashboard.html</code> 的 <code>:root</code> 为准，
+           并回来更新本节与 <code>docs/DESIGN.md</code>。</p>
+      </blockquote>
     </section>
 
     <!-- ═══ 2 ═══ -->
