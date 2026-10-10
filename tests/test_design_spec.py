@@ -57,13 +57,15 @@ class NoLiteralValuesTest(unittest.TestCase):
         self.assertEqual(left, [], f"仍有硬编码字号 {left}，应改用 var(--fs-*)")
 
     def test_no_hardcoded_border_radius(self):
-        """圆角只允许四档 token。.modal 弹窗容器是唯一保留的字面值（规范中单列）。"""
+        """圆角只允许四档 token，无例外。
+
+        此前给 ``.modal`` 开了字面圆角豁免，但 ``.modal`` 早已改用
+        ``var(--r-card)``，该豁免成了死代码 —— 留着会掩盖未来违规，故删除。
+        """
         c = _css_without_tokens()
         offenders = []
         for block in re.finditer(r"([^{}]+)\{([^}]*)\}", c):
             selector, body = block.group(1).strip(), block.group(2)
-            if ".modal" in selector:          # 弹窗容器专用档
-                continue
             for v in re.findall(r"border-radius:\s*([0-9]+px)", body):
                 offenders.append(f"{selector} -> {v}")
         self.assertEqual(offenders, [],

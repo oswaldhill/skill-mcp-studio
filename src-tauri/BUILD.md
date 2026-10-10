@@ -23,6 +23,11 @@ lib.rs 不解析、不重算、不写盘。
 > 构建实际依赖仓库内这份工具链，所以上述 `export` 仍是本机可用做法。若要回归 P2-1 的
 > 预期布局，请把 `RUSTUP_HOME`/`CARGO_HOME` 指回 `$HOME` 并在那里重新安装工具链。
 > 二者**从未被提交进仓库历史**，因此不涉及任何历史清理。
+>
+> ✅ **P2-1 预期布局已达成（2026-10-10 核实）**：仓库内 `.cargo-home/`、`.rustup-home/`
+> **均已不存在**，工具链现在确实位于 `$HOME/.cargo`（1.98.1）+ `$HOME/.rustup`，
+> `~/.cargo/bin/cargo-tauri`（tauri-cli 2.11.5）已装。因此 §1 的仓库内 `export` 写法
+> **已过时**，本机日常用法见 §1；受限会话下的构建边界见 §1.1、CI 门禁工具链见 §1.2。
 
 ## 1. 前置条件
 
@@ -41,20 +46,20 @@ lib.rs 不解析、不重算、不写盘。
 #     ~/.local/bin/skill-mcp-studio --all-profiles --format json | head
 which skill-mcp-studio || ls ~/.local/bin/skill-mcp-studio || pipx install skill-mcp-studio
 
-# Rust 工具链：安装于仓库本地目录（不碰系统路径）。
-# 忽略状态：src-tauri/target/ 由根 .gitignore 排除；.cargo-home/ 与 .rustup-home/
-# 是**本机环境产物**（因 $HOME/.cargo 不存在才落到仓库内），由本机专属的
-# .git/info/exclude 忽略 —— 详见本文档顶部注记与根 .gitignore 的说明段。
-# 首次安装：
+# Rust 工具链：**现位于 $HOME（P2-1 预期布局已达成，2026-10-10）**。
+# 仓库内的 .cargo-home/ 与 .rustup-home/ 均已不存在，下述「仓库本地目录」写法保留
+# 仅作历史记录 —— 本机当前用法见下方「日常使用（当前）」。
+# 忽略状态：src-tauri/target/ 由根 .gitignore 排除。
+# 首次安装（历史写法，仓库本地）：
 #   curl -sSf https://static.rust-lang.org/rustup/dist/aarch64-apple-darwin/rustup-init \
 #     -o .cargo-home/rustup-init && chmod +x .cargo-home/rustup-init
 #   RUSTUP_HOME="$PWD/.rustup-home" CARGO_HOME="$PWD/.cargo-home" \
 #     ./.cargo-home/rustup-init -y --default-toolchain stable --profile minimal --no-modify-path
-# 日常使用（在 src-tauri/ 下）—— 注意：下面写法含 `..`，见紧随其后的告警：
-export RUSTUP_HOME="$PWD/../.rustup-home"
-export CARGO_HOME="$PWD/../.cargo-home"
+# 日常使用（当前，在 src-tauri/ 下）：
+export RUSTUP_HOME="$HOME/.rustup"
+export CARGO_HOME="$HOME/.cargo"
 export PATH="$CARGO_HOME/bin:$PATH"
-rustc --version && cargo --version
+rustc --version && cargo --version   # 1.98.1 / 1.98.1；cargo tauri --version = 2.11.5
 
 # macOS 桌面构建需要 Xcode Command Line Tools
 xcode-select -p    # 非空即已装；未装则 `xcode-select --install`
@@ -62,15 +67,87 @@ xcode-select -p    # 非空即已装；未装则 `xcode-select --install`
 
 > ⚠️ **PATH 陷阱（2026-09-20 实测）**：上面 `export` 里的 `$CARGO_HOME` 含 `..`，会导致该 PATH
 > 项解析失败，表现为 `cargo: command not found`（受限沙箱会话下稳定复现；`command -v cargo`
-> 为空，改用绝对路径即可用）。构建失败时先用下面的归一化写法排除此因，再去怀疑工具链本身：
+> 为空，改用绝对路径即可用）。构建失败时先用下面的归一化写法排除此因，再去怀疑工具链本身。
+> **注意（2026-10-10）**：下面写法的目标是已不存在的仓库内 `.cargo-home`/`.rustup-home`，
+> 保留仅作历史；当前应改用 §1 的 `$HOME` 版本：
 
 ```bash
 cd src-tauri
-export CARGO_HOME="$(cd .. && pwd)/.cargo-home"
-export RUSTUP_HOME="$(cd .. && pwd)/.rustup-home"
+export CARGO_HOME="$(cd .. && pwd)/.cargo-home"   # ⚠️ 该目录已不存在（历史写法）
+export RUSTUP_HOME="$(cd .. && pwd)/.rustup-home" # ⚠️ 该目录已不存在（历史写法）
 export PATH="$CARGO_HOME/bin:$PATH"
 cargo --version    # 应能解析
 ```
+
+### 1.1 受限会话下的构建边界（2026-10-10 回归实测）
+
+工具链迁回 `$HOME` 后，「能不能在受限沙箱里构建」取决于 **cargo 是否需要写 `CARGO_HOME`**，
+而不是取决于构建本身。三种情形实测（`cargo`/`rustc` 1.98.1，workspace-write 沙箱）：
+
+| 场景 | 是否写工作区之外 | 结果 |
+| --- | --- | --- |
+| 依赖已在缓存 → `cargo test` | 否 | ✅ 通过（12 passed） |
+| 依赖已在缓存 → `cargo tauri build`（增量/热构建） | 否 | ✅ 通过，正常出包 + 签名 |
+| **Cargo.lock 变动 → 需下载新 crate** → `cargo tauri build` | **是**（`$HOME/.cargo/registry`） | ❌ `failed to open .../registry/cache/...crate: Operation not permitted` |
+
+**结论**：受限会话里能用，但只在「依赖集合未变」时才成立。**只要 Cargo.lock 有变动
+（如 develop 分支带入的新依赖），首次构建必须用完整访问权限**；此后同一依赖集合内的
+重建可在受限会话完成。**先看 Cargo.lock 有没有变，再决定要不要放大权限** —— 不要因为
+一次失败就断言「沙箱内一律不能构建」（本次初次构建失败正是 Cargo.lock 变动所致）。
+
+同类边界（同一晚实测）：
+
+- `python3 -m pip install "ruff==0.16.9"` → ❌ `Operation not permitted:
+  '~/Library/Python/3.11/lib/python/site-packages/ruff'`（CI 门禁依赖 ruff，见 §1.2）；
+- 安装 `.app` 到 `/Applications`、写 `~/.skill-mcp-studio-backups` → ❌ 需完整访问权限（同 §3.2）；
+- 沙箱内 `/usr/bin/sudo` 亦被拒（`Operation not permitted`），故**任何需要 root 的
+  Spotlight 隐私列表写入都无法自动化**（见 §3.5）。
+
+### 1.2 CI 门禁工具链与本机对照（2026-10-10 实测）
+
+**背景（本次回归踩到的坑）**：本机缺 ruff 时，`scripts/ci_parity.sh` 会在 ruff 段判失败并
+**立即退出**，于是**后面的 Python 单元测试一条都没跑** —— 输出停在「✗ 未找到 ruff」，
+`exit=1`。这与「测试失败」在现象上难以区分，处置却完全不同（前者是环境缺件，后者是代码
+回归）。**⚠️ 该缺陷已于 2026-10-10 修复**，见本节末「已修复」段。
+
+装齐工具链后全绿：
+
+```bash
+python3 -m pip install "ruff==0.16.9"   # 与 CI 同版本（本次须完整访问权限，见 §1.1）
+scripts/ci_parity.sh                     # ==> 全部通过，skipped=2，与 CI 基线一致
+```
+
+本机与 CI 的版本对照（2026-10-10）：
+
+| 组件 | 本机 | CI 钉定 | 一致 |
+| --- | --- | --- | --- |
+| rustc / cargo | 1.98.1 / 1.98.1 | 1.98.1（`dtolnay/rust-toolchain@1.98.1`） | ✅ |
+| tauri-cli | 2.11.5（`~/.cargo/bin/cargo-tauri`） | 未钉（`cargo tauri` 仅本地构建用） | — |
+| Python | 3.11.17（`/Users/oswaldhill/bin/python3`） | 3.11 | ✅ |
+| ruff | 0.16.9 | 0.16.9 | ✅ |
+| PyYAML | 6.0.3 | 随 pip 最新 | — |
+| node | **v26.11.0**（`/opt/homebrew/bin/node`） | **20** | ⚠️ 大版本不一致 |
+
+> ⚠️ **node 大版本不一致值得留意**：CI 钉 node 20，本机是 26。
+> **`scripts/ci_parity.sh` 确实会告警这一差异**（Q1-1，`CI_NODE_MAJOR=20` 对比
+> `process.versions.node` 主版本，实测会打印「⚠ node 主版本不一致：本地 v26 vs CI v20」），
+> 所以「本地全绿」时你至少会被提醒去考虑 `node --test` 跨大版本的行为差异。
+> 本次 `node --test tests/gui_helpers.test.mjs`（5 passed）与 Python 侧 1088 用例均通过，
+> 未发现实际分歧。
+>
+> 📌 **文档更正**：本节初稿曾写「脚本只校验 node 存在、不校验版本」—— **该说法与事实
+> 不符**（脚本第 361-370 行就是主版本比对）。误判来源：当时只看了 `ci_parity.sh` 输出的
+> 末尾几行（`tail`），而告警在输出的中段（JS 用例段），没有读到。**教训：读门禁输出要看
+> 全量，不要只看 tail** —— 与本节开头「一次误导性的门禁输出比没有门禁更危险」同源。
+
+**已修复（2026-10-10）**：`scripts/ci_parity.sh` 改为**失败累加**——能跑的门禁全部跑完，
+`record_failure` 逐项记录，末尾 `print_summary_and_exit` 统一汇总（退出码仍为非零）。
+只有「无论如何都跑不下去」的前置条件（无解释器 / 版本 < 3.11）才立即退出。
+实测（强制 ruff 缺失）：**`Ran 1088 tests` 正常出现**，`exit=1`，汇总列出
+`✗ ruff 不可用（P1-11 / Q0-6）`。回归护栏为
+[`tests/test_ci_parity_gate.py`](../tests/test_ci_parity_gate.py)（6 例，静态断言
+「ruff 段到 unittest 之间不得有可执行行提前退出」，并校验 `CI_PATTERN` /
+`CI_NODE_MAJOR` 与 workflow 实际值一致）。
 
 ## 2. 图标（已生成）
 
@@ -153,8 +230,14 @@ mkdir -p "$BK"
 ditto "$DEST" "$BK/skill-mcp-studio-0.21.0-premerge.app"
 rm -rf "$DEST" && ditto "$NEW" "$DEST"
 
-# 3) 校验：安装后二进制 sha256 必须与产物一致
+# 3) 校验：安装后二进制 sha256 必须与**本次构建产物**一致
+#    ⚠️ 只比「刚构建的 $NEW」与「刚装好的 $DEST」，不要拿已安装的旧版本去比 ——
+#    自签名的 CMS 内嵌签名时间，重建产物与上一次的 sha256 必然不同（见 §3.6）。
 shasum -a 256 "$NEW/Contents/MacOS/skill-mcp-studio" "$DEST/Contents/MacOS/skill-mcp-studio"
+
+# 4) 收尾：删掉仓库内的产物 .app，否则 Spotlight/Launchpad 会出现第二个图标（§3.5）
+rm -rf "$NEW"
+mdfind "kMDItemCFBundleIdentifier == 'io.skillmcp.studio'"   # 期望恰好 1 行
 ```
 
 **权限**：`/Applications` 与 `~/.skill-mcp-studio-backups` 均在会话工作区之外，
@@ -350,9 +433,14 @@ APPLE_SIGNING_IDENTITY=- cargo tauri build                                      
 Launchpad 出现**第二个** `skill-mcp-studio` 图标，与 `/Applications` 里已安装的那份
 重复（两者可能逐字节相同，看起来像"两个一模一样的 APP"）。
 
-**先分清一件事**：这两个副本**未必一个好一个坏**。本次实测两份的
+**先分清一件事**：这两个副本**未必一个好一个坏**。2026-09-29 实测两份的
 `Authority` / designated requirement / 二进制 sha256 **完全一致**（都自签、都合法）。
 判断"哪份是哪个"的唯一可靠办法是逐一验签，别靠图标外观：
+
+> ⚠️ **但 sha256 相等只在「同一次构建的两份拷贝」之间成立（2026-10-10 修正）**：
+> 重新构建产出的 `.app` 与上一次构建（含已安装那份）**sha256 必然不同** ——
+> 原因见 §3.6，**不是缺陷**。所以「用 sha256 判断哪份是哪个」只适用于同批次产物；
+> 跨构建比较 sha256 会把正常差异误判为「有东西被改坏了」。
 
 ```bash
 for A in /Applications/skill-mcp-studio.app \
@@ -377,6 +465,24 @@ done
 1. **删掉产物里的 `.app`**（本次采用，最直接）：位置不存在的 LS 记录**不会**渲染成图标
    —— 证据是 LS 库里至今还躺着一条指向**已卸载** `/Volumes/skill-mcp-studio` 的陈年记录，
    而它并没有多给你一个图标。删前用 §3.4 的 sha256 确认 DMG 里已存有同一份。
+   > ⚠️ **关键补充（2026-10-10 实测）**：删 `.app` 是**每次构建后都要重做**的一步 ——
+   > 任何一次 `cargo tauri build` 都会把产物 `.app` 重新写回 `target/`，于是第二个图标
+   > 又出现。本次一晚内即复现：删除 → 回归重建 → 图标再次出现。若不想每次都清理，
+   > 就该选下面第 2 条（一次性、永久生效）。
+   >
+   > **验收判据（可直接复制断言）**：
+   > ```bash
+   > # 期望恰好输出 1 行，且是 /Applications/...
+   > mdfind "kMDItemCFBundleIdentifier == 'io.skillmcp.studio'"
+   > # 期望 COUNT = 1
+   > mdfind "kMDItemCFBundleIdentifier == 'io.skillmcp.studio'" | wc -l
+   > ```
+   > 另注：删掉路径后，**LS 库里可能仍留着指向它的陈旧记录**（本次实测 `-dump` 里
+   > 仍有该路径，`lsregister -u <路径>` 与 `-gc` 都没清掉它）。这不是问题 ——
+   > **位置不存在的记录不会渲染成图标**（同上「已卸载卷」证据）。本次实测 LS 库共 5 条
+   > `skill-mcp-studio.app` 记录，其中 4 条指向不存在的路径（`.cache/sms-cargo-target`、
+   > 产物目录、两个已卸载的 `/Volumes/*`），只有 `/Applications` 那条是活的，
+   > 而 Spotlight 查询结果为 **1**。**判据是 Spotlight 查询计数，不是 LS 记录条数。**
 2. **把 `src-tauri/target` 加进 Spotlight 的排除列表**：macOS 27 上的准确路径是
    「系统设置 → Spotlight → **被排除的位置**（英文 *Excluded Locations*）→ 添加要排除的文件夹或磁盘」。
    注意它**不是左侧的独立菜单项**，而是 Spotlight 面板内往下滚到底部的区块。
@@ -390,6 +496,76 @@ done
 > 顺带一条与图标无关但会一起冒出来的残留：LS 库里可能挂着**旧的 dmg 临时工作映像**
 > （本次见到 `rw.<pid>.skill-mcp-studio_0.22.0_arm64.dmg` 的引用，该文件早已不存在）。
 > 它不影响功能，`lsregister -kill -r` 重建库可清，但那会全量重扫，代价不值得。
+
+### 3.6 构建可复现性：载荷可复现，**签名使整个 bundle 每次不同**（2026-10-10 实测）
+
+**现象**：同一棵树、不改任何源码，连续 `cargo tauri build` 产出的二进制 sha256 **每次都不同**：
+
+```
+build #1 (20:06, 已安装)  7d9028760e70871a543f362031058811aa13b21dafdb81821e9193ecef8f8bb7
+build #2                  4b5d7e98084a385d9575d0d8c9c5264c4aad4cd93b4d510e480be9dd192199ab
+build #3                  4175f10b0462878b4d310c364b67e318e299785c84abddbf228cf9af71419ffe
+build #4                  8c7af712fbf84e0f02075b1763920493c8731891dd3562ae422cd2b1c1c756f0
+```
+
+**根因**：差异**只在代码签名块**，不在编译产物。
+
+```bash
+codesign -d --verbose=4 <app> | grep "Signed Time"   # → Signed Time=Oct 10, 2026 at 20:06:20
+```
+
+自签证书的 CMS 签名内嵌**签名时间**，因此每次签名的字节都不同。验证办法（两次构建各剥签名后比对）：
+
+```bash
+codesign --remove-signature "$BIN" && shasum -a 256 "$BIN"
+# build #4 →  40e613b07be08e05901319aa1f9057ed92b8df298902ee29b4311f4f2ca0ca1a
+# build #5 →  40e613b07be08e05901319aa1f9057ed92b8df298902ee29b4311f4f2ca0ca1a   ← 逐字节相同
+```
+
+**实践结论**：
+
+1. **载荷（剥离签名后）是逐字节可复现的**；`cargo`/`rustc`/链接器不引入不确定性。
+2. **不要跨构建比较 sha256**。§3.2 的「安装后二进制 sha256 必须与产物一致」是**同一次
+   构建内**的校验（验证 `ditto` 没损坏文件），不是「重建应与已装版本一致」的断言。
+3. **CDHash 也随签名而变**（本次 #3 与 #4 的 CDHash 巧合相同 `3d13ad6b…`，但两次的
+   签名字节仍不同）—— 所以**依赖 CDHash 的 TCC 授权在 ad-hoc 下每次重建都会失效**，
+   这正是 §3.4 改用自签证书（以证书指纹为 designated requirement）的理由。
+
+> ⚠️ 上文用 `codesign --remove-signature` 只是为了**测量载荷**；它会破坏该产物的签名。
+> 测完请重新 `cargo tauri build`（或删除该产物）。**不要把剥签名的产物装到 `/Applications`。**
+
+### 3.7 构建环境回归记录（2026-10-10 · develop @ e9e555f · v0.25.0 build 112）
+
+本机全量回归，结论：**Python / JS / Rust / 打包 / 签名 / 一致性 / UI 规范门禁全部通过**。
+
+| 判据（与 CI 同） | 命令 | 结果 |
+| --- | --- | --- |
+| Python 单元测试 | `python -m unittest discover -s tests -p 'test_*.py'` | ✅ **1088 passed, skipped=2**（= CI 基线） |
+| CI 等价总闸 | `scripts/ci_parity.sh` | ✅ 退出码 0（含文本卫生/脚本卫生/密钥扫描/ruff/cargo test/JS） |
+| ruff 静态检查 | `ruff check core tests scan.py scripts setup.py` | ✅ 0.16.9，无诊断 |
+| JS 单元测试 | `node --test tests/gui_helpers.test.mjs` | ✅ 5 passed / 0 failed |
+| Rust 单元测试 | `cargo test`（src-tauri） | ✅ 12 passed |
+| UI 规范门禁 | `tests.test_design_spec tests.test_dashboard_design_tokens tests.test_design_spec_contract` | ✅ 50 passed |
+| 构建 + 签名 | `cargo tauri build` | ✅ 0，1m12s（冷）／19s（热） |
+| 签名校验 | `codesign --verify --deep --strict` | ✅ 0，DR = 证书指纹基准（跨重建稳定） |
+| GUI/CLI 一致性（DOD） | `scripts/verify_gui_consistency.sh -c config.yaml` | ✅ 2 profiles / 2 results 全一致 |
+| 安装核验 | `ditto` → `/Applications` + sha256 比对 | ✅ 逐字节一致，0.25.0 可启动 |
+| Spotlight 唯一性 | `mdfind "kMDItemCFBundleIdentifier == 'io.skillmcp.studio'"` | ✅ 恰好 1 条 |
+
+本次回归发现的四处盲区，**均已修复**（不只是记录）：
+
+| # | 盲区 | 修复 |
+| --- | --- | --- |
+| 1 | §1.1 受限会话能否构建，取决于 Cargo.lock 是否变动（初次误判为「沙箱内一律不能构建」） | 文档写明分水岭与判据（先看 Cargo.lock 有没有变），并记录三条同类边界 |
+| 2 | §1.2 漏装 ruff 时 `ci_parity.sh` **在测试之前退出**，输出被误读成「测试失败」 | **改脚本**：失败累加 + 末尾统一汇总；实测强制 ruff 缺失时 1088 用例仍跑完且 `exit=1` |
+| 3 | §1.2 初稿误称「脚本不校验 node 版本」 | **改文档**：脚本本就有 Q1-1 主版本比对（实测会告警）；补记误判来源（只看 `tail` 没看全量输出） |
+| 4 | §3.6 跨构建 sha256 不可比，而 §3.2/§3.5 的措辞读起来像「必须相等」 | **改文档**：§3.2 补「只比本次构建产物」注释并加入「删产物 .app」收尾步；§3.5 增加修正说明与可复制的验收判据 |
+
+盲区 2 另加**回归护栏** [`tests/test_ci_parity_gate.py`](../tests/test_ci_parity_gate.py)
+（6 例）：静态断言「ruff 段到 unittest 调用之间不得出现可执行行提前退出」，
+并交叉校验脚本的 `CI_PATTERN` / `CI_NODE_MAJOR` 与 `.github/workflows/test.yml`
+实际钉定的值一致 —— 后者防的是「CI 改了 node 版本、脚本里的对比基线没跟着改，
+告警从此指向错误版本」。
 
 ## 4. 验证（DOD：GUI/CLI 结论完全一致）
 

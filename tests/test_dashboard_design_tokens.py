@@ -19,10 +19,34 @@ HTML = _gui_source_page_html()
 
 
 class TestNoVisibleDashPlaceholders(unittest.TestCase):
-    """taste-skill 9.G：可见区域零 em-dash。"""
+    """taste-skill 9.G：可见区域零 em-dash / en-dash。
+
+    规范措辞是「正文、标题、标签、按钮文案一律禁用」，不止 ``|| "—"`` 一种
+    写法。此前门禁只查那一种，把所有别处出现 em-dash 的情况都放过了
+    （2026-10-10 评审：实际 38 行含 em-dash，全在代码注释里，靠运气干净）。
+    现在覆盖**全量可见文案**：剥离注释后，凡出现在 HTML 标签文本或
+    innerHTML/textContent 等字符串字面量里的 em/en-dash 都算违规。
+    注释里的（含本测试自己引用的）不算；正则字符类 ``/[—–]/`` 是「把 em-dash
+    归一成连字符」的清洗器，保留。
+    """
+
+    @staticmethod
+    def _strip_comments(text: str) -> str:
+        """去掉 // 行注释与 /* */ 块注释，但不碰字符串内部。
+
+        粗暴实现即可：em-dash 不可能出现在选择器/CSS 属性名里，注释剥离后
+        剩余的 em-dash 只可能来自可见字符串，这正是要拦的。
+        """
+        text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+        text = re.sub(r"//[^\n]*", "", text)
+        return text
+
+    @staticmethod
+    def _strip_regex_classes(text: str) -> str:
+        """允许 ``/[—–]/`` 这种归一化正则：把字符类整段抹掉再判。"""
+        return re.sub(r"""/\[[^\]]*\]/[gimsuy]*""", "", text)
 
     def test_no_em_dash_empty_value_placeholder(self):
-        # `|| "—"` 这类空值占位符会直接把 em-dash 渲染到界面上。
         self.assertNotIn(
             '|| "—"',
             HTML,
@@ -30,13 +54,26 @@ class TestNoVisibleDashPlaceholders(unittest.TestCase):
         )
 
     def test_placeholder_uses_hyphen(self):
-        # 占位符统一用连字符（U+002D）。
         matches = re.findall(r'\|\|\s*"([^"]*)"', HTML)
         dashes = [m for m in matches if "\u2014" in m or "\u2013" in m]
         self.assertEqual(
             dashes,
             [],
             "存在把 em-dash/en-dash 当作兜底文本的表达式：%r" % (dashes,),
+        )
+
+    def test_no_em_dash_in_visible_strings(self):
+        """剥离注释与归一化正则后，可见字符串里不许出现 em/en-dash。"""
+        cleaned = self._strip_regex_classes(self._strip_comments(HTML))
+        offenders = []
+        for i, line in enumerate(cleaned.splitlines(), 1):
+            if "\u2014" in line or "\u2013" in line:
+                # 只记前几处，避免输出过长
+                offenders.append(f"line {i}: {line.strip()[:100]}")
+        self.assertEqual(
+            offenders[:10],
+            [],
+            "剥离注释后仍有 em/en-dash 落在可见文案里：\n" + "\n".join(offenders[:10]),
         )
 
 

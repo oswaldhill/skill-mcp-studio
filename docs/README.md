@@ -55,7 +55,7 @@ README.md（仓库入口 · 本目录之外）
 open docs/DESIGN.html
 
 # 跑规范测试（CI 同判据）
-python3 -m unittest tests.test_design_spec tests.test_dashboard_design_tokens
+python3 -m unittest tests.test_design_spec tests.test_dashboard_design_tokens tests.test_design_spec_contract
 ```
 
 ## 其它文档（本目录之外）

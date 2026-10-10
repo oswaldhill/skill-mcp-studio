@@ -46,14 +46,43 @@ out of scope，并将此类界面指向 Fluent / Carbon / Polaris 等设计系�
 | 遮罩 | `--backdrop` | 模态背板 |
 | 间距(gap) | `--gap-0`(0) `--gap-1`(4) `--gap-2`(6) `--gap-3`(8) `--gap-4`(10) `--gap-5`(16) | flex/grid 间距 |
 | 间距(sp) | `--sp-1`(4) `--sp-2`(6) `--sp-3`(8) `--sp-4`(10) `--sp-5`(12) `--sp-6`(14) `--sp-7`(16) `--sp-8`(20) `--sp-9`(24) | padding/margin 竖直分量 |
+| 间距(sp) 扩展档 | `--sp-0a`(1) `--sp-0b`(2) `--sp-0c`(3) `--sp-3a`(7) `--sp-3b`(9) `--sp-5a`(11) `--sp-5b`(15) `--sp-7a`(18) `--sp-9a`(28) `--sp-9b`(32) `--sp-9c`(40) | 落在主档之间的取值；**已大量在用**（16/15/5/11/7/2/1/7/3/1/1 处），不得再写字面值 |
+| 焦点环 | `--ring-ok` `--ring-warn` `--ring-err` | 语义态 focus 外环 |
+| 强调投影 | `--shadow-accent` `--shadow-accent-hover` | 主按钮悬停光晕 |
+| 语义投影 | `--shadow-err` `--shadow-err-hover` `--shadow-knob` `--shadow-sheet` | 危险态光晕 / 开关旋钮 / 侧拉面板 |
+| 语义加强色 | `--err-strong` | 失败态悬停/实心 |
+| 实体白 | `--on-solid` | 实心块上的白（独立 token，禁止裸写 `#fff`） |
+
+> `--ok-bg` / `--warn-bg` / `--err-bg` 与各自的 `-border` 由上面「语义」一行的
+> 「+ 各自 `-bg` / `-border`」统一涵盖，不再单列。
 
 > 圆角四档都要用：`--r-hair` 专给 10-11px 的小徽标（如变更面板的维度标签），
 > 它比 `--r-control` 更贴合小尺寸；不要用字面值 `4px` 凑合。
+>
+> ⚠️ **圆角只有四档，没有第五档**：popover 有它自己的 `--pop-r-*` 体系（见 2.8），
+> 管理台页面不得为它另开圆角 token（曾有一个死 token `--r-popover`，已删）。
 
 **颜色一致性锁**：强调色只有 `--accent` 一个。任何新界面不得引入第二强调色。
 **形状一致性锁**：圆角只用上表四档（hair/control/card/pill）。控件 8px，卡片 12px，胶囊用 pill。
 **主题锁**：浅色与深色两套 token 同步维护，不得只改一侧。
 **字体锁**：正文用 `--sans`；数字、路径、包名、代码用 `--mono`。
+
+---
+
+## 1b. 可视化样例
+
+本文档是**唯一设计依据**，但它只写规则、不给样子。可视化样例在 HTML 可读版里：
+
+| 样例 | 内容 |
+|---|---|
+| 字号阶梯 | `--fs-2xs` ... `--fs-xl` 各档实际字形与行高 |
+| 按钮全系 | `primary` / `btn-soft` / `ghost` / `danger` / `sm` 及各场景变体 |
+| 控件 | 列表行、卡片、开关、分页、路径字段行、弹窗容器 |
+| 尺寸与圆角 | 四档圆角（hair / control / card / pill）的实际观感 |
+| 语义色 | `--ok` / `--warn` / `--err` 及各自 `-bg` / `-border`、焦点环 |
+
+打开方式：`open docs/DESIGN.html`（深浅两套主题可切换）。
+**改规范时先改本文档，再同步 HTML 的样例区** —— 两边的章节由门禁双向比对。
 
 ---
 
@@ -85,7 +114,7 @@ out of scope，并将此类界面指向 Fluent / Carbon / Polaris 等设计系�
 这些是分段控件 / 视图切换 / 导航项 / 菜单项，各有自己的选中态表达。
 
 **硬规则**：
-- 一屏只允许一个 `primary`。
+- **同一操作区**只允许一个 `primary`。
 - 破坏性操作必须用 `danger` 变体，不得用 `primary` 伪装。
 - 按钮文字不得换行；对比度满足 WCAG AA。
 - 新增按钮变体时必须回来登记到本表。
@@ -95,8 +124,8 @@ out of scope，并将此类界面指向 Fluent / Carbon / Polaris 等设计系�
 
 ```
 ┌──────────────────────────────────────────────┐
-│ 主标题（--text, --fs-base, mono 用于包名）      [操作] │
-│ 元信息（--faint, --fs-xs）                            │
+│ 主标题（--text, --fs-base, mono 用于包名）         [操作] │
+│ 元信息（--faint, --fs-xs）                                          │
 └──────────────────────────────────────────────┘
 ```
 
@@ -124,21 +153,25 @@ out of scope，并将此类界面指向 Fluent / Carbon / Polaris 等设计系�
 
 | 类 | 用途 | 结构要点 |
 |---|---|---|
-| `.modal` | 表单弹窗（添加端点、编辑客户端） | 居中浮层 + `--backdrop` 遮罩；标题用 `--display` + `--fs-md`；宽度 `min(560px, 100%)` |
-| `.cfm-card` | 确认弹窗（删除前二次确认） | 比 modal 更窄；两个出口按钮用 `cfm-btn-danger` / `cfm-btn-cancel` |
-| `.sheet` | 侧拉面板（洞察、市场详情） | 从右侧滑入；`--shadow-modal`；内部有独立 `.sheet-head` 工具条 |
+| `.modal` | 表单弹窗（添加端点、编辑客户端） | 居中浮层 + `.modal-backdrop` 遮罩；标题用 `--display` + `--fs-md`；宽度 `var(--modal-w, min(560px, 92vw))` |
+| `.cfm-card` | 确认弹窗（删除前二次确认） | 比 modal 更窄：覆写 `--modal-w: min(400px, 94vw)`；两个出口按钮用 `cfm-btn-danger` / `cfm-btn-cancel` |
+| `.sheet` | 侧拉面板（洞察、市场详情） | 从右侧滑入；宽 `min(560px, 94vw)`；`--shadow-modal`；内部有独立 `.sheet-head` 工具条 |
 
-- 弹窗的 `z-index` 统一用 100（遮罩 90）。
+- **z-index 档位**（实际取值，禁止随手指派）：遮罩 `50`（`.modal-backdrop` / `.sheet-backdrop`）、
+  侧拉 `.sheet` `51`、命令面板 `.palette` `60`、模态 `<dialog>` 层 `dialog.modal-layer`、
+  忙碌层 `dialog.busy-backdrop` `70`。
+- 原生 `<dialog>`（`.insight-backdrop` / `.modal-layer` / `.busy-backdrop`）的背板走 `::backdrop`，
+  不是独立的 `.backdrop` 元素。
 - 弹窗内表单字段间距用 `--gap-3`(8px)。
-- `.sheet` 宽度 `min(480px, 40vw)`，不影响主区域布局。
+- `.sheet` 不影响主区域布局（`position: fixed` 侧拉）。
 
 ### 2.5c 开关（`.switch`）
 
 用于布尔设置项（如自动发现开关）。
 
-- 轨道：宽 36px 高 20px，`--r-pill`，关闭态 `--line-strong` 底
+- 轨道：宽 34px 高 20px，`--r-pill`，关闭态 `--line-strong` 底
 - 旋钮：16px 圆点，`--on-solid` 底，`transition: transform`
-- 开启态轨道变 `--accent`，旋钮右移
+- 开启态轨道变 `--accent-strong`，旋钮右移
 
 ### 2.5d 分页（`.pagination`）
 
@@ -172,19 +205,19 @@ out of scope，并将此类界面指向 Fluent / Carbon / Polaris 等设计系�
 
 ```
 ┌────────────────────────────────────────────────┐
-│▌[维度] 名称                          [修复][保持]│
-│  详情（旧值 -> 新值）                            │
+│▌[维度] 名称                                       [修复][保持]│
+│   详情（旧值 -> 新值）                                          │
 └────────────────────────────────────────────────┘
 ```
 
 - **左侧 3px 状态条**表达变更类型：`added` 绿 / `removed` 红 / 其余橙。
-  颜色是**辅助**信息，名称与详情文字必须独立可读（色盲可用）。
+   颜色是**辅助**信息，名称与详情文字必须独立可读（色盲可用）。
 - 维度标签用 `--r-hair` 圆角 + `--faint` 字，**不要**做成彩色胶囊
-  （那会与 `--accent` 抢注意力）。
+   （那会与 `--accent` 抢注意力）。
 - 动作按钮最小高度 32px（触达目标），主操作「修复」用 `.chg-btn.primary`。
 - 卡片悬停只改边框与阴影，**不用 scale**，避免列表位移。
 - 统计行用 `.chg-pill`：显示**当前数量**；有变更时才追加 `+N` 徽标并转为
-  `hot`（`--warn-bg`）。没有变更时也必须显示数量，不能是一排 0。
+   `hot`（`--warn-bg`）。没有变更时也必须显示数量，不能是一排 0。
 
 ### 2.8 托盘弹框（`gui/popover.html`）
 独立的 macOS 风格浮层，**不复用管理台的 token**，但**有自己的 token 体系**（`--pop-*` 前缀）。
@@ -195,20 +228,51 @@ out of scope，并将此类界面指向 Fluent / Carbon / Polaris 等设计系�
 另一套视觉：毛玻璃、无边框圆角窗）。
 
 - 面板：`rgba(248,248,250,.88)` + `backdrop-filter: blur(30px)`，
-  圆角 14px，窗口开启 `transparent` 让圆角外真正透明。
+   圆角 14px，窗口开启 `transparent` 让圆角外真正透明。
 - 状态点三态：绿（已同步）/ 橙（有变更）/ **灰 + 呼吸动画（显示的是缓存，
-  正在刷新）**。缓存态必须给出提示，不能让用户把旧数据当成实时结果。
+   正在刷新）**。缓存态必须给出提示，不能让用户把旧数据当成实时结果。
 - 窗口高度由内容决定（`fitWindow` 量完面板高度再 `setSize`），
-  最小 200px；**首屏先用 localStorage 缓存渲染**，再后台刷新。
+   最小 200px；**首屏先用 localStorage 缓存渲染**，再后台刷新。
 - 定位由 Rust 侧负责：水平居中对齐托盘图标、垂直贴菜单栏下方；
-  没有图标坐标时（菜单触发）退回右上角。
+   没有图标坐标时（菜单触发）退回右上角。
+
+### 2.9 组件硬数字（门禁校验，改代码必须同步改这里）
+
+上表各节的尺寸/层级数字**由测试逐条比对代码**（`tests/test_design_spec_contract.py`）。
+新增或调整这类「不可协商的数字」时，在此登记一行；只改代码不改这里会让门禁失败。
+
+| 选择器 | 属性 | 规定值 |
+|---|---|---|
+| `.modal` | `width` | `var(--modal-w, min(560px, 92vw))` |
+| `.cfm-card` | `--modal-w` | `min(400px, 94vw)` |
+| `.sheet` | `width` | `min(560px, 94vw)` |
+| `.modal-backdrop` | `z-index` | `50` |
+| `.sheet-backdrop` | `z-index` | `50` |
+| `.sheet` | `z-index` | `51` |
+| `.palette` | `z-index` | `60` |
+| `dialog.busy-backdrop` | `z-index` | `70` |
+| `.switch` | `width` | `34px` |
+| `.switch` | `height` | `20px` |
+| `.switch .sw-knob` | `width` | `16px` |
+| `.switch[aria-checked="true"] .sw-track` | `background` | `var(--accent-strong)` |
+| `main` | `padding` | `var(--sp-9) 28px 64px` |
+| `.card` | `padding` | `var(--sp-7)` |
+| `.list-row` | `padding` | `var(--sp-4) 14px` |
+| `.pagination button` | `padding` | `var(--sp-1) 9px` |
+| `.path-field-row button` | `padding` | `var(--sp-1) 8px` |
+| `.chg-btn` | `min-height` | `32px` |
+| `.insight-dialog` | `width` | `min(1040px, 100%)` |
+
+**触达目标（弹层内动作按钮）**：`.cfm-card .actions button`、`.modal-form .form-actions button`、
+`.sheet-actions .btn-soft` 与 `.chg-btn` 必须显式声明 `min-height: 32px`
+（分页按钮按 2.5d 刻意更紧凑，不在此列）。
 
 ---
 
 ## 3. 排版与间距
 
 - 区块间距用 `--gap-5`(16px) / `--sp-8`(20px) / `--sp-9`(24px) 三档，同一页面保持同一节奏。
-- 面板内边距竖 `--sp-8`(20px) 横 `--sp-9`(24px) + 28px（`main` 用 `24px 28px`）；
+- 面板内边距：`main` 用 `var(--sp-9) 28px 64px`（上 24 / 左右 28 / 下 64）；
 卡片内边距 `--sp-7`(16px)；列表行内边距 `--sp-4`(10px) 14px。
 - 一行元信息里的分隔符最多一个，优先用换行或留白，不用符号堆砌。
 - 中文正文不手动加空格；中英文混排不加空格，靠字体回退处理。
@@ -253,16 +317,19 @@ out of scope，并将此类界面指向 Fluent / Carbon / Polaris 等设计系�
 - [ ] 颜色/字号/圆角/阴影全部取自 token，无字面值
 - [ ] 强调色只有一个
 - [ ] 圆角只用四档且用法一致（小徽标用 `--r-hair`）
-- [ ] 间距走 `--gap-*` / `--sp-*`，不散落字面值
-- [ ] 按钮对比度达标，一屏一个 primary
+- [ ] 间距走 `--gap-*` / `--sp-*`（含 `--sp-*` 扩展档），**不新增字面值**
+      （存量字面值由 `SpacingLiteralRatchetTest` 棘轮冻结：只许减少，不许增加）
+- [ ] 按钮对比度达标，**同一操作区**一个 primary
 - [ ] 数字/包名用 mono，单位已中文化
+- [ ] 若动了 2.9 的硬数字，规范表与代码已同步
 
 ### 结构与状态
 - [ ] 同类条目用列表行，不是一长串卡片
 - [ ] 加载 / 空 / 错误三态齐备
 - [ ] **空态也要有信息量**：不要出现「一排全 0」而无说明的界面
 - [ ] 无重复渲染（同一信息不在同屏出现两次）
-- [ ] 无 em-dash
+- [ ] 无 em-dash（正文、标题、标签、按钮文案）
+- [ ] 图标用 SVG（`viewBox="0 0 24 24"`），**不用 emoji 当 UI 图标**
 
 ### 交互与可达性
 - [ ] 可点元素有 `cursor: pointer` 与悬停反馈
@@ -270,8 +337,32 @@ out of scope，并将此类界面指向 Fluent / Carbon / Polaris 等设计系�
 - [ ] 动效在 `prefers-reduced-motion` 下关闭
 - [ ] 状态不只靠颜色表达
 - [ ] 弹层能自然关闭（失焦收起 / Esc）
+- [ ] 弹层内动作按钮 `min-height: 32px`（触达目标）
 
 ### 主题与验证
 - [ ] 深浅两套主题都过一遍
-- [ ] 跑 `python3 -m unittest tests.test_design_spec tests.test_dashboard_design_tokens`
+- [ ] 跑 `python3 -m unittest tests.test_design_spec tests.test_dashboard_design_tokens tests.test_design_spec_contract`
 - [ ] 若新增组件或变体，已回写本文件对应章节
+
+---
+
+## 附：双轨强制机制
+
+规范要真正拦住后续功能脱离，靠的是**文档 + 测试双轨**，而不是自觉。
+
+| 层 | 载体 | 有效力 |
+|---|---|---|
+| 规则 | `~/.dsh/AGENTS.md` 的三条强制规则（语言 / UI 技能 / UI 规范双轨） | 每次会话强制加载 |
+| 规范 | 本文件（`docs/DESIGN.md`） | 需主动读 |
+| 门禁 | `tests/test_design_spec.py` + `tests/test_dashboard_design_tokens.py` + `tests/test_design_spec_contract.py` | CI 强制 |
+
+**双轨**：任何 UI 改动必须同时更新规范文档与补一条能真正失败的断言，缺一视为未完成。
+
+**反向验证**：加完断言后必须故意制造一次违规，确认测试确实报错，再恢复。
+只看到测试通过不算验证通过；永远通过的测试等于没有测试。
+
+**粒度**：只守住有独立语义的顶层组件与不变量。不要为每个内部类名建门禁：
+单页内部 CSS 类可达数百个，全覆盖只会产生海量误报，最终被绕过。
+
+> 本文件与 HTML 可读版的章节由门禁**双向**比对：MD 里的每节要能在 HTML 中找到，
+> HTML 里的每节也要能在 MD 中找到 —— 两侧都不许单方面新增章节。
