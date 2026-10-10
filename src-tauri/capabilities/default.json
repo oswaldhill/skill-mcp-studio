@@ -1,13 +1,17 @@
 {
   "identifier": "default",
   "description": "Default capability for the Skill MCP Studio app",
-  "windows": ["main", "popover"],
+  "windows": [
+    "main",
+    "popover"
+  ],
   "permissions": [
     "core:default",
     "core:window:allow-set-size",
     "core:window:allow-hide",
     "core:window:allow-show",
     "core:window:allow-set-focus",
+    "notification:default",
     "dialog:default",
     "dialog:allow-open"
   ]
