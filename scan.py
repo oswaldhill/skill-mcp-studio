@@ -1864,6 +1864,104 @@ def _snapshot_totals(snap) -> dict:
     }
 
 
+def _set_setting_in_text(raw: str, key: str, value) -> str:
+    """在 config.yaml 原文里改写 settings 段的单个键，**保留其余文本原样**。
+
+    为什么不用 yaml.safe_load + safe_dump：那会重新序列化整份文件 —— 内联数组
+    被拆成多行、所有注释被抹掉。实测改一个布尔值产生 383 行 diff，50 行注释
+    全部丢失，等于每次改设置都毁掉配置里的文档。
+
+    规则（面向本仓库 config.yaml 的实际形态，settings 是最后一个顶层键）：
+    - 已存在 `settings:` 段：只替换其中该键的整行，其余行一字不动；
+      键不存在则在段内追加一行。
+    - 没有 `settings:` 段：在文件末尾追加一个 `settings:` 段。
+    - 行尾换行保持「恰好一个」。
+    """
+    lines = raw.split("\n")
+    # 去掉末尾空元素以便处理，最后再补回换行
+    trailing_newline = raw.endswith("\n")
+    if trailing_newline and lines and lines[-1] == "":
+        lines.pop()
+
+    rendered = _render_scalar(value)
+    sec_start = None
+    for i, line in enumerate(lines):
+        if line.rstrip() == "settings:" or line.rstrip().startswith("settings:"):
+            sec_start = i
+            break
+
+    if sec_start is None:
+        # 末尾追加新段
+        lines.append("settings:")
+        lines.append(f"  {key}: {rendered}")
+    else:
+        # 段范围：到下一个顶格行（非缩进、非空、非注释）为止
+        sec_end = len(lines)
+        for j in range(sec_start + 1, len(lines)):
+            line = lines[j]
+            if line and not line[0].isspace() and not line.lstrip().startswith("#"):
+                sec_end = j
+                break
+        target = None
+        for j in range(sec_start + 1, sec_end):
+            stripped = lines[j].strip()
+            if stripped.startswith(f"{key}:"):
+                target = j
+                break
+        if target is not None:
+            indent = lines[target][: len(lines[target]) - len(lines[target].lstrip())]
+            lines[target] = f"{indent}{key}: {rendered}"
+        else:
+            lines.insert(sec_end, f"  {key}: {rendered}")
+
+    out = "\n".join(lines)
+    # 统一以单个换行结尾（文本卫生要求「恰好一个」）
+    return out + "\n"
+
+
+def _render_scalar(value) -> str:
+    """把设置值渲染成 YAML 标量（布尔用小写 true/false，与仓库既有写法一致）。"""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)
+    return str(value)
+
+
+def _run_get_setting(args, config) -> int:
+    """读取 config.yaml 的 settings 段单个键。
+
+    独立早返回出口：支持 --format json，且 Rust 侧的巡检开关判定与菜单勾选态
+    都按结构化字段取值；若落到通用快照路由会被截走（同 --snapshot 的坑）。
+
+    JSON 形态固定为 `{"key": ..., "value": ..., "set": true/false}`，
+    其中 value 保留原始类型（布尔就是布尔，不是字符串），调用方无需再解析文本。
+    """
+    _as_json = getattr(args, "format", None) == "json"
+    _key = args.get_setting
+    _settings = config.get("settings") or {}
+    _set = _key in _settings
+    _val = _settings.get(_key)
+
+    if _as_json:
+        print(json.dumps(
+            {"key": _key, "value": _val, "set": _set},
+            ensure_ascii=False,
+            indent=2,
+        ))
+        return 0
+
+    print("")
+    print("=" * 60)
+    print("  Get setting")
+    print("=" * 60)
+    if not _set:
+        print(f"  ⚠️ {_key} 未设置")
+    else:
+        print(f"  {_key} = {_val}")
+    return 0
+
+
 def _run_snapshot_diff(args, config, config_path) -> int:
     """4 维度变更检测：与上次快照对比并保存新基线。
 
@@ -2061,6 +2159,11 @@ def main() -> int:
     # 在通用快照之前优先走固定 JSON 出口，供 GUI 渲染成表格 + 分页。
     if args.fix_skills and getattr(args, "format", None) == "json":
         return _run_fix_skills_preview(args, config, config_path)
+
+    # 读取单个 setting（D 阶段）：只读 + 支持 --format json，Rust 侧巡检与
+    # 菜单勾选态都按结构化字段取值，必须排在通用快照路由之前。
+    if getattr(args, "get_setting", None):
+        return _run_get_setting(args, config)
 
     # 变更检测（B 阶段）：只读 + 支持 --format json，GUI 解析整个 stdout，
     # 必须排在通用快照路由之前，否则输出会被快照截走。
@@ -2376,7 +2479,6 @@ def main() -> int:
         print("=" * 60)
         try:
             from file_atomic import atomic_write, backup_path
-            import yaml
             _parts = args.set_setting.split("=", 1)
             if len(_parts) != 2:
                 raise ValueError(f"格式错误，需 KEY=VALUE，得到: {args.set_setting}")
@@ -2390,11 +2492,17 @@ def main() -> int:
                 _val_norm = max(5, int(_val))
             else:
                 _val_norm = _val
-            config.setdefault("settings", {})
-            config["settings"][_key] = _val_norm
+            # 读取磁盘原文并做**文本级**改写。为什么不用 yaml.safe_dump：
+            # 那会把整份配置重新序列化 —— 内联数组被拆成多行、全部注释被抹掉，
+            # 改一个布尔值就产生数百行 diff 且丢失文档（实测注释 50 行 → 0 行）。
+            # 另外这里刻意重读磁盘而不是用内存里的 config：core/scanner.run_scan
+            # 会原地 apply_profile_sources，把个人端点与凭据并进该对象；整体回写
+            # 会把真实 auth_token 落进主干 config.yaml（实测被密钥自检拦下）。
+            with open(config_path, "r", encoding="utf-8") as _fh:
+                _raw = _fh.read()
+            _new_raw = _set_setting_in_text(_raw, _key, _val_norm)
             _bak = backup_path(config_path)
-            _content = yaml.safe_dump(config, default_flow_style=False, allow_unicode=True, sort_keys=False)
-            atomic_write(config_path, _content, 0o644)
+            atomic_write(config_path, _new_raw, 0o644)
             print(f"  ✅ {_key} = {_val_norm}")
             if _bak:
                 print(f"  备份: {_bak}")
@@ -2402,20 +2510,7 @@ def main() -> int:
             print(f"\n  ❌ Set setting failed: {e}")
             repair_errors.append(f"Set setting: {e}")
 
-    if args.get_setting:
-        print("")
-        print("=" * 60)
-        print("  Get setting")
-        print("=" * 60)
-        try:
-            _val = (config.get("settings") or {}).get(args.get_setting)
-            if _val is None:
-                print(f"  ⚠️ {args.get_setting} 未设置")
-            else:
-                print(f"  {args.get_setting} = {_val}")
-        except Exception as e:
-            print(f"\n  ❌ Get setting failed: {e}")
-            repair_errors.append(f"Get setting: {e}")
+    # --get-setting 已在早期出口处理（_run_get_setting），此处不再重复。
 
     # ================================================================
     # 阶段 4: 变更追踪

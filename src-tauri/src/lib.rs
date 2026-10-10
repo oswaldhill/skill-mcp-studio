@@ -292,13 +292,46 @@ async fn run_audit() -> Result<String, String> {
 ///
 /// 托盘菜单的勾选态与后台线程的判定都走这里，避免两处各解析一份字符串。
 fn patrol_enabled_now() -> bool {
-    let args = vec!["--get-setting".to_string(), "patrol_enabled".to_string()];
+    let args = vec![
+        "--get-setting".to_string(),
+        "patrol_enabled".to_string(),
+        "--format".to_string(),
+        "json".to_string(),
+    ];
     match spawn(&args) {
-        Ok((_, stdout, _)) => {
+        Ok((_, stdout, _)) => json_bool(&stdout, "patrol_enabled").unwrap_or_else(|| {
+            // JSON 不可用时退回旧的文本判据（兼容 CLI 未升级的情形）。
             stdout.contains("patrol_enabled = True") || stdout.contains("patrol_enabled = true")
-        }
+        }),
         Err(_) => false,
     }
+}
+
+/// 从 CLI 的 JSON 输出里取一个布尔字段。
+///
+/// 为什么要走 JSON 而不是匹配中文文案：此前巡检判据是
+/// `stdout.contains("检测到变更")`，等于把**界面文案当成协议**——
+/// CLI 改一个措辞（例如「发现变更」），巡检就静默失效且不报错。
+/// 同一个命令早已提供 `--format json`，用它才是稳定契约。
+///
+/// 兼容两种返回形态：
+/// - CLI 直接打印的裸 JSON；
+/// - `run_cli` 那类 `{code, stdout, ...}` 外壳（此处不涉及，但一并容忍）。
+fn json_bool(stdout: &str, key: &str) -> Option<bool> {
+    let value: serde_json::Value = serde_json::from_str(stdout.trim()).ok()?;
+    value
+        .get(key)
+        .or_else(|| value.get("stdout").and_then(|s| s.get(key)))
+        .and_then(|v| v.as_bool())
+}
+
+/// 判断一次 `--snapshot --format json` 的输出是否报告了变更。
+///
+/// 解析失败时返回 `None`，让调用方区分「确实无变更」与「没读懂输出」——
+/// 后者不应被当成无变更而静默吞掉。
+fn snapshot_has_changes(stdout: &str) -> Option<bool> {
+    let value: serde_json::Value = serde_json::from_str(stdout.trim()).ok()?;
+    value.get("has_changes").and_then(|v| v.as_bool())
 }
 
 /// 菜单栏模板图标：单色（黑+alpha），由 macOS 依据菜单栏明暗与高亮状态自动着色。
@@ -729,11 +762,20 @@ pub fn run() {
                     if !enabled {
                         continue;
                     }
-                    // 2. 运行 --snapshot
-                    let snap_args = vec!["--snapshot".to_string()];
+                    // 2. 运行 --snapshot，用 JSON 判据而非匹配中文文案
+                    let snap_args = vec![
+                        "--snapshot".to_string(),
+                        "--format".to_string(),
+                        "json".to_string(),
+                    ];
                     match spawn(&snap_args) {
                         Ok((_, stdout, _)) => {
-                            let has_changes = stdout.contains("检测到变更");
+                            // 解析失败时保持上一次的提示不变，而不是当成「无变更」
+                            // 把状态误清掉（CLI 升级/输出异常时更安全）。
+                            let has_changes = match snapshot_has_changes(&stdout) {
+                                Some(v) => v,
+                                None => continue,
+                            };
                             if let Some(tray) = patrol_handle.tray_by_id("main") {
                                 let _ = tray.set_tooltip(Some(if has_changes {
                                     "Skill MCP Studio（检测到变更，点击查看）"
@@ -904,5 +946,62 @@ mod tests {
                 "带注入风险的 URL 应被拒绝: {bad}"
             );
         }
+    }
+
+    // 回归：巡检判据必须走结构化字段，不能把中文文案当协议。
+    // 此前是 `stdout.contains("检测到变更")`——CLI 换个措辞（例如「发现变更」）
+    // 巡检就静默失效，且不会有任何报错。
+    #[test]
+    fn snapshot_has_changes_reads_structured_field() {
+        assert_eq!(
+            snapshot_has_changes(r#"{"has_changes": true, "summary": {"hooks": 2}}"#),
+            Some(true)
+        );
+        assert_eq!(
+            snapshot_has_changes(r#"{"has_changes": false, "summary": {}}"#),
+            Some(false)
+        );
+        // 文案变了但 JSON 契约不变时，判定必须仍然正确
+        assert_eq!(
+            snapshot_has_changes(
+                r#"{"has_changes": true, "note": "CLI 改成了发现变更这个措辞"}"#
+            ),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn snapshot_has_changes_returns_none_when_unparsable() {
+        // 解析失败必须与「确实无变更」区分开：返回 None 让调用方保持不变
+        // 而不是把状态误清成「无变更」。
+        assert_eq!(snapshot_has_changes("检测到变更：hooks=2"), None);
+        assert_eq!(snapshot_has_changes(""), None);
+        assert_eq!(snapshot_has_changes("{不合法 JSON"), None);
+        // 合法 JSON 但缺字段，同样视为没读懂
+        assert_eq!(snapshot_has_changes(r#"{"summary": {}}"#), None);
+        // 类型不符（字符串 "true"）也不认
+        assert_eq!(snapshot_has_changes(r#"{"has_changes": "true"}"#), None);
+    }
+
+    #[test]
+    fn json_bool_reads_value_and_tolerates_envelope() {
+        // --get-setting --format json 的形态
+        assert_eq!(
+            json_bool(r#"{"key": "patrol_enabled", "value": true, "set": true}"#, "value"),
+            Some(true)
+        );
+        assert_eq!(
+            json_bool(r#"{"key": "patrol_enabled", "value": false, "set": true}"#, "value"),
+            Some(false)
+        );
+        // 键存在但值为 null（未设置）→ None，交由调用方回退
+        assert_eq!(
+            json_bool(r#"{"key": "x", "value": null, "set": false}"#, "value"),
+            None
+        );
+        // 裸字段形态也要能读
+        assert_eq!(json_bool(r#"{"patrol_enabled": true}"#, "patrol_enabled"), Some(true));
+        // 文本输出 → None（触发兼容回退）
+        assert_eq!(json_bool("  patrol_enabled = True", "patrol_enabled"), None);
     }
 }
