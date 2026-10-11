@@ -307,6 +307,35 @@ out of scope，并将此类界面指向 Fluent / Carbon / Polaris 等设计系�
 `.sheet-actions .btn-soft` 与 `.chg-btn` 必须显式声明 `min-height: 32px`
 （分页按钮按 2.5d 刻意更紧凑，不在此列）。
 
+### 2.10 设置页（`.settings-tab` / `.settings-card`）
+
+设置页用左侧分段 tab（`.settings-tab`）+ 右侧卡片分组（`.settings-card`）。
+**四个 tab 与各自的卡片归属**（新增设置项必须落到下表的某一 tab，不要新开 tab）：
+
+| tab | 卡片 |
+|---|---|
+| 通用 `appearance` | 外观（主题 / 缩放）、**后台巡检（定时检查）**、Skills 统一目录 |
+| Skill `general` | 技能使用统计（自动统计间隔） |
+| IDE / Agent `agents` | IDE / Agent 默认路径、**生命周期 Hook 配置** |
+| MCP `mcp` | MCP 端点库 |
+
+**后台巡检（定时检查）**：开关 + 间隔（5 / 15 / 30 / 60 / 120 分钟）。
+取值**不在 localStorage**，而是写进 `config.yaml` 的 `settings` 段
+（`patrol_enabled` / `patrol_interval_minutes`）—— 因为 Rust 托盘的「后台巡检」
+勾选项读同一份值，两处必须同源，否则托盘显示"已开"而实际没跑。
+读写一律经 CLI `--get-setting` / `--set-setting`（后者带备份 → 原子写 → 校验 → 回滚），
+GUI 不直接改配置文件。间隔由 CLI 钳到 ≥5 分钟，界面需回读落盘值而不是假定已生效。
+
+**生命周期 Hook 配置**：只读总览（客户端 / Hook 配置文件 / 是否可写入 / 映射事件），
+数据来自 `--management` 快照的 `mainstream_tools[].hooks_*`，不额外发请求。
+标准事件定义在 `config.yaml` 的 `hooks` 段（SessionStart / UserPromptSubmit /
+SessionEnd / Stop，写入时按各客户端大小写规范转换）。
+**写操作集中在 Hook 页**（`--fix-hooks` / `--remove-hooks`），设置页只做总览并提供跳转
+—— 两处都放写入按钮会让语义分叉。
+
+> 设置项的取值来源必须与「谁是唯一事实来源」一致：偏好类（主题/缩放/统计间隔）用
+> localStorage，跨进程共享类（巡检开关）用 config.yaml 并经 CLI。
+
 ---
 
 ## 3. 排版与间距

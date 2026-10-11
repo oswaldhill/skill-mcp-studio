@@ -3788,10 +3788,55 @@ function openAgentSettings(name) {
   };
 }
 
+// 后台巡检状态：由 CLI --get-setting 填充（renderSettings 会读它渲染）。
+//
+// ⚠️ 这里**只用字面量初始化**，不要引用 PATROL_INTERVAL_DEFAULT —— 该常量声明在
+// 下方（与 USAGE_AUTO_* 常量放一起），而 `let x = CONST` 会在**声明前**求值，
+// 触发 TDZ：`Cannot access 'PATROL_INTERVAL_DEFAULT' before initialization`，
+// 整个顶层脚本抛错、**所有按钮失效**（实测由 test_dashboard_scope 的 node harness
+// 抓到；静态检查与 54 条设计门禁都看不出这类问题）。数值与常量保持一致即可。
+let _patrolEnabled = false;
+let _patrolInterval = 15;   // = PATROL_INTERVAL_DEFAULT（见下方常量）
+
+// 从 CLI 拉取真实值（唯一事实来源）。失败时保留上次值并提示，不静默假装成功。
+async function loadPatrolSettings() {
+  if (!tauriInvoke) return;             // 浏览器预览态：无 CLI，保持默认值
+  try {
+    const en = await runCli(["--get-setting", "patrol_enabled", "--format", "json"]);
+    const it = await runCli(["--get-setting", "patrol_interval_minutes", "--format", "json"]);
+    if (en && en.value !== undefined) _patrolEnabled = !!en.value;
+    if (it && it.value !== undefined) _patrolInterval = parseInt(it.value, 10) || PATROL_INTERVAL_DEFAULT;
+  } catch (err) {
+    showBanner("warn", "读取后台巡检设置失败：" + String(err && (err.message || err) || err));
+  }
+}
+
+// 写入走 CLI（带备份 → 原子写 → 校验 → 回滚）；成功后重新拉取以确认落盘值，
+// 而不是直接把本地变量当成已生效 —— 否则 CLI 钳位（如最小值 5）会被界面掩盖。
+async function setPatrolSetting(key, value, label) {
+  const res = await runCli(["--set-setting", `${key}=${value}`]);
+  if (!res || res.code !== 0) {
+    showBanner("err", `保存「${label}」失败：` + cliErrDetail(res));
+    return false;
+  }
+  await loadPatrolSettings();
+  renderSettings();
+  return true;
+}
+
 // 自动统计配置：声明必须在 renderSettings（会读它渲染设置项）之前。
 const USAGE_AUTO_KEY = "skill-mcp-usage-auto-min";
 const USAGE_AUTO_DEFAULT = 15;          // 分钟；0 = 关闭自动统计
 const USAGE_AUTO_OPTS = [0, 5, 15, 30, 60];
+
+// 后台巡检（定时检查）配置。与「自动统计」不同：它**不是** localStorage 偏好，
+// 而是写进 config.yaml 的 settings 段（patrol_enabled / patrol_interval_minutes），
+// 因为 Rust 托盘的「后台巡检」勾选项也是读同一份值 —— 两处必须同源，
+// 否则托盘显示"已开"而实际没跑（或反之）。CLI 的 --get-setting/--set-setting
+// 是唯一事实来源，GUI 只做透传（写操作仍走 CLI 的备份→原子写→校验链）。
+const PATROL_INTERVAL_OPTS = [5, 15, 30, 60, 120];
+const PATROL_INTERVAL_MIN = 5;      // CLI 侧同样钳到 >=5（见 scan.py --set-setting）
+const PATROL_INTERVAL_DEFAULT = 15;
 
 // ---------------- Hook 管理（生命周期 hook 配置状态与修复） ----------------
 function _hooksEntries() {
@@ -3880,6 +3925,25 @@ function renderSettings() {
     <div class="note" style="margin-top:var(--sp-4)">主题与缩放偏好保存在本机（localStorage），缩放会即时生效。</div>
   </div>`;
 
+  // 「通用」：后台巡检（定时检查）—— 数据源是 config.yaml 的 settings 段，
+  // 与托盘「后台巡检」勾选项同源；不在 localStorage。
+  const patrolBtns = PATROL_INTERVAL_OPTS
+    .map(m => `<button type="button" class="seg-btn${m === _patrolInterval ? " active" : ""}" data-patrol-interval="${m}">${m} 分钟</button>`)
+    .join("");
+  const patrolCard = `<div class="settings-card">
+    <h4>后台巡检（定时检查）</h4>
+    <div class="rows" style="font-size:var(--fs-sm)">
+      <div class="row"><span class="k">启用后台巡检</span><span class="v">
+        <button type="button" class="seg-btn${_patrolEnabled ? " active" : ""}" data-patrol-toggle="on">开启</button>
+        <button type="button" class="seg-btn${_patrolEnabled ? "" : " active"}" data-patrol-toggle="off">关闭</button>
+      </span></div>
+      <div class="row"><span class="k">巡检间隔</span><span class="v"><span class="segmented" id="patrol-interval-seg" role="group" aria-label="巡检间隔">
+        ${patrolBtns}
+      </span></span></div>
+    </div>
+    <div class="note" style="margin-top:var(--sp-4)">开启后按间隔在后台运行快照对比（4 维度：IDE/Agent · MCP · Skill · Hook），检测到变更时更新托盘图标状态并发通知。关闭则只在手动点「检查变更」时执行。与托盘菜单的「后台巡检」是同一个开关。</div>
+  </div>`;
+
   // 「通用」：Skills 统一目录（纯配置，路径类设置集中于此）
   const skillsCard = settingsCard("Skills 统一目录",
     kv("统一技能目录", `<code class="mono">${escapeHtml(sk.unified_dir || "未设置")}</code>`),
@@ -3901,6 +3965,44 @@ function renderSettings() {
     <div class="note" style="margin-top:var(--sp-4)">统计会通读全部会话日志（约 30 秒），在后台静默进行，打开弹窗时直接看最近一次结果，不会弹出"正在计算"。选「关闭」后只有手动点「重新统计」才执行。</div>
   </div>`;
 
+  // 「IDE / Agent」：生命周期 Hook 配置总览。
+  // 此前只能打开 config.yaml 的 hooks 段才知道「标准事件有哪些、各客户端写哪个文件、
+  // 映射哪些事件」；Hook 页只展示**审计结果**（是否已接入），不展示**配置依据**。
+  // 这里做成只读总览 + 指路 Hook 页：写操作仍集中在 Hook 页，避免两处入口语义分叉。
+  // 数据源就是 GUI 已经拿到的快照（mainstream_tools 的 hooks_* 字段），不额外请求：
+  // hooks_config_path / hook_events / hooks_fix_supported 已在每轮 --management 里送达。
+  const hookClients = ((SNAP && SNAP.mainstream_tools) || [])
+    .filter(t => t.hooks_config_path)
+    .map(t => ({
+      name: t.name,
+      config_path: t.hooks_config_path,
+      fix_supported: t.hooks_fix_supported,
+      events: t.hook_events || [],
+    }));
+  const hookOverviewRows = hookClients.map((c) => {
+    const evs = (c.events || []).join(", ") || "-";
+    const fix = c.fix_supported ? "可写入" : "仅审计";
+    return `<tr>
+      <td>${escapeHtml(c.name || "")}</td>
+      <td class="mono">${escapeHtml(c.config_path || "-")}</td>
+      <td>${escapeHtml(fix)}</td>
+      <td>${escapeHtml(evs)}</td>
+    </tr>`;
+  }).join("");
+  const hooksCard = `<div class="settings-card">
+    <h4>生命周期 Hook 配置</h4>
+    ${hookClients.length ? `
+    <div class="note" style="margin-bottom:var(--sp-3)">各客户端的目标配置文件与映射事件如下（定义来自 <code class="mono">config.yaml</code> 的 <code class="mono">hooks</code> 段；标准事件含 SessionStart / UserPromptSubmit / SessionEnd / Stop，写入时按各客户端大小写规范转换）。</div>
+    <div class="table-wrap"><table class="merge-table">
+      <thead><tr><th>客户端</th><th>Hook 配置文件</th><th>写入</th><th>映射事件</th></tr></thead>
+      <tbody>${hookOverviewRows}</tbody>
+    </table></div>`
+    : '<div class="empty">无 Hook 配置数据（config.yaml 未定义 hooks 段）</div>'}
+    <div class="card-link"><div class="grow note">以上是 config.yaml 的 hooks 段（标准事件 + 各客户端写入位置与事件映射）。接入状态与「写入 / 移除」操作在 Hook 页。</div>
+      <button class="ghost" data-action="goto-hooks">前往 Hook 页</button>
+    </div>
+  </div>`;
+
   // 「IDE / Agent」：内置注册表清单（数据来自内置数据库），支持卡片/列表视图
   const agentsCard = `<div class="settings-card">
     <h4>IDE / Agent 默认路径</h4>
@@ -3918,9 +4020,9 @@ function renderSettings() {
   </div>`;
 
   el.innerHTML =
-    `<div class="settings-tab-panel" data-panel="appearance">${appearanceCard}</div>` +
+    `<div class="settings-tab-panel" data-panel="appearance">${appearanceCard}${patrolCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="general">${skillsCard}${usageCard}</div>` +
-    `<div class="settings-tab-panel hidden" data-panel="agents">${agentsCard}</div>` +
+    `<div class="settings-tab-panel hidden" data-panel="agents">${agentsCard}${hooksCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="mcp">${mcpCard}</div>`;
 
   el.querySelectorAll("[data-theme-btn]").forEach((b) => {
@@ -3932,6 +4034,22 @@ function renderSettings() {
   });
   el.querySelectorAll("[data-usage-auto]").forEach((b) => {
     b.addEventListener("click", () => setUsageAutoMinutes(b.dataset.usageAuto));
+  });
+  const gotoHooks = el.querySelector("[data-action='goto-hooks']");
+  if (gotoHooks) gotoHooks.addEventListener("click", () => switchPage("hooks"));
+  el.querySelectorAll("[data-patrol-toggle]").forEach((b) => {
+    b.addEventListener("click", () => {
+      const want = b.dataset.patrolToggle === "on";
+      if (want === _patrolEnabled) return;   // 已是该状态，不产生无意义写操作
+      setPatrolSetting("patrol_enabled", want ? "true" : "false", "启用后台巡检");
+    });
+  });
+  el.querySelectorAll("[data-patrol-interval]").forEach((b) => {
+    b.addEventListener("click", () => {
+      const min = parseInt(b.dataset.patrolInterval, 10);
+      if (min === _patrolInterval) return;
+      setPatrolSetting("patrol_interval_minutes", String(min), "巡检间隔");
+    });
   });
   applyScale(currentScale(), false);
   renderAgentsTable(0);
@@ -4215,7 +4333,7 @@ const BLOCK_RENDERERS = {
   agents: () => { renderOverview(); renderAgents(); },
   skills: () => { renderOverview(); renderSkills(); },
   mainstream: () => { renderOverview(); },
-  settings: () => { renderSettings(); },
+  settings: () => { loadPatrolSettings().then(renderSettings); },
 };
 
 // 把局部快照合并进 SNAP。
@@ -6932,6 +7050,7 @@ window.addEventListener("unhandledrejection", (ev) => {
 initNavGroups();
 initSkillToolbar();
 scheduleUsageAutoRefresh();
+loadPatrolSettings();      // 后台巡检设置来自 config.yaml，不是 localStorage
 loadManagement();
 </script>
 </body>

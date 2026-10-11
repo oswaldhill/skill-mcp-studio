@@ -993,6 +993,31 @@
       （分页按钮按 2.5d 刻意更紧凑，不在此列）。</p>
     </section>
 
+    <!-- ═══ 2.10 ═══ -->
+    <section id="s2-10">
+      <h3 id="s2-10">2.10 设置页（<code>.settings-tab</code> / <code>.settings-card</code>）<a class="anchor" href="#s2-10" aria-label="锚点">#</a></h3>
+      <p>设置页用分段 tab（<code>.settings-tab</code>）+ 卡片分组（<code>.settings-card</code>）。
+        <strong>四个 tab 与各自的卡片归属</strong>（新增设置项必须落到下表的某一 tab，不要新开 tab）：</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>tab</th><th>卡片</th></tr></thead>
+          <tbody>
+            <tr><td>通用 <code>appearance</code></td><td>外观（主题 / 缩放）、<strong>后台巡检（定时检查）</strong>、Skills 统一目录</td></tr>
+            <tr><td>Skill <code>general</code></td><td>技能使用统计（自动统计间隔）</td></tr>
+            <tr><td>IDE / Agent <code>agents</code></td><td>IDE / Agent 默认路径、<strong>生命周期 Hook 配置</strong></td></tr>
+            <tr><td>MCP <code>mcp</code></td><td>MCP 端点库</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><strong>后台巡检（定时检查）</strong>：开关 + 间隔（5 / 15 / 30 / 60 / 120 分钟）。取值<strong>不在 localStorage</strong>，
+        而是写进 <code>config.yaml</code> 的 <code>settings</code> 段（<code>patrol_enabled</code> / <code>patrol_interval_minutes</code>）
+        —— 因为 Rust 托盘的「后台巡检」勾选项读同一份值，两处必须同源。读写一律经 CLI
+        <code>--get-setting</code> / <code>--set-setting</code>（后者带备份 → 原子写 → 校验 → 回滚）。</p>
+      <p><strong>生命周期 Hook 配置</strong>：只读总览（客户端 / Hook 配置文件 / 是否可写入 / 映射事件），
+        数据来自 <code>--management</code> 快照的 <code>mainstream_tools[].hooks_*</code>。
+        写操作集中在 Hook 页（<code>--fix-hooks</code> / <code>--remove-hooks</code>），设置页只做总览并提供跳转。</p>
+    </section>
+
     <!-- ═══ 3 ═══ -->
     <section id="s3">
       <h2><span class="num">3</span>排版与间距<a class="anchor" href="#s3" aria-label="锚点">#</a></h2>
