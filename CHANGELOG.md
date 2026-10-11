@@ -11,6 +11,33 @@
 
 - _暂无_
 
+## [v0.25.4] - 2026-10-11
+
+当前发布版本（build 116）。
+
+### 修复
+
+- **stdio 与 url 互斥：目标 key 被 stdio 条目占用时如实报冲突，不再静默破坏**
+  （`core/mcp_fixer_render.py`、`core/mcp_fixer.py`）。
+  v0.25.3 只做到「目标 key 是 stdio 时不写 url、原样保留」，并让调用方报
+  「endpoint X is already configured」—— **那是谎报**：该条目接入方式与期望的
+  url 型端点不同，审计仍判未配置，GUI 会一直显示「修复 MCP」而点了没反应。
+  同时发现**同一类缺陷的另一处更严重形态**：JSON 型客户端的 `_render_json` 用
+  `servers[name] = entry` 整条替换，会把用户的本地 stdio 桥**静默删掉**
+  （`{"command":…,"args":…}` → `{"url":…}`）且返回 `updated`、毫无提示 ——
+  这正是主干 `config.yaml` 注释里描述的「命中同名桥并把它改写成 HTTP 形态」，
+  此前只是改用独立 key 绕开了它，根因一直在。
+  现新增 `McpEntryConflict`，两处渲染路径都在**动用户配置之前**先判类型，冲突时
+  **一个字节都不改**，并由 `fix_mcp_tool` 映射为 `unsupported`（scan.py 记为 ⏭️、
+  不计入 `repair_errors`），消息里给出可执行的处置办法（`--remove-mcp-entry`
+  或为该端点改用其它 key）。
+
+- 回归护栏（`tests/test_mcp_fixer.py`，44 → 47 例）：JSON stdio 条目不得被静默覆盖、
+  JSON 反向护栏（非 stdio 仍正常写入）、冲突必须走 `unsupported` 而非 `error`
+  （后者会让 GUI 报「修复失败」）。另有 4 例旧测试按新语义更新 —— 它们断言的是
+  「谎报 unchanged」这一有缺陷的旧行为。变异验证：JSON 不判 stdio → 1 例失败；
+  TOML 冲突不抛异常 → 5 例失败。
+
 ## [v0.25.3] - 2026-10-11
 
 当前发布版本（build 115）。
@@ -1182,7 +1209,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.25.3...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.25.4...HEAD
+[v0.25.4]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.25.4
 [v0.25.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.25.3
 [v0.25.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.25.2
 [v0.25.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.25.1
