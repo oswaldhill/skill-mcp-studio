@@ -11,6 +11,47 @@
 
 - _暂无_
 
+## [v0.27.0] - 2026-10-11
+
+当前发布版本（build 120）。
+
+### 变更
+
+- **设置页的 Hook tab 改为「管理要写入哪些生命周期事件」**（`gui/dashboard.html`、
+  `scan.py`、`core/hooks_fixer.py`、`core/hooks_inventory.py`、
+  `core/management_snapshot.py`、`docs/DESIGN.md`）。此前该 tab 展示的是各 IDE/Agent 的
+  接入状态 —— 那是 **Hook 业务页**的职责；Skill / MCP 两个 tab 管的都是**配置本身**，
+  Hook 应当一致。现列出 `config.yaml` 的 `hooks.events` 全部标准事件（勾选框 + 事件名 +
+  说明 + 写往哪些客户端），保存写入 `settings.hook_events`；另加只读的
+  「客户端事件命名规范」表。
+
+### 修复
+
+- **「写哪些 hook 事件」此前散落在各客户端 `template` 里，导致 Codex 的
+  `UserPromptSubmit` 永远补不上**。`hooks_fixer` 只读 `hooks.clients[].template`，
+  而 Codex 声明支持 `UserPromptSubmit` 却在 template 里没有它 → 审计报
+  「缺 UserPromptSubmit」，写入却永远不补（假警报）。
+  现改为：`settings.hook_events` 给出标准事件名，`--fix-hooks` 按各客户端
+  `event_format` 转成规范名（pascal/camel）后写入。新增 `event_name_for_client()`
+  承担这套映射（此前靠 template 的 key 手写，无法统一管理）。
+  全局列表选中某客户端 template 没有的事件时用 `ai-memory hook --event <snake_case>`
+  兜底 —— **不允许静默漏写**。实测 Codex 的该事件终于写入，且与既有的 codeisland
+  hook 并存不冲突（审计 `missing_key_events` 由 `['UserPromptSubmit']` 变为 `[]`）。
+- **`--set-setting` 支持列表值**：`_render_scalar` 渲染块序列，`_set_setting_in_text`
+  支持多行插入/替换；空列表显式写 `[]`（第一版返回空串走单值分支，导致**清空时旧元素
+  残留**，实测发现并修复）。config.yaml 的注释全程未丢。
+- **区分「未配置」与「空列表」**：键不存在 → 回落 template（向后兼容）；键存在但为
+  `[]` → 用户明确的**停用**选择，不得回落，返回 `unsupported` 并给出明确文案
+  （而非含糊的 `missing`）。
+- **`management_snapshot` 补 hook 事件三字段**（catalog / selected / clients），
+  GUI 才有数据可渲染。
+
+### 测试
+
+- 新增 `tests/test_hook_events_config.py`（7 例）：命名转换、全局列表覆盖 template、
+  camel 客户端拿到 camel 名、未配置时回落 template、空列表不写入、非 ai-memory hook
+  保留。其中「空列表」一例抓到并修掉了上述语义缺陷。
+
 ## [v0.26.1] - 2026-10-11
 
 当前发布版本（build 119）。
@@ -1302,7 +1343,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.26.1...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.27.0...HEAD
+[v0.27.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.27.0
 [v0.26.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.26.1
 [v0.26.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.26.0
 [v0.25.5]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.25.5
