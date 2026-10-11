@@ -816,9 +816,24 @@
         <li>操作按钮右对齐，纵向居中；同一列表内按钮文案一致。</li>
       </ul>
 
-      <h3 id="s2-3">2.3 卡片（<code>.card</code>）<a class="anchor" href="#s2-3" aria-label="锚点">#</a></h3>
+      <h3 id="s2-3">2.3 卡片（<code>.card</code> 及场景卡片）<a class="anchor" href="#s2-3" aria-label="锚点">#</a></h3>
       <p>只在需要表达「独立实体」时使用（技能卡、MCP 服务卡）。
          <strong>不要</strong>用卡片堆一长串同类条目，那是列表行的职责。</p>
+      <p><strong>场景卡片是各自独立的类</strong>，不是 <code>.card</code> 的修饰变体；新增卡片先看下表能否复用：</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>卡片类</th><th>场景</th></tr></thead>
+          <tbody>
+            <tr><td><code>.skill-card</code></td><td>技能卡（主页技能网格）</td></tr>
+            <tr><td><code>.agent-card</code></td><td>Agent / 客户端卡</td></tr>
+            <tr><td><code>.settings-card</code></td><td>设置分组卡</td></tr>
+            <tr><td><code>.about-card</code></td><td>关于页</td></tr>
+            <tr><td><code>.adv-card</code></td><td>整理建议卡</td></tr>
+            <tr><td><code>.card</code></td><td>通用容器（表格/区块外壳，<code>--r-card</code> + <code>--shadow-card</code>）</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>所有卡片共用同一套取值：底色 <code>--panel</code>、描边 <code>--line</code>、圆角 <code>--r-card</code>、内边距 <code>--sp-7</code>。</p>
 
       <h3 id="s2-4">2.4 元信息与数字<a class="anchor" href="#s2-4" aria-label="锚点">#</a></h3>
       <ul>
@@ -826,6 +841,9 @@
         <li>数量单位用中文（「3.6 万次安装」），不直接透出上游英文原文。</li>
         <li>不得展示假精确数字；来自上游的原始值如实标注。</li>
       </ul>
+      <p><strong>表头内联图标（<code>.th-ico</code>）</strong>：表格 <code>&lt;th&gt;</code> 里跟在文字前的 SVG 图标容器。
+        内联 flex、12px 见方、与文字基线对齐、右侧 <code>--gap-1</code>(4px) 间距；
+        用于 <code>.merge-table</code>。<strong>不得用 emoji 代替</strong>（见 3b）。</p>
 
       <h3 id="s2-5">2.5 状态覆盖（每个数据区都必须有）<a class="anchor" href="#s2-5" aria-label="锚点">#</a></h3>
       <div class="table-wrap">
@@ -838,6 +856,11 @@
           </tbody>
         </table>
       </div>
+      <p><strong>行内状态点（<code>.dot</code> 三态）</strong>：<code>.dot-ok</code>（<code>--ok</code>）/
+        <code>.dot-warn</code>（<code>--warn</code>）/ <code>.dot-idle</code>（<code>--faint</code>）。9px 圆点，<code>--r-pill</code>。
+        用途：表格或列表里一行一个语义状态（如 Hook 接入情况）。
+        <strong>颜色只是辅助</strong>：同一行必须有文字列说明状态，点上加 <code>aria-hidden="true"</code>。
+        <strong>不用 emoji 当状态图标</strong>。</p>
 
       <h3 id="s2-5b">2.5b 弹窗容器（<code>.modal</code> / <code>.cfm-card</code> / <code>.sheet</code>）<a class="anchor" href="#s2-5b" aria-label="锚点">#</a></h3>
       <div class="table-wrap">
@@ -854,6 +877,9 @@
         <li><strong>z-index 档位</strong>：遮罩 <code>50</code>、侧拉 <code>.sheet</code> <code>51</code>、命令面板 <code>.palette</code> <code>60</code>、忙碌层 <code>dialog.busy-backdrop</code> <code>70</code>；原生 <code>&lt;dialog&gt;</code> 走 <code>::backdrop</code>。</li>
         <li>弹窗内表单字段间距用 <code>--gap-3</code>(8px)。</li>
         <li><code>.sheet</code> 不影响主区域布局（<code>position: fixed</code> 侧拉）。</li>
+        <li>代码里<strong>没有</strong>名为 <code>.backdrop</code> 的类：遮罩是 <code>.modal-backdrop</code> / <code>.sheet-backdrop</code>
+            两个独立元素，加上原生 <code>&lt;dialog&gt;</code> 的 <code>::backdrop</code>。
+            （<code>--backdrop</code> 是<strong>颜色 token</strong>，不是类名。）</li>
       </ul>
 
       <h3 id="s2-5c">2.5c 开关（<code>.switch</code>）<a class="anchor" href="#s2-5c" aria-label="锚点">#</a></h3>
@@ -883,9 +909,22 @@
         <li>不复用 <code>.modal</code> 的居中浮层样式，是独立的结构</li>
       </ul>
 
-      <h3 id="s2-6">2.6 工具条（<code>.toolbar</code>）<a class="anchor" href="#s2-6" aria-label="锚点">#</a></h3>
-      <p>搜索框 + 操作按钮同排。搜索框占满剩余宽度，按钮固定宽度，间距 8px。
-         输入框必须有 <code>placeholder</code> 与 <code>aria-label</code>。</p>
+      <h3 id="s2-6">2.6 工具条（<code>.mt-toolbar</code> / <code>.agent-toolbar</code> / <code>.market-toolbar</code> / <code>.insight-toolbar</code>）<a class="anchor" href="#s2-6" aria-label="锚点">#</a></h3>
+      <p>搜索框 + 操作按钮同排。各区域各有一个工具条类（<strong>不存在统一的 <code>.toolbar</code></strong>，按所在区域选对应类）：</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>类</th><th>区域</th></tr></thead>
+          <tbody>
+            <tr><td><code>.mt-toolbar</code></td><td>技能市场（含 <code>.mt-search</code> / <code>.mt-sum</code> / <code>.mt-spacer</code>）</td></tr>
+            <tr><td><code>.agent-toolbar</code></td><td>Agent / 客户端面板</td></tr>
+            <tr><td><code>.market-toolbar</code></td><td>市场结果区</td></tr>
+            <tr><td><code>.insight-toolbar</code></td><td>洞察弹窗（钉顶工具条）</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><strong>硬规则</strong>：间距一律 <code>--gap-3</code>(8px)；搜索框占满剩余宽度（<code>flex: 1</code>）；
+        按钮固定宽度不换行；输入框必须有 <code>placeholder</code> 与 <code>aria-label</code>。
+        新增工具条必须复用上表某一类，不要另起一个只差间距的类。</p>
 
       <h3 id="s2-7">2.7 变更卡片（<code>.chg-card</code>）<a class="anchor" href="#s2-7" aria-label="锚点">#</a></h3>
       <p>用于「变更详情」面板：每条变更一行决策（修复 / 保持）。</p>
@@ -1000,8 +1039,10 @@
       </div>
       <div class="rules">
         <div class="rule"><span class="tag">已知例外</span>
-          <p><code>.status-dot</code> 的呼吸动画是「正在刷新」的唯一视觉提示，
-             在 reduced-motion 下关闭动画，但 <code>title</code> 文案仍在，语义不丢失。</p></div>
+          <p>属于 <strong>§2.8 托盘弹框</strong>（不在管理台页面）：<code>popover.html</code> 的
+             <code>.status-dot</code> 呼吸动画是「显示的是缓存、正在刷新」的唯一视觉提示；
+             在 <code>prefers-reduced-motion</code> 下关闭动画，但 <code>title</code> 文案仍在，语义不丢失。</p>
+          <p>管理台页面不使用 <code>.status-dot</code>（0 处出现）；行内状态请用 §2.5 的 <code>.dot</code> 三态。</p></div>
       </div>
     </section>
 

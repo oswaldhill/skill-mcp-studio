@@ -170,6 +170,133 @@ class MonoUsageContractTest(unittest.TestCase):
         )
 
 
+class ComponentRegistrationTest(unittest.TestCase):
+    """组件/类名登记门禁（2026-10-11 评审后新增，补齐最大一处盲区）。
+
+    ## 为什么需要它
+
+    规范 §2.1 写着「新增按钮变体时必须回来登记到本表」、§5 清单写着
+    「若新增组件或变体，已回写本文件对应章节」—— **这两条承诺此前没有任何门禁**。
+    原有的 ``TokenRegistryCompletenessTest`` 只覆盖 ``:root`` 的 **CSS token**，
+    完全不覆盖**类名/组件**。
+
+    后果实测（本次评审发现）：上一轮把 emoji 换成 CSS 类时新增了
+    ``.dot-ok`` / ``.dot-warn`` / ``.dot-idle`` / ``.th-ico`` 四个类，
+    **一个都没回写规范**，而 51 条门禁全绿 —— 规范的核心承诺被静默绕过。
+
+    ## 三条判据
+
+    1. **幽灵引用**：规范里反引号写的 ``\`.foo\``` 必须真的存在于 GUI 代码。
+       抓的是 §2.6 那种「整节基于不存在的 ``.toolbar``」的漂移。
+    2. **新增语义类必须登记**：与冻结基线（``tests/_component_baseline.txt``）
+       相比，**基线之外新增**的语义类必须先登记到规范，否则失败。
+    3. **必须登记的组件仍在册**：核心语义组件（下表）必须在规范里出现，
+       防止有人把它们从规范里删掉。
+
+    ## 粒度（为什么不拦全部 499 个类）
+
+    规范 §附「粒度」明确：只守有独立语义的顶层组件，不要为每个内部类名建门禁。
+    所以判据 2 只针对**语义候选**（类名含 ``card``/``row``/``dot``/``pill`` 等
+    组件词），且用**基线冻结**而非全量白名单 —— 存量 147 个语义类不强迫补登记，
+    只要求**新增的**先登记。
+    """
+
+    BASELINE = ROOT / "tests" / "_component_baseline.txt"
+
+    # 与基线生成脚本保持一致：类名按 "-" 切分后，任一段命中即为语义候选。
+    SEMANTIC_TOKENS = frozenset({
+        "card", "row", "panel", "modal", "sheet", "dialog", "list", "bar",
+        "table", "menu", "tab", "field", "pill", "dot", "badge", "banner",
+        "toast", "chip", "tag", "switch", "pagination", "toolbar", "btn",
+        "button", "grid", "popover", "alert", "tooltip", "avatar", "legend",
+        "ico", "icon", "stepper", "drawer", "nav",
+    })
+
+    # 规范必须持续登记的语义组件（评审后补登的核心项）。
+    REQUIRED_REGISTERED = (
+        "dot-ok", "dot-warn", "dot-idle",   # §2.5 行内状态点三态
+        "th-ico",                            # §2.4 表头内联图标
+        "mt-toolbar", "agent-toolbar", "market-toolbar", "insight-toolbar",  # §2.6
+        "skill-card", "agent-card", "settings-card", "about-card", "adv-card",  # §2.3
+        "modal-backdrop", "sheet-backdrop",  # §2.5b 遮罩真实类名
+    )
+
+    @staticmethod
+    def _defined_classes() -> set[str]:
+        return set(re.findall(r"\.([a-z][a-z0-9-]*)", _css()))
+
+    @classmethod
+    def _semantic(cls, classes) -> set[str]:
+        return {
+            c for c in classes
+            if any(seg in cls.SEMANTIC_TOKENS for seg in c.split("-"))
+        }
+
+    @classmethod
+    def _baseline(cls) -> set[str]:
+        lines = cls.BASELINE.read_text(encoding="utf-8").splitlines()
+        return {line.strip() for line in lines if line.strip() and not line.startswith("#")}
+
+    # ── 判据 1：幽灵引用 ─────────────────────────────────────────────
+    def test_spec_referenced_classes_exist_in_code(self):
+        """规范里反引号写的类名必须真的存在（否则那节无法照做）。"""
+        md = SPEC.read_text(encoding="utf-8")
+        referenced = set(re.findall(r"`\.([a-z][a-z0-9-]*)`", md))
+        # **否定式提及不算引用**：规范里常有「不存在统一的 `.toolbar`」「没有名为
+        # `.backdrop` 的类」这类澄清句，它们的目的是告诉读者「别去找这个类」。
+        # 若把它们当引用，门禁会逼着规范不要澄清自己的历史遗留名 —— 适得其反。
+        for m in re.finditer(r"`\.([a-z][a-z0-9-]*)`", md):
+            window = md[max(0, m.start() - 40): m.start()]
+            if re.search(r"(没有|不存在|不是|非)\s*[^。；\n]{0,12}$", window):
+                referenced.discard(m.group(1))
+        # popover 有自己的页面源码，一并作为存在性来源。
+        pop = (ROOT / "gui" / "popover.html").read_text(encoding="utf-8")
+        existing = self._defined_classes() | set(
+            re.findall(r"\.([a-z][a-z0-9-]*)", pop)
+        ) | set(re.findall(r'class="([^"]*)"', pop + _src()))  # 也认内联类名
+        flat = set()
+        for item in existing:
+            flat.update(item.split())
+        ghosts = sorted(c for c in referenced if c not in self._defined_classes() and c not in flat)
+        self.assertEqual(
+            ghosts,
+            [],
+            "规范引用了代码里不存在的类（照规范写会找不到实现）：%r" % ghosts,
+        )
+
+    # ── 判据 2：新增语义类必须先登记 ─────────────────────────────────
+    def test_new_semantic_classes_must_be_registered(self):
+        """基线之外新增的语义类，必须先在规范里登记。"""
+        new = self._semantic(self._defined_classes()) - self._baseline()
+        # 已登记到规范的算通过
+        md = SPEC.read_text(encoding="utf-8")
+        registered = set(re.findall(r"\.([a-z][a-z0-9-]*)", md))
+        offenders = sorted(new - registered)
+        self.assertEqual(
+            offenders,
+            [],
+            "新增了语义组件类但未回写规范（规范 §2.1 / §5 要求「新增组件或变体必须"
+            "回写对应章节」）：%r\n"
+            "  修法：① 在 docs/DESIGN.md 对应章节登记（含 §2.9 的硬数字）；"
+            "② 重生成基线 tests/_component_baseline.txt。" % offenders,
+        )
+
+    # ── 判据 3：核心组件必须持续在册 ─────────────────────────────────
+    def test_required_components_stay_registered(self):
+        for cls in self.REQUIRED_REGISTERED:
+            with self.subTest(component=cls):
+                self.assertTrue(
+                    (ROOT / "gui" / ("popover.html" if cls == "status-dot" else "dashboard.html"))
+                    .read_text(encoding="utf-8").find("." + cls) >= 0,
+                    f".{cls} 在代码里不存在 —— REQUIRED_REGISTERED 该更新",
+                )
+                self.assertIn(
+                    "`." + cls + "`",
+                    SPEC.read_text(encoding="utf-8"),
+                    f".{cls} 已从规范里消失 —— 它是必须登记的语义组件",
+                )
+
+
 class HardNumbersContractTest(unittest.TestCase):
     """规范 §2.9 表的每一行必须与 CSS 实际值逐字节一致（或 token 等价）。"""
 

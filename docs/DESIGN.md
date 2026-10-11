@@ -133,14 +133,34 @@ out of scope，并将此类界面指向 Fluent / Carbon / Polaris 等设计系�
 - 主标题可截断（`text-overflow: ellipsis`），完整值放 `title` 属性。
 - 操作按钮右对齐，纵向居中；同一列表内按钮文案一致。
 
-### 2.3 卡片（`.card`）
+### 2.3 卡片（`.card` 及场景卡片）
+
 只在需要表达"独立实体"时使用（技能卡、MCP 服务卡）。
 **不要**用卡片堆一长串同类条目，那是列表行的职责。
+
+**场景卡片是各自独立的类**，不是 `.card` 的修饰变体；新增卡片先看下表能否复用：
+
+| 卡片类 | 场景 |
+|---|---|
+| `.skill-card` | 技能卡（主页技能网格） |
+| `.agent-card` | Agent / 客户端卡 |
+| `.settings-card` | 设置分组卡 |
+| `.about-card` | 关于页 |
+| `.adv-card` | 整理建议卡 |
+| `.card` | 通用容器（表格/区块外壳，`--r-card` + `--shadow-card`） |
+
+所有卡片共用同一套取值：底色 `--panel`、描边 `--line`、圆角 `--r-card`、内边距 `--sp-7`。
 
 ### 2.4 元信息与数字
 - 数字、包名、路径、版本号一律 `--mono` + `--faint` 或 `--muted`。
 - 数量单位用中文（"3.6 万次安装"），不直接透出上游英文原文。
 - 不得展示假精确数字；来自上游的原始值如实标注。
+
+**表头内联图标（`.th-ico`）**：表格 `<th>` 里跟在文字前的 SVG 图标容器。
+内联 flex、12px 见方、与文字基线对齐、右侧 `--gap-1`(4px) 间距。
+用于 `.merge-table`（移除工具 / 状态变化 / 统计变化）。
+**不得用 emoji 代替**（见 3b「图标用 SVG」）—— 这是 2026-10-11 从
+`🗑 / 🔄 / 📊` 收敛过来时新增的类。
 
 ### 2.5 状态覆盖（每个数据区都必须有）
 | 状态 | 要求 |
@@ -148,6 +168,13 @@ out of scope，并将此类界面指向 Fluent / Carbon / Polaris 等设计系�
 | 加载中 | 有明确文案说明在做什么、大概多久 |
 | 空 | 说明"为什么空"以及"怎么让它不空"，不留白屏 |
 | 错误 | 就地显示原因，不弹窗、不吞掉 |
+
+**行内状态点（`.dot` 三态）**：`.dot-ok`（`--ok`）/ `.dot-warn`（`--warn`）/
+`.dot-idle`（`--faint`）。9px 圆点，`--r-pill`。
+用途：表格或列表里一行一个语义状态（如 Hook 接入情况）。
+**颜色只是辅助**：同一行必须有文字列说明状态（不靠颜色单独表意），
+点上加 `aria-hidden="true"` 让读屏跳过装饰。
+图标一律 SVG（见 3b），**不用 emoji 当状态图标**。
 
 ### 2.5b 弹窗容器（`.modal` / `.cfm-card` / `.sheet`）
 
@@ -160,8 +187,10 @@ out of scope，并将此类界面指向 Fluent / Carbon / Polaris 等设计系�
 - **z-index 档位**（实际取值，禁止随手指派）：遮罩 `50`（`.modal-backdrop` / `.sheet-backdrop`）、
   侧拉 `.sheet` `51`、命令面板 `.palette` `60`、模态 `<dialog>` 层 `dialog.modal-layer`、
   忙碌层 `dialog.busy-backdrop` `70`。
-- 原生 `<dialog>`（`.insight-backdrop` / `.modal-layer` / `.busy-backdrop`）的背板走 `::backdrop`，
-  不是独立的 `.backdrop` 元素。
+- 原生 `<dialog>`（`.insight-backdrop` / `.modal-layer` / `.busy-backdrop`）的背板走 `::backdrop`。
+  代码里**没有**名为 `.backdrop` 的类；遮罩是 `.modal-backdrop` / `.sheet-backdrop`
+  两个独立元素，加上原生 `<dialog>` 的 `::backdrop`。（`--backdrop` 是**颜色 token**，
+  不是类名。）
 - 弹窗内表单字段间距用 `--gap-3`(8px)。
 - `.sheet` 不影响主区域布局（`position: fixed` 侧拉）。
 
@@ -196,9 +225,20 @@ out of scope，并将此类界面指向 Fluent / Carbon / Polaris 等设计系�
 - 最大宽 `min(1040px, 100%)`，内部两级滚动（工具条钉顶 + 结果区滚动）
 - 不复用 `.modal` 的居中浮层样式，是独立的结构
 
-### 2.6 工具条（`.toolbar`）
-搜索框 + 操作按钮同排。搜索框占满剩余宽度，按钮固定宽度，间距 8px。
-输入框必须有 `placeholder` 与 `aria-label`。
+### 2.6 工具条（`.mt-toolbar` / `.agent-toolbar` / `.market-toolbar` / `.insight-toolbar`）
+
+搜索框 + 操作按钮同排。各区域各有一个工具条类（**不存在统一的 `.toolbar`**，按所在区域选对应类）：
+
+| 类 | 区域 |
+|---|---|
+| `.mt-toolbar` | 技能市场（含 `.mt-search` / `.mt-sum` / `.mt-spacer`） |
+| `.agent-toolbar` | Agent / 客户端面板 |
+| `.market-toolbar` | 市场结果区 |
+| `.insight-toolbar` | 洞察弹窗（钉顶工具条） |
+
+**硬规则**（2026-10-11 统一）：间距一律 `--gap-3`(8px)；搜索框占满剩余宽度（`flex: 1`）；
+按钮固定宽度不换行；输入框必须有 `placeholder` 与 `aria-label`。
+新增工具条必须复用上表某一类，不要另起一个只差间距的类。
 
 ### 2.7 变更卡片（`.chg-card`）
 用于「变更详情」面板：每条变更一行决策（修复 / 保持）。
@@ -294,8 +334,10 @@ out of scope，并将此类界面指向 Fluent / Carbon / Polaris 等设计系�
 | 图标用 SVG | 不用 emoji 当 UI 图标；统一 `viewBox="0 0 24 24"` | 跨平台渲染一致 |
 | 可点元素有指针 | `cursor: pointer` | 可发现性 |
 
-**已知的例外**：`.status-dot` 的呼吸动画是"正在刷新"的唯一视觉提示，
-在 reduced-motion 下关闭动画，但 `title` 文案仍在，语义不丢失。
+**已知的例外**（属于 **§2.8 托盘弹框**，不在管理台页面）：`popover.html` 的
+`.status-dot` 呼吸动画是"显示的是缓存、正在刷新"的唯一视觉提示；在
+`prefers-reduced-motion` 下关闭动画，但 `title` 文案仍在，语义不丢失。
+> 管理台页面不使用 `.status-dot`（它 0 处出现）；行内状态请用 §2.5 的 `.dot` 三态。
 
 ---
 
@@ -343,6 +385,7 @@ out of scope，并将此类界面指向 Fluent / Carbon / Polaris 等设计系�
 - [ ] 深浅两套主题都过一遍
 - [ ] 跑 `python3 -m unittest tests.test_design_spec tests.test_dashboard_design_tokens tests.test_design_spec_contract`
 - [ ] 若新增组件或变体，已回写本文件对应章节
+      （由 `ComponentRegistrationTest` 强制：新增语义类必须先登记，未登记即失败）
 
 ---
 

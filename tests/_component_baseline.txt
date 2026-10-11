@@ -1,0 +1,166 @@
+# 语义组件类基线（自动生成，请勿手改）
+# ============================================================
+# 由 tests/test_design_spec_contract.py 的 ComponentRegistrationTest 读取。
+# 含义：这些类名在 2026-10-11 时已存在。门禁只拦「**基线之外新增**的语义类」，
+#       因为规范要求『新增组件或变体必须回写规范对应章节』。
+#
+# 合法新增组件的正确流程：
+#   1) 把新类写进 docs/DESIGN.md 对应章节（并在 §2.9 登记不可协商的数字）；
+#   2) 用下面命令重生成基线：
+#      python3 - <<'EOF'
+#      import re; from pathlib import Path
+#      d=Path('gui/dashboard.html').read_text('utf-8'); st=d[d.index('<style>'):d.index('</style>')]
+#      SEM={...}   # 见测试文件里的 SEMANTIC_TOKENS
+#      EOF
+#   3) 门禁通过即视为完成登记。
+#
+# 判据刻意**不是**「所有 499 个类都要登记」—— 规范 §附『粒度』明确说：
+#       只守有独立语义的顶层组件，不要为每个内部类名建门禁。
+
+about-card
+ac-meta-row
+ac-path-list
+ac-path-row
+ad-clean-btn
+ad-modal
+ad-pill
+ad-pill-path
+ad-pill-ver
+adv-all-btn
+adv-card
+adv-card-head
+adv-keep-row
+adv-merge-btn
+adv-rej-row
+adv-tag
+agent-card
+agent-chip
+agent-grid
+agent-list-count
+agent-list-empty
+agent-list-table
+agent-list-wrap
+agent-toolbar
+agt-dot
+al-metric-btn
+al-row
+banner
+btn-cancel
+btn-danger
+btn-save
+btn-soft
+btn-test
+busy-bar
+card
+card-confirm
+card-dim
+card-link
+card-skeleton
+cat-chip
+cfm-btn-cancel
+cfm-btn-danger
+cfm-card
+cfm-icon
+chg-btn
+chg-card
+chg-list
+chg-pill
+chg-toolbar
+chip
+chip-count
+client-state-row
+dot
+dot-idle
+dot-ok
+dot-warn
+foot-row
+form-field
+form-row
+home-card
+insight-dialog
+insight-toolbar
+legend-item
+legend-label
+legend-note
+legend-swatch
+list-act
+list-empty
+list-main
+list-meta
+list-row
+list-rows
+list-title
+live-dot
+mainstream-list
+market-toolbar
+mcp-dot
+mcp-ep-btn
+mcp-legend
+mcp-table
+merge-legend
+merge-table
+modal
+modal-backdrop
+modal-form
+modal-layer
+modal-section
+modal-xl
+more-row
+mt-toolbar
+nav
+nav-group-label
+nav-item
+nav-link
+nest-list
+nv-ico
+pagination
+pal-list
+path-field-row
+pg-btn
+pi-ico
+pill-list
+pop-menu
+row
+row-block
+seg-btn
+settings-card
+settings-tab
+settings-tab-panel
+sheet
+sheet-actions
+sheet-backdrop
+sheet-body
+sheet-close
+sheet-head
+sheet-meta
+sheet-nest
+sheet-nest-item
+sheet-section-title
+skill-card
+skill-legend
+skill-row
+skill-table
+skill-toolbar
+stat-card
+stat-grid
+switch
+t-ico
+table-scroll
+tag
+tag-blue
+tag-btn
+task-card
+test-modal
+test-panel
+th-ico
+toast
+toast-root
+token-row
+transport-row
+ts-badge
+ts-dot
+ur-bar
+usage-head-row
+usage-list
+usage-row
+view-btn
