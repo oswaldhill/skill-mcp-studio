@@ -186,6 +186,7 @@ def _agent_entry(tool: Dict[str, Any], config: Dict[str, Any], scan_result: Dict
         "hook_events": hooks_inv["hook_events"],
         "hooks_fix_supported": hooks_inv["hooks_fix_supported"],
         "hooks_inventory": hooks_inv["hooks_inventory"],
+        "missing_key_events": hooks_inv.get("missing_key_events", []),
         "aliases": tool.get("aliases", []) or [],
         "mcp_attach": resolved_attach,
         "has_explicit_attach": has_explicit,
@@ -536,6 +537,7 @@ def build_management_snapshot(
                 "hook_events": hooks_inv["hook_events"],
                 "hooks_fix_supported": hooks_inv["hooks_fix_supported"],
                 "hooks_inventory": hooks_inv["hooks_inventory"],
+                "missing_key_events": hooks_inv.get("missing_key_events", []),
             })
     except Exception:
         mainstream_tools = []

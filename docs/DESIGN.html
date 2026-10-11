@@ -1004,7 +1004,8 @@
           <tbody>
             <tr><td>通用 <code>appearance</code></td><td>外观（主题 / 缩放）、<strong>后台巡检（定时检查）</strong>、Skills 统一目录</td></tr>
             <tr><td>Skill <code>general</code></td><td>技能使用统计（自动统计间隔）</td></tr>
-            <tr><td>IDE / Agent <code>agents</code></td><td>IDE / Agent 默认路径、<strong>生命周期 Hook 配置</strong></td></tr>
+            <tr><td>IDE / Agent <code>agents</code></td><td>IDE / Agent 默认路径</td></tr>
+            <tr><td><strong>Hook <code>hooks</code></strong></td><td>生命周期 Hook 接入状态（可写入/移除）、Hook 配置依据</td></tr>
             <tr><td>MCP <code>mcp</code></td><td>MCP 端点库</td></tr>
           </tbody>
         </table>
@@ -1013,9 +1014,15 @@
         而是写进 <code>config.yaml</code> 的 <code>settings</code> 段（<code>patrol_enabled</code> / <code>patrol_interval_minutes</code>）
         —— 因为 Rust 托盘的「后台巡检」勾选项读同一份值，两处必须同源。读写一律经 CLI
         <code>--get-setting</code> / <code>--set-setting</code>（后者带备份 → 原子写 → 校验 → 回滚）。</p>
-      <p><strong>生命周期 Hook 配置</strong>：只读总览（客户端 / Hook 配置文件 / 是否可写入 / 映射事件），
-        数据来自 <code>--management</code> 快照的 <code>mainstream_tools[].hooks_*</code>。
-        写操作集中在 Hook 页（<code>--fix-hooks</code> / <code>--remove-hooks</code>），设置页只做总览并提供跳转。</p>
+      <p><strong>Hook tab（<code>hooks</code>）</strong>：两张卡 —— ① 接入状态（客户端 / 状态 / 已接入事件 / 缺关键事件 / 写入·移除按钮）
+        + 「一键写入 Hook」；② 配置依据（客户端 / Hook 配置文件 / 是否可写入 / 映射事件）。</p>
+      <ul>
+        <li><strong>数据源必须与 Hook 页共用 <code>_hooksEntries()</code></strong>（合并 <code>mainstream_tools</code> + <code>_agentsForPanel()</code>
+            并按 <code>name|path</code> 去重），各写一份过滤会出现两页数量不一致。</li>
+        <li><code>missing_key_events</code> 由 <code>hooks_inventory</code> 产出，<strong>必须经 <code>management_snapshot</code> 透传</strong>
+            才能到 GUI（此前漏传，该列恒为空）。</li>
+        <li>写入/移除与 Hook 页走同一组命令（<code>--fix-hooks</code> / <code>--remove-hooks</code>），两处入口共用同一实现。</li>
+      </ul>
     </section>
 
     <!-- ═══ 3 ═══ -->

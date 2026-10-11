@@ -1789,6 +1789,7 @@
         <button type="button" class="settings-tab active" data-stab="appearance" role="tab" aria-selected="true">通用</button>
         <button type="button" class="settings-tab" data-stab="general" role="tab" aria-selected="false">Skill</button>
         <button type="button" class="settings-tab" data-stab="agents" role="tab" aria-selected="false">IDE / Agent</button>
+        <button type="button" class="settings-tab" data-stab="hooks" role="tab" aria-selected="false">Hook</button>
         <button type="button" class="settings-tab" data-stab="mcp" role="tab" aria-selected="false">MCP</button>
       </div>
       <div id="settings-body"></div>
@@ -3965,20 +3966,24 @@ function renderSettings() {
     <div class="note" style="margin-top:var(--sp-4)">统计会通读全部会话日志（约 30 秒），在后台静默进行，打开弹窗时直接看最近一次结果，不会弹出"正在计算"。选「关闭」后只有手动点「重新统计」才执行。</div>
   </div>`;
 
-  // 「IDE / Agent」：生命周期 Hook 配置总览。
+  // 「Hook」独立 tab：生命周期 Hook 配置总览。
   // 此前只能打开 config.yaml 的 hooks 段才知道「标准事件有哪些、各客户端写哪个文件、
   // 映射哪些事件」；Hook 页只展示**审计结果**（是否已接入），不展示**配置依据**。
   // 这里做成只读总览 + 指路 Hook 页：写操作仍集中在 Hook 页，避免两处入口语义分叉。
-  // 数据源就是 GUI 已经拿到的快照（mainstream_tools 的 hooks_* 字段），不额外请求：
-  // hooks_config_path / hook_events / hooks_fix_supported 已在每轮 --management 里送达。
-  const hookClients = ((SNAP && SNAP.mainstream_tools) || [])
-    .filter(t => t.hooks_config_path)
-    .map(t => ({
-      name: t.name,
-      config_path: t.hooks_config_path,
-      fix_supported: t.hooks_fix_supported,
-      events: t.hook_events || [],
-    }));
+  // 数据源与 Hook 页共用 _hooksEntries()：它合并 mainstream_tools + _agentsForPanel()
+  // 并按 name|path 去重。**不要**在这里另写一份过滤 —— 两处口径分叉会出现「Hook 页显示
+  // 6 个客户端、设置页只显示 4 个」这类不一致（实测 mainstream_tools 只有 6 条，
+  // 而 Hook 页因合并 agents 面板拿到更多）。
+  // 字段对齐：missing_key_events 原先**没被 management_snapshot 透传**，导致 Hook 页
+  // 该列恒为空；本次已在后端补传（见 core/management_snapshot.py）。
+  const hookClients = _hooksEntries().map(a => ({
+    name: a.name,
+    config_path: a.hooks_config_path,
+    fix_supported: a.hooks_fix_supported,
+    events: a.hook_events || [],
+    configured: !!a.hooks_configured,
+    missing: a.missing_key_events || [],
+  }));
   const hookOverviewRows = hookClients.map((c) => {
     const evs = (c.events || []).join(", ") || "-";
     const fix = c.fix_supported ? "可写入" : "仅审计";
@@ -3989,18 +3994,51 @@ function renderSettings() {
       <td>${escapeHtml(evs)}</td>
     </tr>`;
   }).join("");
+  // Hook 独立 tab：两张卡 —— ① 配置依据（只读，来自 config.yaml 的 hooks 段）；
+  // ② 接入状态与写入/移除（与 Hook 页同源同行内动作，命令行仍走 --fix-hooks/--remove-hooks）。
+  // 为什么带上②：Hook 既然有了独立 tab，它就该承载该 tab 的完整能力；只放只读总览再
+  // 让人跳走，等于把同一个功能拆成两处、用户还得再找一个页面。
+  const hookStateRows = hookClients.map((c) => {
+    const configured = c.configured;
+    const dotCls = configured ? "dot-ok" : (c.fix_supported ? "dot-warn" : "dot-idle");
+    const icon = `<span class="dot ${dotCls}" aria-hidden="true"></span>`;
+    const statusText = configured ? "已接入" : (c.fix_supported ? "未接入" : "不支持");
+    const missing = (c.missing || []).length ? c.missing.join(", ") : "无";
+    const actions = [];
+    if (c.fix_supported) {
+      actions.push(configured
+        ? `<button class="btn-soft btn-sm" data-action="remove-hooks" data-name="${escapeHtml(c.name)}">移除 Hook</button>`
+        : `<button class="btn-soft btn-sm" data-action="fix-hooks" data-name="${escapeHtml(c.name)}">写入 Hook</button>`);
+    }
+    return `<tr>
+      <td>${icon} ${escapeHtml(c.name)}</td>
+      <td>${escapeHtml(statusText)}</td>
+      <td>${escapeHtml(c.events.join(", ") || "-")}</td>
+      <td>${escapeHtml(missing)}</td>
+      <td style="white-space:nowrap">${actions.join(" ")}</td>
+    </tr>`;
+  }).join("");
   const hooksCard = `<div class="settings-card">
-    <h4>生命周期 Hook 配置</h4>
+    <h4>生命周期 Hook 接入状态</h4>
+    <div class="card-link"><div class="grow note">ai-memory 自动交接依赖这些 hook。写入按标准模板注入，原配置会先备份。</div>
+      <button class="btn-soft" data-action="fix-hooks-all">一键写入 Hook</button>
+    </div>
     ${hookClients.length ? `
-    <div class="note" style="margin-bottom:var(--sp-3)">各客户端的目标配置文件与映射事件如下（定义来自 <code class="mono">config.yaml</code> 的 <code class="mono">hooks</code> 段；标准事件含 SessionStart / UserPromptSubmit / SessionEnd / Stop，写入时按各客户端大小写规范转换）。</div>
+    <div class="table-wrap" style="margin-top:var(--sp-4)"><table class="merge-table">
+      <thead><tr><th>客户端</th><th>状态</th><th>已接入事件</th><th>缺关键事件</th><th>操作</th></tr></thead>
+      <tbody>${hookStateRows}</tbody>
+    </table></div>`
+    : '<div class="empty">无 Hook 配置数据（config.yaml 未定义 hooks 段）</div>'}
+  </div>
+  <div class="settings-card">
+    <h4>Hook 配置依据</h4>
+    <div class="note" style="margin-bottom:var(--sp-3)">以下来自 <code class="mono">config.yaml</code> 的 <code class="mono">hooks</code> 段：标准事件含 SessionStart / UserPromptSubmit / SessionEnd / Stop，写入时按各客户端大小写规范转换。</div>
+    ${hookClients.length ? `
     <div class="table-wrap"><table class="merge-table">
       <thead><tr><th>客户端</th><th>Hook 配置文件</th><th>写入</th><th>映射事件</th></tr></thead>
       <tbody>${hookOverviewRows}</tbody>
     </table></div>`
     : '<div class="empty">无 Hook 配置数据（config.yaml 未定义 hooks 段）</div>'}
-    <div class="card-link"><div class="grow note">以上是 config.yaml 的 hooks 段（标准事件 + 各客户端写入位置与事件映射）。接入状态与「写入 / 移除」操作在 Hook 页。</div>
-      <button class="ghost" data-action="goto-hooks">前往 Hook 页</button>
-    </div>
   </div>`;
 
   // 「IDE / Agent」：内置注册表清单（数据来自内置数据库），支持卡片/列表视图
@@ -4022,7 +4060,8 @@ function renderSettings() {
   el.innerHTML =
     `<div class="settings-tab-panel" data-panel="appearance">${appearanceCard}${patrolCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="general">${skillsCard}${usageCard}</div>` +
-    `<div class="settings-tab-panel hidden" data-panel="agents">${agentsCard}${hooksCard}</div>` +
+    `<div class="settings-tab-panel hidden" data-panel="agents">${agentsCard}</div>` +
+    `<div class="settings-tab-panel hidden" data-panel="hooks">${hooksCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="mcp">${mcpCard}</div>`;
 
   el.querySelectorAll("[data-theme-btn]").forEach((b) => {
@@ -4035,8 +4074,6 @@ function renderSettings() {
   el.querySelectorAll("[data-usage-auto]").forEach((b) => {
     b.addEventListener("click", () => setUsageAutoMinutes(b.dataset.usageAuto));
   });
-  const gotoHooks = el.querySelector("[data-action='goto-hooks']");
-  if (gotoHooks) gotoHooks.addEventListener("click", () => switchPage("hooks"));
   el.querySelectorAll("[data-patrol-toggle]").forEach((b) => {
     b.addEventListener("click", () => {
       const want = b.dataset.patrolToggle === "on";
