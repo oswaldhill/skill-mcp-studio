@@ -214,7 +214,10 @@ class ComponentRegistrationTest(unittest.TestCase):
 
     # 规范必须持续登记的语义组件（评审后补登的核心项）。
     REQUIRED_REGISTERED = (
-        "dot-ok", "dot-warn", "dot-idle",   # §2.5 行内状态点三态
+        # §2.5 行内状态点：既有写法是 .dot.ok / .dot.warn / .dot.err / .dot.faint
+        # （2026-10-11 曾误加一套 .dot-ok/-warn/-idle 弱化重复实现，已删除）。
+        # 组合类无法用「单个类名」表达，故这三个在下面的专用断言里检查。
+
         "th-ico",                            # §2.4 表头内联图标
         "mt-toolbar", "agent-toolbar", "market-toolbar", "insight-toolbar",  # §2.6
         "skill-card", "agent-card", "settings-card", "about-card", "adv-card",  # §2.3
@@ -280,6 +283,111 @@ class ComponentRegistrationTest(unittest.TestCase):
             "  修法：① 在 docs/DESIGN.md 对应章节登记（含 §2.9 的硬数字）；"
             "② 重生成基线 tests/_component_baseline.txt。" % offenders,
         )
+
+    # ── 判据 2b：HTML/JS 用到的类必须在 CSS 里有规则（幽灵类）────────────
+    # 这是 2026-10-11 实测的缺口：我在 Hook 设置里连写了 `.table-wrap` 与 `.faint`
+    # 两个**只在 HTML 用、CSS 里根本没有规则**的类 —— 页面不报错、门禁全绿，
+    # 但布局实际是坏的（`.table-wrap` 没有 overflow 容器 → 表格宽到撑破卡片，
+    # 用户截图反馈才发现）。此类「幽灵类」是最隐蔽的一类 UI 缺陷。
+    #
+    # 判据口径（避免误报）：
+    #   - 只查**设置页等静态模板**常用的 `class="a b c"` 形式；JS 模板串里的动态类
+    #     （含 ${}）跳过。
+    #   - 允许一批**语义性豁免**：纯状态/工具类由别的选择器组合生效，或由外部
+    #     样式（popover 内联）提供。
+    GHOST_EXEMPT = frozenset({
+        # 由 JS 动态添加/移除、或作为状态钩子使用（选择器里以 .a.b 组合出现）
+        "hidden", "active", "open", "dark", "show", "loading", "ok", "err",
+        "warn", "hot", "disabled", "selected", "nesting-open", "grow",
+        # 外部页面（popover.html）自有样式
+        "pressed",
+    })
+
+    # 存量幽灵类基线（2026-10-11 实测）。只许减少：清掉一个就从这里删一个。
+    GHOST_BASELINE = frozenset({
+        "al-group-name", "btn-agent-detail", "btn-mt-settings", "ff-label",
+        "input", "kv", "mcp-badge-legend", "panel", "pf-add", "pf-rm", "ts-label",
+    })
+
+    def test_no_ghost_classes_used_in_markup(self):
+        """markup 里 class="..." 写的类必须能在本页 CSS 找到规则。"""
+        c = _css()
+        defined = set(re.findall(r"\.([a-z][a-z0-9-]*)", c))
+        src = _src()
+        used = set()
+        # 只接受**合法类名 token**（字母/数字/连字符，且不以数字开头）。
+        # 为什么不能直接 split()：字符串拼接形态
+        #   '<button class="pal-item\' + (idx === PALETTE.active ? " active" : "") + '"'
+        # 会被 `class="([^"]*)"` 整段捕获，split 出来就是 `pal-item'`、`(idx`、
+        # `===`、`?` 这类残片（实测产生 5 个假阳性）。
+        TOKEN = re.compile(r"^[a-z][a-z0-9-]*$")
+        for m in re.finditer(r'class="([^"]*)"', src):
+            raw = m.group(1)
+            if "${" in raw:          # JS 模板动态拼接，跳过
+                continue
+            used.update(t for t in raw.split() if TOKEN.match(t))
+        # 注意：`data-class="attached"` 这类**属性值**不是 class。上面只匹配
+        # `class="…"`（前有空格或引号边界），不会命中 data-class —— 但
+        # `data-class="x"` 里的 `class="x"` **会**被子串命中，故再排一次：
+        used -= set(re.findall(r'data-class="([a-z][a-z0-9-]*)"', src))
+        ghosts = sorted(
+            t for t in used
+            if t not in defined and t not in self.GHOST_EXEMPT
+        )
+        # 棘轮：存量 11 个幽灵类冻结在 GHOST_BASELINE，**禁止新增**。
+        #
+        # 为什么不直接清零：这 11 个是既有债务（`kv`/`panel`/`pf-add`… 都是写了
+        # class 却没写样式）。逐个补样式或删标记属于独立的清理工作，会与本次改动
+        # 混在一起、难以评审；而**放着不管**会让后来者继续照抄这种写法。
+        # 所以采用与「间距字面值」相同的处置：冻结基线 + 只许减少。
+        # 合法性说明：它们大多只是无样式的语义标记（浏览器忽略未知 class，
+        # 不报错），危害是「以为有样式」—— 本次 .table-wrap 就是这样把卡片撑破的。
+        new_ghosts = [t for t in ghosts if t not in self.GHOST_BASELINE]
+        self.assertEqual(
+            new_ghosts,
+            [],
+            "markup 里新增了本页 CSS 未定义的类（幽灵类）—— 页面不报错但布局会坏"
+            "（实测 .table-wrap 缺 overflow 容器把卡片撑破）：%r\n"
+            "  修法：① 在 CSS 里补规则；② 或改用已有类。"
+            "（存量 %d 个已冻结在 GHOST_BASELINE，只许减少）"
+            % (new_ghosts, len(self.GHOST_BASELINE)),
+        )
+        # 伴随断言：存量必须真在减少的方向维护，不允许基线长期虚高
+        stale = [t for t in self.GHOST_BASELINE if t not in used]
+        self.assertEqual(
+            stale,
+            [],
+            "GHOST_BASELINE 里有已不再使用的类，请收紧基线：%r" % stale,
+        )
+
+    # ── 判据 2c：行内状态点必须用既有的组合类（不得另造平行实现）──────
+    def test_dot_states_use_existing_compound_classes(self):
+        """`.dot` 的语义态必须用既有的 `.dot.ok/.warn/.err/.faint` 组合类。
+
+        2026-10-11 实测：替换 emoji 时新增了一套 `.dot-ok/-warn/-idle`
+        （样式更弱、无 box-shadow 环），与既有组合类并存成两套 —— 违反规范
+        「先找现成组件，找不到再补」。此断言防止再次分叉。
+        """
+        c = _css()
+        for state in ("ok", "warn", "err", "faint"):
+            with self.subTest(state=state):
+                self.assertIn(
+                    f".dot.{state}",
+                    c,
+                    f"缺少既有状态点组合类 .dot.{state}",
+                )
+        md = SPEC.read_text(encoding="utf-8")
+        for state in ("ok", "warn", "err", "faint"):
+            with self.subTest(spec=state):
+                self.assertIn(f".dot.{state}", md, f"规范未登记 .dot.{state}")
+        # 平行实现不得回归
+        for legacy in ("dot-ok", "dot-warn", "dot-idle"):
+            with self.subTest(legacy=legacy):
+                self.assertNotIn(
+                    f".{legacy} {{",
+                    c,
+                    f"出现了平行实现 .{legacy} —— 应复用 .dot.{legacy.split('-')[1]}",
+                )
 
     # ── 判据 3：核心组件必须持续在册 ─────────────────────────────────
     def test_required_components_stay_registered(self):

@@ -856,11 +856,13 @@
           </tbody>
         </table>
       </div>
-      <p><strong>行内状态点（<code>.dot</code> 三态）</strong>：<code>.dot-ok</code>（<code>--ok</code>）/
-        <code>.dot-warn</code>（<code>--warn</code>）/ <code>.dot-idle</code>（<code>--faint</code>）。9px 圆点，<code>--r-pill</code>。
+      <p><strong>行内状态点（<code>.dot</code> 三态）</strong>：<code>.dot.ok</code>（<code>--ok</code> + <code>--ring-ok</code> 环）/
+        <code>.dot.warn</code>（<code>--warn</code> + <code>--ring-warn</code>）/ <code>.dot.err</code>（<code>--err</code> + <code>--ring-err</code>）/
+        <code>.dot.faint</code>（透明底 + <code>--line-strong</code> 内描边）。9px 圆点，<code>--r-pill</code>。
         用途：表格或列表里一行一个语义状态（如 Hook 接入情况）。
         <strong>颜色只是辅助</strong>：同一行必须有文字列说明状态，点上加 <code>aria-hidden="true"</code>。
-        <strong>不用 emoji 当状态图标</strong>。</p>
+        <strong>不用 emoji 当状态图标</strong>。
+        这四种是既有写法，不要另造 <code>.dot-ok</code> / <code>.dot-idle</code> 之类的平行类。</p>
 
       <h3 id="s2-5b">2.5b 弹窗容器（<code>.modal</code> / <code>.cfm-card</code> / <code>.sheet</code>）<a class="anchor" href="#s2-5b" aria-label="锚点">#</a></h3>
       <div class="table-wrap">

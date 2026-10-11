@@ -320,12 +320,10 @@
 
   /* ============ status bits ============ */
   .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex: none; }
-  /* 状态点三态（语义色 token）。替代此前的 emoji 图标 🟢/⚠️/⚪：
-     规范 3b 要求「图标用 SVG，不用 emoji 当 UI 图标」，且 emoji 跨平台字形不一。
-     颜色只是辅助 —— 同一行另有文字列表达状态（不靠颜色单独表意）。 */
-  .dot-ok { background: var(--ok); }
-  .dot-warn { background: var(--warn); }
-  .dot-idle { background: var(--faint); }
+  /* 说明：状态点的三态样式**早已存在**（`.dot.ok` / `.dot.warn` / `.dot.err` /
+     `.dot.faint`，且带 box-shadow 环），此处**不要**再定义一套 `.dot-ok` 这类
+     重复实现 —— 2026-10-11 实测我在替换 emoji 时新增过 `.dot-ok/.dot-warn/
+     .dot-idle`，它们比既有写法弱（无环）、且造成两套并存。已删除，统一用既有写法。 */
   .dot.ok { background: var(--ok); box-shadow: var(--ring-ok); }
   .dot.warn { background: var(--warn); box-shadow: var(--ring-warn); }
   .dot.err { background: var(--err); box-shadow: var(--ring-err); }
@@ -3870,15 +3868,15 @@ function renderHooks() {
     const missing = a.missing_key_events || [];
     // 状态点用语义色 token，不用 emoji（规范 3b：图标用 SVG / 不做 emoji 图标）。
     // 颜色是辅助：下一列 statusText 才是可读的状态文本。
-    const dotCls = configured ? "dot-ok" : (fixSupported ? "dot-warn" : "dot-idle");
+    const dotCls = configured ? "ok" : (fixSupported ? "warn" : "faint");
     const icon = `<span class="dot ${dotCls}" aria-hidden="true"></span>`;
     const statusText = configured ? "已接入" : (fixSupported ? "未接入" : "不支持");
     const actions = [];
     if (fixSupported) {
       if (!configured) {
-        actions.push(`<button class="btn-soft btn-sm" data-action="fix-hooks" data-name="${escapeHtml(a.name)}">写入 Hook</button>`);
+        actions.push(`<button class="btn-soft sm" data-action="fix-hooks" data-name="${escapeHtml(a.name)}">写入 Hook</button>`);
       } else {
-        actions.push(`<button class="btn-soft btn-sm" data-action="remove-hooks" data-name="${escapeHtml(a.name)}">移除 Hook</button>`);
+        actions.push(`<button class="btn-soft sm" data-action="remove-hooks" data-name="${escapeHtml(a.name)}">移除 Hook</button>`);
       }
     }
     return `<tr>
@@ -3984,18 +3982,21 @@ function renderSettings() {
     ? hookCatalog.map((e) => {
         const canon = e.name;
         const on = hookSelectedSet.has(canon);
-        // 哪些客户端支持该事件：看它声明的命名规范能否表达这个标准事件
-        const hosts = hookClientsMeta.filter(c => c.fix_supported).map((c) => {
+        // 该事件会写到哪些客户端：**只显示数量 + title 详情**。
+        // 之前把 6 个 `客户端:事件名` 内联成一格，宽到把卡片撑破（实测截图）；
+        // 规范 §2.2 对这类「一格信息过多」给的做法是截断 + 完整值放 title。
+        const fixable = hookClientsMeta.filter(c => c.fix_supported);
+        const hosts = fixable.map((c) => {
           const nm = c.event_format === "camel_case"
             ? canon[0].toLowerCase() + canon.slice(1)
             : canon;
-          return `<code class="mono">${escapeHtml(c.name)}:${escapeHtml(nm)}</code>`;
-        }).join(" ");
+          return `${c.name}:${nm}`;
+        }).join("、");
         return `<tr>
           <td><input type="checkbox" data-hook-event="${escapeHtml(canon)}" ${on ? "checked" : ""} aria-label="写入事件 ${escapeHtml(canon)}"></td>
           <td class="mono">${escapeHtml(canon)}</td>
           <td>${escapeHtml(e.description || "-")}</td>
-          <td class="hook-hosts">${hosts || "-"}</td>
+          <td class="mono muted" title="${escapeHtml(hosts || "-")}">${fixable.length} 个客户端</td>
         </tr>`;
       }).join("")
     : "";
@@ -4025,7 +4026,7 @@ function renderSettings() {
       <button class="primary" data-action="save-hook-events">保存</button>
     </div>
     ${hookCatalog.length ? `
-    <div class="table-wrap" style="margin-top:var(--sp-4)"><table class="merge-table">
+    <div class="table-scroll" style="margin-top:var(--sp-4)"><table class="merge-table">
       <thead><tr><th style="width:36px"></th><th>事件</th><th>说明</th><th>写往</th></tr></thead>
       <tbody>${CATALOG_ROWS}</tbody>
     </table></div>
@@ -4036,7 +4037,7 @@ function renderSettings() {
     <h4>客户端事件命名规范</h4>
     <div class="note" style="margin-bottom:var(--sp-3)">同一个标准事件在不同客户端的大小写规范不同，写入时自动转换（无需手工维护映射）。</div>
     ${hookClientsMeta.length ? `
-    <div class="table-wrap"><table class="merge-table">
+    <div class="table-scroll"><table class="merge-table">
       <thead><tr><th>客户端</th><th>Hook 配置文件</th><th>命名规范</th><th>示例</th><th>写入</th></tr></thead>
       <tbody>${hookClientRows}</tbody>
     </table></div>`

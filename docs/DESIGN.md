@@ -169,12 +169,16 @@ out of scope，并将此类界面指向 Fluent / Carbon / Polaris 等设计系�
 | 空 | 说明"为什么空"以及"怎么让它不空"，不留白屏 |
 | 错误 | 就地显示原因，不弹窗、不吞掉 |
 
-**行内状态点（`.dot` 三态）**：`.dot-ok`（`--ok`）/ `.dot-warn`（`--warn`）/
-`.dot-idle`（`--faint`）。9px 圆点，`--r-pill`。
+**行内状态点（`.dot` 三态）**：`.dot.ok`（`--ok` + `--ring-ok` 环）/
+`.dot.warn`（`--warn` + `--ring-warn`）/ `.dot.err`（`--err` + `--ring-err`）/
+`.dot.faint`（透明底 + `--line-strong` 内描边）。9px 圆点，`--r-pill`。
 用途：表格或列表里一行一个语义状态（如 Hook 接入情况）。
 **颜色只是辅助**：同一行必须有文字列说明状态（不靠颜色单独表意），
 点上加 `aria-hidden="true"` 让读屏跳过装饰。
 图标一律 SVG（见 3b），**不用 emoji 当状态图标**。
+> ⚠️ 这四种是**既有写法**，不要另造 `.dot-ok` / `.dot-idle` 之类的平行类
+> （2026-10-11 实测发生过：替换 emoji 时新增了弱化版重复实现，造成两套并存）。
+> 新增状态点前先在上表里找现成的。
 
 ### 2.5b 弹窗容器（`.modal` / `.cfm-card` / `.sheet`）
 
