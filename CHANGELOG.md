@@ -11,6 +11,30 @@
 
 - _暂无_
 
+## [v0.26.1] - 2026-10-11
+
+当前发布版本（build 119）。
+
+### 变更
+
+- **设置页的 Hook 从「IDE / Agent」内的一张卡独立成一个 tab**（`gui/dashboard.html`、
+  `docs/DESIGN.md`）。设置页由四个 tab 变为五个（通用 / Skill / IDE·Agent / **Hook** /
+  MCP）；Hook tab 承载完整能力而不再只是「只读总览 + 跳走」：卡①接入状态
+  （客户端 / 状态 / 已接入事件 / 缺关键事件 / 写入·移除 + 一键写入），卡②配置依据
+  （客户端 / Hook 配置文件 / 是否可写入 / 映射事件）。写入动作复用既有
+  `--fix-hooks` / `--remove-hooks`，不复制逻辑。
+- 数据源与 Hook 页共用 `_hooksEntries()`（合并 `mainstream_tools` +
+  `_agentsForPanel()` 并按 `name|path` 去重）—— 各写一份过滤会出现两页数量不一致。
+
+### 修复
+
+- **`missing_key_events` 从未透传到 GUI**（`core/management_snapshot.py`）。
+  `hooks_inventory.inventory_for_tool` 早就产出该字段，快照函数也调用了它，但只透传了
+  `hook_events` / `hooks_inventory` 等，**漏了 `missing_key_events`** —— 于是 GUI 读到的
+  恒为 `undefined`，Hook 页的「缺关键事件」列**一直是空的**（空列不像 bug，所以长期
+  未被发现）。已在 `agents` 与 `mainstream_tools` 两处补传。补传后该列有了真实内容：
+  Claude Code 缺 4 个事件、Codex 缺 `UserPromptSubmit`、WorkBuddy 缺 3 个。
+
 ## [v0.26.0] - 2026-10-11
 
 当前发布版本（build 118）。
@@ -1278,7 +1302,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.26.0...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.26.1...HEAD
+[v0.26.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.26.1
 [v0.26.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.26.0
 [v0.25.5]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.25.5
 [v0.25.4]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.25.4
