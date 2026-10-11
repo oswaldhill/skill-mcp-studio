@@ -11,6 +11,38 @@
 
 - _暂无_
 
+## [v0.25.5] - 2026-10-11
+
+当前发布版本（build 117）。
+
+### 修复
+
+- **组件登记门禁：规范的核心承诺此前没有任何门禁**（`tests/test_design_spec_contract.py`、
+  `tests/_component_baseline.txt`）。规范 §2.1 写着「新增按钮变体时必须回来登记到
+  本表」、§5 清单写着「若新增组件或变体，已回写本文件对应章节」—— 这两条**此前没有
+  门禁**；既有的 token 完整性断言只覆盖 `:root` 的 CSS token，完全不覆盖类名。
+  后果实测：上一轮把 emoji 换成 CSS 类时新增了 `.dot-ok` / `.dot-warn` / `.dot-idle` /
+  `.th-ico`，**一个都没回写规范**，而 51 条门禁全绿。
+  新增 `ComponentRegistrationTest`（3 条判据）：① 幽灵引用（规范引用的类必须存在于
+  代码，否定式提及豁免）；② 新增语义类必须先登记（与冻结基线比对，粒度遵循规范
+  §附「只守有独立语义的顶层组件」）；③ 必登项不得从规范消失。三条均经变异验证。
+
+- **规范幽灵引用与归属错误**（`docs/DESIGN.md`、`docs/DESIGN.html`）：
+  - §2.6「工具条（`.toolbar`）」—— 该类的代码出现次数为 **0**，改为真实存在的
+    4 个类（`.mt-toolbar` / `.agent-toolbar` / `.market-toolbar` / `.insight-toolbar`）；
+    顺带发现 4 个工具条间距不统一（2 个 `--gap-4`=10px、2 个 `--gap-3`=8px），
+    **统一为 `--gap-3`**（代码 2 处 + 规范定死）。
+  - §3b「已知的例外」把 `.status-dot` 描述为管理台的提示，但它只在 `popover.html`
+    （管理台 0 处）—— 改为标注属于 §2.8，并指向 §2.5 的 `.dot` 三态。
+  - §2.3 补真实场景卡片类名（`.skill-card` / `.agent-card` / `.settings-card` /
+    `.about-card` / `.adv-card`），说明它们不是 `.card` 的变体。
+  - §2.5b 澄清「代码里没有名为 `.backdrop` 的类；`--backdrop` 是颜色 token」。
+
+### 新增
+
+- 规范补登本轮新增的组件：§2.5「行内状态点（`.dot` 三态）」、§2.4「表头内联图标
+  （`.th-ico`）」。
+
 ## [v0.25.4] - 2026-10-11
 
 当前发布版本（build 116）。
@@ -1209,7 +1241,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.25.4...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.25.5...HEAD
+[v0.25.5]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.25.5
 [v0.25.4]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.25.4
 [v0.25.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.25.3
 [v0.25.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.25.2
