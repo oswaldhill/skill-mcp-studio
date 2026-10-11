@@ -11,6 +11,26 @@
 
 - _暂无_
 
+## [v0.25.2] - 2026-10-11
+
+当前发布版本（build 114）。
+
+### 修复
+
+- **stdio 型 MCP 条目不得写入 `url`**（`core/mcp_fixer_render.py`）。
+  v0.25.1 修好了「写入越界」，但把 `url` 写进了 stdio 条目，Codex 随即拒绝整份配置：
+  `invalid configuration: url is not supported for stdio in \`mcp_servers.hermes-unified\``
+  （GUI 表现为「提交消息时出错」）。即**修好一个报错、引入一个更严重的** —— 前者是
+  工具自检拦截（配置未被写坏），后者配置真的写坏、直接影响客户端可用。
+  根因：`_render_toml` 找不到 `url` 行时**无条件插入** `url`，从不判别条目类型。
+  新增 `_toml_section_is_stdio()`（只认表内顶层 `key =` 行里的 `command` / `args`，
+  不把 `args = [..., "--url", "..."]` 误判成 url 声明）；stdio 条目改为保持原样
+  （对方已通过桥接入同一 URL），URL 型条目仍照常写入。
+
+- 回归护栏（`tests/test_mcp_fixer.py`，+3 例）：stdio 条目不写 `url`、`args` 里的
+  `--url` 不算声明、**反向护栏**（URL 型条目仍必须正常写入 `url`，防止「不写 `url`」
+  被过度泛化而让真正的 HTTP 端点永远修不好）。变异验证：把 stdio 判别改为恒假即失败。
+
 ## [v0.25.1] - 2026-10-11
 
 当前发布版本（build 113）。
@@ -1140,7 +1160,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.25.1...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.25.2...HEAD
+[v0.25.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.25.2
 [v0.25.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.25.1
 [v0.24.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.24.1
 [v0.24.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.24.0
