@@ -11,6 +11,31 @@
 
 - _暂无_
 
+## [v0.27.1] - 2026-10-11
+
+当前发布版本（build 121）。
+
+### 修复
+
+- **Hook 设置表格溢出（用户截图反馈「超过边界」）**（`gui/dashboard.html`）。两层原因：
+  ① 我用 `<div class="table-wrap">` 包表格，而**该类在 dashboard 的 CSS 里没有规则**
+  —— 页面不报错、门禁全绿，却没有 `overflow` 容器，表格宽到撑破卡片
+  （`.table-wrap` 只存在于 DESIGN.html；dashboard 的真实容器是 `.table-scroll`）；
+  ② 「写往」列把 6 个 `客户端:事件名` 内联成一格，本身必然过宽 —— 按规范 §2.2 的
+  既有先例改为「N 个客户端」+ `title` 详情。
+- **`.dot-ok/-warn/-idle` 平行实现删除**：上一轮替换 emoji 时新增的这套类，与既有的
+  `.dot.ok/.warn/.err/.faint`（更完善，带 `box-shadow` 环）并存成两套，违反规范
+  「先找现成组件」→ 统一用既有组合类。
+- **`.btn-sm` 无样式**：规范登记的是 `button.sm`（`btn-soft sm`），代码里写的是
+  `btn-sm` → 改为 `sm`。
+
+### 新增
+
+- `ComponentRegistrationTest` 扩充三条门禁：**幽灵类棘轮**（markup 用的类必须在 CSS
+  有规则；存量 11 个冻结在 `GHOST_BASELINE`，只许减少）、**状态点必须用既有组合类**
+  （禁止 `.dot-ok` 平行实现回归）、规范引用的类必须真实存在。
+  两条新判据均经变异验证（注入 `.table-wrap` / `.dot-ok` 即失败）。
+
 ## [v0.27.0] - 2026-10-11
 
 当前发布版本（build 120）。
@@ -1343,7 +1368,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.27.0...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.27.1...HEAD
+[v0.27.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.27.1
 [v0.27.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.27.0
 [v0.26.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.26.1
 [v0.26.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.26.0
