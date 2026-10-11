@@ -74,56 +74,71 @@ def _norm_ws(v: str) -> str:
     return re.sub(r"\s+", " ", v).strip()
 
 
-class SpacingLiteralRatchetTest(unittest.TestCase):
-    """间距字面值**棘轮**：只许减少，不许增加。
+class NoLiteralSpacingTest(unittest.TestCase):
+    """间距字面值必须为**零**（严格门禁，2026-10-10 清偿后启用）。
 
-    评审发现：规范检查清单写着「间距走 `--gap-*` / `--sp-*`，不散落字面值」，
-    但实测有 265 条间距声明含字面 px，且**没有任何门禁** —— 承诺与事实不符。
+    评审发现规范检查清单承诺「间距不散落字面值」，而实测有 265 条间距声明
+    含字面 px 且无门禁。清偿分两步：
 
-    为什么不上「零字面值」硬门禁：这些声明用到的值里有 ``5 / 13 / 22 / 26 /
-    36 / 64px``，**:root 里根本没有对应 token**。要清零就得为一个值发明一个
-    扩展档（凭空扩表 6 档），或重写 265 行 —— 前者污染唯一的取值来源，后者是
-    与本次评审无关的大规模改动，且视觉上无法由我验证。
+    1. 先按「冻结基线棘轮」止血（只许减不许增）；
+    2. 再为 **:root 缺档**的 6 个值（5/13/22/26/36/64px）补登记扩展档
+       （`--sp-1a` / `--sp-5c` / `--sp-8a` / `--sp-9d` / `--sp-9e` / `--sp-9f`）
+       与 gap 族的 `--gap-6`，然后把 265 条声明**值等价替换**为同值 token
+       （替换前后每条声明解析后的取值逐个相同，渲染结果不变）。
 
-    因此采用业界处理存量债的标准做法：**冻结基线 + 只许降不许升**。
-    新写的间距必须用 token；顺手偿还存量时把基线一起收紧。
+    于是棘轮可以退役、换成零容忍：新增间距必须用 token，字面值一律拦下。
     """
 
-    # 基线 = 2026-10-10 评审时的实测值（482 条间距声明中 265 条含字面 px）。
-    BASELINE = 265
-
+    # 覆盖**全文件**：<style> 块 + 内联 style 属性（后者此前被漏掉，
+    # 评审时只查 _css() 会误判为「已清零」——实测内联里还有 18 处）。
     _PAT = re.compile(
-        r"(?:padding|margin|gap|row-gap|column-gap)(?:-[a-z]+)?\s*:\s*([^;]+);"
+        r"(?:padding|margin|gap|row-gap|column-gap)(?:-[a-z]+)?\s*:\s*([^;{}\"\']+)"
     )
 
-    def _literal_spacing_decls(self) -> list[str]:
-        return [
+    def test_no_literal_px_in_spacing(self):
+        offenders = [
             v.strip()
-            for v in self._PAT.findall(_css())
+            for v in self._PAT.findall(page_source())
             if re.search(r"[0-9]+px", v)
         ]
-
-    def test_literal_spacing_does_not_grow(self):
-        found = self._literal_spacing_decls()
-        self.assertLessEqual(
-            len(found),
-            self.BASELINE,
-            "间距字面值变多了（%d > 基线 %d）。新增间距请用 "
-            "`--gap-*` / `--sp-*`（含扩展档）；确需新档位先在规范 §1 登记。"
-            % (len(found), self.BASELINE),
+        self.assertEqual(
+            offenders,
+            [],
+            "间距声明里仍有字面 px（应改用 `--gap-*` / `--sp-*`；"
+            "确需新档位先在规范 §1 登记）：%r" % offenders[:10],
         )
 
-    def test_baseline_is_not_silently_stale(self):
-        """基线必须随偿还同步收窄：差距过大说明这条棘轮名存实亡。
+    def test_spacing_tokens_are_all_used(self):
+        """新登记的扩展档必须真的被引用，不能是死 token。"""
+        root = _root_block()
+        c = _css()
+        declared = set(re.findall(r"(--sp-[a-z0-9]+|--gap-[a-z0-9]+)\s*:", root))
+        unused = sorted(
+            t for t in declared
+            if t not in ("--gap-0",) and f"var({t})" not in c
+        )
+        self.assertEqual(
+            unused,
+            [],
+            "以下间距 token 已定义但无人引用（死 token）：%r" % unused,
+        )
 
-        留 29 条余量 —— 允许零散偿还而不必每次改基线，但不允许长期挂着虚高基线。
+    def test_gap_family_stays_in_gap_tokens(self):
+        """gap / row-gap / column-gap 只许用 `--gap-*`，不跨族用 `--sp-*`。
+
+        规范 §1 把两族分开：gap 管 flex/grid 间距，sp 管 padding/margin 竖向。
+        实测 141 处 gap 声明全部在 gap 族内；此断言锁住该不变量 —— 一旦混用，
+        「哪档给谁」就无从判断，本次「间距清零」正是靠族约定才做到映射唯一。
         """
-        found = len(self._literal_spacing_decls())
-        self.assertGreater(
-            found,
-            self.BASELINE - 30,
-            "字面值已降到 %d（基线 %d），请把 BASELINE 收紧到实测值附近 —— "
-            "否则这条棘轮会失去约束力。" % (found, self.BASELINE),
+        offenders = []
+        for m in re.finditer(r"\b(gap|row-gap|column-gap)\s*:\s*([^;]+);", page_source()):
+            for t in re.findall(r"var\((--[a-z0-9-]+)\)", m.group(2)):
+                if not t.startswith("--gap-"):
+                    offenders.append(f"{m.group(1)}: {m.group(2).strip()} -> {t}")
+        self.assertEqual(
+            offenders[:10],
+            [],
+            "gap 族声明里出现了非 --gap-* token（应改用 --gap-*）：%r" % offenders[:10],
         )
 
 
@@ -173,11 +188,11 @@ class HardNumbersContractTest(unittest.TestCase):
         (".switch", "height", "20px"),
         (".switch .sw-knob", "width", "16px"),
         (".switch[aria-checked=\"true\"] .sw-track", "background", "var(--accent-strong)"),
-        ("main", "padding", "var(--sp-9) 28px 64px"),
+        ("main", "padding", "var(--sp-9) var(--sp-9a) var(--sp-9f)"),
         (".card", "padding", "var(--sp-7)"),
-        (".list-row", "padding", "var(--sp-4) 14px"),
-        (".pagination button", "padding", "var(--sp-1) 9px"),
-        (".path-field-row button", "padding", "var(--sp-1) 8px"),
+        (".list-row", "padding", "var(--sp-4) var(--sp-6)"),
+        (".pagination button", "padding", "var(--sp-1) var(--sp-3b)"),
+        (".path-field-row button", "padding", "var(--sp-1) var(--sp-3)"),
         (".chg-btn", "min-height", "32px"),
         (".insight-dialog", "width", "min(1040px, 100%)"),
     ]

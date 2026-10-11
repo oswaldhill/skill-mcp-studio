@@ -44,9 +44,9 @@ out of scope，并将此类界面指向 Fluent / Carbon / Polaris 等设计系�
 | 字体 | `--sans` `--display` `--mono` | 正文 / 弹窗标题（= sans） / 数字与代码 |
 > `--display` 当前等于 `--sans`（同族），保留是为了将来标题可能换字重或字形时不改引用处。
 | 遮罩 | `--backdrop` | 模态背板 |
-| 间距(gap) | `--gap-0`(0) `--gap-1`(4) `--gap-2`(6) `--gap-3`(8) `--gap-4`(10) `--gap-5`(16) | flex/grid 间距 |
+| 间距(gap) | `--gap-0`(0) `--gap-1`(4) `--gap-2`(6) `--gap-3`(8) `--gap-4`(10) `--gap-6`(14) `--gap-5`(16) | flex/grid 间距 |
 | 间距(sp) | `--sp-1`(4) `--sp-2`(6) `--sp-3`(8) `--sp-4`(10) `--sp-5`(12) `--sp-6`(14) `--sp-7`(16) `--sp-8`(20) `--sp-9`(24) | padding/margin 竖直分量 |
-| 间距(sp) 扩展档 | `--sp-0a`(1) `--sp-0b`(2) `--sp-0c`(3) `--sp-3a`(7) `--sp-3b`(9) `--sp-5a`(11) `--sp-5b`(15) `--sp-7a`(18) `--sp-9a`(28) `--sp-9b`(32) `--sp-9c`(40) | 落在主档之间的取值；**已大量在用**（16/15/5/11/7/2/1/7/3/1/1 处），不得再写字面值 |
+| 间距(sp) 扩展档 | `--sp-0a`(1) `--sp-0b`(2) `--sp-0c`(3) `--sp-1a`(5) `--sp-3a`(7) `--sp-3b`(9) `--sp-5a`(11) `--sp-5c`(13) `--sp-5b`(15) `--sp-7a`(18) `--sp-8a`(22) `--sp-9d`(26) `--sp-9a`(28) `--sp-9b`(32) `--sp-9e`(36) `--sp-9c`(40) `--sp-9f`(64) | 落在主档之间的取值；**已全部在用**（含 2026-10-10 为「间距字面值清零」新登记的 6 档），不得再写字面值 |
 | 焦点环 | `--ring-ok` `--ring-warn` `--ring-err` | 语义态 focus 外环 |
 | 强调投影 | `--shadow-accent` `--shadow-accent-hover` | 主按钮悬停光晕 |
 | 语义投影 | `--shadow-err` `--shadow-err-hover` `--shadow-knob` `--shadow-sheet` | 危险态光晕 / 开关旋钮 / 侧拉面板 |
@@ -255,11 +255,11 @@ out of scope，并将此类界面指向 Fluent / Carbon / Polaris 等设计系�
 | `.switch` | `height` | `20px` |
 | `.switch .sw-knob` | `width` | `16px` |
 | `.switch[aria-checked="true"] .sw-track` | `background` | `var(--accent-strong)` |
-| `main` | `padding` | `var(--sp-9) 28px 64px` |
+| `main` | `padding` | `var(--sp-9) var(--sp-9a) var(--sp-9f)` |
 | `.card` | `padding` | `var(--sp-7)` |
-| `.list-row` | `padding` | `var(--sp-4) 14px` |
-| `.pagination button` | `padding` | `var(--sp-1) 9px` |
-| `.path-field-row button` | `padding` | `var(--sp-1) 8px` |
+| `.list-row` | `padding` | `var(--sp-4) var(--sp-6)` |
+| `.pagination button` | `padding` | `var(--sp-1) var(--sp-3b)` |
+| `.path-field-row button` | `padding` | `var(--sp-1) var(--sp-3)` |
 | `.chg-btn` | `min-height` | `32px` |
 | `.insight-dialog` | `width` | `min(1040px, 100%)` |
 
@@ -272,8 +272,8 @@ out of scope，并将此类界面指向 Fluent / Carbon / Polaris 等设计系�
 ## 3. 排版与间距
 
 - 区块间距用 `--gap-5`(16px) / `--sp-8`(20px) / `--sp-9`(24px) 三档，同一页面保持同一节奏。
-- 面板内边距：`main` 用 `var(--sp-9) 28px 64px`（上 24 / 左右 28 / 下 64）；
-卡片内边距 `--sp-7`(16px)；列表行内边距 `--sp-4`(10px) 14px。
+- 面板内边距：`main` 用 `var(--sp-9) var(--sp-9a) var(--sp-9f)`（上 24 / 左右 28 / 下 64）；
+卡片内边距 `--sp-7`(16px)；列表行内边距 `var(--sp-4) var(--sp-6)`(10px 14px)。
 - 一行元信息里的分隔符最多一个，优先用换行或留白，不用符号堆砌。
 - 中文正文不手动加空格；中英文混排不加空格，靠字体回退处理。
 - **禁用 em-dash（`—`）**：正文、标题、标签、按钮文案一律用普通连字符或改写句子。
@@ -317,8 +317,8 @@ out of scope，并将此类界面指向 Fluent / Carbon / Polaris 等设计系�
 - [ ] 颜色/字号/圆角/阴影全部取自 token，无字面值
 - [ ] 强调色只有一个
 - [ ] 圆角只用四档且用法一致（小徽标用 `--r-hair`）
-- [ ] 间距走 `--gap-*` / `--sp-*`（含 `--sp-*` 扩展档），**不新增字面值**
-      （存量字面值由 `SpacingLiteralRatchetTest` 棘轮冻结：只许减少，不许增加）
+- [ ] 间距走 `--gap-*` / `--sp-*`（含扩展档），**零字面值**
+      （`<style>` 块与内联 `style=` 都算，由 `NoLiteralSpacingTest` 强制）
 - [ ] 按钮对比度达标，**同一操作区**一个 primary
 - [ ] 数字/包名用 mono，单位已中文化
 - [ ] 若动了 2.9 的硬数字，规范表与代码已同步
