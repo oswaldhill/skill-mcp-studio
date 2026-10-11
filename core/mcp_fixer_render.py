@@ -220,6 +220,17 @@ def _render_toml(text: str, name: str, url: str, token: str = "") -> str:
         match = matches[0]
         replacement = match.group(1) + _toml_string(url) + match.group(5)
         section = section[:match.start()] + replacement + section[match.end():]
+    elif _toml_section_is_stdio(section):
+        # 该条目没有 url 行，但它可能是 **stdio 型**（有 command / args）。
+        # Codex 明确禁止二者混用（实测报错：`url is not supported for stdio in
+        # \`mcp_servers.<name>\``），所以不能无条件插入 url。
+        #
+        # 2026-10-11 实测事故：`hermes-unified` 是一条 stdio 桥
+        # （command = python mcp_stdio_bridge.py --url <同一个 url>），修复器把它
+        # 当 URL 型端点补写 url，产出「stdio + url 混用」的配置，Codex 随即拒绝该
+        # 配置并让 GUI 报「提交消息时出错」。此处改为：stdio 条目保持原样
+        # （视为已通过桥接入），只做鉴权头清理与合并。
+        pass
     else:
         header_end = section.find("\n")
         if header_end < 0:
@@ -233,6 +244,33 @@ def _render_toml(text: str, name: str, url: str, token: str = "") -> str:
     rendered = text[:start] + section + text[end:]
     _toml.loads(rendered)
     return rendered
+
+
+def _toml_section_is_stdio(block: str) -> bool:
+    """Return True when a TOML MCP section declares a **stdio** server.
+
+    Stdio servers are identified by ``command`` / ``args`` (they are launched as a
+    subprocess); HTTP servers use ``url``. Codex rejects mixing the two:
+
+        invalid configuration: url is not supported for stdio in `mcp_servers.<name>`
+
+    所以写 url 之前必须先判别类型 —— 见 :func:`_render_toml` 的 2026-10-11 事故注记。
+    只认顶层 `key =` 行，避免把 ``args = ["--url", "..."]`` 里的内容误判成声明。
+    """
+    body = block
+    header = re.compile(r"(?m)^[ \t]*\[[^\]]+\]")
+    match = header.search(body)
+    if match:
+        newline = body.find("\n", match.end())
+        body = body[newline + 1:] if newline >= 0 else ""
+    # 只取本表自身的行（遇到下一个表头即停）。
+    following = header.search(body)
+    if following:
+        body = body[:following.start()]
+    for field in ("command", "args"):
+        if re.search(r"(?m)^[ \t]*" + field + r"[ \t]*=", body):
+            return True
+    return False
 
 
 def _toml_header_end(block: str) -> int:

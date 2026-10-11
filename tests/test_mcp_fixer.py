@@ -259,6 +259,92 @@ class McpFixerTest(unittest.TestCase):
             self.assertEqual(result["status"], "error")
             self.assertIn("could not be read", result["message"])
 
+    def test_toml_stdio_section_is_not_given_a_url(self):
+        """stdio 条目（有 command/args）不得被写入 url。
+
+        2026-10-11 实测事故：`hermes-unified` 是一条 stdio 桥
+        （command = python mcp_stdio_bridge.py --url <同一个 url>），上一版修复器把它
+        当 URL 型端点补写了 `url`，产出 stdio + url 混用；Codex 拒绝该配置并在 GUI
+        报「提交消息时出错：invalid configuration: url is not supported for stdio in
+        `mcp_servers.hermes-unified`」。**写 url 之前必须先判别条目类型。**
+
+        判据：stdio 条目必须保持原样（对方已通过桥接入同一 URL），鉴权头之外
+        不得增删字段，尤其不得出现 url。
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "config.toml"
+            original = (
+                "[mcp_servers.hermes-unified]\n"
+                'command = "/usr/bin/python"\n'
+                'args = ["bridge.py", "--url", "https://mcp.example.com/mcp"]\n'
+                "startup_timeout_sec = 30\n"
+            )
+            path.write_text(original, encoding="utf-8")
+
+            result = fix_mcp_tool(
+                tool(path, "toml", mcp_key_path=["mcp_servers"],
+                     unified_name="hermes-unified"),
+                EXPECTED,
+                use_unified_name=True,
+            )
+
+            self.assertEqual(result["status"], "unchanged",
+                             f"stdio 桥应判为已配置，实际 {result['status']}")
+            updated = path.read_text(encoding="utf-8")
+            self.assertNotIn("url =", updated,
+                             "stdio 条目被写入了 url —— Codex 会拒绝该配置")
+            self.assertIn('command = "/usr/bin/python"', updated)
+            self.assertIn('args = ["bridge.py"', updated)
+            self.assertEqual(updated, original, "stdio 条目不应被改动")
+
+    def test_toml_stdio_detection_ignores_url_inside_args(self):
+        """args 列表里的 ``--url`` 不算 url 声明，条目仍应判为 stdio。
+
+        天真的实现会用 ``"url" in section`` 判别，于是把
+        ``args = ["bridge.py", "--url", "..."]`` 误判成 URL 型端点，又走回混用老路。
+        这里确认判别只看顶层 `key =` 行。
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "config.toml"
+            path.write_text(
+                "[mcp_servers.hermes-unified]\n"
+                'command = "/usr/bin/python"\n'
+                'args = ["bridge.py", "--url", "https://mcp.example.com/mcp", "--token", "t"]\n',
+                encoding="utf-8",
+            )
+
+            result = fix_mcp_tool(
+                tool(path, "toml", mcp_key_path=["mcp_servers"],
+                     unified_name="hermes-unified"),
+                EXPECTED,
+                use_unified_name=True,
+            )
+            self.assertEqual(result["status"], "unchanged")
+            self.assertNotIn("url =", path.read_text(encoding="utf-8"))
+
+    def test_toml_http_section_still_gets_url(self):
+        """反向护栏：URL 型端点（无 command/args）仍必须正常写入 url。
+
+        防止「不写 url」被过度泛化 —— 那会让真正的 HTTP 端点永远修不好。
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "config.toml"
+            path.write_text(
+                "[mcp_servers.hermes]\n"
+                'command_placeholder = "x"\n',
+                encoding="utf-8",
+            )
+            # 该表既无 url 也无 command/args → HTTP 型，应补写 url
+            path.write_text("[mcp_servers.hermes]\nenabled = true\n", encoding="utf-8")
+
+            result = fix_mcp_tool(
+                tool(path, "toml", mcp_key_path=["mcp_servers"]), EXPECTED
+            )
+            self.assertEqual(result["status"], "updated")
+            updated = path.read_text(encoding="utf-8")
+            self.assertIn(f'url = "{URL}"', updated)
+            self.assertIn("enabled = true", updated)
+
     def test_toml_section_header_after_blank_line_is_not_merged_into_previous_table(self):
         """表头前的空行不得被算进段落起点（2026-10-11 实测的 Codex 修复失败）。
 
@@ -276,14 +362,16 @@ class McpFixerTest(unittest.TestCase):
         """
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "config.toml"
+            # 目标表用 **HTTP 型**（无 command/args）：本测试针对的是「段落切片
+            # 越界」，与条目类型无关；stdio 类型的处理另见
+            # test_toml_stdio_section_is_not_given_a_url。
             original = (
                 "[mcp_servers.K8s]\n"
                 'url = "https://k8s.example/mcp"\n'
                 'http_headers = { Authorization = "Bearer tok" }\n'
                 "\n"
                 "[mcp_servers.hermes-unified]\n"
-                'command = "/usr/bin/python"\n'
-                'args = ["bridge.py", "--url", "https://bridge.example/mcp"]\n'
+                "enabled = true\n"
                 "startup_timeout_sec = 30\n"
             )
             path.write_text(original, encoding="utf-8")
@@ -313,9 +401,9 @@ class McpFixerTest(unittest.TestCase):
             )
             self.assertIn("[mcp_servers.hermes-unified]", updated)
             self.assertEqual(updated.count("[mcp_servers.hermes-unified]"), 1)
-            # 已存在的 command/args 不能被 url 更新破坏
-            self.assertIn('command = "/usr/bin/python"', updated)
-            self.assertIn('args = ["bridge.py", "--url", "https://bridge.example/mcp"]', updated)
+            # 该表原有字段不能被 url 更新破坏
+            self.assertIn("enabled = true", updated)
+            self.assertIn("startup_timeout_sec = 30", updated)
 
     def test_toml_update_when_previous_table_shares_the_same_field(self):
         """通用化：前一个表含同名字段时，插值仍不得越界。
@@ -331,7 +419,7 @@ class McpFixerTest(unittest.TestCase):
                 "enabled = false\n"
                 "\n"
                 "[mcp_servers.hermes]\n"
-                'command = "hermes-bridge"\n'
+                "enabled = true\n"
             )
             path.write_text(original, encoding="utf-8")
 
