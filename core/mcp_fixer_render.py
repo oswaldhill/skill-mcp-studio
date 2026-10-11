@@ -95,6 +95,21 @@ def _render_json(
     if not isinstance(data, dict):
         raise ValueError("JSON root must be an object")
     servers = _nested_container(data, key_path)
+    # 目标 key 已被 stdio 条目占用时**不得静默覆盖**。
+    #
+    # 2026-10-11 实测：`{"command": ..., "args": [...]}` 会被整条替换成
+    # `{"url": ...}` —— 用户的本地 stdio 桥（如 hermes 桥）就此消失，且返回
+    # status=updated、毫无提示。这正是主干 config.yaml 注释里描述的
+    # 「命中同名桥并把它改写成 HTTP 形态」，此前只是改用独立 key 绕开了它。
+    existing_json = servers.get(name)
+    if isinstance(existing_json, dict) and (
+        "command" in existing_json or "args" in existing_json
+    ):
+        raise McpEntryConflict(
+            f"`{name}` 已被一条 stdio 条目占用（command/args），"
+            "覆盖它会删除用户的本地 stdio 桥；stdio 与 url 互斥，无法按统一端点写入。"
+            "请先移除该条目（--remove-mcp-entry）或为该端点改用其它 key。"
+        )
     entry: Dict[str, Any] = {}
     if entry_type:
         entry["type"] = entry_type
@@ -226,15 +241,19 @@ def _render_toml(text: str, name: str, url: str, token: str = "") -> str:
     #      → 修复器走「更新 url」分支，**保留了 command/args**，产出的仍是混用形态。
     # 两次都因为「没先判类型」。所以类型判别必须放在这两个分支**之前**。
     if _toml_section_is_stdio(section):
-        # stdio 条目：它已通过 command/args 接入（桥通常自带 --url）。
-        # Codex 禁止 stdio 与 url 混用，因此这里要做的是**清除**残留 url，
-        # 而不是更新它 —— 否则用户的客户端将无法加载配置。
-        section = _remove_toml_field(section, "url")
-        section = _remove_toml_field(section, "bearer_token_env_var")
-        section = _apply_toml_headers(section, section_name, token)
-        rendered = text[:start] + section + text[end:]
-        _toml.loads(rendered)
-        return rendered
+        # 目标 key 被 stdio 条目占用 → 显式报冲突，不改动用户配置。
+        #
+        # 此前这里是「清除残留 url 后原样保留」，并让调用方报
+        # 『endpoint X is already configured』—— 那是**谎报**：该条目的接入方式与
+        # 期望的统一端点（url 型）不同，审计仍会判「未配置」，于是 GUI 永远显示
+        # 「修复 MCP」而点了没反应。改为如实报冲突并给出处置指引。
+        has_url = bool(url_line.search(section))
+        raise McpEntryConflict(
+            f"`{section_name}` 已被一条 stdio 条目占用（command/args）"
+            + ("，且残留了 url 字段（该配置无法被客户端加载）" if has_url else "")
+            + "；stdio 与 url 互斥，无法按统一端点写入。"
+            "请先移除该条目（--remove-mcp-entry）或为该端点改用其它 key。"
+        )
     if matches:
         match = matches[0]
         replacement = match.group(1) + _toml_string(url) + match.group(5)
@@ -266,6 +285,20 @@ def _toml_target_is_stdio(text: str, section_name: str) -> bool:
         return False
     start, end = tree[0][0], tree[-1][1]
     return _toml_section_is_stdio(text[start:end])
+
+
+class McpEntryConflict(ValueError):
+    """目标 key 已被一条 **stdio** 条目占用，无法按 url 型写入。
+
+    stdio（``command``/``args``）与 url 是**互斥**的连接方式：
+
+    * 写入 url 会让 Codex 拒绝整份配置（``url is not supported for stdio``）；
+    * 直接覆盖又会**静默删掉**用户的本地 stdio 桥（2026-10-11 实测：JSON 型
+      客户端上 ``command``/``args`` 直接消失，还不报错）。
+
+    因此这里不猜、也不动用户配置，而是显式报冲突，交由调用方给出可执行的处置
+    指引（移除该条目，或让统一端点改用其它 key）。
+    """
 
 
 def _toml_section_is_stdio(block: str) -> bool:

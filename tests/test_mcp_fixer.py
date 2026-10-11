@@ -272,14 +272,14 @@ class McpFixerTest(unittest.TestCase):
         """
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "config.toml"
-            path.write_text(
+            original = (
                 "[mcp_servers.hermes-unified]\n"
                 'command = "/usr/bin/python"\n'
                 'args = ["bridge.py", "--url", "https://stale.example/mcp"]\n'
                 'url = "https://stale.example/mcp"\n'
-                "startup_timeout_sec = 30\n",
-                encoding="utf-8",
+                "startup_timeout_sec = 30\n"
             )
+            path.write_text(original, encoding="utf-8")
 
             result = fix_mcp_tool(
                 tool(path, "toml", mcp_key_path=["mcp_servers"],
@@ -288,16 +288,15 @@ class McpFixerTest(unittest.TestCase):
                 use_unified_name=True,
             )
 
-            self.assertEqual(result["status"], "updated")
+            # 语义变更（2026-10-11）：不再「清除残留 url 后原样保留」，而是
+            # 如实报冲突并**点明残留 url 会让客户端加载失败** —— 因为无论是否清掉 url，
+            # 该 key 都无法承载 url 型统一端点，静默保留只会让 GUI 一直提示修复。
+            self.assertEqual(result["status"], "unsupported")
+            self.assertIn("url", result["message"],
+                          "消息应点出残留 url 导致客户端无法加载")
+            self.assertIn("remove-mcp-entry", result["message"])
             updated = path.read_text(encoding="utf-8")
-            self.assertNotIn("url =", updated,
-                             "stdio 条目仍带 url —— Codex 会拒绝整份配置")
-            self.assertIn('command = "/usr/bin/python"', updated)
-            self.assertIn('args = ["bridge.py"', updated)
-            self.assertIn("startup_timeout_sec = 30", updated)
-            # 文件必须仍是合法 TOML
-            import tomllib
-            tomllib.loads(updated)
+            self.assertEqual(updated, original, "冲突时不改文件（不猜用户意图）")
 
     def test_toml_stdio_cleanup_survives_validation(self):
         """清除残留 url 后必须能通过写后校验（不得回滚）。
@@ -308,23 +307,23 @@ class McpFixerTest(unittest.TestCase):
         """
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "config.toml"
-            path.write_text(
+            original_stdin = (
                 "[mcp_servers.hermes-unified]\n"
                 'command = "/usr/bin/python"\n'
                 'args = ["bridge.py"]\n'
-                'url = "https://stale.example/mcp"\n',
-                encoding="utf-8",
+                'url = "https://stale.example/mcp"\n'
             )
+            path.write_text(original_stdin, encoding="utf-8")
             result = fix_mcp_tool(
                 tool(path, "toml", mcp_key_path=["mcp_servers"],
                      unified_name="hermes-unified"),
                 EXPECTED,
                 use_unified_name=True,
             )
-            self.assertEqual(
-                result["status"], "updated",
-                f"校验层未感知 stdio，清除 url 后被回滚：{result.get('message')}",
-            )
+            # 冲突在渲染阶段就被识别 → 根本不会进入写入/校验/回滚链路
+            self.assertEqual(result["status"], "unsupported")
+            self.assertEqual(path.read_text(encoding="utf-8"), original_stdin,
+                             "冲突路径不应写盘，更不应回滚出意外内容")
 
     def test_toml_http_entry_is_still_validated_by_url(self):
         """反向护栏：URL 型条目仍走 URL 判据，写错 url 必须被校验拦下并回滚。
@@ -345,6 +344,94 @@ class McpFixerTest(unittest.TestCase):
             self.assertIn("rolled back", result["message"])
             self.assertEqual(path.read_text(encoding="utf-8"), original,
                              "校验失败必须回滚到原文")
+
+    def test_json_stdio_entry_is_not_silently_overwritten(self):
+        """JSON 型客户端的 stdio 条目不得被**静默覆盖**。
+
+        2026-10-11 实测（同一类缺陷的另一处）：`_render_json` 用
+        ``servers[name] = entry`` 整条替换，于是
+
+            {"command": "/usr/bin/python", "args": ["bridge.py", ...]}
+            → {"url": "https://..."}
+
+        用户的本地 stdio 桥就此消失，而且返回 status=updated、毫无提示。
+        这正是主干 config.yaml 注释里描述的「命中同名桥并把它改写成 HTTP 形态」。
+
+        判据：报 unsupported 冲突且**文件零改动**（不猜用户是否还要那座桥）。
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "mcp.json"
+            original = json.dumps({
+                "mcpServers": {
+                    "hermes": {"command": "/usr/bin/python",
+                               "args": ["bridge.py", "--url", "https://mcp.example.com/mcp"]},
+                }
+            }, ensure_ascii=False, indent=2) + "\n"
+            path.write_text(original, encoding="utf-8")
+
+            result = fix_mcp_tool(
+                tool(path, "json", mcp_key_path=["mcpServers"]), EXPECTED
+            )
+
+            self.assertEqual(result["status"], "unsupported",
+                             f"应报冲突，实际 {result['status']}")
+            self.assertEqual(path.read_text(encoding="utf-8"), original,
+                             "JSON 本地 stdio 桥被改写/删除了")
+            self.assertIn("command", path.read_text(encoding="utf-8"))
+
+    def test_json_http_entry_is_still_written(self):
+        """反向护栏：JSON 里非 stdio 的既有条目（或不存在）仍必须正常写入。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "mcp.json"
+            path.write_text(json.dumps({"mcpServers": {}}, indent=2) + "\n",
+                            encoding="utf-8")
+            result = fix_mcp_tool(
+                tool(path, "json", mcp_key_path=["mcpServers"]), EXPECTED
+            )
+            # 文件已存在（只是 mcpServers 为空）→ updated（created 仅用于新建文件）
+            self.assertEqual(result["status"], "updated")
+            data = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(data["mcpServers"]["hermes"]["url"], URL)
+
+        # 既有 URL 型条目 → 正常更新
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "mcp.json"
+            path.write_text(json.dumps({
+                "mcpServers": {"hermes": {"url": "https://old.example/mcp"}}
+            }, indent=2) + "\n", encoding="utf-8")
+            result = fix_mcp_tool(
+                tool(path, "json", mcp_key_path=["mcpServers"]), EXPECTED
+            )
+            self.assertEqual(result["status"], "updated")
+            data = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(data["mcpServers"]["hermes"]["url"], URL)
+
+    def test_conflict_status_is_not_counted_as_repair_error(self):
+        """冲突必须走 unsupported，不得变成 error（否则 GUI 会报『修复失败』）。
+
+        2026-10-11 的教训：把「可预期的冲突」报成 error 会让用户看到吓人的失败框，
+        而实际需要的是「先移除那条 stdio 条目」这种可执行指引。scan.py 把
+        unsupported 映射为 ⏭️ 并排除在 repair_errors 之外。
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "config.toml"
+            path.write_text(
+                "[mcp_servers.hermes-unified]\n"
+                'command = "/usr/bin/python"\n'
+                'args = ["bridge.py"]\n',
+                encoding="utf-8",
+            )
+            result = fix_mcp_tool(
+                tool(path, "toml", mcp_key_path=["mcp_servers"],
+                     unified_name="hermes-unified"),
+                EXPECTED,
+                use_unified_name=True,
+            )
+            self.assertEqual(result["status"], "unsupported")
+            self.assertNotEqual(result["status"], "error")
+            # 消息需自解释：说清冲突 + 给出命令
+            self.assertIn("command/args", result["message"])
+            self.assertIn("--remove-mcp-entry", result["message"])
 
     def test_toml_stdio_section_is_not_given_a_url(self):
         """stdio 条目（有 command/args）不得被写入 url。
@@ -375,14 +462,16 @@ class McpFixerTest(unittest.TestCase):
                 use_unified_name=True,
             )
 
-            self.assertEqual(result["status"], "unchanged",
-                             f"stdio 桥应判为已配置，实际 {result['status']}")
-            updated = path.read_text(encoding="utf-8")
-            self.assertNotIn("url =", updated,
-                             "stdio 条目被写入了 url —— Codex 会拒绝该配置")
-            self.assertIn('command = "/usr/bin/python"', updated)
-            self.assertIn('args = ["bridge.py"', updated)
-            self.assertEqual(updated, original, "stdio 条目不应被改动")
+            # 目标 key 被 stdio 占用 → 如实报冲突（unsupported），不写 url、不改文件。
+            # 此前这里返回 unchanged「already configured」—— 那是谎报：审计仍判未配置，
+            # GUI 会一直显示「修复 MCP」而点了没反应。
+            self.assertEqual(result["status"], "unsupported",
+                             f"应报冲突，实际 {result['status']}")
+            self.assertIn("stdio", result["message"])
+            self.assertIn("remove-mcp-entry", result["message"],
+                          "冲突消息必须给出可执行的处置办法")
+            self.assertEqual(path.read_text(encoding="utf-8"), original,
+                             "冲突时一个字节都不该动")
 
     def test_toml_stdio_detection_ignores_url_inside_args(self):
         """args 列表里的 ``--url`` 不算 url 声明，条目仍应判为 stdio。
@@ -406,7 +495,8 @@ class McpFixerTest(unittest.TestCase):
                 EXPECTED,
                 use_unified_name=True,
             )
-            self.assertEqual(result["status"], "unchanged")
+            # args 里的 --url 不是 url 声明 → 仍判为 stdio → 报冲突而非改写
+            self.assertEqual(result["status"], "unsupported")
             self.assertNotIn("url =", path.read_text(encoding="utf-8"))
 
     def test_toml_http_section_still_gets_url(self):

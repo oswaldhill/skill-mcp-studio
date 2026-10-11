@@ -53,6 +53,7 @@ from mcp_fixer_render import _render_without_legacy as _render_without_legacy
 from mcp_fixer_render import _render_cordis_without_entries as _render_cordis_without_entries
 from mcp_fixer_render import _reasonix_servers as _reasonix_servers
 from mcp_fixer_render import _toml_target_is_stdio as _toml_target_is_stdio
+from mcp_fixer_render import McpEntryConflict as McpEntryConflict
 
 
 _GENERIC_REMOVAL_MESSAGES = {
@@ -223,6 +224,12 @@ def fix_mcp_tool(
     # （异常类型 + 首行信息）留在消息里，便于一眼看出是谁的问题。
     try:
         rendered = _render(tool, original, name, url, token)
+    except McpEntryConflict as exc:
+        # 「目标 key 被 stdio 条目占用」是**可预期的冲突**，不是内部异常：不写盘、
+        # 报 unsupported（scan.py 映射为 ⏭️，不计入 repair_errors），并把处置办法
+        # 直接放在消息里。此前这种情况被谎报成 unchanged「already configured」，
+        # 于是审计说未配置、修复器说已配置，GUI 会一直显示「修复 MCP」而点了没反应。
+        return _result(tool, "unsupported", str(exc))
     except (ValueError, TypeError, json.JSONDecodeError) as exc:
         detail = str(exc).splitlines()[0] if str(exc) else type(exc).__name__
         return _result(
