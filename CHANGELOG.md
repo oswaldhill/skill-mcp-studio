@@ -11,6 +11,28 @@
 
 - _暂无_
 
+## [v0.25.3] - 2026-10-11
+
+当前发布版本（build 115）。
+
+### 修复
+
+- **stdio 条目的残留 `url` 未清除 + 校验层不感知条目类型**（`core/mcp_fixer_render.py`、
+  `core/mcp_fixer.py`）。v0.25.2 只挡住了「给 stdio 条目**新增** `url`」，实测还有两条
+  同源路径都能产出客户端拒绝的 stdio+url 混用：
+  - **渲染层**：条目已是 stdio、但残留旧的 `url` 行时，修复器走「更新 url」分支并
+    保留 `command`/`args`，混用照旧（历史证据：`bak-20261010-234804` 里该表只有
+    `['url']`，说明形态曾从 URL 型翻转为 stdio 型且未清理旧键）。
+  - **校验层**：即便渲染层清掉了 `url`，写后校验用的是 **URL 判据**，而 stdio 条目
+    没有 `url` → 必然判失败 → 回滚。表现为「渲染修好了、却仍然写不进去」。
+  现把类型判别提到 url 分支之前（stdio 一律清除残留 `url`），并让
+  `_validate_written_config` 支持 `expect_stdio`，校验「仍是 stdio 且不含 `url`」
+  这一真正写出的不变量；URL 型条目判据不变。
+
+- 回归护栏（`tests/test_mcp_fixer.py`，+3 例）：残留 `url` 被清除、清除后必须能过
+  校验（不得回滚）、**反向护栏**（URL 型仍走 URL 判据，写错必须回滚）。变异验证：
+  渲染层不判类型 → 4 例失败；校验层不感知 stdio → 2 例失败。
+
 ## [v0.25.2] - 2026-10-11
 
 当前发布版本（build 114）。
@@ -1160,7 +1182,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.25.2...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.25.3...HEAD
+[v0.25.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.25.3
 [v0.25.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.25.2
 [v0.25.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.25.1
 [v0.24.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.24.1
