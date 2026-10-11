@@ -220,6 +220,134 @@ class McpFixerTest(unittest.TestCase):
             self.assertIn('command = "bridge"', updated)
             self.assertEqual(updated.count("[mcp_servers.hermes]"), 1)
 
+    def test_render_failure_is_not_reported_as_user_config_unparseable(self):
+        """渲染器自身失败，不得报成「你的配置解析不了」。
+
+        2026-10-11 排查成本几乎全部来自这条错误归因：渲染器产出了非法 TOML，
+        上游却统一报「configuration could not be parsed safely」，把责任推给
+        完全合法的用户配置文件。现在渲染异常单独归因并带上根因首行。
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "config.toml"
+            path.write_text('[mcp_servers.hermes]\nurl = "https://old.example/mcp"\n',
+                            encoding="utf-8")
+
+            with patch("mcp_fixer._render", side_effect=ValueError("Cannot overwrite a value")):
+                result = fix_mcp_tool(
+                    tool(path, "toml", mcp_key_path=["mcp_servers"]), EXPECTED
+                )
+
+            self.assertEqual(result["status"], "error")
+            message = result["message"]
+            self.assertIn("renderer", message,
+                          "渲染失败被归因成用户配置问题，会把排查方向引向错误的地方")
+            self.assertIn("Cannot overwrite a value", message,
+                          "根因被吞掉，只留一句笼统文案")
+            self.assertNotIn("could not be parsed safely", message)
+            # 未做任何改动
+            self.assertIn("https://old.example/mcp", path.read_text(encoding="utf-8"))
+
+    def test_unreadable_config_reports_read_failure(self):
+        """读文件失败与渲染失败要分开归因。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "config.toml"
+            path.write_text("[mcp_servers.hermes]\n", encoding="utf-8")
+            with patch("mcp_fixer._render", side_effect=OSError("boom")):
+                result = fix_mcp_tool(
+                    tool(path, "toml", mcp_key_path=["mcp_servers"]), EXPECTED
+                )
+            self.assertEqual(result["status"], "error")
+            self.assertIn("could not be read", result["message"])
+
+    def test_toml_section_header_after_blank_line_is_not_merged_into_previous_table(self):
+        """表头前的空行不得被算进段落起点（2026-10-11 实测的 Codex 修复失败）。
+
+        真实事故：``~/.codex/config.toml`` 里目标表 ``[mcp_servers.hermes-unified]``
+        紧跟在 ``[mcp_servers.K8s]`` 之后、中间只隔一个空行。表头正则写成
+        ``^\\s*\\[``（``\\s`` 含换行）时，匹配从**上一个表尾部的空行**开始，
+        段落切片起点随之前移；于是「在段落头插 url」实际插进了上一个表 —— 而那个表
+        已有 ``url`` 键，渲染结果非法（``Cannot overwrite a value``）。
+
+        更糟的是上游 ``except`` 把 ``TOMLDecodeError`` 一并吞掉、统一报成
+        「configuration could not be parsed safely」，把「渲染器写坏了自己」误报成
+        「用户的配置解析不了」，把排查方向引向用户的配置文件。
+
+        判据：新 url 必须落在目标表内，且上一个表的内容一个字节都不能动。
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "config.toml"
+            original = (
+                "[mcp_servers.K8s]\n"
+                'url = "https://k8s.example/mcp"\n'
+                'http_headers = { Authorization = "Bearer tok" }\n'
+                "\n"
+                "[mcp_servers.hermes-unified]\n"
+                'command = "/usr/bin/python"\n'
+                'args = ["bridge.py", "--url", "https://bridge.example/mcp"]\n'
+                "startup_timeout_sec = 30\n"
+            )
+            path.write_text(original, encoding="utf-8")
+
+            result = fix_mcp_tool(
+                tool(path, "toml", mcp_key_path=["mcp_servers"],
+                     unified_name="hermes-unified"),
+                EXPECTED,
+                use_unified_name=True,
+            )
+
+            self.assertEqual(
+                result["status"], "updated",
+                f"渲染应成功，实际: {result['status']} / {result.get('message')}",
+            )
+            updated = path.read_text(encoding="utf-8")
+
+            # 上一个表必须原样保留（不能被插入 url）
+            self.assertIn('[mcp_servers.K8s]\nurl = "https://k8s.example/mcp"\n', updated)
+            self.assertEqual(updated.count('url = "https://k8s.example/mcp"'), 1)
+
+            # 新 url 必须位于 hermes-unified 表头之后
+            header = updated.index("[mcp_servers.hermes-unified]")
+            self.assertGreater(
+                updated.index(f'url = "{URL}"'), header,
+                "url 被插到了目标表之外（表头前的空行被算进了段落起点）",
+            )
+            self.assertIn("[mcp_servers.hermes-unified]", updated)
+            self.assertEqual(updated.count("[mcp_servers.hermes-unified]"), 1)
+            # 已存在的 command/args 不能被 url 更新破坏
+            self.assertIn('command = "/usr/bin/python"', updated)
+            self.assertIn('args = ["bridge.py", "--url", "https://bridge.example/mcp"]', updated)
+
+    def test_toml_update_when_previous_table_shares_the_same_field(self):
+        """通用化：前一个表含同名字段时，插值仍不得越界。
+
+        上一条针对 ``url``；这条针对 ``command`` 与 ``enabled``，确认修复是
+        「表头正则不跨行」这一通用性质，而不是对某个字段的特判。
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "config.toml"
+            original = (
+                "[mcp_servers.other]\n"
+                'command = "other-bridge"\n'
+                "enabled = false\n"
+                "\n"
+                "[mcp_servers.hermes]\n"
+                'command = "hermes-bridge"\n'
+            )
+            path.write_text(original, encoding="utf-8")
+
+            result = fix_mcp_tool(
+                tool(path, "toml", mcp_key_path=["mcp_servers"]), EXPECTED
+            )
+            self.assertEqual(result["status"], "updated")
+            updated = path.read_text(encoding="utf-8")
+
+            self.assertEqual(updated.count('command = "other-bridge"'), 1)
+            self.assertEqual(updated.count("enabled = false"), 1)
+            # other 表里不得出现 url
+            other_block = updated.split("[mcp_servers.hermes]")[0]
+            self.assertNotIn("url =", other_block,
+                             "url 越界写进了上一个表")
+
     def test_reasonix_string_array_is_supported_when_explicitly_enabled(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "config.json"

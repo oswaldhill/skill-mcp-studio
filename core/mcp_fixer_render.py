@@ -154,9 +154,9 @@ def _render_reasonix(text: str, key_path: List[str], name: str, url: str, token:
 
 def _toml_section_ranges(text: str, section_name: str) -> List[Tuple[int, int]]:
     header = re.compile(
-        r"(?m)^\s*\[" + re.escape(section_name) + r"\]\s*(?:#.*)?$"
+        r"(?m)^[ \t]*\[" + re.escape(section_name) + r"\][ \t]*(?:#.*)?$"
     )
-    any_header = re.compile(r"(?m)^\s*\[[^\]]+\]\s*(?:#.*)?$")
+    any_header = re.compile(r"(?m)^[ \t]*\[[^\]]+\][ \t]*(?:#.*)?$")
     ranges = []
     for match in header.finditer(text):
         following = any_header.search(text, match.end())
@@ -167,9 +167,9 @@ def _toml_section_ranges(text: str, section_name: str) -> List[Tuple[int, int]]:
 def _toml_section_tree_ranges(text: str, section_name: str) -> List[Tuple[int, int]]:
     """Return the parent TOML table and every dotted child table range."""
     header = re.compile(
-        r"(?m)^\s*\[" + re.escape(section_name) + r"(?:\.[^\]]+)?\]\s*(?:#.*)?$"
+        r"(?m)^[ \t]*\[" + re.escape(section_name) + r"(?:\.[^\]]+)?\][ \t]*(?:#.*)?$"
     )
-    any_header = re.compile(r"(?m)^\s*\[[^\]]+\]\s*(?:#.*)?$")
+    any_header = re.compile(r"(?m)^[ \t]*\[[^\]]+\][ \t]*(?:#.*)?$")
     ranges = []
     for match in header.finditer(text):
         following = any_header.search(text, match.end())
@@ -242,7 +242,7 @@ def _toml_header_end(block: str) -> int:
     leading separator newline, so a naive ``block.find("\\n")`` would anchor on
     the wrong line. Anchor on the first ``[...]`` header instead.
     """
-    header = re.compile(r"(?m)^\s*\[[^\]]+\]")
+    header = re.compile(r"(?m)^[ \t]*\[[^\]]+\]")
     match = header.search(block)
     if not match:
         return len(block)
@@ -361,8 +361,8 @@ def _apply_toml_headers(section: str, section_name: str, token: str) -> str:
 
 
 def _reasonix_plugin_ranges(text: str) -> List[Tuple[int, int]]:
-    plugin_header = re.compile(r"(?m)^\s*\[\[plugins\]\]\s*(?:#.*)?$")
-    any_header = re.compile(r"(?m)^\s*\[{1,2}[^\]]+\]{1,2}\s*(?:#.*)?$")
+    plugin_header = re.compile(r"(?m)^[ \t]*\[\[plugins\]\][ \t]*(?:#.*)?$")
+    any_header = re.compile(r"(?m)^[ \t]*\[{1,2}[^\]]+\]{1,2}[ \t]*(?:#.*)?$")
     ranges = []
     for match in plugin_header.finditer(text):
         following = any_header.search(text, match.end())

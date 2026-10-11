@@ -11,6 +11,60 @@
 
 - _暂无_
 
+## [v0.25.1] - 2026-10-11
+
+当前发布版本（build 113）。
+
+### 修复
+
+- **Codex MCP 修复失败：TOML 段落切片把表头前的空行算作段落起点，导致写入越界**
+  （`core/mcp_fixer_render.py`）。`~/.codex/config.toml` 里目标表
+  `[mcp_servers.hermes-unified]` 紧跟在 `[mcp_servers.K8s]` 之后、中间只隔一个空行；
+  表头正则写成 `^\s*\[`（`\s` 含换行）时匹配从**上一个表尾部的空行**开始，段落切片
+  起点随之前移，于是「在段落头插入 `url`」实际插进了上一个表 —— 而那个表已有 `url`
+  键，渲染结果非法（`Cannot overwrite a value`），整个修复失败并让退出码变成 2。
+  同一文件里 `_toml_subtable_range` 早已用正确的 `^[ \t]*\[`，其余 7 处不一致，
+  本次统一为不跨行写法。
+
+- **错误归因：渲染器自身失败被报成「用户配置无法解析」**（`core/mcp_fixer.py`）。
+  上述失败的真实原因是 TOML 渲染产物非法，但上游 `except` 把 TOML 解析异常与
+  「读文件失败」一并吞掉、统一报成 `configuration could not be parsed safely`，
+  把「工具写坏了自己」误报成「用户配置文件有问题」，排查方向被引向完全合法的用户配置。
+  现拆分为三种归因：读文件失败 → `could not be read`；渲染失败 →
+  `renderer could not produce a valid configuration (<根因>)`，并在消息里带上根因首行。
+
+### 新增
+
+- 回归护栏（`tests/test_mcp_fixer.py`，+4 例）：表头前空行不得并入上一表、
+  前表含同名字段时的通用性、渲染失败与读取失败分别归因。全部经变异验证
+  （把正则回退为 `^\s*\[` 即失败）。
+
+- **UI 规范与门禁补全**（`docs/DESIGN.md`、`docs/DESIGN.html`、
+  `tests/test_design_spec_contract.py` 等）。对界面规范做了一次评审，修复其与代码的
+  系统性漂移，并把此前没有门禁的条款全部补上：
+  - 硬数字对齐（`.modal` / `.sheet` 宽度、z-index 档位、`.switch` 尺寸、`main` 内边距）
+    并新增 §2.9 登记表 + 逐行比对 CSS 的契约门禁；
+  - token 清单补登在用 token（含 11 个 `--sp-*` 扩展档），新增「`:root` 的 token
+    必须在规范中登记」的完整性断言；
+  - 消除规范内部矛盾（`primary` 粒度改为「同一操作区」；删除死 token `--r-popover`）；
+  - HTML 可读版与 MD 改为**双向**镜像，并删除过期的用例数；
+  - 修掉 4 处 emoji 当 UI 图标（状态点改语义色 `.dot-*`，表头改 SVG）；
+  - 新增 emoji 禁用、`cursor: pointer`、触达目标 32px、弹层 Esc、mono 用法门禁。
+
+- **间距字面值清零**（`gui/dashboard.html`）。为 `:root` 缺档的 6 个值补登记扩展档
+  （`--sp-1a`/`--sp-5c`/`--sp-8a`/`--sp-9d`/`--sp-9e`/`--sp-9f`）与 `--gap-6`，然后把
+  483 处声明（`<style>` 块 265 条 + 内联 `style=` 18 条）**值等价替换**为同值 token，
+  全量比对确认 503 条声明解析后取值 0 处差异，渲染结果不变。棘轮门禁退役，换成
+  零容忍（`<style>` 块与内联均在口径内）。
+
+### 变更
+
+- `scripts/ci_parity.sh` 改为**失败累加**：工具门禁（ruff / node / cargo / 卫生自检等）
+  失败不再立即 `exit 1`，而是记录后继续跑完，末尾统一汇总。此前漏装 ruff 会导致
+  **一条 Python 单元测试都不执行**，输出被误读成「测试失败」。覆盖缺口（node/cargo
+  缺失）也从「静默 warn」改为「计为失败」。新增
+  `tests/test_ci_parity_gate.py`（静态断言 + 与 workflow 的基线交叉校验）。
+
 ## [v0.25.0] - 2026-10-09
 
 ### 新增
@@ -263,8 +317,6 @@
   - 至此全量测试 **1053 passed / 1 skipped / 0 failed**，不再有已知失败项。
 
 ## [v0.24.1] - 2026-09-29
-
-当前发布版本（build 112）。
 
 ### 变更
 
@@ -1088,7 +1140,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.24.1...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.25.1...HEAD
+[v0.25.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.25.1
 [v0.24.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.24.1
 [v0.24.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.24.0
 [v0.23.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.23.0

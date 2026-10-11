@@ -196,9 +196,28 @@ def fix_mcp_tool(
                 original = handle.read()
         else:
             original = initial
+    except OSError:
+        return _result(tool, "error", "configuration could not be read; no changes made")
+
+    # 渲染与「读取用户配置」是两件事，必须分开报错。
+    #
+    # 2026-10-11 实测的 Codex 修复失败：渲染器把 url 插进了上一个表、产出非法 TOML，
+    # 而下面这个 except 把 TOMLDecodeError 一并吞掉、统一报成「你的配置解析不了」。
+    # 于是「工具写坏了自己」被误报成「用户配置文件有问题」，排查方向被引向用户的
+    # 配置文件（实际那份文件完全合法）。这里改为：渲染异常单独归因，并把根因
+    # （异常类型 + 首行信息）留在消息里，便于一眼看出是谁的问题。
+    try:
         rendered = _render(tool, original, name, url, token)
-    except (OSError, ValueError, TypeError, json.JSONDecodeError):
-        return _result(tool, "error", "configuration could not be parsed safely; no changes made")
+    except (ValueError, TypeError, json.JSONDecodeError) as exc:
+        detail = str(exc).splitlines()[0] if str(exc) else type(exc).__name__
+        return _result(
+            tool,
+            "error",
+            f"renderer could not produce a valid configuration ({detail}); "
+            "no changes made",
+        )
+    except OSError:
+        return _result(tool, "error", "configuration could not be read; no changes made")
 
     if rendered == original:
         return _result(tool, "unchanged", f"endpoint {name!r} is already configured")
