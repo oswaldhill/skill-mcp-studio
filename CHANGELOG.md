@@ -11,6 +11,43 @@
 
 - _暂无_
 
+## [v0.26.0] - 2026-10-11
+
+当前发布版本（build 118）。
+
+### 新增
+
+- **设置页补「后台巡检（定时检查）」与「生命周期 Hook 配置」**（`gui/dashboard.html`、
+  `docs/DESIGN.md`）。用户报告「设置里少了定时检查的配置和 hooks 的配置」；核查确认
+  两项的**功能层都已完整，只是 GUI 设置页没有入口**：
+  - **定时检查**：`config.yaml` 的 `settings.patrol_enabled` /
+    `patrol_interval_minutes` 已存在，CLI `--get-setting` / `--set-setting` 已支持，
+    Rust 托盘也有「后台巡检」勾选项（读同一份值），但设置页无入口。现于**通用 tab**
+    新增卡片（开关 + 5/15/30/60/120 分钟）。取值**不用 localStorage**，而是经 CLI
+    写进 `config.yaml` —— 与托盘开关同源，否则会出现托盘显示"已开"而实际没跑。
+    写后**回读 CLI 落盘值**再重渲染（CLI 会把间隔钳到 ≥5 分钟，不回读会显示未生效的值）。
+  - **Hook 配置**：Hook 页已能看接入状态并写入/移除，但**没有一处能看到配置依据**
+    （标准事件、各客户端目标文件与事件映射），只能打开 `config.yaml`。现于
+    **IDE / Agent tab** 新增只读总览卡片，数据直接取 `--management` 快照已有的
+    `mainstream_tools[].hooks_*`（不额外发请求）；写操作仍集中在 Hook 页并提供跳转，
+    避免两处写入入口语义分叉。
+
+### 文档
+
+- 规范新增 **§2.10 设置页**：登记设置页四个 tab 与各卡片的归属、两项新配置的取值来源，
+  并写明「取值来源必须与唯一事实来源一致：偏好类用 localStorage，跨进程共享类用
+  `config.yaml` 并经 CLI」。MD 与 HTML 双向镜像同步。
+
+### 修复
+
+- 开发过程中由既有门禁抓到的两处自身错误（记录以备后鉴）：
+  - 新代码用 `—`（em-dash）作空值占位符，被 `test_dashboard_design_tokens` 拦下
+    （规范 §3 明令禁用）→ 改为连字符。
+  - `let _patrolInterval = PATROL_INTERVAL_DEFAULT` 写在常量声明**之前**，触发
+    TDZ（`Cannot access … before initialization`），**整个顶层脚本抛错、所有按钮
+    失效**。由 `test_dashboard_scope` 的 node harness 真跑脚本时抓到 —— 静态检查与
+    54 条设计门禁都看不出这类问题。
+
 ## [v0.25.5] - 2026-10-11
 
 当前发布版本（build 117）。
@@ -1241,7 +1278,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.25.5...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.26.0...HEAD
+[v0.26.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.26.0
 [v0.25.5]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.25.5
 [v0.25.4]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.25.4
 [v0.25.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.25.3
