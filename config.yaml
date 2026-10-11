@@ -348,3 +348,4 @@ hooks:
 settings:
   patrol_enabled: false
   patrol_interval_minutes: 15
+  hook_events: []

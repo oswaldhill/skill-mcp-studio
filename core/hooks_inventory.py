@@ -14,7 +14,7 @@ ai-memory hook 识别依据（与 ``ai_memory_checker.AI_MEMORY_HOOK_SIGNATURE``
 
 import os
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from legacy_checker import _load_json_file, _norm_tool_name
 from ai_memory_checker import (
@@ -44,6 +44,27 @@ def _is_ai_memory_hook_cmd(cmd: str) -> bool:
     与 ``ai_memory_checker`` 的判定保持一致，避免两套签名漂移。
     """
     return ("ai-memory" in cmd and "hook --event" in cmd) or "ai-memory-hook" in cmd
+
+
+def event_name_for_client(canonical: str, event_format: Optional[str]) -> str:
+    """把**标准事件名**转成某客户端的事件名规范。
+
+    为什么需要它：各客户端的 hook 事件名大小写规范不同（Claude Code / Codex /
+    WorkBuddy 用 PascalCase，Cursor / TRAE 用 camelCase），而 `settings.hook_events`
+    里存的是**标准名**（与 `hooks.events` 一致）。此前这套映射靠每个客户端手写
+    `template` 的 key 实现 —— 于是「要写哪些事件」散落在 6 份 template 里，
+    既无法统一管理，也会与 `events` 声明不一致（实测 Codex 声明支持
+    UserPromptSubmit 但 template 没有它，审计报缺而写入永远补不上）。
+
+    未知规范（空/None）按原样返回。
+    """
+    if not canonical:
+        return canonical
+    if event_format == "camel_case":
+        return canonical[0].lower() + canonical[1:]
+    if event_format == "pascal_case":
+        return canonical[0].upper() + canonical[1:]
+    return canonical
 
 
 def hooks_client_config(config: Dict[str, Any], tool_name: str) -> Dict[str, Any]:

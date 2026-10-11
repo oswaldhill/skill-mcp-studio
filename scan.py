@@ -1919,7 +1919,12 @@ def _set_setting_in_text(raw: str, key: str, value) -> str:
     if sec_start is None:
         # 末尾追加新段
         lines.append("settings:")
-        lines.append(f"  {key}: {rendered}")
+        if "\n" in rendered or rendered == "[]":
+            lines.append(f"  {key}: []" if rendered == "[]" else f"  {key}:")
+            if rendered != "[]":
+                lines.extend(f"  {ln}" for ln in rendered.split("\n") if ln != "")
+        else:
+            lines.append(f"  {key}: {rendered}")
     else:
         # 段范围：到下一个顶格行（非缩进、非空、非注释）为止
         sec_end = len(lines)
@@ -1936,9 +1941,26 @@ def _set_setting_in_text(raw: str, key: str, value) -> str:
                 break
         if target is not None:
             indent = lines[target][: len(lines[target]) - len(lines[target].lstrip())]
-            lines[target] = f"{indent}{key}: {rendered}"
+            if "\n" in rendered or rendered == "[]":
+                block = [f"{indent}{key}: []" if rendered == "[]" else f"{indent}{key}:"]
+                if rendered != "[]":
+                    block += [f"{indent}{ln}" for ln in rendered.split("\n") if ln != ""]
+                # 旧值若本来就是块序列，后续 `- item` 行必须一并删掉 ——
+                # 否则它们会残留成新列表的尾巴（改成空列表时尤其明显）。
+                end = target + 1
+                while end < len(lines) and lines[end].lstrip().startswith("- "):
+                    end += 1
+                lines[target:end] = block
+            else:
+                lines[target] = f"{indent}{key}: {rendered}"
         else:
-            lines.insert(sec_end, f"  {key}: {rendered}")
+            if "\n" in rendered or rendered == "[]":
+                block = [f"  {key}: []" if rendered == "[]" else f"  {key}:"]
+                if rendered != "[]":
+                    block += [f"  {ln}" for ln in rendered.split("\n") if ln != ""]
+                lines[sec_end:sec_end] = block
+            else:
+                lines.insert(sec_end, f"  {key}: {rendered}")
 
     out = "\n".join(lines)
     # 统一以单个换行结尾（文本卫生要求「恰好一个」）
@@ -1946,11 +1968,24 @@ def _set_setting_in_text(raw: str, key: str, value) -> str:
 
 
 def _render_scalar(value) -> str:
-    """把设置值渲染成 YAML 标量（布尔用小写 true/false，与仓库既有写法一致）。"""
+    """把设置值渲染成 YAML 标量（布尔用小写 true/false，与仓库既有写法一致）。
+
+    列表走**块序列**（每行一个 `- item`）而不是内联 `[a, b]`：本函数与
+    `_set_setting_in_text` 都是按行改写，块序列让「替换该键」的范围清晰、
+    diff 最小，也与仓库既有的 `hooks.events:` 写法一致。
+    返回多行时由 `_set_setting_in_text` 按多行插入（见那里的处理）。
+    """
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, (int, float)):
         return str(value)
+    if isinstance(value, (list, tuple)):
+        # 空列表必须显式写成 `[]`：若返回空串，调用方会按「单值」写成 `key: `
+        # （空值）—— 既不是列表语义，也**不会触发旧块序列行的清理**（实测清空
+        # hook_events 时旧元素残留）。
+        if not value:
+            return "[]"
+        return "\n".join(f"- {item}" for item in value)
     return str(value)
 
 
@@ -2671,13 +2706,22 @@ def main() -> int:
             if len(_parts) != 2:
                 raise ValueError(f"格式错误，需 KEY=VALUE，得到: {args.set_setting}")
             _key, _val = _parts[0].strip(), _parts[1].strip()
-            _allowed = {"patrol_enabled", "patrol_interval_minutes"}
+            _allowed = {"patrol_enabled", "patrol_interval_minutes", "hook_events"}
             if _key not in _allowed:
                 raise ValueError(f"不支持的设置键: {_key}（允许: {', '.join(sorted(_allowed))}）")
             if _key == "patrol_enabled":
                 _val_norm = _val.lower() in ("true", "1", "yes", "on")
             elif _key == "patrol_interval_minutes":
                 _val_norm = max(5, int(_val))
+            elif _key == "hook_events":
+                # 「要写入哪些生命周期 hook 事件」——全局配置，GUI 用逗号分隔传入。
+                # 空字符串 = 清空列表（`--fix-hooks` 将无事件可写，等同停用）。
+                # 事件名不做白名单校验：各客户端事件名规范不同（PascalCase /
+                # camelCase），且 config.yaml 的 hooks.events 本身就是可编辑的
+                # 标准清单；这里只做去空白/去重，非法名由写入阶段按客户端规范过滤。
+                _items = [x.strip() for x in _val.split(",") if x.strip()]
+                _seen = set()
+                _val_norm = [x for x in _items if not (x in _seen or _seen.add(x))]
             else:
                 _val_norm = _val
             # 读取磁盘原文并做**文本级**改写。为什么不用 yaml.safe_dump：

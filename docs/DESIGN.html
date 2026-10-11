@@ -1005,7 +1005,7 @@
             <tr><td>通用 <code>appearance</code></td><td>外观（主题 / 缩放）、<strong>后台巡检（定时检查）</strong>、Skills 统一目录</td></tr>
             <tr><td>Skill <code>general</code></td><td>技能使用统计（自动统计间隔）</td></tr>
             <tr><td>IDE / Agent <code>agents</code></td><td>IDE / Agent 默认路径</td></tr>
-            <tr><td><strong>Hook <code>hooks</code></strong></td><td>生命周期 Hook 接入状态（可写入/移除）、Hook 配置依据</td></tr>
+            <tr><td><strong>Hook <code>hooks</code></strong></td><td>要写入的 Hook 事件（勾选）、客户端事件命名规范</td></tr>
             <tr><td>MCP <code>mcp</code></td><td>MCP 端点库</td></tr>
           </tbody>
         </table>
@@ -1014,14 +1014,29 @@
         而是写进 <code>config.yaml</code> 的 <code>settings</code> 段（<code>patrol_enabled</code> / <code>patrol_interval_minutes</code>）
         —— 因为 Rust 托盘的「后台巡检」勾选项读同一份值，两处必须同源。读写一律经 CLI
         <code>--get-setting</code> / <code>--set-setting</code>（后者带备份 → 原子写 → 校验 → 回滚）。</p>
-      <p><strong>Hook tab（<code>hooks</code>）</strong>：两张卡 —— ① 接入状态（客户端 / 状态 / 已接入事件 / 缺关键事件 / 写入·移除按钮）
-        + 「一键写入 Hook」；② 配置依据（客户端 / Hook 配置文件 / 是否可写入 / 映射事件）。</p>
+      <p><strong>Hook tab（<code>hooks</code>）</strong>：<strong>管理「要写入哪些生命周期事件」</strong>，
+        不是展示各 IDE 的接入状态。理由：Skill / MCP 两个 tab 管的都是配置本身，Hook 也应一致；
+        各客户端接入状态与写入/移除属于 <strong>Hook 业务页</strong>。</p>
+      <p>两张卡：① <strong>要写入的 Hook 事件</strong>（列出 <code>hooks.events</code> 全部标准事件，
+        勾选后写入 <code>settings.hook_events</code>；未勾选 = 停用）；② <strong>客户端事件命名规范</strong>（只读）。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>层</th><th>位置</th><th>作用</th></tr></thead>
+          <tbody>
+            <tr><td>标准事件清单</td><td><code>hooks.events</code></td><td>可选事件全集（供 GUI 列出）</td></tr>
+            <tr><td><strong>要写入的事件</strong></td><td><code>settings.hook_events</code></td><td><strong>唯一决定写入什么</strong></td></tr>
+            <tr><td>客户端命名规范</td><td><code>hooks.clients[].event_format</code></td><td>标准名 → 该客户端规范名</td></tr>
+          </tbody>
+        </table>
+      </div>
       <ul>
-        <li><strong>数据源必须与 Hook 页共用 <code>_hooksEntries()</code></strong>（合并 <code>mainstream_tools</code> + <code>_agentsForPanel()</code>
-            并按 <code>name|path</code> 去重），各写一份过滤会出现两页数量不一致。</li>
-        <li><code>missing_key_events</code> 由 <code>hooks_inventory</code> 产出，<strong>必须经 <code>management_snapshot</code> 透传</strong>
-            才能到 GUI（此前漏传，该列恒为空）。</li>
-        <li>写入/移除与 Hook 页走同一组命令（<code>--fix-hooks</code> / <code>--remove-hooks</code>），两处入口共用同一实现。</li>
+        <li>写入只看 <code>settings.hook_events</code>，<strong>不再读 <code>template</code></strong>
+            （template 仅作键不存在时的回落，以及提供命令文案）。</li>
+        <li>全局列表选中了 template 没有的事件时，用标准命令兜底
+            <code>ai-memory hook --event &lt;snake_case&gt;</code>，<strong>不允许静默漏写</strong>。</li>
+        <li><strong>未配置</strong>（键不存在）与<strong>空列表</strong>语义不同：前者回落 template，
+            后者是明确的停用选择，不得回落。</li>
+        <li>只增不减：客户端已有的非 ai-memory hook 必须原样保留。</li>
       </ul>
     </section>
 

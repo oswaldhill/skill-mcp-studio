@@ -317,7 +317,7 @@ out of scope，并将此类界面指向 Fluent / Carbon / Polaris 等设计系�
 | 通用 `appearance` | 外观（主题 / 缩放）、**后台巡检（定时检查）**、Skills 统一目录 |
 | Skill `general` | 技能使用统计（自动统计间隔） |
 | IDE / Agent `agents` | IDE / Agent 默认路径 |
-| **Hook `hooks`** | 生命周期 Hook 接入状态（可写入/移除）、Hook 配置依据 |
+| **Hook `hooks`** | 要写入的 Hook 事件（勾选）、客户端事件命名规范 |
 | MCP `mcp` | MCP 端点库 |
 
 **后台巡检（定时检查）**：开关 + 间隔（5 / 15 / 30 / 60 / 120 分钟）。
@@ -327,19 +327,35 @@ out of scope，并将此类界面指向 Fluent / Carbon / Polaris 等设计系�
 读写一律经 CLI `--get-setting` / `--set-setting`（后者带备份 → 原子写 → 校验 → 回滚），
 GUI 不直接改配置文件。间隔由 CLI 钳到 ≥5 分钟，界面需回读落盘值而不是假定已生效。
 
-**Hook tab（`hooks`）**：两张卡 —— ① 接入状态（客户端 / 状态 / 已接入事件 /
-缺关键事件 / 写入·移除按钮）+ 「一键写入 Hook」；② 配置依据（客户端 / Hook 配置文件 /
-是否可写入 / 映射事件）。
+**Hook tab（`hooks`）**：**管理「要写入哪些生命周期事件」**，不是展示各 IDE 的接入状态。
 
-- **数据源必须与 Hook 页共用 `_hooksEntries()`**（它合并 `mainstream_tools` +
-  `_agentsForPanel()` 并按 `name|path` 去重）。各写一份过滤会出现「Hook 页 6 个客户端、
-  设置页 4 个」这类不一致。
-- `missing_key_events` 由 `hooks_inventory.inventory_for_tool` 产出，**必须经
-  `management_snapshot` 透传**才能到 GUI（2026-10-11 修复：此前漏传，该列恒为空）。
-- 标准事件定义在 `config.yaml` 的 `hooks` 段（SessionStart / UserPromptSubmit /
-  SessionEnd / Stop，写入时按各客户端大小写规范转换）。
-- 写入/移除与 Hook 页走同一组命令（`--fix-hooks` / `--remove-hooks`），
-  **两处入口共用同一实现**，不复制逻辑。
+> 为什么：Skill / MCP 两个 tab 管的都是**配置本身**（统一目录、端点库），Hook 也应当
+> 一致 —— 列出可选项、由用户决定要哪些。各客户端的接入状态与写入/移除是 **Hook 业务页**
+> 的职责（那里显示审计结果）。
+
+两张卡：
+
+1. **要写入的 Hook 事件**：列出 `config.yaml` 的 `hooks.events` 全部标准事件（勾选框 +
+   事件名 + 说明 + 「写往」哪些客户端及其命名），保存写入 `settings.hook_events`。
+   未勾选任何事件 = 不写入（**停用**，不是"配置缺失"）。
+2. **客户端事件命名规范**（只读）：客户端 / Hook 配置文件 / `event_format` / 示例 / 是否可写。
+
+**写入链路（三层，注意别混淆）**：
+
+| 层 | 位置 | 作用 |
+|---|---|---|
+| 标准事件清单 | `hooks.events` | 可选事件全集（供 GUI 列出） |
+| **要写入的事件** | `settings.hook_events` | **唯一决定写入什么**（标准事件名） |
+| 客户端命名规范 | `hooks.clients[].event_format` | 把标准名转成该客户端规范名（pascal/camel） |
+
+**硬规则**：
+- 「写哪些事件」只看 `settings.hook_events`，**不再读 `template`**。
+  `template` 仅：① 键不存在时作为向后兼容的回落；② 提供同名事件的**命令文案**。
+- 全局列表选中了某客户端 `template` 没有的事件时，用标准命令兜底
+  （`ai-memory hook --event <snake_case>`）—— **不允许静默漏写**。
+- `settings.hook_events` **未配置（键不存在）** 与 **配置为空列表** 语义不同：
+  前者回落 `template`，后者是用户明确的停用选择，不得回落。
+- 只增不减：客户端已有的非 ai-memory hook 必须原样保留。
 
 > 设置项的取值来源必须与「谁是唯一事实来源」一致：偏好类（主题/缩放/统计间隔）用
 > localStorage，跨进程共享类（巡检开关）用 config.yaml 并经 CLI。

@@ -559,9 +559,34 @@ def build_management_snapshot(
         _platform_label = _sys
         _default_scan = ["~/.config/*/skills", "~/.*/skills"]
 
+    # Hook 事件管理域：GUI 的「Hook」设置 tab 要列出**所有标准事件**供勾选，
+    # 并显示当前生效的「要写入的事件」列表。两者此前都不在快照里 ——
+    # 标准清单在 config.yaml 的 hooks.events，生效清单在 settings.hook_events。
+    _hooks_cfg = config.get("hooks") or {}
+    _hook_events_catalog = [
+        {"name": e.get("name", ""), "description": e.get("description", "")}
+        for e in (_hooks_cfg.get("events") or [])
+        if e.get("name")
+    ]
+    _hook_events_selected = list((config.get("settings") or {}).get("hook_events") or [])
+    _hook_clients_summary = [
+        {
+            "name": cl.get("name", ""),
+            "config_path": cl.get("config_path", ""),
+            "event_format": cl.get("event_format"),
+            "fix_supported": bool(cl.get("fix_supported", False)),
+            "declared_events": cl.get("events") or [],
+        }
+        for cl in (_hooks_cfg.get("clients") or [])
+        if cl.get("name")
+    ]
+
     settings_snapshot = {
         "active_profile": config.get("active_profile", ""),
         "unified_skills_dir": config.get("unified_skills_dir", "~/.skills"),
+        "hook_events_catalog": _hook_events_catalog,
+        "hook_events_selected": _hook_events_selected,
+        "hook_clients": _hook_clients_summary,
         "auto_discover": {
             "enabled": bool((config.get("auto_discover") or {}).get("enabled", False)),
             "scan_paths": (config.get("auto_discover") or {}).get("scan_paths", []),

@@ -13,6 +13,7 @@
 
 import json
 import os
+import re
 import shutil
 from typing import Any, Dict, List
 
@@ -20,6 +21,7 @@ from file_atomic import atomic_write, backup_path, restore_backup
 from legacy_checker import _load_json_file, _norm_tool_name
 from ai_memory_checker import _find_in_dict
 from hooks_inventory import hooks_client_config, list_client_hook_entries, _is_ai_memory_hook_cmd
+from hooks_inventory import event_name_for_client
 
 
 def _result(name: str, status: str, message: str, **extra: Any) -> Dict[str, Any]:
@@ -29,6 +31,19 @@ def _result(name: str, status: str, message: str, **extra: Any) -> Dict[str, Any
     dry-run / updated / created。
     """
     return {"name": name, "status": status, "message": message, **extra}
+
+
+def _default_hook_command(canonical_event: str) -> str:
+    """全局事件列表选中了某客户端 template 未定义的事件时的兜底命令。
+
+    命名沿用仓库既有 template 的规律：``ai-memory hook --event <snake_case>``。
+    例：``SessionStart`` -> ``session_start``、``UserPromptSubmit`` -> ``user_prompt_submit``。
+
+    为什么需要兜底：GUI 的「Hook 事件」是**全局**设置，勾选某事件时不会去问
+    每个客户端有没有对应 template。没有兜底就会出现「勾了却没写进去」的静默漏写。
+    """
+    snake = re.sub(r"(?<!^)(?=[A-Z])", "_", canonical_event).lower()
+    return f"ai-memory hook --event {snake}"
 
 
 def _build_hook_entry(command: str) -> Dict[str, Any]:
@@ -80,8 +95,42 @@ def fix_hooks_tool(
 
     config_path = os.path.expanduser(hc.get("config_path", ""))
     template: Dict[str, str] = hc.get("template", {}) or {}
+
+    # 要写入哪些事件：**优先用全局 settings.hook_events**（GUI 的「Hook 事件」设置）。
+    #
+    # 为什么不是直接读 template：template 把「写哪些事件」散落在 6 份客户端配置里，
+    # 既无法统一管理，又会与 `events` 声明不一致 —— 实测 Codex 声明支持
+    # UserPromptSubmit 但 template 缺它，审计报「缺 UserPromptSubmit」而写入永远
+    # 补不上（假警报）。改为：全局列表给出**标准事件名**，这里按各客户端
+    # event_format 转成它的规范名。
+    #
+    # 命令文案仍取 template 里同名事件的值；全局列表选了某个 template 没有的事件时，
+    # 用标准 ai-memory 命令兜底（`ai-memory hook --event <snake_case>`），
+    # 这样「勾了就一定写得上」，不会静默漏掉。
+    # 注意区分「未配置」与「配置为空列表」：
+    #   - 键不存在（None）→ 未启用全局管理，回退 template（向后兼容）
+    #   - 键存在但为 []     → 用户明确清空了选择，**应停用写入**，不得回退 template
+    #     （否则界面显示"0 个事件已选"、实际却照旧写入，是最典型的静默不一致）
+    _settings = config.get("settings") or {}
+    _events_configured = "hook_events" in _settings
+    configured_events = _settings.get("hook_events") or []
+    if _events_configured:
+        template = {}
+    if configured_events:
+        event_format = hc.get("event_format")
+        template = {}
+        for canonical in configured_events:
+            client_name = event_name_for_client(canonical, event_format)
+            template[client_name] = (
+                (hc.get("template") or {}).get(client_name)
+                or _default_hook_command(canonical)
+            )
     if not template:
-        return _result(name, "missing", "无 template 定义，跳过")
+        # 两种「无事件可写」要分开说：已配置但清空 → 明确告知是用户的停用选择；
+        # 从未配置 → 说明是该客户端没有 template。混成一句会让人以为配置丢了。
+        if _events_configured:
+            return _result(name, "unsupported", "已选择不写入任何 hook 事件（settings.hook_events 为空）")
+        return _result(name, "missing", "无 template 定义且未配置 hook_events，跳过")
 
     # 读原配置（不存在则新建空 dict）
     had_file = os.path.isfile(config_path)
