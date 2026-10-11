@@ -216,21 +216,29 @@ def _render_toml(text: str, name: str, url: str, token: str = "") -> str:
     matches = list(url_line.finditer(section))
     if len(matches) > 1:
         raise ValueError("duplicate canonical MCP URL keys")
+    # stdio 与 url 互斥：先判类型，再决定「更新 url」还是「保持 stdio」。
+    #
+    # 2026-10-11 实测事故（两次，同源）：
+    #   ① 该表是 stdio 桥、无 url 行 → 修复器无条件**补写** url，Codex 拒绝：
+    #      `url is not supported for stdio in \`mcp_servers.<name>\``
+    #   ② 该表是 stdio、但残留了一个历史 url 行（形态曾从 URL 型翻转过来，
+    #      见 ~/.codex/config.toml.bak-20261010-234804 里该表只有 ['url']）
+    #      → 修复器走「更新 url」分支，**保留了 command/args**，产出的仍是混用形态。
+    # 两次都因为「没先判类型」。所以类型判别必须放在这两个分支**之前**。
+    if _toml_section_is_stdio(section):
+        # stdio 条目：它已通过 command/args 接入（桥通常自带 --url）。
+        # Codex 禁止 stdio 与 url 混用，因此这里要做的是**清除**残留 url，
+        # 而不是更新它 —— 否则用户的客户端将无法加载配置。
+        section = _remove_toml_field(section, "url")
+        section = _remove_toml_field(section, "bearer_token_env_var")
+        section = _apply_toml_headers(section, section_name, token)
+        rendered = text[:start] + section + text[end:]
+        _toml.loads(rendered)
+        return rendered
     if matches:
         match = matches[0]
         replacement = match.group(1) + _toml_string(url) + match.group(5)
         section = section[:match.start()] + replacement + section[match.end():]
-    elif _toml_section_is_stdio(section):
-        # 该条目没有 url 行，但它可能是 **stdio 型**（有 command / args）。
-        # Codex 明确禁止二者混用（实测报错：`url is not supported for stdio in
-        # \`mcp_servers.<name>\``），所以不能无条件插入 url。
-        #
-        # 2026-10-11 实测事故：`hermes-unified` 是一条 stdio 桥
-        # （command = python mcp_stdio_bridge.py --url <同一个 url>），修复器把它
-        # 当 URL 型端点补写 url，产出「stdio + url 混用」的配置，Codex 随即拒绝该
-        # 配置并让 GUI 报「提交消息时出错」。此处改为：stdio 条目保持原样
-        # （视为已通过桥接入），只做鉴权头清理与合并。
-        pass
     else:
         header_end = section.find("\n")
         if header_end < 0:
@@ -244,6 +252,20 @@ def _render_toml(text: str, name: str, url: str, token: str = "") -> str:
     rendered = text[:start] + section + text[end:]
     _toml.loads(rendered)
     return rendered
+
+
+def _toml_target_is_stdio(text: str, section_name: str) -> bool:
+    """Return True when ``[section_name]`` exists and is a **stdio** server.
+
+    Used by the fixer's post-write validation: a stdio entry carries no ``url``
+    (its endpoint lives inside ``command``/``args``), so the URL-based validator
+    can never confirm it —— 删除残留 url 后校验会误判为失败并回滚。
+    """
+    tree = _toml_section_tree_ranges(text, section_name)
+    if not tree:
+        return False
+    start, end = tree[0][0], tree[-1][1]
+    return _toml_section_is_stdio(text[start:end])
 
 
 def _toml_section_is_stdio(block: str) -> bool:

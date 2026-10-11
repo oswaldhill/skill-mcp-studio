@@ -52,6 +52,7 @@ from mcp_fixer_render import _render_without_entries as _render_without_entries
 from mcp_fixer_render import _render_without_legacy as _render_without_legacy
 from mcp_fixer_render import _render_cordis_without_entries as _render_cordis_without_entries
 from mcp_fixer_render import _reasonix_servers as _reasonix_servers
+from mcp_fixer_render import _toml_target_is_stdio as _toml_target_is_stdio
 
 
 _GENERIC_REMOVAL_MESSAGES = {
@@ -115,7 +116,8 @@ def validate_config_text(tool: Dict[str, Any], text: str) -> None:
 
 
 def _validate_written_config(
-    tool: Dict[str, Any], name: str, url: str, legacy_names: List[str] = None
+    tool: Dict[str, Any], name: str, url: str, legacy_names: List[str] = None,
+    expect_stdio: bool = False,
 ) -> None:
     config_format = tool.get("format", "json")
     path = os.path.expanduser(tool.get("config_path", ""))
@@ -136,6 +138,19 @@ def _validate_written_config(
             }
     else:
         servers = load_mcp_servers(path, config_format, key_path)
+    if expect_stdio and config_format == "toml":
+        # stdio 条目没有 url（端点在 command/args 里），URL 判据永远无法确认它。
+        # 这里校验「我们真正写出的那个不变量」：条目仍是 stdio 且没有 url
+        # —— 后者正是 Codex 拒绝的混用形态（url is not supported for stdio）。
+        entry = servers.get(name, {})
+        if not isinstance(entry, dict) or not entry.get("command"):
+            raise ValueError("written stdio MCP configuration did not validate")
+        if "url" in entry:
+            raise ValueError("stdio MCP entry still declares url (rejected by the client)")
+        legacy = sorted(item for item in servers if item in set(legacy_names or []))
+        if legacy:
+            raise ValueError("legacy MCP entries remain after cleanup")
+        return
     inspected = inspect_mcp_configuration(
         servers,
         expected_name=name,
@@ -245,7 +260,14 @@ def fix_mcp_tool(
         return _result(tool, "error", reason)
 
     try:
-        _validate_written_config(tool, name, url)
+        # stdio 条目的端点在 command/args 里，没有 url 字段 —— URL 判据确认不了它，
+        # 必须按类型选择校验口径（否则删掉残留 url 后会被误判失败并回滚）。
+        _expect_stdio = (
+            config_format == "toml"
+            and existed
+            and _toml_target_is_stdio(original, f"mcp_servers.{name}")
+        )
+        _validate_written_config(tool, name, url, expect_stdio=_expect_stdio)
     except (OSError, ValueError, TypeError, json.JSONDecodeError):
         try:
             if existed:

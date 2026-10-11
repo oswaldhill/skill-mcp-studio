@@ -259,6 +259,93 @@ class McpFixerTest(unittest.TestCase):
             self.assertEqual(result["status"], "error")
             self.assertIn("could not be read", result["message"])
 
+    def test_toml_stdio_section_with_stale_url_is_cleaned(self):
+        """stdio 条目上的**残留 url** 必须被清除，而不是「更新」它。
+
+        2026-10-11 夜间实测到的第二条路径（与「新增 url」同源）：
+        `~/.codex/config.toml` 的 `hermes-unified` 曾在 URL 型与 stdio 型之间翻转
+        （历史备份 bak-20261010-234804 里该表只有 `['url']`）。当它已是 stdio、
+        却残留一个旧的 `url` 行时，修复器走「更新 url」分支并**保留 command/args**，
+        产出的仍是 Codex 拒绝的混用形态（`url is not supported for stdio`）。
+
+        判据：定稿配置里 stdio 条目不得出现 url，且 command/args 必须保留。
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "config.toml"
+            path.write_text(
+                "[mcp_servers.hermes-unified]\n"
+                'command = "/usr/bin/python"\n'
+                'args = ["bridge.py", "--url", "https://stale.example/mcp"]\n'
+                'url = "https://stale.example/mcp"\n'
+                "startup_timeout_sec = 30\n",
+                encoding="utf-8",
+            )
+
+            result = fix_mcp_tool(
+                tool(path, "toml", mcp_key_path=["mcp_servers"],
+                     unified_name="hermes-unified"),
+                EXPECTED,
+                use_unified_name=True,
+            )
+
+            self.assertEqual(result["status"], "updated")
+            updated = path.read_text(encoding="utf-8")
+            self.assertNotIn("url =", updated,
+                             "stdio 条目仍带 url —— Codex 会拒绝整份配置")
+            self.assertIn('command = "/usr/bin/python"', updated)
+            self.assertIn('args = ["bridge.py"', updated)
+            self.assertIn("startup_timeout_sec = 30", updated)
+            # 文件必须仍是合法 TOML
+            import tomllib
+            tomllib.loads(updated)
+
+    def test_toml_stdio_cleanup_survives_validation(self):
+        """清除残留 url 后必须能通过写后校验（不得回滚）。
+
+        第一版修复只改了渲染器，没改校验：stdio 条目没有 url，而
+        `_validate_written_config` 是 URL 判据 —— 清除 url 后必然校验失败并回滚，
+        于是「修好了渲染、却仍然写不进去」。这里锁住校验层的类型感知。
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "config.toml"
+            path.write_text(
+                "[mcp_servers.hermes-unified]\n"
+                'command = "/usr/bin/python"\n'
+                'args = ["bridge.py"]\n'
+                'url = "https://stale.example/mcp"\n',
+                encoding="utf-8",
+            )
+            result = fix_mcp_tool(
+                tool(path, "toml", mcp_key_path=["mcp_servers"],
+                     unified_name="hermes-unified"),
+                EXPECTED,
+                use_unified_name=True,
+            )
+            self.assertEqual(
+                result["status"], "updated",
+                f"校验层未感知 stdio，清除 url 后被回滚：{result.get('message')}",
+            )
+
+    def test_toml_http_entry_is_still_validated_by_url(self):
+        """反向护栏：URL 型条目仍走 URL 判据，写错 url 必须被校验拦下并回滚。
+
+        防止「按类型校验」被过度泛化成「一律不校验」。
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "config.toml"
+            original = '[mcp_servers.hermes]\nurl = "https://old.example/mcp"\n'
+            path.write_text(original, encoding="utf-8")
+
+            with patch("mcp_fixer._validate_written_config",
+                       side_effect=ValueError("written MCP configuration did not validate")):
+                result = fix_mcp_tool(
+                    tool(path, "toml", mcp_key_path=["mcp_servers"]), EXPECTED
+                )
+            self.assertEqual(result["status"], "error")
+            self.assertIn("rolled back", result["message"])
+            self.assertEqual(path.read_text(encoding="utf-8"), original,
+                             "校验失败必须回滚到原文")
+
     def test_toml_stdio_section_is_not_given_a_url(self):
         """stdio 条目（有 command/args）不得被写入 url。
 
