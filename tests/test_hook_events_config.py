@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -172,3 +173,82 @@ class GlobalEventsDriveWritingTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HookCapabilityValidationTest(unittest.TestCase):
+    """能力校验（2026-10-12）：只写该客户端真正认的事件。
+
+    背景：``hooks.clients[].events`` 从「关注的小集合」升级为「该客户端支持的全部
+    事件」（Claude Code 33 / Cursor 21 / TRAE 6 …）。写入端据此过滤 —— 此前是
+    「勾了就一定写得上」（用兜底命令硬写），会把 Cursor 独有的 BeforeTabFileRead
+    写进根本不认识它的客户端。本类守住新语义，防止回退成硬写。
+    """
+
+    def test_unsupported_event_is_skipped_not_written(self):
+        """客户端不支持的事件必须**跳过**（回报 skipped），不得靠兜底命令硬写。"""
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "settings.json")
+            config = _config(["SessionStart", "PreToolUse"])
+            # 两个夹具客户端都不支持 PreToolUse
+            for cl in config["hooks"]["clients"]:
+                cl["config_path"] = path
+            res = fix_hooks_tool({"name": "PascalCli"}, config)
+            self.assertIn(res["status"], ("created", "updated"))
+            self.assertEqual(res.get("skipped"), ["PreToolUse"])
+            hooks = json.loads(Path(path).read_text(encoding="utf-8"))["hooks"]
+            self.assertIn("SessionStart", hooks)
+            self.assertNotIn("PreToolUse", hooks)
+
+    def test_all_selected_unsupported_reports_unsupported(self):
+        """选中的事件全不支持时，报 unsupported 并点名它们——不能静默当成「无事件」。"""
+        with tempfile.TemporaryDirectory() as d:
+            config = _config(["SessionEnd"])          # camel 是 sessionEnd
+            config["hooks"]["clients"][1]["config_path"] = os.path.join(d, "c.json")
+            res = fix_hooks_tool({"name": "CamelCli"}, config)
+            self.assertEqual(res["status"], "unsupported")
+            self.assertIn("SessionEnd", res["message"])
+
+    def test_camel_client_skips_pascal_only_event(self):
+        """CamelCli 只声明 sessionStart/stop；勾 SessionEnd（→sessionEnd）应被跳过。"""
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "c.json")
+            config = _config(["SessionEnd", "Stop"])
+            config["hooks"]["clients"][1]["config_path"] = path
+            res = fix_hooks_tool({"name": "CamelCli"}, config)
+            self.assertIn(res["status"], ("created", "updated"))
+            self.assertEqual(res.get("skipped"), ["SessionEnd"])
+            hooks = json.loads(Path(path).read_text(encoding="utf-8"))["hooks"]
+            self.assertIn("stop", hooks)
+            self.assertNotIn("sessionEnd", hooks)
+
+    def test_flat_entry_style_writes_flat_structure(self):
+        """Cursor 的条目是扁平 ``{type, command, matcher}``，不是嵌套 hooks 数组。
+
+        两套结构**不可混用**：本机 ~/.cursor/hooks.json 实测扁平，而
+        TRAE/Codex/WorkBuddy 是 ``{matcher, hooks:[...]}``。写错客户端不认。
+        """
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "hooks.json")
+            config = _config(["SessionStart"])
+            cl = config["hooks"]["clients"][0]
+            cl["config_path"] = path
+            cl["event_format"] = "camel_case"
+            cl["events"] = ["sessionStart"]
+            cl["entry_style"] = "flat"
+            res = fix_hooks_tool({"name": "PascalCli"}, config)
+            self.assertEqual(res["status"], "created")
+            entry = json.loads(Path(path).read_text(encoding="utf-8"))["hooks"]["sessionStart"][0]
+            self.assertEqual(entry["type"], "command")
+            self.assertIn("command", entry)
+            self.assertNotIn("hooks", entry)          # 扁平结构没有嵌套 hooks 数组
+
+    def test_nested_entry_style_is_default(self):
+        """未声明 entry_style 时保持嵌套结构（Claude Code / TRAE / Codex / WorkBuddy）。"""
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "settings.json")
+            config = _config(["SessionStart"])
+            config["hooks"]["clients"][0]["config_path"] = path
+            fix_hooks_tool({"name": "PascalCli"}, config)
+            entry = json.loads(Path(path).read_text(encoding="utf-8"))["hooks"]["SessionStart"][0]
+            self.assertIn("hooks", entry)
+            self.assertEqual(entry["hooks"][0]["type"], "command")

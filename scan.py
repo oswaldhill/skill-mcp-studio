@@ -2110,6 +2110,64 @@ def _run_hooks(args, config, config_path) -> int:
     return 2 if _failed else 0
 
 
+def _run_set_setting(args, config_path) -> int:
+    """写入 config.yaml 的 settings 段单个键（文本级改写，保留注释）。
+
+    独立早返回出口（2026-10-12 修正）。**为什么必须早返回**：此前它排在 11 阶段
+    主流程的末尾，于是「写一个设置」会顺带把整个审计跑完，并**继承审计的退出码**
+    —— 实测本机有 6 个技能目录缺失，`--set-setting hook_events=...` 明明打印了
+    「✅ hook_events = [...]」，进程却以 **1** 退出。GUI 据此判「保存失败」，还把
+    1600 字符的技能扫描报告当成错误详情写在页面上（用户截图反馈）。
+    写入是否成功只应由写入本身决定，与无关的审计结论无关 —— 与 ``--list-hooks`` /
+    ``--get-setting`` / ``--snapshot`` 的早返回是同一类修正。
+
+    退出码：0=写入成功；2=参数或写入失败（与修复类写操作的既有约定一致）。
+    """
+    print("")
+    print("=" * 60)
+    print("  Set setting")
+    print("=" * 60)
+    try:
+        from file_atomic import atomic_write, backup_path
+        _parts = args.set_setting.split("=", 1)
+        if len(_parts) != 2:
+            raise ValueError(f"格式错误，需 KEY=VALUE，得到: {args.set_setting}")
+        _key, _val = _parts[0].strip(), _parts[1].strip()
+        _allowed = {"patrol_enabled", "patrol_interval_minutes", "hook_events"}
+        if _key not in _allowed:
+            raise ValueError(f"不支持的设置键: {_key}（允许: {', '.join(sorted(_allowed))}）")
+        if _key == "patrol_enabled":
+            _val_norm = _val.lower() in ("true", "1", "yes", "on")
+        elif _key == "patrol_interval_minutes":
+            _val_norm = max(5, int(_val))
+        elif _key == "hook_events":
+            # 逗号分隔；空字符串 = 清空列表（--fix-hooks 将无事件可写，等同停用）。
+            # 事件名不做白名单校验：各客户端命名规范不同，且 hooks.events 本身就是
+            # 可编辑的规范清单；非法名由写入阶段按各客户端能力过滤。
+            _items = [x.strip() for x in _val.split(",") if x.strip()]
+            _seen = set()
+            _val_norm = [x for x in _items if not (x in _seen or _seen.add(x))]
+        else:
+            _val_norm = _val
+        # 读取磁盘原文并做**文本级**改写。为什么不用 yaml.safe_dump：那会把整份配置
+        # 重新序列化 —— 内联数组被拆成多行、全部注释被抹掉（实测改一个布尔值产生
+        # 数百行 diff 且丢失 50 行注释）。另外刻意重读磁盘而不是用内存里的 config：
+        # core/scanner.run_scan 会原地 apply_profile_sources 把个人端点与凭据并进该
+        # 对象，整体回写会把真实 auth_token 落进主干 config.yaml（曾被密钥自检拦下）。
+        with open(config_path, "r", encoding="utf-8") as _fh:
+            _raw = _fh.read()
+        _new_raw = _set_setting_in_text(_raw, _key, _val_norm)
+        _bak = backup_path(config_path)
+        atomic_write(config_path, _new_raw, 0o644)
+        print(f"  ✅ {_key} = {_val_norm}")
+        if _bak:
+            print(f"  备份: {_bak}")
+        return 0
+    except Exception as e:
+        print(f"\n  ❌ Set setting failed: {e}")
+        return 2
+
+
 def _run_get_setting(args, config) -> int:
     """读取 config.yaml 的 settings 段单个键。
 
@@ -2467,6 +2525,11 @@ def main() -> int:
     if getattr(args, "get_setting", None):
         return _run_get_setting(args, config)
 
+    # 写入单个 setting（2026-10-12）：与 --get-setting 同为独立出口 —— 写操作
+    # 早返回后退出码只反映写入本身，不再被后续审计结论污染（见 _run_set_setting）。
+    if getattr(args, "set_setting", None):
+        return _run_set_setting(args, config_path)
+
     # 变更检测（B 阶段）：只读 + 支持 --format json，GUI 解析整个 stdout，
     # 必须排在通用快照路由之前，否则输出会被快照截走。
     if getattr(args, "snapshot", False):
@@ -2695,54 +2758,7 @@ def main() -> int:
 
     # hook 三命令已在早期出口处理（_run_hooks），此处不再重复。
 
-    if args.set_setting:
-        print("")
-        print("=" * 60)
-        print("  Set setting")
-        print("=" * 60)
-        try:
-            from file_atomic import atomic_write, backup_path
-            _parts = args.set_setting.split("=", 1)
-            if len(_parts) != 2:
-                raise ValueError(f"格式错误，需 KEY=VALUE，得到: {args.set_setting}")
-            _key, _val = _parts[0].strip(), _parts[1].strip()
-            _allowed = {"patrol_enabled", "patrol_interval_minutes", "hook_events"}
-            if _key not in _allowed:
-                raise ValueError(f"不支持的设置键: {_key}（允许: {', '.join(sorted(_allowed))}）")
-            if _key == "patrol_enabled":
-                _val_norm = _val.lower() in ("true", "1", "yes", "on")
-            elif _key == "patrol_interval_minutes":
-                _val_norm = max(5, int(_val))
-            elif _key == "hook_events":
-                # 「要写入哪些生命周期 hook 事件」——全局配置，GUI 用逗号分隔传入。
-                # 空字符串 = 清空列表（`--fix-hooks` 将无事件可写，等同停用）。
-                # 事件名不做白名单校验：各客户端事件名规范不同（PascalCase /
-                # camelCase），且 config.yaml 的 hooks.events 本身就是可编辑的
-                # 标准清单；这里只做去空白/去重，非法名由写入阶段按客户端规范过滤。
-                _items = [x.strip() for x in _val.split(",") if x.strip()]
-                _seen = set()
-                _val_norm = [x for x in _items if not (x in _seen or _seen.add(x))]
-            else:
-                _val_norm = _val
-            # 读取磁盘原文并做**文本级**改写。为什么不用 yaml.safe_dump：
-            # 那会把整份配置重新序列化 —— 内联数组被拆成多行、全部注释被抹掉，
-            # 改一个布尔值就产生数百行 diff 且丢失文档（实测注释 50 行 → 0 行）。
-            # 另外这里刻意重读磁盘而不是用内存里的 config：core/scanner.run_scan
-            # 会原地 apply_profile_sources，把个人端点与凭据并进该对象；整体回写
-            # 会把真实 auth_token 落进主干 config.yaml（实测被密钥自检拦下）。
-            with open(config_path, "r", encoding="utf-8") as _fh:
-                _raw = _fh.read()
-            _new_raw = _set_setting_in_text(_raw, _key, _val_norm)
-            _bak = backup_path(config_path)
-            atomic_write(config_path, _new_raw, 0o644)
-            print(f"  ✅ {_key} = {_val_norm}")
-            if _bak:
-                print(f"  备份: {_bak}")
-        except Exception as e:
-            print(f"\n  ❌ Set setting failed: {e}")
-            repair_errors.append(f"Set setting: {e}")
-
-    # --get-setting 已在早期出口处理（_run_get_setting），此处不再重复。
+    # --get-setting / --set-setting 均已在早期出口处理，此处不再重复。
 
     # ================================================================
     # 阶段 4: 变更追踪

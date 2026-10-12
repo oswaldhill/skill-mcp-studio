@@ -58,7 +58,7 @@ function extractDecl(src, name) {
 }
 
 // 用极简 DOM 桩编译这些纯函数（它们运行时不触碰 DOM）。
-const decls = ["escapeHtml", "stripAnsi", "cliErrDetail", "cliFailLines", "dotFor"]
+const decls = ["escapeHtml", "stripAnsi", "cliErrDetail", "cliFailLines", "dotFor", "canonicalToClient"]
   .map((n) => extractDecl(script, n))
   .join("\n");
 
@@ -68,11 +68,11 @@ vm.createContext(sandbox);
 // globalThis 显式导出后再取出。
 vm.runInContext(
   decls +
-    "\nglobalThis.__gui = { escapeHtml, stripAnsi, cliErrDetail, cliFailLines, dotFor };\n",
+    "\nglobalThis.__gui = { escapeHtml, stripAnsi, cliErrDetail, cliFailLines, dotFor, canonicalToClient };\n",
   sandbox,
 );
 
-const { escapeHtml, stripAnsi, cliErrDetail, cliFailLines, dotFor } = sandbox.__gui;
+const { escapeHtml, stripAnsi, cliErrDetail, cliFailLines, dotFor, canonicalToClient } = sandbox.__gui;
 
 test("escapeHtml 转义五个 HTML 元字符且 null/undefined 归一为空串", () => {
   assert.equal(escapeHtml(`<a href="x">&'</a>`),
@@ -109,4 +109,14 @@ test("dotFor 三态点色", () => {
   assert.equal(dotFor(true, "installed"), "ok");
   assert.equal(dotFor(false, "config_only"), "warn");
   assert.equal(dotFor(false, "none"), "faint");
+});
+
+test("canonicalToClient：camel 只改首字母、其余原样（与 Python 侧 event_name_for_client 同源）", () => {
+  assert.equal(canonicalToClient("SessionStart", "camel_case"), "sessionStart");
+  assert.equal(canonicalToClient("PostToolUseFailure", "camel_case"), "postToolUseFailure");
+  // Cursor 独有事件：规范名 BeforeTabFileRead → beforeTabFileRead
+  assert.equal(canonicalToClient("BeforeTabFileRead", "camel_case"), "beforeTabFileRead");
+  assert.equal(canonicalToClient("SessionStart", "pascal_case"), "SessionStart");
+  assert.equal(canonicalToClient("Stop", null), "Stop");
+  assert.equal(canonicalToClient("", "camel_case"), "");
 });

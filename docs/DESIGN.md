@@ -151,6 +151,136 @@ out of scope，并将此类界面指向 Fluent / Carbon / Polaris 等设计系�
 
 所有卡片共用同一套取值：底色 `--panel`、描边 `--line`、圆角 `--r-card`、内边距 `--sp-7`。
 
+### 2.3b 卡片标签列对齐（`.ac-path-row` / `.ac-meta-row`）
+
+Agent 卡片里有两组「标签 + 值」行：**路径区**（APP / CLI / CONFIG）与
+**能力摘要区**（Skills / MCP / Hook）。两组必须**逐项同构**，否则值区起点会差十几像素，
+一眼看出错位（2026-10-12 用户截图反馈「最好保持对齐」）。
+
+| 维度 | 规定值（两组相同） |
+|---|---|
+| 行布局 | `grid`，`grid-template-columns: 58px minmax(0, 1fr)`，`gap: var(--gap-4)`，`align-items: start` |
+| 标签字体 | `var(--mono)` / `var(--fs-2xs)` / 字重 600 / `text-transform: uppercase` |
+| 标签颜色 | `var(--faint)`；**不加前缀圆点**（装饰性状态点默认零，见下） |
+| 分隔线 | **两组都不加竖线**（单边 `border-right` 是错位感来源之一） |
+
+> 不变量由 `tests/test_design_spec_contract.py` 的 `CardLabelColumnAlignmentTest`
+> 逐属性比对（列宽 / gap / 对齐 / 字体族 / 字号 / 字重 / 大小写 / 颜色）。
+> 只改一侧必然失败 —— 要改就两边一起改，并同步 §2.9 的那行硬数字。
+
+**值区排版（2026-10-12 精修）**：
+
+| 规则 | 取值 | 为什么 |
+|---|---|---|
+| 值区容器 | `display: flex` + `flex-wrap: nowrap` | 长路径不再把状态标签挤到第二行 |
+| 首个值 | `flex: 1 1 auto; min-width: 0` | 自适应并允许省略号 |
+| 其余（状态标签） | `flex: 0 0 auto` | 恒贴右，所有行右边界成一条竖线 |
+| 路径列表 | `display: grid` 单列 | 路径**等宽**，消除右边界锯齿 |
+| 路径底色 | 默认 `transparent`，`:hover` 才浮出胶囊 | 一张卡片近十个灰块会读成表单输入框；高密度界面里信息文本应安静 |
+| 状态色 | 仅「全部写入」用 `.tag.ok`；部分写入用中性 | 绿色表示「已就绪」，`8/21` 不是就绪 |
+
+> 为什么不是「两栏 grid」：Hook 行有「路径 + 2 个标签」共 **3** 个子元素，两栏 grid 会把
+> 第 3 个挤到第二行第一列并撑满宽度（渲染实测）。`nowrap` + 首元素自适应对 1~3 个子元素
+> 都稳定成立。作用域限定 `.agent-card:not(.home-card)`：主页卡片是另一套渲染，不跟着变。
+
+**分隔线跨卡片对齐（2026-10-12 用户三次反馈后定案：两条线都要，且必须对齐）**：
+
+卡片内有**两条**整宽分隔线：① 能力区上沿；② 底栏上沿。两条都必须跨卡片对齐。
+
+对齐机制是**锚定底部**，而不是"吸收内容差异"：
+
+| 规则 | 取值 | 作用 |
+|---|---|---|
+| `.agent-cards` | `align-items: stretch` | 同组卡片等高（前提） |
+| `.agent-card:not(.home-card) .ac-meta` | `margin-top: auto` | meta+foot 整块贴底 ⇒ 线① y = 卡片底 − (meta 高 + foot 高) |
+| `.agent-card:not(.home-card) .ac-foot` | `margin-top: 0`、`flex: 0 0 auto` | **不争** auto 外边距、高度恒定 ⇒ 线② y = 卡片底 − foot 高 |
+| `.agent-card:not(.home-card) .ac-paths` | `flex: 0 0 auto` | 路径区不伸缩（拉伸会在内容超出时裁切末行） |
+
+线① 的位置是**从卡片底部往上算**的常量（meta 恒为 3 行且值区 `nowrap`、foot 内容固定），
+因此与上方路径条数无关 ⇒ 必然对齐。
+
+> **走过的弯路（不要重犯）**：曾让路径区 `flex: 1 1 auto` 去"吸收"路径条数差异。
+> 结果 ① 内容超出时路径区收缩，**末行被裁进分隔线里**（渲染实测可见）；② 线① 位置
+> 依旧随条数漂移。又曾干脆**去掉线①**只留底栏线 —— 用户明确「分隔线很重要」，不好看。
+> 靠拉伸凑对齐是掩盖；**锚定底部**才是解。
+>
+> 代价：路径少的卡片会在**线① 上方**留一段空白（卡片等高 + 底部锚定的必然结果）。
+> 实测（headless 渲染 + 逐行像素扫描）：3 条与 4 条路径的两张卡片，两条线 y 完全相同
+> `[205, 314]`。不变量由 `CardLabelColumnAlignmentTest.test_dividers_align_across_cards`
+> 逐声明比对。
+
+**值胶囊与「未收录」空态必须度量一致（2026-10-12 实测抓到的 3px 错位根因）**：
+
+`.ac-path-none`（如「未收录 Hook 配置」）必须与 `.ac-path-val` 在**决定行高的每个属性**上
+完全相同：`font-size`、`line-height`、`padding`、`border`、`font-family`。
+
+> 为什么这条至关重要：分隔线用 `margin-top: auto` **锚定卡片底部**，前提是 **meta 带高度恒定**。
+> 实测两处不一致：① 空态少了 1px 字号；② 空态缺那条 `border: 1px solid transparent`
+> （值胶囊为 hover 不抖动而留）。合计 **3px** ⇒ "HOOK 未收录"的卡片 meta 带矮 3px
+> ⇒ **分隔线整体上移 3px**，跨卡片错位。用户三次说"没对齐"，肉眼几乎看不出是 3px。
+>
+> 实测（真实数据、2/3/4/5/6 条路径共 8 张卡片）：修好后 meta 高度恒为 **109**、
+> 两条分隔线 Δ=0（`metaTop 194/194`、`600/600`、`949/949`、`1271/1271`）。
+> 不变量由 `CardLabelColumnAlignmentTest.test_value_and_empty_have_identical_metrics` 守住。
+
+**淡化变体 `.ac-path-val.is-dim` 只改颜色，不改形状**：
+
+`color: var(--faint)` + `background: transparent` + `border-color: transparent`。
+
+> 根因（2026-10-12 用户提问「为什么 Skill 的样式和 MCP、Hook 不一样」）：`.is-dim` 曾设
+> `border-color: var(--line)`，而默认胶囊是**透明无边框**。于是同一张卡片里 Skills 那格
+> 显示成方框、MCP/Hook 是纯文本 —— 同一类元素出现两种形态。
+> 现规定：**淡化只表达"这是注册表默认值、非本机状态"，绝不改变胶囊形状**；并且
+> **三行（Skills / MCP / Hook）在未安装时统一淡化**，不允许只淡化其中一行。
+
+**装饰性状态点默认零**：标签行**不加**前缀圆点。此前每行都有 6px 圆点，却不传达状态
+（「空」已由值区的「未收录」文案说明），属纯装饰。`.ac-path-row.is-empty` 的状态语义
+改为标签 `opacity: .72`（保持该状态类有意义，而不是留下死类）。
+
+**未安装客户端：路径胶囊用淡化变体** `.ac-path-val.is-dim`
+（`color: var(--faint)` + `background: transparent`）。
+
+> 为什么（2026-10-12 用户选方案 A）：未安装时卡片上的路径来自**内置注册表的默认位置**，
+> 不代表本机状态；它与同行右侧的「不适用」标签并列却不加区分，读起来自相矛盾
+> （Cursor 卡片实测：`~/.cursor/skills` 与「不适用」同样醒目）。
+> 淡化后：**状态语义交给「不适用」承担**，路径退为背景信息 —— 但仍保留胶囊形态，
+> 因为路径本身仍可点击复制。**已安装时不得淡化**（那是本机真实目录）。
+
+### 2.3c IDE / Agent 列表视图的列与图例（`.agent-list-table`）
+
+列表视图（`.agent-list-table`）的列序固定为：
+
+```
+名称 | 类型 | 安装 | APP | CLI | CONFIG | 技能目录 | MCP | Hook | 操作
+```
+
+**每个状态列都必须配一条同名图例**（`.skill-legend`），且图例的四态与列内取值一一对应：
+
+| 列 | 四态 | 图例 |
+|---|---|---|
+| MCP | `ok` 全部已设置 / `warn` 部分 / `err` 未设置 / `na` 不支持或无端点 | `.mcp-badge-legend` |
+| Hook | `ok` 全部已写入 / 中性 部分已写入 / `warn` 未写入 / `na` 未收录配置或仅审计 | 复用 `.skill-legend` |
+
+**Hook 列的口径（务必与 Hook 业务页一致）**：
+
+| 情形 | 显示 | 说明 |
+|---|---|---|
+| 已登记且全部写入 | `N/M`（`.tag.ok`） | N=已写入事件数，M=该客户端支持的事件数 |
+| 已登记且部分写入 | `N/M`（**中性** `.tag`） | 绿色表示「已就绪」，部分写入不是就绪 |
+| 已登记但未写入 | `未写入`（`.tag.warn`） | |
+| 已登记但插件型（`fix_supported=false`） | `仅审计` | 不支持模板注入 |
+| **未登记 Hook 配置路径** | **`未收录`** | **不是「不支持」** |
+
+> ⚠️ **「未收录」与「不支持」必须分开**：未登记只表示"我们还没收录它的 Hook 配置路径"，
+> 不等于"该客户端没有 Hook 能力"。实测 22 个已安装客户端里只有 6 个登记了 `hooks.clients`，
+> 若一律显示「不支持」，这一列对多数行都是过度断言。这与 Hook 业务页 `_hooksEntries`
+> 只列"有 `hooks_config_path`"的客户端是同一口径。
+
+**分层作用域徽标** `.al-scope`：紧跟在状态标签之后，形如 `4 档`，`title` 给出
+"分层作用域 N 档（用户级 / 项目级 / 本地级…）"。它与 `.al-metric` 同族（同字号/同圆角/同内边）
+但**更弱**：`--faint` 字色 + 虚线边框 + 透明底、**不做 accent 高亮、不加 hover** ——
+它是元信息（该客户端的 Hook 配置分几档），不是可点的计数徽标。
+
 ### 2.4 元信息与数字
 - 数字、包名、路径、版本号一律 `--mono` + `--faint` 或 `--muted`。
 - 数量单位用中文（"3.6 万次安装"），不直接透出上游英文原文。
@@ -167,7 +297,21 @@ out of scope，并将此类界面指向 Fluent / Carbon / Polaris 等设计系�
 |---|---|
 | 加载中 | 有明确文案说明在做什么、大概多久 |
 | 空 | 说明"为什么空"以及"怎么让它不空"，不留白屏 |
-| 错误 | 就地显示原因，不弹窗、不吞掉 |
+| 错误 | 就地显示原因，不弹窗、不吞掉（**仅限数据区自身状态**，见下方区分） |
+
+**「数据区错误」与「操作结果」必须分开**（2026-10-12 用户截图反馈后明确）：
+
+| 类别 | 例子 | 展示方式 |
+|---|---|---|
+| 数据区自身状态 | 某个面板/表格加载失败、清单为空 | **就地**在数据区内说明原因与出路（上表） |
+| **一次操作的结果** | 保存设置、修复 Skills/MCP、写入 Hook | **弹框**：`runTaskModal` 的 `.task-card`（`.task-result` ok/err + `.task-fold` 折叠详情） |
+
+> 为什么：把 CLI 的整段 stdout 铺成页面级 `.banner` 会变成一大片文本（实测保存设置
+> 失败时贴了 1600 字符的技能扫描报告，用户截图反馈）。操作结果本就该是一次性的、
+> 需要用户确认的**弹框**；`.banner` 只留给「非阻塞的页面级告知」（如自动发现新客户端）。
+>
+> 另：错误详情一律先过 `cliFailLines`（挑失败行）或 `cliErrDetail`（去 ANSI、截断），
+> 不要把原始 stdout 直接抛给用户。
 
 **行内状态点（`.dot` 三态）**：`.dot.ok`（`--ok` + `--ring-ok` 环）/
 `.dot.warn`（`--warn` + `--ring-warn`）/ `.dot.err`（`--err` + `--ring-err`）/
@@ -306,6 +450,8 @@ out of scope，并将此类界面指向 Fluent / Carbon / Polaris 等设计系�
 | `.path-field-row button` | `padding` | `var(--sp-1) var(--sp-3)` |
 | `.chg-btn` | `min-height` | `32px` |
 | `.insight-dialog` | `width` | `min(1040px, 100%)` |
+| `.ad-modal` | `width` | `min(880px, 94vw)` |
+| `.agent-card .ac-path-row` / `.agent-card .ac-meta-row` | `grid-template-columns` | `58px minmax(0, 1fr)` |
 
 **触达目标（弹层内动作按钮）**：`.cfm-card .actions button`、`.modal-form .form-actions button`、
 `.sheet-actions .btn-soft` 与 `.chg-btn` 必须显式声明 `min-height: 32px`
@@ -320,8 +466,8 @@ out of scope，并将此类界面指向 Fluent / Carbon / Polaris 等设计系�
 |---|---|
 | 通用 `appearance` | 外观（主题 / 缩放）、**后台巡检（定时检查）**、Skills 统一目录 |
 | Skill `general` | 技能使用统计（自动统计间隔） |
-| IDE / Agent `agents` | IDE / Agent 默认路径 |
-| **Hook `hooks`** | 要写入的 Hook 事件（勾选）、客户端事件命名规范 |
+| IDE / Agent `agents` | IDE / Agent 默认路径；**卡片/列表上的能力摘要**（Skills / MCP / Hook 三行，无需点开详情）；客户端详情内的「Hook 配置」 |
+| **Hook `hooks`** | 要写入的 Hook 事件（勾选，按分类分组） |
 | MCP `mcp` | MCP 端点库 |
 
 **后台巡检（定时检查）**：开关 + 间隔（5 / 15 / 30 / 60 / 120 分钟）。
@@ -337,28 +483,77 @@ GUI 不直接改配置文件。间隔由 CLI 钳到 ≥5 分钟，界面需回�
 > 一致 —— 列出可选项、由用户决定要哪些。各客户端的接入状态与写入/移除是 **Hook 业务页**
 > 的职责（那里显示审计结果）。
 
-两张卡：
+一张卡：
 
-1. **要写入的 Hook 事件**：列出 `config.yaml` 的 `hooks.events` 全部标准事件（勾选框 +
-   事件名 + 说明 + 「写往」哪些客户端及其命名），保存写入 `settings.hook_events`。
+1. **要写入的 Hook 事件**：列出 `config.yaml` 的 `hooks.events` 全部**规范事件**
+   （勾选框 + 事件名 + 说明 + 「写往」几个客户端），保存写入 `settings.hook_events`。
    未勾选任何事件 = 不写入（**停用**，不是"配置缺失"）。
-2. **客户端事件命名规范**（只读）：客户端 / Hook 配置文件 / `event_format` / 示例 / 是否可写。
+   **默认全选**（`config.yaml` 的 `settings.hook_events` 出厂即列出全部规范事件）；
+   卡片头部提供 **「全选」/「清空」** 两个 `.ghost.sm` 按钮 —— 二者只改**本地勾选态**，
+   仍需点「保存」才落盘（不在用户没点保存时静默改配置）。计数用 `#hook-selected-count`
+   就地更新，不整页重渲染。
+   词表已扩到 47 项（各客户端官方事件集的并集），故按 `group` **分组渲染**，
+   分组表头用 `.hook-group-row`（`--panel-2` 底色 + `--faint` 字 + `--fs-2xs`）；
+   不分组会是一张 47 行的难读长表。
 
-**写入链路（三层，注意别混淆）**：
+**「客户端事件命名规范」表已移入「IDE / Agent → 详情」**（2026-10-12 按用户要求）。
+
+> 为什么：客户端清单、hook 配置文件路径、命名规范、分层作用域本就是「这个客户端」
+> 的属性，与 IDE/Agent 页的 APP/CLI/CONFIG 路径同类。两处各维护一份必然漂移 ——
+> 实测 Hook tab 只显示单条 `config_path`，而 IDE/Agent 已有多档作用域（user/project/
+> local），口径本就不一致。**不要在 Hook tab 重新加回该表**（回归护栏见
+> [`tests/test_design_spec_contract.py`](../tests/test_design_spec_contract.py) 的
+> Hook 设置页断言）。
+
+**IDE / Agent 详情新增「Hook 配置」区块**（`.ad-section`，与安装路径 / Skills / MCP 并列）：
+
+```
+┌─ Hook 配置 ─────────────────────────────────┐
+│ 配置文件   ~/.claude/settings.json            │
+│ 分层作用域 [用户级]   ~/.claude/settings.json │  ← 每档一行：标签左 + 路径右
+│            [项目级]   <项目根>/.claude/…      │     路径超长省略（同 MCP 条目行）
+│ 事件命名   pascal_case                        │
+│ 支持事件   33 个，其中已写入 3 个              │
+│ 事件清单   [SessionStart][Stop]…              │  ← 已写入用 .tag.ok，其余 .ad-pill
+│ 缺关键事件 PreCompact                         │  ← 仅非空时渲染
+└──────────────────────────────────────────────┘
+```
+
+- 作用域行复用 `.ad-entries` / `.ad-entry` / `.ad-e-key`，路径用
+  `.ad-e-loc-full`（**完整显示**：`white-space: normal` + `word-break: break-all`，
+  不做省略号截断）—— 详情页的要求是完整可读，路径本身就是信息。
+  与之相对，MCP 条目的长 URL 仍用 `.ad-e-loc` 的省略号 + `title`（规范 §2.2 的
+  截断做法），因为那里一行可能有很多条、且 URL 不是判决依据。
+- 事件清单复用 `.ad-pills` + `.ad-pill`；**已写入**的换成 `.tag.ok`。
+  颜色只是辅助，事件名本身可读（§3b：不得只靠颜色传达信息）。
+- 数据来自 `management_snapshot._agent_entry` 透传的 `hooks_scopes` /
+  `hooks_supported_events` / `hooks_event_format`（`hooks_inventory.inventory_for_tool` 产出）。
+- 写入动作复用详情页脚「写入 Hook」按钮（走 `fixHooksFor(name)` → CLI `--fix-hooks`）。
+
+**写入链路（四层，注意别混淆）**：
 
 | 层 | 位置 | 作用 |
 |---|---|---|
-| 标准事件清单 | `hooks.events` | 可选事件全集（供 GUI 列出） |
-| **要写入的事件** | `settings.hook_events` | **唯一决定写入什么**（标准事件名） |
-| 客户端命名规范 | `hooks.clients[].event_format` | 把标准名转成该客户端规范名（pascal/camel） |
+| 规范事件词表 | `hooks.events` | 可勾选**全集**（47 项，含 `group` 分类），GUI 靠它列出 |
+| **要写入的事件** | `settings.hook_events` | **唯一决定写入什么**（规范事件名） |
+| 客户端能力全集 | `hooks.clients[].events` | 该客户端**支持**的全部事件（用它自己的命名） |
+| 命名 / 条目形态 | `event_format` / `entry_style` | 规范名 → 该客户端名；条目结构（嵌套 / 扁平） |
 
 **硬规则**：
 - 「写哪些事件」只看 `settings.hook_events`，**不再读 `template`**。
   `template` 仅：① 键不存在时作为向后兼容的回落；② 提供同名事件的**命令文案**。
-- 全局列表选中了某客户端 `template` 没有的事件时，用标准命令兜底
-  （`ai-memory hook --event <snake_case>`）—— **不允许静默漏写**。
+- **能力校验（2026-10-12 变更）**：写入前按该客户端 `events` 过滤，**只写它认的事件**。
+  此前是「勾了就一定写得上」（用兜底命令硬写），会把 Cursor 独有的 `BeforeTabFileRead`
+  写进根本不认识它的 Claude Code。现在跳过并在结果里回报 `skipped` —— 这**不是**
+  「静默漏写」：GUI 只在客户端详情里列出它支持的事件，入口上就选不出不支持的项。
 - `settings.hook_events` **未配置（键不存在）** 与 **配置为空列表** 语义不同：
   前者回落 `template`，后者是用户明确的停用选择，不得回落。
+- **条目形态按客户端声明**（`entry_style`），两套**不可混用**（本机实测）：
+  Cursor 是扁平 `{type, command, matcher}`；Claude Code / TRAE / Codex / WorkBuddy
+  是嵌套 `{matcher, hooks: [{type, command}]}`。
+- 「缺关键事件」审计由**写入意图**推导（`settings.hook_events` ∩ 能力，或回落
+  `template` 键），**不是**由能力全集推导 —— 否则 Claude Code 会把 29 个
+  「支持但本次没打算写」的事件全报成缺失（假警报）。
 - 只增不减：客户端已有的非 ai-memory hook 必须原样保留。
 
 > 设置项的取值来源必须与「谁是唯一事实来源」一致：偏好类（主题/缩放/统计间隔）用

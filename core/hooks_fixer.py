@@ -21,7 +21,7 @@ from file_atomic import atomic_write, backup_path, restore_backup
 from legacy_checker import _load_json_file, _norm_tool_name
 from ai_memory_checker import _find_in_dict
 from hooks_inventory import hooks_client_config, list_client_hook_entries, _is_ai_memory_hook_cmd
-from hooks_inventory import event_name_for_client
+from hooks_inventory import event_name_for_client, client_supported_events
 
 
 def _result(name: str, status: str, message: str, **extra: Any) -> Dict[str, Any]:
@@ -46,11 +46,22 @@ def _default_hook_command(canonical_event: str) -> str:
     return f"ai-memory hook --event {snake}"
 
 
-def _build_hook_entry(command: str) -> Dict[str, Any]:
+def _build_hook_entry(command: str, entry_style: str = "nested") -> Dict[str, Any]:
     """构造单个 hook 事件的标准写入结构。
 
-    ``{"matcher": "*", "hooks": [{"type": "command", "command": "..."}]}``
+    ``entry_style`` 按客户端声明的实际形态分两种 —— 这两套**不可混用**，写错
+    客户端不认（本机 ~/.cursor/hooks.json 实测为扁平、TRAE/Codex/WorkBuddy 为嵌套）：
+
+    - ``nested``（默认，Claude Code / TRAE / Codex / WorkBuddy）::
+
+        {"matcher": "*", "hooks": [{"type": "command", "command": "..."}]}
+
+    - ``flat``（Cursor）::
+
+        {"type": "command", "command": "...", "matcher": "*"}
     """
+    if entry_style == "flat":
+        return {"type": "command", "command": command, "matcher": "*"}
     return {
         "matcher": "*",
         "hooks": [{"type": "command", "command": command}],
@@ -104,9 +115,16 @@ def fix_hooks_tool(
     # 补不上（假警报）。改为：全局列表给出**标准事件名**，这里按各客户端
     # event_format 转成它的规范名。
     #
-    # 命令文案仍取 template 里同名事件的值；全局列表选了某个 template 没有的事件时，
-    # 用标准 ai-memory 命令兜底（`ai-memory hook --event <snake_case>`），
-    # 这样「勾了就一定写得上」，不会静默漏掉。
+    # 命令文案仍取 template 里同名事件的值；没有对应 template 时用标准 ai-memory
+    # 命令兜底（`ai-memory hook --event <snake_case>`）。
+    #
+    # 能力校验（2026-10-12 按用户要求变更）：各客户端的 ``events`` 从「声明」升级为
+    # **权威能力集**，写入前按它过滤 —— 只写该客户端真正认的事件。此前是「勾了就一定
+    # 写得上」，会把 Cursor 独有的 beforeTabFileRead 之类写进根本不认识它的客户端；
+    # 现在改为跳过并回报 ``skipped``。注意这**不是**「静默漏写」：GUI 的
+    # 「IDE / Agent → Hook 配置」只列出该客户端 ``events`` 里的事件，从入口上就选不出
+    # 不支持的项，兜底命令仅用于「支持但没写 template」的同名事件。
+    # 客户端未声明 ``events``（如插件型 OpenCode）时不过滤，保持向后兼容。
     # 注意区分「未配置」与「配置为空列表」：
     #   - 键不存在（None）→ 未启用全局管理，回退 template（向后兼容）
     #   - 键存在但为 []     → 用户明确清空了选择，**应停用写入**，不得回退 template
@@ -114,22 +132,35 @@ def fix_hooks_tool(
     _settings = config.get("settings") or {}
     _events_configured = "hook_events" in _settings
     configured_events = _settings.get("hook_events") or []
+    skipped_unsupported: List[str] = []
     if _events_configured:
         template = {}
     if configured_events:
         event_format = hc.get("event_format")
+        supported = client_supported_events(hc)
         template = {}
         for canonical in configured_events:
             client_name = event_name_for_client(canonical, event_format)
+            if supported and client_name not in supported:
+                skipped_unsupported.append(canonical)
+                continue
             template[client_name] = (
                 (hc.get("template") or {}).get(client_name)
                 or _default_hook_command(canonical)
             )
     if not template:
-        # 两种「无事件可写」要分开说：已配置但清空 → 明确告知是用户的停用选择；
-        # 从未配置 → 说明是该客户端没有 template。混成一句会让人以为配置丢了。
-        if _events_configured:
+        # 三种「无事件可写」要分开说，否则会让人以为配置丢了：
+        #   ① 已配置但清空     → 用户的停用选择；
+        #   ② 选了但都不支持   → 能力不匹配（不是漏写，是这项属于别的客户端）；
+        #   ③ 从未配置且无模板 → 该客户端没有可写入的模板。
+        if _events_configured and not configured_events:
             return _result(name, "unsupported", "已选择不写入任何 hook 事件（settings.hook_events 为空）")
+        if skipped_unsupported:
+            return _result(
+                name,
+                "unsupported",
+                f"所选事件该客户端均不支持，已跳过：{', '.join(skipped_unsupported)}",
+            )
         return _result(name, "missing", "无 template 定义且未配置 hook_events，跳过")
 
     # 读原配置（不存在则新建空 dict）
@@ -155,11 +186,12 @@ def fix_hooks_tool(
     if not to_write:
         return _result(name, "unchanged", "所有 template 事件已配置，跳过")
 
-    # 渲染：把 template 事件写入 hook_section
+    # 渲染：把 template 事件写入 hook_section（条目形态按客户端声明，不可混用）
+    entry_style = hc.get("entry_style", "nested")
     for event, command in to_write.items():
         if event not in hook_section or not isinstance(hook_section[event], list):
             hook_section[event] = []
-        hook_section[event].append(_build_hook_entry(command))
+        hook_section[event].append(_build_hook_entry(command, entry_style))
 
     rendered = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
 
@@ -198,12 +230,14 @@ def fix_hooks_tool(
                 pass
         return _result(name, "error", f"写入失败已回滚：{e}", backup=bak)
 
+    _skip_note = f"；跳过该客户端不支持的 {len(skipped_unsupported)} 个：{', '.join(skipped_unsupported)}" if skipped_unsupported else ""
     return _result(
         name,
         "updated" if had_file else "created",
-        f"已写入 {len(to_write)} 个 hook 事件（备份 {bak}）" if bak else f"已创建配置并写入 {len(to_write)} 个 hook 事件",
+        (f"已写入 {len(to_write)} 个 hook 事件（备份 {bak}）" if bak else f"已创建配置并写入 {len(to_write)} 个 hook 事件") + _skip_note,
         backup=bak,
         path=config_path,
+        skipped=skipped_unsupported,
     )
 
 

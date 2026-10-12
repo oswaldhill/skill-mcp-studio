@@ -67,6 +67,81 @@ def event_name_for_client(canonical: str, event_format: Optional[str]) -> str:
     return canonical
 
 
+def client_supported_events(hc: Dict[str, Any]) -> List[str]:
+    """客户端**声明支持**的事件集（该客户端配置里的实际键名）。
+
+    与 ``config['hooks']['events']``（规范词表）的区别：词表是**可勾选的全集**，
+    而这里存的是该客户端自己的命名（Cursor/TRAE 为 camelCase、Claude Code/Codex
+    为 PascalCase）。写入时用它做**能力校验** —— 只写该客户端真正认的事件，
+    避免把 Cursor 独有的 ``beforeTabFileRead`` 之类写进不认识它的客户端。
+
+    兼容两种写法：字符串 ``- sessionStart`` 与对象
+    ``- {name: sessionStart, description: ...}``。
+    """
+    out: List[str] = []
+    for entry in hc.get("events") or []:
+        name = entry.get("name") if isinstance(entry, dict) else entry
+        if isinstance(name, str) and name.strip():
+            out.append(name.strip())
+    return out
+
+
+def client_scopes(hc: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """客户端 hook 配置的**分层作用域**（user / project / local …）。
+
+    每个元素 ``{id, label, config_path}``；用于 GUI 的 IDE/Agent 详情展示
+    「该客户端的 hook 配置可能落在哪些层级」，与安装证据的 APP/CLI/CONFIG
+    路径口径一致。未声明 ``scopes`` 时回退为单一 ``config_path``。
+    """
+    scopes = hc.get("scopes")
+    if isinstance(scopes, list) and scopes:
+        return [
+            {
+                "id": s.get("id", ""),
+                "label": s.get("label", s.get("id", "")),
+                "config_path": s.get("config_path", ""),
+            }
+            for s in scopes
+            if isinstance(s, dict) and s.get("config_path")
+        ]
+    primary = hc.get("config_path")
+    if primary:
+        return [{"id": "primary", "label": "默认", "config_path": primary}]
+    return []
+
+
+def _intended_events(hc: Dict[str, Any], config: Dict[str, Any]) -> List[str]:
+    """该客户端**本次打算写入**的事件（该客户端命名）。
+
+    与 ``client_supported_events``（能力全集）区分：能力全集回答「能不能写」，
+    意图回答「这次要写哪些」—— 后者才是「缺关键事件」审计的基准。
+    取法与 ``hooks_fixer`` 保持一致（同一份 ``settings.hook_events``、同一套
+    ``event_format`` 转换、同一道能力过滤），避免「写入端写 A、审计端查 B」的漂移。
+    """
+    settings = config.get("settings") or {}
+    if "hook_events" not in settings:
+        return sorted((hc.get("template") or {}).keys())
+    event_format = hc.get("event_format")
+    supported = client_supported_events(hc)
+    # 审计基准再收一道：只在 ai-memory **有命令模板**的事件里算「缺关键事件」。
+    # 为什么（2026-10-12 二次修正）：`settings.hook_events` 的默认值已改为**全选**
+    # （47 项）。若意图直接取「选中 ∩ 能力」，Claude Code 会一次报出 33 个「缺失」
+    # —— 那是「默认状态」而不是异常，页面会被假警报淹没，等于没有审计。
+    # 取「选中 ∩ 能力 ∩ 模板键」后：默认全选时基准就是模板那几个核心事件（每个
+    # 客户端 5~7 个），与「是否接上 ai-memory 生命周期 hook」这个真问题对齐。
+    templated = set((hc.get("template") or {}).keys())
+    out: List[str] = []
+    for canonical in settings.get("hook_events") or []:
+        native = event_name_for_client(canonical, event_format)
+        if supported and native not in supported:
+            continue
+        if templated and native not in templated:
+            continue
+        if native not in out:
+            out.append(native)
+    return out
+
+
 def hooks_client_config(config: Dict[str, Any], tool_name: str) -> Dict[str, Any]:
     """从 ``config['hooks']['clients']`` 按 name 匹配客户端 hook 配置。
 
@@ -166,19 +241,33 @@ def inventory_for_tool(tool: Dict[str, Any], config: Dict[str, Any]) -> Dict[str
             "hooks_configured": False,
             "hook_events": [],
             "hooks_fix_supported": False,
+            "hooks_scopes": [],
+            "hooks_supported_events": [],
+            "hooks_event_format": "",
             "hooks_inventory": [],
         }
 
     entries = list_client_hook_entries(tool, config)
     ai_events = sorted({e.event for e in entries if e.is_ai_memory})
-    expected_events = hc.get("events", [])
-    missing_key = [e for e in expected_events if e not in ai_events]
+    supported_events = client_supported_events(hc)
+    # 「缺关键事件」审计由**写入意图**推导，而不是由能力全集推导。
+    # 为什么必须改（2026-10-12）：``events`` 从「关注的小集合」升级为「该客户端支持的
+    # 全部事件」后（Claude Code 33 项、WorkBuddy 29 项），若仍拿它算缺失，审计会把
+    # 二十多个「支持、但本次并没打算写」的事件全报成「缺关键事件」—— 语义被撑爆且全是
+    # 假警报。意图的取法与 ``hooks_fixer`` 同源（同一份 settings.hook_events、同一套
+    # event_format 转换、同一道能力过滤），避免「写入端写 A、审计端查 B」的漂移。
+    missing_key = [e for e in _intended_events(hc, config) if e not in ai_events]
 
     return {
         "hooks_config_path": hc.get("config_path", ""),
         "hooks_configured": bool(ai_events),
         "hook_events": ai_events,
         "hooks_fix_supported": hc.get("fix_supported", False),
+        # 能力域：供 GUI 的 IDE/Agent 详情展示「支持哪些事件 / 配置落在哪些层级」，
+        # 也是写入端做能力校验的事实来源（见 hooks_fixer）。
+        "hooks_scopes": client_scopes(hc),
+        "hooks_supported_events": supported_events,
+        "hooks_event_format": hc.get("event_format") or "",
         "hooks_inventory": [
             {"event": e.event, "command": e.command, "is_ai_memory": e.is_ai_memory}
             for e in entries

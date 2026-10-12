@@ -25,6 +25,10 @@ def resolve_modes(args):
         getattr(args, "management", False),
         getattr(args, "add_client", None),
         getattr(args, "set_unified_dir", None),
+        # 设置读写（2026-10-12）：--get-setting / --set-setting 都是独立出口，
+        # 不应连带启用 skills/mcp/hooks 默认检查（那会让写设置的退出码继承审计结论）。
+        getattr(args, "get_setting", None),
+        getattr(args, "set_setting", None),
     ))
     if not explicit:
         args.skills = True

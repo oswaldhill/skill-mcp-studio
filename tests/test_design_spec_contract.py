@@ -430,6 +430,8 @@ class HardNumbersContractTest(unittest.TestCase):
         (".path-field-row button", "padding", "var(--sp-1) var(--sp-3)"),
         (".chg-btn", "min-height", "32px"),
         (".insight-dialog", "width", "min(1040px, 100%)"),
+        (".ad-modal", "width", "min(880px, 94vw)"),
+        (".agent-card .ac-path-row", "grid-template-columns", "58px minmax(0, 1fr)"),
     ]
 
     def test_contract_rows_appear_in_spec(self):
@@ -733,6 +735,394 @@ class HtmlMdReverseMirrorTest(unittest.TestCase):
             "以下 HTML 章节在 DESIGN.md 的标题里找不到（HTML 单方面新增/未同步）：%r"
             % missing[:20],
         )
+
+
+class HookSettingsPlacementTest(unittest.TestCase):
+    """Hook 设置的归属与能力域（2026-10-12，用户反馈后新增）。
+
+    用户反馈两点：① Hook 事件太少；② 客户端设置要与 IDE/Agent 一致（含分层作用域），
+    或干脆并进 IDE/Agent。落地后由本类守住，防止回退：
+
+    - 「客户端事件命名规范」表**必须只在** IDE/Agent 详情，不得再加回 Hook tab
+      （两处维护必然漂移：Hook tab 只有单条 config_path，而 IDE/Agent 已有多档作用域）；
+    - 详情必须真的**消费**能力域字段（scopes / supported / event_format），
+      否则「合并过去」只是把表删了、信息反而丢了。
+    """
+
+    def test_hook_tab_has_no_client_naming_table(self):
+        src = _src()
+        # 判据取「渲染出的标题 + 该表的行构造变量」，不取任意字符串 ——
+        # 代码注释里说明「该表已移入详情」也会命中纯字符串断言（实测被自己绊倒）。
+        self.assertNotIn("<h4>客户端事件命名规范</h4>", src,
+                         "该表应只在 IDE/Agent 详情；不要加回 Hook 设置 tab")
+        self.assertNotIn("hookClientRows", src, "该表的行构造器应已删除，不得残留")
+        # Hook tab 仍必须保留事件勾选入口（不能连职责一起删掉）
+        self.assertIn('data-action="save-hook-events"', src)
+        self.assertIn("data-hook-event=", src)
+
+    def test_hook_tab_groups_catalog_rows(self):
+        """47 项词表要分组渲染（分组表头 .hook-group-row 已登记在规范 §2.10）。"""
+        src = _src()
+        self.assertIn("hook-group-row", src)
+        self.assertIn("catalogGroups", src)
+
+    def test_agent_detail_consumes_hook_capability_fields(self):
+        src = _src()
+        self.assertIn("Hook 配置", src, "IDE/Agent 详情缺少「Hook 配置」区块")
+        for field in ("hooks_scopes", "hooks_supported_events", "hooks_event_format"):
+            self.assertIn(field, src, f"详情未消费 {field}（合并后信息反而丢了）")
+
+    def test_written_events_marked_without_relying_on_color(self):
+        """已写入的事件用 .tag.ok 标注；颜色只是辅助，事件名必须可读（§3b）。"""
+        src = _src()
+        self.assertIn('class="tag ok" title="已写入 ai-memory hook"', src)
+
+    def test_canonical_to_client_matches_python_rule(self):
+        """GUI 的规范名→客户端名规则必须与 Python 侧同源（camel 只改首字母）。"""
+        src = _src()
+        self.assertIn("const canonicalToClient", src)
+        self.assertIn('eventFormat === "camel_case"', src)
+
+
+class HookSelectAllTest(unittest.TestCase):
+    """Hook 事件「默认全选 + 全选/清空」（2026-10-12 用户要求）。
+
+    用户要求两点：① 默认应当全选；② 要有全选的能力（按钮）。
+    此前 `settings.hook_events: []` 意味着**默认一个都不勾**，且 `--fix-hooks`
+    直接判「已选择不写入任何 hook 事件」—— 开箱即停用，与预期相反。
+    """
+
+    def test_config_defaults_to_all_events_selected(self):
+        """出厂即全选：settings.hook_events 必须列出词表里的每一个规范事件。"""
+        import yaml
+        cfg = yaml.safe_load((ROOT / "config.yaml").read_text(encoding="utf-8"))
+        catalog = [e["name"] for e in cfg["hooks"]["events"]]
+        selected = list(cfg["settings"]["hook_events"])
+        self.assertEqual(len(catalog), len(selected),
+                         "settings.hook_events 应与词表等长（默认全选）")
+        self.assertEqual(selected, catalog, "默认勾选顺序应与词表一致")
+
+    def test_hook_card_has_select_all_and_none(self):
+        src = _src()
+        self.assertIn('data-action="hook-select-all"', src)
+        self.assertIn('data-action="hook-select-none"', src)
+        # 计数要能就地更新（不整页重渲染）
+        self.assertIn('id="hook-selected-count"', src)
+
+    def test_select_all_only_changes_local_state(self):
+        """全选/清空不得直接写盘：仍须走「保存」→ --set-setting。"""
+        src = _src()
+        m = re.search(r'\[\["hook-select-all".*?\}\);', src, re.S)
+        self.assertIsNotNone(m, "未找到全选/清空 处理器")
+        self.assertNotIn("--set-setting", m.group(0), "全选不应直接落盘")
+
+    def test_scope_paths_display_in_full(self):
+        """详情里的分层作用域路径必须完整显示（不省略号截断）。"""
+        src = _src()
+        self.assertIn("ad-e-loc-full", src)
+        self.assertIn(".ad-entry .ad-e-loc-full", _css())
+
+
+class HookSaveSemanticsAndCardSummaryTest(unittest.TestCase):
+    """保存语义 + 错误展示 + 卡片能力摘要（2026-10-12 用户三项反馈）。
+
+    用户反馈：
+    ① 错误不该在页面上直接铺一大段（应是弹框）；
+    ② 设置页的「保存」只保存**选择**，写 IDE 是 Hook 业务页的事；
+    ③ 详情里的内容要在**卡片/列表**上直接可见，不必点进去。
+    """
+
+    def test_save_uses_task_modal_not_page_banner(self):
+        """保存 Hook 选择的结果必须走弹框（runTaskModal），不得用页面级 banner。
+
+        反例（实测用户截图）：失败时 `showBanner("err", … + cliErrDetail(res))`
+        把 CLI 整段 stdout（技能扫描报告，1600 字符）铺在页面顶部。
+        判据取**精确锚点**而不是切片：切片范围会被后续相邻代码带偏（实测踩过）。
+        """
+        src = _src()
+        self.assertIn('runTaskModal("保存 Hook 事件选择"', src,
+                      "保存结果应走 runTaskModal 弹框")
+        self.assertNotIn('showBanner("err", "保存 Hook 事件失败', src,
+                         "保存失败不得再用页面级 banner 展示 CLI 输出")
+        self.assertNotIn('showBanner("ok", `已保存 ${picked.length} 个事件', src,
+                         "保存成功也应走弹框，而不是页面横幅")
+        # 错误详情要收敛（挑失败行/去 ANSI 截断），不抛原始 stdout
+        self.assertIn("cliFailLines(res) || cliErrDetail(res)", src,
+                      "失败详情应先过 cliFailLines / cliErrDetail")
+
+    def test_save_copy_states_selection_only(self):
+        """文案必须说清「只保存选择」，写入客户端在 Hook 页 —— 不能说成保存即写入。"""
+        src = _src()
+        self.assertIn("这里只保存", src, "缺少「只保存选择」的说明")
+        self.assertIn("「写入 Hook」", src, "应指向 Hook 页的写入动作")
+
+    def test_cards_and_list_show_capability_summary(self):
+        """设置页卡片与列表都要有 Skills / MCP / Hook 能力摘要。"""
+        src = _src()
+        for fn in ("_agentSkillsSummary", "_agentMcpSummary", "_agentHookSummary"):
+            self.assertIn(f"function {fn}(", src, f"缺少摘要构造器 {fn}")
+        # 卡片视图：三条 ac-meta-row 必须出现（设置页卡片，非主页 home-card）
+        # 注意：设置页卡片视图在 renderAgentsTable 内（主页另有一套 cardFor/home-card，
+        # 早就有 ac-meta-row）。必须把范围限定在 renderAgentsTable 里，否则断言会
+        # 被主页那套“碰巧满足”（实测踩过：index 取到了主页的 sections）。
+        i = src.index("function renderAgentsTable(")
+        j = src.index("// ---------------- Agent 设置子页面", i)
+        view = src[i:j]
+        for k in ("Skills", "MCP", "Hook"):
+            self.assertIn(f'<span class="k">{k}</span>', view,
+                          f"设置页卡片缺少 {k} 摘要行")
+        for fn in ("_agentSkillsSummary(t)", "_agentMcpSummary(t)", "_agentHookSummary(t)"):
+            self.assertIn(fn, view, f"设置页卡片未调用 {fn}")
+        for k in ("Skills", "MCP", "Hook"):
+            self.assertIn(f'<span class="k">{k}</span>', view,
+                          f"设置页卡片缺少 {k} 摘要行")
+        # 列表视图：表头要有能力摘要列
+        self.assertIn("能力摘要（Skills / MCP / Hook）", src)
+
+
+class CardLabelColumnAlignmentTest(unittest.TestCase):
+    """卡片里「路径区」与「能力摘要区」的标签列必须逐项同构（2026-10-12 用户反馈）。
+
+    用户截图指出设置页卡片「最好保持对齐」。实测错位来自两套几何：
+    `.ac-path-row` 是 `grid` + 58px 标签列 + 无竖线，而 `.ac-meta-row` 是
+    `flex` + `.k` 宽 74px + `border-right` 竖线 —— 标签列宽、字体、分隔线全不一致，
+    于是 APP/CLI/CONFIG 与 Skills/MCP/Hook 两组的值区起点差 16px，一眼能看出错位。
+
+    本类把「同构」变成机检不变量：两组的列宽/gap/对齐、以及标签的字体族/字号/字重/
+    大小写/颜色都必须逐项相等。任何一侧被单独改动都会立刻失败。
+    """
+
+    PATH_ROW = ".agent-card .ac-path-row"
+    META_ROW = ".agent-card .ac-meta-row"
+    PATH_LABEL = ".agent-card .ac-path-label"
+    META_LABEL = ".agent-card .ac-meta-row .k"
+
+    def test_row_geometry_identical(self):
+        for prop in ("grid-template-columns", "gap", "align-items"):
+            with self.subTest(prop=prop):
+                a, b = _decl(self.PATH_ROW, prop), _decl(self.META_ROW, prop)
+                self.assertTrue(a, f"{self.PATH_ROW} 未声明 {prop}")
+                self.assertEqual(a, b, f"两组行几何不一致：{prop} 路径区={a!r} 摘要区={b!r}")
+
+    def test_label_typography_identical(self):
+        for prop in ("font-family", "font-size", "font-weight",
+                     "text-transform", "color", "line-height"):
+            with self.subTest(prop=prop):
+                a, b = _decl(self.PATH_LABEL, prop), _decl(self.META_LABEL, prop)
+                self.assertTrue(a, f"{self.PATH_LABEL} 未声明 {prop}")
+                self.assertEqual(a, b, f"两组标签样式不一致：{prop} 路径区={a!r} 摘要区={b!r}")
+
+    def test_meta_label_has_no_divider(self):
+        """摘要区标签不得再单独加竖线（路径区没有；单边竖线是错位感来源之一）。"""
+        self.assertNotIn("border-right", _rule_body(self.META_LABEL),
+                         "摘要区标签不应有 border-right（与路径区不一致）")
+
+    def test_uninstalled_client_dims_skills_dir(self):
+        """未安装客户端的 skills 目录必须用淡化变体 `.is-dim`（方案 A）。
+
+        为什么：未安装时该路径只是内置注册表的「默认位置」，不代表本机状态；
+        与同行右侧的「不适用」标签并列却不加区分，读起来自相矛盾（Cursor 卡片实测）。
+        已安装时**不得**淡化（那是本机真实目录）。
+        """
+        src = _src()
+        i = src.index("function _agentSkillsSummary(")
+        j = src.index("function _agentMcpSummary(", i)
+        body = src[i:j]
+        # 判据必须绑到**那一行赋值**上：只查 "is-dim"/"t.installed" 会被注释与
+        # 下一行的 `if (!t.installed)` 同时满足，反向验证照样通过（实测踩过）。
+        m = re.search(r'const\s+dimCls\s*=\s*([^;]+);', body)
+        self.assertIsNotNone(m, "未找到目录淡化条件（dimCls 赋值）")
+        expr = m.group(1)
+        self.assertIn("t.installed", expr, "淡化条件必须依据「是否安装」")
+        self.assertIn("is-dim", expr, "未安装时应给出淡化变体 is-dim")
+        self.assertRegex(expr, r'\?\s*""\s*:\s*"\s*is-dim"',
+                         "淡化必须写成「已安装→无类；未安装→is-dim」")
+        self.assertIn("${dimCls}", body, "胶囊 class 必须真的拼上 dimCls")
+        # 淡化变体必须真有**声明**（否则是幽灵类：页面不报错但样式不生效）。
+        # 判据取「声明」而不是「选择器子串」—— 后者会被 `:hover` 那条规则满足，
+        # 删掉基础规则也照样通过；且 _decl 取不到时会返回空串，一并被这条挡住。
+        self.assertEqual(
+            _norm_ws(_decl(".agent-card .ac-path-val.is-dim", "color")),
+            "var(--faint)",
+            "缺少/改坏了淡化变体的 color 声明（应为 --faint；基础规则被删也在此暴露）",
+        )
+        self.assertEqual(
+            _norm_ws(_decl(".agent-card .ac-path-val.is-dim", "background")),
+            "transparent",
+            "淡化变体背景应为 transparent（与实心胶囊区分）",
+        )
+
+    def test_value_column_never_wraps(self):
+        """值区必须 nowrap + 首元素自适应：否则长路径会把状态标签挤到第二行。
+
+        实测场景（TRAE 卡片）：路径长到换行后，状态标签从值区起点缩进，看起来像
+        「标签列被撑开」。判据取容器声明，而不是「有没有 flex」这种空壳。
+        """
+        sel = ".agent-card:not(.home-card) .ac-meta-row .v"
+        self.assertEqual(_norm_ws(_decl(sel, "flex-wrap")), "nowrap",
+                         "值区必须 nowrap（否则长值把标签挤到第二行）")
+        self.assertIn(":not(.home-card)", sel + _css() and sel,
+                      "值区规则应限定作用域，避免影响主页卡片")
+        self.assertEqual(_norm_ws(_decl(".agent-card:not(.home-card) .ac-meta-row .v > :first-child",
+                                       "flex")), "1 1 auto",
+                         "首个值需自适应")
+
+    def test_no_decorative_dots_on_card_labels(self):
+        """卡片标签不得再有装饰性圆点（taste：装饰状态点默认零）。
+
+        反向验证要点：删掉 ::before 只是「少了个装饰」，但如果规范仍写着有圆点，
+        就会code/规范漂移 —— 这里同时守住代码侧不存在该伪元素。
+        """
+        c = _css()
+        self.assertNotIn(".agent-card .ac-path-label::before", c,
+                         "路径标签不应有装饰性 ::before 圆点")
+        self.assertNotIn(".agent-card .ac-meta-row .k::before", c,
+                         "能力区标签不应有装饰性 ::before 圆点")
+        # 但 is-empty 状态必须仍有**有意义**的表现（否则是死类）
+        self.assertIn(".agent-card .ac-path-row.is-empty .ac-path-label", c,
+                      "is-empty 应有实际样式，不能成为死类")
+
+    def test_path_pills_have_no_persistent_fill(self):
+        """设置页路径默认无底色（消除满屏灰块的表单感），悬停才浮出。"""
+        self.assertEqual(
+            _norm_ws(_decl(".agent-card:not(.home-card) .ac-path-val", "background")),
+            "transparent",
+            "设置页路径默认应为透明底",
+        )
+
+    def test_partial_write_is_not_green(self):
+        """`已写入 N/M` 仅当 N>=M 才用 ok 色；部分写入不得报绿。"""
+        src = _src()
+        i = src.index("function _agentHookSummary(")
+        j = src.index("function renderAgentsTable(", i)
+        body = src[i:j]
+        self.assertIn("allWritten", body, "缺少「是否全部写入」的判定")
+        self.assertIn('tag${allWritten ? " ok" : ""}', body,
+                      "部分写入必须落到中性标签（而非硬编码 ok）")
+
+    def test_dividers_align_across_cards(self):
+        """两条分隔线都必须跨卡片对齐（用户三次反馈后定案）。
+
+        对齐机制：**锚定底部**。`.ac-meta` 用 `margin-top: auto` 把自己与底栏一起推到
+        卡片底部，于是它的上沿 = 卡片底 − (meta 高 + foot 高)。两段高度都恒定
+        （3 行 nowrap + 固定内边），故所有卡片的这条线 y 相同；底栏上沿同理。
+
+        为什么不用「路径区 flex:1 吸收差异」：那会在内容超出时收缩路径区，把末行裁进线里
+        （实测可见），且线上沿依旧随条数漂移。为什么 foot 不能也吃 auto 外边距：
+        空白会被两处瓜分，meta 上沿就跟着漂。
+
+        实测（headless 渲染 + 逐行像素扫描）：3 条与 4 条路径的两张卡片，
+        两条分隔线 y 完全相同 [205, 314]。
+        """
+        self.assertIn("border-top", _rule_body(".agent-card .ac-meta"),
+                      "能力区必须有整宽分隔线（用户明确「分隔线很重要」）")
+        self.assertEqual(_norm_ws(_decl(".agent-card:not(.home-card) .ac-meta", "margin-top")),
+                         "auto", "meta 必须 margin-top:auto，分隔线位置才锚定卡片底部")
+        self.assertEqual(_norm_ws(_decl(".agent-card:not(.home-card) .ac-foot", "margin-top")),
+                         "0", "foot 不得吃 auto 外边距，否则空白被瓜分、分隔线漂移")
+        self.assertEqual(_norm_ws(_decl(".agent-cards", "align-items")), "stretch",
+                         "同组卡片必须等高")
+        self.assertEqual(_norm_ws(_decl(".agent-card:not(.home-card) .ac-paths", "flex")),
+                         "0 0 auto", "路径区不得伸缩：拉伸会裁切末行")
+        self.assertEqual(_norm_ws(_decl(".agent-card:not(.home-card) .ac-foot", "flex")),
+                         "0 0 auto", "底栏不得伸缩")
+
+    def test_dim_variant_does_not_change_shape(self):
+        """淡化变体**只改颜色不改形状**（用户问「Skill 与 MCP/Hook 样式为何不同」）。
+
+        根因：`.is-dim` 曾设 `border-color: var(--line)`，而默认胶囊是透明无边框，
+        于是同一张卡片里 Skills 显示成方框、MCP/Hook 是纯文本。现改为 transparent，
+        并让三行（Skills / MCP / Hook）在未安装时统一淡化。
+        """
+        self.assertEqual(_norm_ws(_decl(".agent-card .ac-path-val.is-dim", "border-color")),
+                         "transparent", "淡化变体不得引入可见边框（须与默认胶囊同形）")
+        self.assertEqual(_norm_ws(_decl(".agent-card .ac-path-val.is-dim", "background")),
+                         "transparent", "淡化变体背景应透明")
+        src = _src()
+        for fn in ("_agentSkillsSummary", "_agentMcpSummary", "_agentHookSummary"):
+            i = src.index(f"function {fn}(")
+            j = src.find("\nfunction ", i + 10)
+            body = src[i:j if j > 0 else i + 900]
+            self.assertIn('const dimCls = t.installed ? "" : " is-dim";', body,
+                          f"{fn} 未按安装状态使用淡化变体（三行应一致）")
+
+
+    def test_value_and_empty_have_identical_metrics(self):
+        """值胶囊与「未收录」空态必须**度量完全一致**，否则 meta 带高度会随内容变化。
+
+        这是 2026-10-12 实测抓到的真实缺陷：`.ac-path-none` 比 `.ac-path-val` 少 3px
+        （字号少 1px + 缺那条 `border: 1px solid transparent`），于是"HOOK 未收录"的卡片
+        meta 带矮 3px，而 meta 带用了 `margin-top:auto` 锚定底部 ⇒ **分隔线整体上移 3px**，
+        跨卡片错位。用户三次反馈"没对齐"，肉眼几乎看不出是 3px。
+
+        实测（真实数据 2~6 条路径、8 张卡片）：修好后 meta 高度恒为 109、两条分隔线 Δ=0。
+
+        判据：两者在**决定行高的每一个属性**上都必须相等（字号 / 行高 / 内边 / 边框 / 字体族）。
+        """
+        val = ".agent-card .ac-path-val"
+        non = ".agent-card .ac-path-none"
+        # 注意：两处都用 `border: 1px solid transparent` 简写，故比较 `border` 简写值；
+        # 拆成 border-width/style 是取不到的（实测报空串）。
+        for prop in ("font-size", "line-height", "padding", "border", "font-family"):
+            with self.subTest(prop=prop):
+                a, b = _decl(val, prop), _decl(non, prop)
+                self.assertTrue(a, f"{val} 未声明 {prop}")
+                self.assertEqual(a, b, f"空态与值胶囊度量不一致：{prop} {a!r} vs {b!r}")
+        # 边框必须存在（透明也行）：它是 hover 不抖动的手段，也是行高的一部分
+        self.assertIn("border", _rule_body(non),
+                      "空态必须有与值胶囊相同的 border（透明边框也参与行高）")
+
+    def test_agent_list_has_hook_column_with_legend(self):
+        """IDE/Agent 列表视图必须有 Hook 列，且与 MCP 同待遇（列 + 图例 + 四态）。
+
+        用户要求：「在 IDE 的 tab 中增加 hook 的配置和 scale（分层作用域），和 MCP 一样」。
+        """
+        src = _src()
+        head = [line for line in src.split("\n") if "技能目录</th>" in line]
+        self.assertTrue(head, "未找到列表视图表头")
+        h = head[0]
+        self.assertIn("<th>MCP</th>", h)
+        self.assertIn("<th>Hook</th>", h, "表头缺少 Hook 列")
+        self.assertLess(h.index("<th>MCP</th>"), h.index("<th>Hook</th>"),
+                        "Hook 列应排在 MCP 之后（与用户截图列序一致）")
+        self.assertIn("Hook", src)  # 图例标题
+        self.assertIn("legend-note", src, "Hook 图例应有取值说明（N/M 含义）")
+        self.assertIn("mcp-badge-legend", src, "MCP 图例应保持存在")
+        # 空行 colspan 必须与列数一致（10 列）
+        self.assertIn('colspan="10"', src, "空行 colspan 应与 10 列一致")
+
+    def test_hook_column_distinguishes_unregistered_from_unsupported(self):
+        """Hook 列：未登记配置路径显示「—」，**不得**显示「不支持」。
+
+        为什么（真实数据驱动）：22 个已安装客户端里只有 6 个登记了 `hooks.clients`。
+        写成「不支持」等于断言"该客户端没有 Hook 能力"，属过度断言；Hook 业务页
+        `_hooksEntries` 只列"有 hooks_config_path"的客户端，是同一口径。
+        """
+        src = _src()
+        i = src.index("const hookSupported =")
+        body = src[i:i + 1800]
+        self.assertIn("尚未收录该客户端的 Hook 配置路径", body,
+                      "未登记情形应给出「未收录」措辞")
+        self.assertNotIn("不支持 Hook", body,
+                         "未登记不得写成「不支持 Hook」（过度断言）")
+        # 未登记态不得用 em-dash 占位（本项目禁 em-dash；「未收录」比破折号表意明确）
+        self.assertNotIn(">—</span>", body, "未登记态不得用 em-dash 占位")
+        # 分层作用域徽标必须在 Hook 单元格内
+        self.assertIn("al-scope", body, "Hook 单元格应含分层作用域徽标")
+        self.assertIn("hooks_scopes", body, "作用域档数取自 hooks_scopes")
+
+    def test_partial_hook_write_is_not_green(self):
+        """Hook 列：部分写入用中性标签，只有全部写入才 ok（与卡片口径一致）。"""
+        src = _src()
+        i = src.index("const hookSupported =")
+        body = src[i:i + 1800]
+        self.assertIn("hookWritten >= hookSupported", body,
+                      "缺少「是否全部写入」的判定")
+
+    def test_label_column_is_58px(self):
+        """标签列宽是不可协商的对齐基准；改它必须同时改规范 §2.9。"""
+        self.assertEqual(_norm_ws(_decl(self.PATH_ROW, "grid-template-columns")),
+                         "58px minmax(0, 1fr)")
 
 
 if __name__ == "__main__":

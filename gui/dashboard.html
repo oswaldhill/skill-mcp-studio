@@ -346,10 +346,34 @@
   .agent-card.home-card.card-dim { opacity: .62; }
   .agent-card.home-card.card-dim .ac-name { color: var(--muted); }
   
-  .agent-card .ac-meta { display: flex; flex-direction: column; gap: var(--gap-2); padding: var(--sp-4) var(--sp-7) var(--sp-6); border-top: 1px solid var(--line); margin-top: var(--sp-0b); font-size: var(--fs-sm); }
-  .agent-card .ac-meta-row { display: flex; align-items: flex-start; gap: var(--gap-3); min-width: 0; }
-  .agent-card .ac-meta-row .k { flex: none; width: 74px; color: var(--muted); padding-top: var(--sp-0a); border-right: 1px solid var(--line); margin-right: var(--sp-0b); }
-  .agent-card .ac-meta-row .v { min-width: 0; flex: 1; display: flex; flex-wrap: wrap; gap: var(--gap-2); align-items: center; }
+  /* 能力摘要区：上下内边与路径区对齐（对称节奏），仅用一条 1px 细线分隔数据组。
+     margin-top 去掉（此前 --sp-0b 使线与上一组的距离比行距还小，节奏不齐）。 */
+  .agent-card .ac-meta { display: flex; flex-direction: column; gap: var(--gap-2); padding: var(--sp-5) var(--sp-7) var(--sp-5); border-top: 1px solid var(--line); font-size: var(--fs-sm); }
+  /* 能力摘要区（Skills / MCP / Hook）：几何与路径区**逐项同构**（2026-10-12 对齐修正）。
+     此前这里是 flex + .k 宽 74px + 竖线，而路径区是 grid + 58px 且无竖线 —— 两组的
+     标签列宽、字体、分隔线全不一致，卡片里能直接看出错位（用户截图反馈「最好保持对齐」）。
+     现在两组同为 58px 标签列 + --gap-4，标签同为 mono/--fs-2xs/大写/--faint + 6px 圆点。 */
+  .agent-card .ac-meta-row { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: var(--gap-4); align-items: start; min-width: 0; }
+  .agent-card .ac-meta-row .k {
+    font-family: var(--mono); font-size: var(--fs-2xs); font-weight: 600;
+    letter-spacing: .07em; text-transform: uppercase; color: var(--faint);
+    line-height: 1.9; display: flex; align-items: center; gap: var(--gap-2); user-select: none;
+  }
+  /* 值区：**首个子元素自适应、其余不换行**，状态标签因此恒贴右、成一条竖线。
+     为什么不是 grid 两栏（精修二次修正）：Hook 行有「路径 + 2 个标签」共 3 个子元素，
+     grid 两栏会把第 3 个挤到第二行第一列并撑满宽度 —— 正是要消除的错位（实测渲染可见）。
+     为什么不用 flex-wrap：长路径会把标签挤到下一行并从值区起点缩进（TRAE 实测）。
+     作用域限定 :not(.home-card)：主页卡片是另一套渲染，不跟着变。 */
+  .agent-card:not(.home-card) .ac-meta-row .v {
+    min-width: 0; display: flex; flex-wrap: nowrap; gap: var(--gap-2); align-items: center;
+  }
+  .agent-card:not(.home-card) .ac-meta-row .v > :first-child { flex: 1 1 auto; min-width: 0; }
+  .agent-card:not(.home-card) .ac-meta-row .v > :not(:first-child) { flex: 0 0 auto; }
+  /* 路径区：列表改单列网格，路径因此**等宽**（右边界成一条竖线）；
+     此前 flex-column 下胶囊宽度随内容长短不一，右边界呈锯齿。 */
+  .agent-card:not(.home-card) .ac-path-row .ac-path-list {
+    display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gap-1);
+  }
   /* 卡片底部直接可见的修复动作条：按需出现，带蓝色可点边界 */
   .agent-card .ac-fixbar { display: flex; flex-wrap: wrap; gap: var(--gap-3); padding: var(--sp-4) var(--sp-7) var(--sp-6); border-top: 1px solid var(--line); margin-top: var(--sp-0b); }
   .agent-card .ac-fixbar .ac-fix {
@@ -455,6 +479,13 @@
   /* 表头内联图标（替代此前的 emoji，见 ICONS.trash/refresh/chart） */
   .merge-table th .th-ico { display: inline-flex; align-items: center; vertical-align: -1px; margin-right: var(--gap-1); }
   .merge-table th .th-ico svg { width: 12px; height: 12px; flex: none; }
+  /* Hook 事件表的分组表头行（47 项词表按 group 分段，避免一张难读的长表） */
+  .hook-group-row td {
+    font-family: var(--mono); font-size: var(--fs-2xs); font-weight: 600;
+    letter-spacing: .1em; text-transform: uppercase; color: var(--faint);
+    background: var(--panel-2); padding: var(--sp-2) var(--sp-4);
+    border-bottom: 1px solid var(--line);
+  }
   .merge-changes { display: flex; flex-direction: column; gap: var(--gap-5); }
   .merge-changes .merge-table { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-card); overflow: hidden; }
   .merge-legend { display: flex; flex-direction: column; gap: var(--gap-2); margin: var(--sp-5) 0 0; }
@@ -745,7 +776,7 @@
     font-size: var(--fs-xs); color: var(--muted); margin: 0 0 var(--sp-6); line-height: 1.4;
   }
   /* 详情弹窗（agent detail） */
-  .ad-modal { width: min(680px, 94vw); padding: 0; overflow: hidden; }
+  .ad-modal { width: min(880px, 94vw); padding: 0; overflow: hidden; }
   .ad-head { padding: var(--sp-9) var(--sp-9a) var(--sp-8); border-bottom: 1px solid var(--line); }
   .ad-head-top { display: flex; align-items: center; gap: var(--gap-3); margin-bottom: var(--sp-4); }
   .ad-type {
@@ -791,6 +822,12 @@
   .ad-entry .ad-e-loc {
     font-family: var(--mono); font-size: var(--fs-2xs); color: var(--muted);
     flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right;
+  }
+  /* 「路径即信息」的行（如 Hook 分层作用域）：完整显示、允许换行，不做省略号截断。
+     详情页的要求是完整可读；MCP 条目的长 URL 仍走上一条的省略号 + title。 */
+  .ad-entry .ad-e-loc-full {
+    white-space: normal; overflow: visible; text-overflow: clip;
+    word-break: break-all; text-align: left; line-height: 1.5;
   }
   .ad-entry .ad-clean {
     flex: none; border: 1px solid var(--err-border); background: var(--err-bg); color: var(--err);
@@ -943,6 +980,11 @@
   .al-name { font-weight: 600; color: var(--text); }
   .al-type { font-size: var(--fs-2xs); color: var(--muted); font-family: var(--mono); }
   .al-metrics { display: flex; gap: var(--gap-1); flex-wrap: wrap; }
+  /* 分层作用域徽标（Hook 列内）：与 .al-metric 同族但更弱 —— 它是元信息（该客户端
+     的 Hook 配置分几档作用域），不是可点的计数徽标，故不做 accent 高亮、不加 hover。 */
+  .al-scope { display: inline-flex; align-items: center; font-size: var(--fs-2xs); color: var(--faint);
+    font-family: var(--mono); padding: var(--sp-0a) var(--sp-3a); border: 1px dashed var(--line);
+    border-radius: var(--r-pill); background: transparent; margin-left: var(--gap-2); }
   .al-metric { display: inline-flex; align-items: center; gap: var(--gap-1); font-size: var(--fs-2xs); color: var(--muted); font-family: var(--mono); padding: var(--sp-0a) var(--sp-3a); border: 1px solid var(--line); border-radius: var(--r-pill); background: var(--panel); }
   .al-metric b { color: var(--text); font-weight: 600; }
   .al-metric.hit { border-color: var(--accent-border); background: var(--accent-bg); color: var(--accent); }
@@ -974,7 +1016,9 @@
   .agent-list-table .al-group-count { font-family: var(--mono); font-size: var(--fs-2xs); color: var(--muted); background: var(--panel-2); border: 1px solid var(--line); padding: 0 var(--sp-3); border-radius: var(--r-pill); line-height: 1.6; }
   .agent-list-table .al-group-metric { font-size: var(--fs-2xs); color: var(--faint); }
   .agent-list-empty { padding: var(--sp-7a); text-align: center; color: var(--faint); font-size: var(--fs-sm); }
-  .agent-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--gap-5); }
+  /* align-items: stretch 是「同组卡片等高」的前提，也是分隔线对齐的基础 —— 显式声明，
+     避免后续有人改成 start 后分隔线静默错位（有断言守住，见 CardLabelColumnAlignmentTest）。 */
+  .agent-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--gap-5); align-items: stretch; }
   @media (max-width: 1240px) { .agent-cards { grid-template-columns: 1fr; } }
 
   .agent-card {
@@ -1021,27 +1065,54 @@
 
   /* 路径区：每类一行，完整列出全部路径 */
   .agent-card .ac-paths { display: flex; flex-direction: column; gap: var(--gap-2); padding: var(--sp-5) var(--sp-7); }
+  /* 路径区**弹性填充**，让卡片内两条分隔线（能力区上沿、底栏上沿）跨卡片对齐。
+     为什么（2026-10-12 用户要求「分隔线永远对齐」）：同一行两张卡片等高，但路径条数
+     可能不同（Cursor 3 条 vs VS Code 4 条）；路径区高度若随内容，其后的分隔线就会错开
+     整整一行。改 flex:1 后由路径区吸收高度差，meta 与 foot 的起点在所有卡片中一致。
+     代价：路径少的卡片在路径区底部留一点空白 —— 这正是「对齐」要付出的、且看起来更整。 */
+  .agent-card:not(.home-card) .ac-paths { flex: 0 0 auto; }
+  /* 分开声明（不用合并选择器）：便于逐选择器断言，也避免某一条被误删后静默失效。 */
+  .agent-card:not(.home-card) .ac-meta { flex: 0 0 auto; margin-top: auto; }
+  .agent-card:not(.home-card) .ac-foot { flex: 0 0 auto; margin-top: 0; }
   .agent-card .ac-path-row { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: var(--gap-4); align-items: start; }
+  /* 路径区与能力摘要区的标签**同族**：mono / --fs-2xs / 大写 / --faint，**无装饰点**。
+     为什么去掉圆点（2026-10-12 排版精修）：它常驻在每一行标签前，却不传达任何状态
+     （只有 is-empty 才换成空心，而「空」已由值区的「未收录」文案说明）—— 按 taste 规则
+     「装饰性状态点默认零，只有真实语义才用」，这里属纯装饰，去掉后标签列更安静。
+     两处声明必须保持一致，有断言逐项比对（见 CardLabelColumnAlignmentTest）。 */
   .agent-card .ac-path-label {
     font-family: var(--mono); font-size: var(--fs-2xs); font-weight: 600;
-    letter-spacing: .07em; color: var(--faint); line-height: 1.9;
+    letter-spacing: .07em; text-transform: uppercase; color: var(--faint); line-height: 1.9;
     display: flex; align-items: center; gap: var(--gap-2); user-select: none;
   }
-  .agent-card .ac-path-label::before { content: ""; width: 6px; height: 6px; border-radius: var(--r-hair); flex-shrink: 0; background: var(--line-strong); }
-  .agent-card .ac-path-row.is-empty .ac-path-label::before { background: transparent; box-shadow: inset 0 0 0 1.5px var(--line-strong); }
   .agent-card .ac-path-list { display: flex; flex-direction: column; gap: var(--gap-1); min-width: 0; }
+  /* 「未收录」行：标签再退一档。原语义由已删除的空心点承担，这里改为透明度弱化，
+     保证 .is-empty 仍是**有意义**的状态类，而不是留下一个死类。 */
+  .agent-card .ac-path-row.is-empty .ac-path-label { opacity: .72; }
   .agent-card .ac-path-item { display: flex; align-items: center; min-width: 0; gap: var(--gap-3); }
   .agent-card .ac-path-badges { margin-left: auto; display: inline-flex; align-items: center; gap: var(--gap-2); flex: none; }
   .agent-card .ac-path-val {
     font-family: var(--mono); font-size: var(--fs-xs); color: var(--muted);
     line-height: 1.5;
-    flex: 0 1 auto; min-width: 0;
+    flex: 1 1 auto; min-width: 0; justify-self: stretch;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     padding: var(--sp-0b) var(--sp-3); border-radius: var(--r-control); cursor: pointer;
     background: var(--panel-2); border: 1px solid transparent;
     transition: background .12s var(--ease), color .12s var(--ease), border-color .12s var(--ease);
   }
   .agent-card .ac-path-val:hover { background: var(--bg-elev); color: var(--text); border-color: var(--line-strong); }
+  /* 未安装客户端的路径胶囊：**淡化**（2026-10-12 用户选方案 A）。
+     语义：这里的路径来自内置注册表的「默认位置」，不代表本机实际状态 ——
+     状态语义由同行右侧的「不适用」标签承担（两者是不同维度，不该抢同样的视觉权重）。
+     仍保留胶囊形态：路径本身仍可点击复制。 */
+  /* 设置页卡片的路径：默认**无底色**，悬停才浮出胶囊。
+     为什么（2026-10-12 精修）：此前每个路径都常驻 --panel-2 灰底，一张卡片里会出现
+     八、九个灰块，读起来像表单输入框；按高密度界面的做法（1px 线分隔数据、少用容器），
+     信息文本应是安静的，交互提示交给 hover（仍保留 cursor:pointer 与「点击复制」title）。 */
+  .agent-card:not(.home-card) .ac-path-val { background: transparent; }
+  .agent-card:not(.home-card) .ac-path-val:hover { background: var(--panel-2); }
+  .agent-card .ac-path-val.is-dim { color: var(--faint); background: transparent; border-color: transparent; }
+  .agent-card .ac-path-val.is-dim:hover { color: var(--muted); border-color: var(--line-strong); background: var(--panel-2); }
   .ac-path-ver {
     font-family: var(--mono); font-size: var(--fs-2xs); font-weight: 500; line-height: 1.4;
     color: var(--muted); background: var(--panel-2); border: 1px solid var(--line);
@@ -1057,7 +1128,7 @@
   .ac-path-more:hover { color: var(--text); background: var(--bg-elev); border-color: var(--line-strong); }
   .ac-path-more:active { transform: scale(.96); }
   .agent-card .ac-path-ver, .agent-card .ac-path-more { flex: none; }
-  .agent-card .ac-path-none { color: var(--faint); font-style: italic; font-size: var(--fs-2xs); line-height: 1.5; padding: var(--sp-0b) var(--sp-3); }
+  .agent-card .ac-path-none { color: var(--faint); font-style: italic; font-family: var(--mono); font-size: var(--fs-xs); line-height: 1.5; padding: var(--sp-0b) var(--sp-3); border: 1px solid transparent; }
   .agent-card .ac-path-collapsed { min-width: 0; display: block; }
   .agent-card .ac-path-expanded { display: none; flex-direction: column; gap: var(--gap-1); min-width: 0; }
   .agent-card .ac-path-row.is-expanded .ac-path-collapsed { display: none; }
@@ -1070,9 +1141,11 @@
   .agent-card .ac-path-collapse:hover { color: var(--text); }
 
   /* 底部：路径计数 + 详情入口 */
+  /* 底栏：去掉 --bg-elev 灰底（卡片内少一个色块，横线重量也随之减轻），
+     内边改用标准档 --sp-4（原来用的 --sp-3b / --sp-5a 是「偶用」档，与全卡节奏不一致）。 */
   .agent-card .ac-foot {
     display: flex; align-items: center; justify-content: space-between;
-    margin-top: auto; padding: var(--sp-3b) var(--sp-7) var(--sp-5a); border-top: 1px solid var(--line); background: var(--bg-elev);
+    margin-top: auto; padding: var(--sp-4) var(--sp-7) var(--sp-4); border-top: 1px solid var(--line);
   }
   .agent-card .ac-foot .ac-count { font-size: var(--fs-2xs); color: var(--faint); font-family: var(--mono); }
 
@@ -1819,6 +1892,18 @@ const escapeHtml = (v) => String(v == null ? "" : v)
   .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
   .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
+// 规范事件名（canonical，PascalCase）→ 某客户端自己的命名。
+// 与 Python 侧 core/hooks_inventory.event_name_for_client 保持同一套规则：
+//   camel_case → 首字母小写（sessionStart）；pascal_case / 其他 → 原样。
+// 为什么需要它：同一个规范事件在 Cursor 是小写驼峰、在 Claude Code/TRAE/Codex 是
+// PascalCase，GUI 的「写往 N 个客户端」列必须按各客户端规范名去比对其能力全集，
+// 否则会把「支持但名字不同」误判成不支持。
+const canonicalToClient = (canon, eventFormat) => {
+  if (!canon) return canon;
+  if (eventFormat === "camel_case") return canon[0].toLowerCase() + canon.slice(1);
+  return canon;
+};
+
 let SNAP = null;
 // 端点连通性结果 —— **独立于审计快照 SNAP**。
 // 审计只判配置（不探活），端点通断只由用户手动点「检查端点连通性」触发，
@@ -2360,6 +2445,16 @@ function renderAgents() {
       <span class="legend-item"><span class="legend-swatch na"></span>不支持 MCP / 无端点</span>
       <span class="legend-note">N / M = 已设置端点数 / 声明挂载的端点总数</span>
     </div>
+    <!-- Hook 图例：只复用既有 .skill-legend。不自造 hook-badge-legend 这类空壳类名：
+         mcp-badge-legend 就是没有 CSS 规则的幽灵类，已被冻结在 GHOST_BASELINE，不应复制。 -->
+    <div class="skill-legend">
+      <span class="legend-label">Hook</span>
+      <span class="legend-item"><span class="legend-swatch ok"></span>全部已写入</span>
+      <span class="legend-item"><span class="legend-swatch"></span>部分已写入</span>
+      <span class="legend-item"><span class="legend-swatch warn"></span>未写入</span>
+      <span class="legend-item"><span class="legend-swatch na"></span>未收录配置 / 仅审计</span>
+      <span class="legend-note">N / M = 已写入事件数 / 该客户端支持的事件数；「N 档」为分层作用域</span>
+    </div>
     <div id="agent-home-body"></div>`;
 
   const body = $("agent-home-body");
@@ -2651,6 +2746,32 @@ function renderHomeListView(q) {
     } else {
       mcpCell = `<span class="tag err" title="端点未在设置中配置（可用「修复 MCP」接入）">${mcpConfigured}/${mcpTotal}</span>`;
     }
+    // Hook 列（2026-10-12 用户要求）：与 MCP 列同待遇 —— 状态标签 + 分层作用域档数。
+    // 口径：hooks_supported_events 是"该客户端支持的事件全集"，hook_events 是"已写入的"。
+    // 颜色由「是否全部写入」驱动（部分写入用中性，不用绿：绿色=已就绪）。
+    const hookSupported = (a.hooks_supported_events || []).length;
+    const hookWritten = (a.hook_events || []).length;
+    const hookScopes = (a.hooks_scopes || []).length;
+    const scopeTag = hookScopes
+      ? `<span class="al-scope" title="分层作用域 ${hookScopes} 档（用户级 / 项目级 / 本地级…）">${hookScopes} 档</span>`
+      : "";
+    let hookCell;
+    if (!a.hooks_config_path) {
+      // 未登记 Hook 配置路径 —— 用「—」而不是「不支持」。
+      // 为什么（与 Hook 业务页 `_hooksEntries` 同口径）：那只是"我们还没收录它的
+      // Hook 配置路径"，不等于"该客户端没有 Hook 能力"。写成"不支持"是过度断言：
+      // 实测 22 个已安装客户端里只有 6 个登记了 hooks.clients，若一律显示"不支持"，
+      // 这一列对多数行都是误导。要接入请到「设置 → Hook / 客户端详情」补登记。
+      hookCell = '<span class="ok-na" title="尚未收录该客户端的 Hook 配置路径（不等于不支持）；可在客户端详情中登记">未收录</span>';
+    } else if (!a.hooks_fix_supported) {
+      hookCell = `<span class="ok-na" title="插件型客户端，不支持模板注入${hookSupported ? `（可用钩子 ${hookSupported} 个）` : ""}">仅审计</span>`;
+    } else if (!hookWritten) {
+      hookCell = `<span class="tag warn" title="尚未写入 ai-memory hook（共支持 ${hookSupported} 个事件）">未写入</span>`;
+    } else if (hookWritten >= hookSupported) {
+      hookCell = `<span class="tag ok" title="已写入 ${hookWritten} 个 / 共支持 ${hookSupported} 个事件">${hookWritten}/${hookSupported}</span>`;
+    } else {
+      hookCell = `<span class="tag" title="部分写入：${hookWritten} 个 / 共支持 ${hookSupported} 个事件">${hookWritten}/${hookSupported}</span>`;
+    }
     return `<tr>
       <td><span class="dot ${dot}" aria-hidden="true"></span> <span class="sr-only">${escapeHtml(statusText)}</span> <span class="al-name">${escapeHtml(a.name)}</span></td>
       <td><span class="al-type">${escapeHtml(a.type || "其他")}</span></td>
@@ -2660,6 +2781,7 @@ function renderHomeListView(q) {
       <td>${cell("config", a.config_paths, a.name)}</td>
       <td>${skillsCell}</td>
       <td>${mcpCell}</td>
+      <td>${hookCell}${scopeTag}</td>
       <td class="al-ops"><button type="button" class="al-detail" data-open="${escapeHtml(a.name)}">${ICONS.info}<span>详情</span></button><button class="kebab" type="button" data-name="${escapeHtml(a.name)}" aria-label="更多操作" aria-haspopup="menu">${ICONS.kebab}</button></td>
     </tr>`;
   }).join("");
@@ -2667,8 +2789,8 @@ function renderHomeListView(q) {
   body.innerHTML = `<div class="agent-list-wrap">
       <div class="agent-list-count">共 ${list.length} 个（分类筛选：${homeType() === "all" ? "全部" : escapeHtml(homeType())}）</div>
       <div class="table-scroll"><table class="agent-list-table">
-        <thead><tr><th>名称</th><th>类型</th><th>安装</th><th>APP</th><th>CLI</th><th>CONFIG</th><th>技能目录</th><th>MCP</th><th style="text-align:right">操作</th></tr></thead>
-        <tbody>${rows || '<tr><td colspan="9" class="path-none">无匹配结果</td></tr>'}</tbody>
+        <thead><tr><th>名称</th><th>类型</th><th>安装</th><th>APP</th><th>CLI</th><th>CONFIG</th><th>技能目录</th><th>MCP</th><th>Hook</th><th style="text-align:right">操作</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="10" class="path-none">无匹配结果</td></tr>'}</tbody>
       </table></div>
     </div>`;
   body.querySelectorAll("[data-open]").forEach((b) => {
@@ -3474,6 +3596,78 @@ function _groupBy(list, fn) {
   return [...m.entries()];
 }
 
+// ---- 设置页卡片的「能力摘要」构造（与详情弹窗同源字段） ----
+// 用户要求（2026-10-12）：详情里的内容要在卡片/列表上直接可见，而不是必须点进去。
+// 这里只做**摘要**（计数 + 关键路径 + 状态标签），完整清单仍在详情里，避免卡片过高。
+function _agentSkillsSummary(t) {
+  const dirs = (t.skills_paths || []).filter(Boolean);
+  // 未安装 → 目录只是注册表的「默认位置」，不是本机状态：用淡化变体（.is-dim），
+  // 与右侧「不适用」标签一起表达「这条路径尚未在本机生效」。仍可点击复制。
+  const dimCls = t.installed ? "" : " is-dim";
+  const dirTag = dirs.length
+    ? `<span class="ac-path-val${dimCls}" title="${escapeHtml(dirs.join("\n"))}（点击复制）">${escapeHtml(dirs[0])}${dirs.length > 1 ? ` +${dirs.length - 1}` : ""}</span>`
+    : '<span class="ac-path-none">未收录目录</span>';
+  if (!t.installed) return dirTag + '<span class="tag" title="客户端未安装，技能状态不适用">不适用</span>';
+  const total = t.skills_total || 0;
+  const linked = t.skills_enabled_count || 0;
+  let st;
+  if (!t.skills_dir_found) st = '<span class="tag err" title="未找到 skills 目录">无目录</span>';
+  else if (total > 0 && linked === total) st = `<span class="tag ok" title="全部技能均来自统一目录">${linked}/${total} 统一目录</span>`;
+  else if (linked > 0) st = `<span class="tag warn" title="仅部分技能来自统一目录">${linked}/${total} 统一目录</span>`;
+  else st = '<span class="tag err" title="技能目录未链接到统一仓库">未接入统一目录</span>';
+  return dirTag + st;
+}
+
+function _agentMcpSummary(t) {
+  const path = t.mcp_config_path || "";
+  // 未安装时该路径只是注册表默认值，与 Skills 目录同性质 → 一并淡化，三行保持一致
+  const dimCls = t.installed ? "" : " is-dim";
+  const pathTag = path
+    ? `<span class="ac-path-val${dimCls}" title="${escapeHtml(path)}（点击复制）">${escapeHtml(path)}</span>`
+    : '<span class="ac-path-none">未收录配置</span>';
+  const attach = (t.mcp_attach || []).filter(Boolean);
+  const n = attach.length;
+  const countTag = n
+    ? `<span class="tag" title="${t.has_explicit_attach ? "手动指定端点" : "自动挂载全部可用端点"}">${n} 个端点</span>`
+    : '<span class="tag" title="未声明挂载端点（非故障）">无端点</span>';
+  return pathTag + countTag;
+}
+
+function _agentHookSummary(t) {
+  const path = t.hooks_config_path || "";
+  // 同 MCP：未安装时该路径是注册表默认值 → 一并淡化
+  const dimCls = t.installed ? "" : " is-dim";
+  const pathTag = path
+    ? `<span class="ac-path-val${dimCls}" title="${escapeHtml(path)}（点击复制）">${escapeHtml(path)}</span>`
+    : '<span class="ac-path-none">未收录 Hook 配置</span>';
+  if (!path) return pathTag;
+  const scopes = (t.hooks_scopes || []).length;
+  const supported = (t.hooks_supported_events || []).length;
+  const written = (t.hook_events || []).length;
+  // 胶囊最多两个：把「支持 N」并进「已写入 N/M」的分母，避免第三个胶囊换行后
+  // 与标签列错位（用户反馈「最好保持对齐」）。
+  const bits = [];
+  if (scopes) bits.push(`<span class="tag" title="分层作用域（用户级/项目级/本地级…）">${scopes} 档作用域</span>`);
+  if (supported) {
+    // 只有「全部写入」才是绿；部分写入用中性标签。
+    // 为什么（精修）：绿色在本项目 token 里表示「已就绪」，而 8/21 是「只写了一部分」，
+    // 用绿色会让人扫一眼以为已经完成 —— 属状态色语义错误。
+    const allWritten = written >= supported;
+    bits.push(written
+      ? `<span class="tag${allWritten ? " ok" : ""}" title="已写入 ${written} 个 / 共支持 ${supported} 个事件">已写入 ${written}/${supported}</span>`
+      : (t.hooks_fix_supported
+        ? `<span class="tag warn" title="尚未写入 ai-memory hook（共支持 ${supported} 个事件）">未写入 · 支持 ${supported}</span>`
+        : `<span class="tag" title="插件型客户端，不支持模板注入（可用钩子 ${supported} 个）">仅审计 · ${supported}</span>`));
+  } else {
+    bits.push(written
+      ? `<span class="tag ok" title="已写入的 ai-memory hook 事件数">已写入 ${written}</span>`
+      : (t.hooks_fix_supported
+        ? '<span class="tag warn" title="尚未写入 ai-memory hook">未写入</span>'
+        : '<span class="tag" title="插件型客户端，不支持模板注入">仅审计</span>'));
+  }
+  return pathTag + bits.join("");
+}
+
 function renderAgentsTable(page) {
   const el = $("settings-agents-table");
   if (!el) return;
@@ -3544,6 +3738,13 @@ function renderAgentsTable(page) {
             <div class="ac-path-row"><span class="ac-path-label" data-k="cli">CLI</span><div class="ac-path-list">${_acPathVals(cli)}</div></div>
             <div class="ac-path-row"><span class="ac-path-label" data-k="cfg">CONFIG</span><div class="ac-path-list">${_acPathVals(cfg)}</div></div>
           </div>
+          <!-- 能力摘要（2026-10-12 用户要求）：详情里的内容要在**卡片上**直接可见，
+               不必点进弹窗。与主页卡片同构（.ac-meta / .ac-meta-row）。 -->
+          <div class="ac-meta">
+            <div class="ac-meta-row"><span class="k">Skills</span><span class="v">${_agentSkillsSummary(t)}</span></div>
+            <div class="ac-meta-row"><span class="k">MCP</span><span class="v">${_agentMcpSummary(t)}</span></div>
+            <div class="ac-meta-row"><span class="k">Hook</span><span class="v">${_agentHookSummary(t)}</span></div>
+          </div>
           <div class="ac-foot">
             <span class="ac-count">${totalPaths} 条路径</span>
             <button class="ghost sm btn-agent-detail" data-name="${escapeHtml(t.name)}">详情</button>
@@ -3609,11 +3810,12 @@ function renderAgentsTable(page) {
           <td><span class="al-name">${escapeHtml(t.name)}</span>${(t.aliases||[]).length ? `<span class="al-type"> · ${escapeHtml(t.aliases.join(", "))}</span>` : ""}</td>
           <td><span class="al-type">${escapeHtml(t.type || "Other")}</span></td>
           <td><div class="al-metrics">${metric("APP", app.length, app.length>0)}${metric("CLI", cli.length, cli.length>0)}${metric("CONFIG", cfg.length, cfg.length>0)}</div></td>
+          <td><div class="al-metrics">${_agentSkillsSummary(t)}${_agentMcpSummary(t)}${_agentHookSummary(t)}</div></td>
           <td style="text-align:right"><button class="ghost sm btn-agent-detail" data-name="${escapeHtml(t.name)}">详情</button></td>
         </tr>`;
       }).join("");
       return `<tr class="al-group-head" data-group="${escapeHtml(type)}">
-          <td colspan="4"><span class="al-group-label"><span class="agt-caret"></span><span class="al-group-name">${escapeHtml(type)}</span><span class="al-group-count">${items.length}</span><span class="al-group-metric">${_agentsTypeFilter==="all" ? "" : ""}</span></span></td>
+          <td colspan="5"><span class="al-group-label"><span class="agt-caret"></span><span class="al-group-name">${escapeHtml(type)}</span><span class="al-group-count">${items.length}</span><span class="al-group-metric">${_agentsTypeFilter==="all" ? "" : ""}</span></span></td>
         </tr>${rows}`;
     }).join("");
 
@@ -3621,8 +3823,8 @@ function renderAgentsTable(page) {
         <div class="agent-chips" id="agent-chips">${chips}</div>
         <div class="agent-list-count">共 ${list.length} 个 Agent/IDE（分 ${groupedList.length} 类）${q ? `，匹配「${escapeHtml(q)}」` : ""}</div>
         <div class="table-scroll"><table class="agent-list-table">
-          <thead><tr><th>名称</th><th>类型</th><th>路径指标</th><th style="text-align:right">操作</th></tr></thead>
-          <tbody>${groupRows || '<tr><td colspan="4" class="path-none">无匹配结果</td></tr>'}</tbody>
+          <thead><tr><th>名称</th><th>类型</th><th>路径指标</th><th>能力摘要（Skills / MCP / Hook）</th><th style="text-align:right">操作</th></tr></thead>
+          <tbody>${groupRows || '<tr><td colspan="5" class="path-none">无匹配结果</td></tr>'}</tbody>
         </table></div>
       </div>`;
 
@@ -3977,52 +4179,55 @@ function renderSettings() {
   const hookClientsMeta = (SNAP && SNAP.settings && SNAP.settings.hook_clients) || [];
   const hookSelectedSet = new Set(hookSelected);
 
-  // 事件行：勾选框 + 事件名 + 说明 + 「会写到哪些客户端」（按各自命名规范反推）
-  const CATALOG_ROWS = hookCatalog.length
-    ? hookCatalog.map((e) => {
-        const canon = e.name;
-        const on = hookSelectedSet.has(canon);
-        // 该事件会写到哪些客户端：**只显示数量 + title 详情**。
-        // 之前把 6 个 `客户端:事件名` 内联成一格，宽到把卡片撑破（实测截图）；
-        // 规范 §2.2 对这类「一格信息过多」给的做法是截断 + 完整值放 title。
-        const fixable = hookClientsMeta.filter(c => c.fix_supported);
-        const hosts = fixable.map((c) => {
-          const nm = c.event_format === "camel_case"
-            ? canon[0].toLowerCase() + canon.slice(1)
-            : canon;
-          return `${c.name}:${nm}`;
-        }).join("、");
-        return `<tr>
+  // 事件行：勾选框 + 事件名 + 说明 + 「会写到哪些客户端」。
+  //
+  // 「写往」的口径（2026-10-12 修正）：不再只看 fix_supported，而是**转名后落在该
+  // 客户端能力全集里**才算 —— 各客户端支持的事件集不同（Claude Code 33 / Cursor 21 /
+  // TRAE 6），原先按「可写入的客户端数」一栏把不支持的也算进去，是错的。同一事件
+  // 还会按 event_format 变成各客户端自己的名字（Cursor 小写驼峰 / 其余 PascalCase）。
+  const clientHosts = (canon) => hookClientsMeta
+    .filter((c) => c.fix_supported)
+    .map((c) => ({ c, nm: canonicalToClient(canon, c.event_format) }))
+    .filter(({ c, nm }) => {
+      const sup = c.declared_events || [];
+      return !sup.length || sup.includes(nm);
+    });
+  // 词表已扩到 47 项，按 group 分组渲染（否则是一张 47 行的长表）
+  const catalogGroups = [];
+  hookCatalog.forEach((e) => {
+    const g = e.group || "其他";
+    const last = catalogGroups[catalogGroups.length - 1];
+    if (last && last.name === g) last.items.push(e);
+    else catalogGroups.push({ name: g, items: [e] });
+  });
+  const CATALOG_ROWS = catalogGroups.map((grp) => {
+    const rows = grp.items.map((e) => {
+      const canon = e.name;
+      const on = hookSelectedSet.has(canon);
+      const hosts = clientHosts(canon);
+      const hostText = hosts.map(({ c, nm }) => `${c.name}:${nm}`).join("、");
+      return `<tr>
           <td><input type="checkbox" data-hook-event="${escapeHtml(canon)}" ${on ? "checked" : ""} aria-label="写入事件 ${escapeHtml(canon)}"></td>
           <td class="mono">${escapeHtml(canon)}</td>
           <td>${escapeHtml(e.description || "-")}</td>
-          <td class="mono muted" title="${escapeHtml(hosts || "-")}">${fixable.length} 个客户端</td>
+          <td class="mono muted" title="${escapeHtml(hostText || "无客户端支持")}">${hosts.length} 个客户端</td>
         </tr>`;
-      }).join("")
-    : "";
-
-  // 客户端命名规范表（只读）：说明「同一个事件在不同客户端的名字」
-  const hookClientRows = hookClientsMeta.map((c) => {
-    const sample = hookCatalog.slice(0, 2).map((e) => {
-      const nm = c.event_format === "camel_case"
-        ? e.name[0].toLowerCase() + e.name.slice(1)
-        : e.name;
-      return `<code class="mono">${escapeHtml(nm)}</code>`;
-    }).join("、") || "-";
-    return `<tr>
-      <td>${escapeHtml(c.name)}</td>
-      <td class="mono">${escapeHtml(c.config_path || "-")}</td>
-      <td>${escapeHtml(c.event_format || "-")}</td>
-      <td>${sample}</td>
-      <td>${c.fix_supported ? "可写入" : "仅审计"}</td>
-    </tr>`;
+    }).join("");
+    return `<tr class="hook-group-row"><td colspan="4">${escapeHtml(grp.name)}<span class="muted"> · ${grp.items.length}</span></td></tr>${rows}`;
   }).join("");
+
+  // 「客户端事件命名规范」表已**移入「IDE / Agent」详情**（2026-10-12 按用户要求）。
+  // 为什么：客户端清单、hook 配置文件路径、命名规范本就是「这个客户端」的属性，
+  // 与 IDE/Agent 页的 APP/CLI/CONFIG 路径是同一类信息。两处各自维护一份必然漂移
+  // （本页只显示单条 config_path，而 IDE/Agent 已有多档作用域）。此处不再重复渲染。
 
   const selectedCount = hookSelected.length;
   const hooksCard = `<div class="settings-card">
     <h4>要写入的 Hook 事件</h4>
-    <div class="card-link"><div class="grow note">勾选需要写入客户端的事件（${hookCatalog.length} 个标准事件可选）。
-      保存后按各客户端命名规范写入其 hook 配置文件，原配置会先备份。未勾选任何事件即不写入。</div>
+    <div class="card-link"><div class="grow note">勾选需要写入客户端的事件（${hookCatalog.length} 个可选，默认全选）。
+      这里只保存<strong>要写入哪些事件</strong>的选择；真正写入各客户端请在「Hook」页点「写入 Hook」（写入前会备份原配置）。未勾选任何事件即视为停用。</div>
+      <button class="ghost sm" data-action="hook-select-all">全选</button>
+      <button class="ghost sm" data-action="hook-select-none">清空</button>
       <button class="primary" data-action="save-hook-events">保存</button>
     </div>
     ${hookCatalog.length ? `
@@ -4030,18 +4235,11 @@ function renderSettings() {
       <thead><tr><th style="width:36px"></th><th>事件</th><th>说明</th><th>写往</th></tr></thead>
       <tbody>${CATALOG_ROWS}</tbody>
     </table></div>
-    <div class="note" style="margin-top:var(--sp-3)">当前选中 ${selectedCount} 个事件。写入后可在「Hook」页查看各客户端的接入状态。</div>`
+    <div class="note" style="margin-top:var(--sp-3)">当前选中 <span id="hook-selected-count">${selectedCount}</span> 个事件。各客户端支持的事件集不同
+      （Claude Code 33 / WorkBuddy 29 / Cursor 21 / Codex 12 / TRAE 6），写入时只落它能认的那些；
+      逐客户端的配置路径、分层作用域与支持事件见「IDE / Agent → 详情 → Hook 配置」。
+      写入后可在「Hook」页查看各客户端的接入状态。</div>`
     : '<div class="empty">config.yaml 未定义 hooks.events（无标准事件可管理）</div>'}
-  </div>
-  <div class="settings-card">
-    <h4>客户端事件命名规范</h4>
-    <div class="note" style="margin-bottom:var(--sp-3)">同一个标准事件在不同客户端的大小写规范不同，写入时自动转换（无需手工维护映射）。</div>
-    ${hookClientsMeta.length ? `
-    <div class="table-scroll"><table class="merge-table">
-      <thead><tr><th>客户端</th><th>Hook 配置文件</th><th>命名规范</th><th>示例</th><th>写入</th></tr></thead>
-      <tbody>${hookClientRows}</tbody>
-    </table></div>`
-    : '<div class="empty">config.yaml 未定义 hooks.clients</div>'}
   </div>`;
 
   // 「IDE / Agent」：内置注册表清单（数据来自内置数据库），支持卡片/列表视图
@@ -4077,25 +4275,50 @@ function renderSettings() {
   el.querySelectorAll("[data-usage-auto]").forEach((b) => {
     b.addEventListener("click", () => setUsageAutoMinutes(b.dataset.usageAuto));
   });
+  // 「全选 / 清空」只改本地勾选态，仍需点「保存」才落盘
+  // （与保存链路同一原则：不在用户没点保存时静默改配置）
+  const hookBoxes = () => Array.from(el.querySelectorAll("[data-hook-event]"));
+  const syncHookCount = () => {
+    const cnt = $("hook-selected-count");
+    if (cnt) cnt.textContent = String(hookBoxes().filter((c) => c.checked).length);
+  };
+  [["hook-select-all", true], ["hook-select-none", false]].forEach(([act, on]) => {
+    const btn = el.querySelector(`[data-action='${act}']`);
+    if (btn) btn.addEventListener("click", () => {
+      hookBoxes().forEach((cb) => { cb.checked = on; });
+      syncHookCount();
+    });
+  });
   const saveHookEvents = el.querySelector("[data-action='save-hook-events']");
   if (saveHookEvents) {
-    saveHookEvents.addEventListener("click", async () => {
+    saveHookEvents.addEventListener("click", () => {
       // 收集勾选项 → 逗号分隔交给 CLI（--set-setting hook_events=a,b,c）。
       // 顺序按 catalog 的顺序，保证同一组勾选每次写出相同文本（便于 diff）。
       const picked = [];
       el.querySelectorAll("[data-hook-event]").forEach((cb) => {
         if (cb.checked) picked.push(cb.dataset.hookEvent);
       });
-      saveHookEvents.disabled = true;
-      const res = await runCli(["--set-setting", "hook_events=" + picked.join(",")]);
-      saveHookEvents.disabled = false;
-      if (!res || res.code !== 0) {
-        showBanner("err", "保存 Hook 事件失败：" + cliErrDetail(res));
-        return;
-      }
-      showBanner("ok", `已保存 ${picked.length} 个事件。点「Hook」页的写入按钮即可应用到各客户端。`);
-      // 回读落盘值再重渲染：不假定本地状态已生效（与后台巡检同一原则）
-      await loadManagement();
+      // 语义边界（2026-10-12 用户指正）：这一步**只保存"要用哪些事件"的选择**，
+      // 不碰任何客户端的 hook 配置文件。真正写入各 IDE 是「Hook」业务页的
+      // 「写入 Hook」动作 —— 两件事分开，否则一次「保存设置」会产生用户没预期的写盘。
+      //
+      // 结果反馈走 runTaskModal（弹框）：操作结果（成功/失败）属**弹框**职责。
+      // 此前用 showBanner 把 CLI 的整段 stdout（技能扫描报告，实测 1600 字符）
+      // 直接铺在页面顶部 —— 错误展示不该是页面级横幅的一大片文本。
+      runTaskModal("保存 Hook 事件选择", async () => {
+        const res = await runCli(["--set-setting", "hook_events=" + picked.join(",")]);
+        if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
+        if (res.code === 0) {
+          return {
+            ok: true,
+            message: picked.length
+              ? `已保存 ${picked.length} 个事件的选择。要写入各客户端，请到「Hook」页点「写入 Hook」。`
+              : "已保存为「不写入任何事件」（停用）。",
+          };
+        }
+        return { ok: false, message: "保存 Hook 事件选择失败",
+                 detail: cliFailLines(res) || cliErrDetail(res) };
+      }, () => refreshBlocks(["settings"]), ["读取当前选择", "写入 config.yaml", "校验回写"]);
     });
   }
   el.querySelectorAll("[data-patrol-toggle]").forEach((b) => {
@@ -5511,6 +5734,36 @@ function showAgentDetail(name) {
     return `<div class="ad-entry"><span class="ad-e-key">${escapeHtml(e.key)}</span><span class="tag ${color}">${escapeHtml(label)}</span>${e.high_risk ? `<span class="tag warn" title="${escapeHtml(e.risk_reason || "")}">客户端自带?</span>` : ""}<span class="ad-e-loc" title="${escapeHtml(loc)}">${escapeHtml(loc)}</span>${delBtn}</div>`;
   }).join("") || '<div class="ad-none">无 MCP 条目</div>';
 
+  // Hook 配置（2026-10-12 新增）：该客户端的 hook 写入规范与分层作用域。
+  //
+  // 为什么放在这里：原先这块信息是「设置 → Hook」里的一张只读表（客户端 / Hook 配置
+  // 文件 / 命名规范 / 示例 / 是否可写），与 IDE/Agent 页各说各话。按用户要求合并过来
+  // 它就是「这个客户端」的属性，与上面 APP/CLI/CONFIG 路径同类；且只有在这里才能
+  // 与 Skills、MCP 并列地看到「该客户端支持哪些事件、已写入哪些」。
+  const hkScopes = a.hooks_scopes || [];
+  const hkSupported = a.hooks_supported_events || [];
+  const hkWritten = new Set(a.hook_events || []);
+  const hkMissing = a.missing_key_events || [];
+  const scopeList = hkScopes.length
+    ? `<div class="ad-entries">${hkScopes.map((s) => `<div class="ad-entry"><span class="ad-e-key">${escapeHtml(s.label || s.id || "")}</span><span class="ad-e-loc ad-e-loc-full">${escapeHtml(s.config_path || "")}</span></div>`).join("")}</div>`
+    : '<span class="ad-none">未声明分层作用域</span>';
+  // 事件清单：已写入 ai-memory hook 的用 ok 态标签，其余为中性胶囊；颜色只是辅助，
+  // 名称本身可读（规范 3b：不得只靠颜色传达信息）。
+  const eventChips = hkSupported.length
+    ? `<div class="ad-pills">${hkSupported.map((e) => (hkWritten.has(e)
+      ? `<span class="tag ok" title="已写入 ai-memory hook">${escapeHtml(e)}</span>`
+      : `<span class="ad-pill">${escapeHtml(e)}</span>`)).join("")}</div>`
+    : '<span class="ad-none">未声明支持事件</span>';
+  const hooksSection = `<div class="ad-section">
+      <div class="ad-sec-label">Hook 配置</div>
+      ${kv("配置文件", textVal(a.hooks_config_path))}
+      ${kv("分层作用域", scopeList)}
+      ${kv("事件命名", textVal(a.hooks_event_format))}
+      ${kv("支持事件", `<span class="ad-v">${hkSupported.length} 个${hkWritten.size ? `，其中已写入 ${hkWritten.size} 个` : ""}</span>`)}
+      ${kv("事件清单", eventChips)}
+      ${hkMissing.length ? kv("缺关键事件", `<span class="ad-v">${escapeHtml(hkMissing.join(", "))}</span>`) : ""}
+    </div>`;
+
   mountModal(`<div class="modal-backdrop"><div class="modal ad-modal">
     <div class="ad-head">
       <div class="ad-head-top"><span class="ad-type">${escapeHtml(type)}</span>${stateChip}</div>
@@ -5537,11 +5790,12 @@ function showAgentDetail(name) {
         <div class="ad-kv"><span class="ad-k">条目</span><div class="ad-entries">${invRows}</div></div>
         ${a.fix_supported ? `<div class="ad-cleanbar">${legacyCount > 0 || unmanagedCount > 0 ? `<span class="ad-clean-note">${legacyCount > 0 ? `${legacyCount} 个旧通道` : ""}${legacyCount > 0 && unmanagedCount > 0 ? "，" : ""}${unmanagedCount > 0 ? `${unmanagedCount} 个未纳管` : ""}</span>` : ""}${legacyCount > 0 ? `<button class="ad-clean-btn" type="button" data-action="clean-legacy" data-name="${escapeHtml(name)}">清理旧 MCP</button>` : ""}${unmanagedCount > 0 ? `<button class="ad-clean-btn" type="button" data-action="remove-mcp-class" data-name="${escapeHtml(name)}" data-class="unmanaged">清理未纳管</button>` : ""}<button class="ad-clean-btn" type="button" data-action="show-config-backups" data-name="${escapeHtml(name)}">从备份恢复</button></div>` : ""}
       </div>
+      ${hooksSection}
     </div>
     <div class="ad-foot">${isConfigOnly
       ? `<button class="btn-soft danger" id="ad-cleanup-config">清理配置</button>`
       : (a.fix_supported
-        ? `<button class="btn-soft" id="ad-fix-skills">修复 Skills</button>${canFixMcp ? `<button class="btn-soft" id="ad-fix-mcp">修复 MCP</button>` : ""}`
+        ? `<button class="btn-soft" id="ad-fix-skills">修复 Skills</button>${canFixMcp ? `<button class="btn-soft" id="ad-fix-mcp">修复 MCP</button>` : ""}${a.hooks_fix_supported ? `<button class="btn-soft" id="ad-fix-hooks">写入 Hook</button>` : ""}`
         : "")}<button class="btn-cancel close-push" id="ad-close">关闭</button></div>
   </div></div>`);
   $("ad-close").onclick = closeModal;
@@ -5550,6 +5804,8 @@ function showAgentDetail(name) {
   } else if (a.fix_supported) {
     $("ad-fix-skills").onclick = () => { closeModal(); fixSkillsFor(name); };
     if (canFixMcp) $("ad-fix-mcp").onclick = () => { closeModal(); fixMcpFor(name); };
+    const adFixHooks = $("ad-fix-hooks");
+    if (adFixHooks) adFixHooks.onclick = () => { closeModal(); fixHooksFor(name); };
   }
 }
 

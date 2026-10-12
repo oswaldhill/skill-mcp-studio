@@ -261,86 +261,345 @@ unified_skills_dir: ~/.skills-manager/skills
 # 据此写入标准 hook 模板（backup → atomic-write → validate → rollback）。
 # mcp_tools[].hooks_config_path 作为兼容字段保留，本段为权威来源。
 hooks:
-  # 标准事件签名（跨客户端归一；写入时按各客户端 event_format 转大小写）
+  # ── 规范事件词表（canonical）─────────────────────────────────────
+  # GUI「Hook 事件」可勾选的**全集**：跨客户端归一的规范名（PascalCase）。
+  # 各客户端用它自己的命名写在 hooks.clients[].events（该客户端**能力全集**）里；
+  # 写入时按 event_format 转名 + 按能力过滤（core/hooks_fixer.py）—— 只写对方
+  # 真正认的事件，不会把 Cursor 独有的 BeforeTabFileRead 写进 Claude Code。
+  #
+  # 取值来源（2026-10-12 调研，逐客户端以**官方文档**为准、本机配置为旁证）：
+  #   Claude Code 33 / WorkBuddy 29 / Cursor 21 / Codex 12 / TRAE 6（官方）；
+  #   本表是这些集合的并集。OpenCode 走 TS 插件（无 JSON hooks），其钩子不在此表。
   events:
+  # — 会话生命周期 —
   - name: SessionStart
-    description: 会话开始
-  - name: UserPromptSubmit
-    description: 用户提交提示
+    group: 会话生命周期
+    description: 会话开始 / 恢复
   - name: SessionEnd
+    group: 会话生命周期
     description: 会话结束
+  - name: Setup
+    group: 会话生命周期
+    description: 一次性初始化（--init-only 等）
   - name: Stop
-    description: 停止
-  # 各客户端的 hook 配置位置与写入规范
+    group: 会话生命周期
+    description: 本轮响应结束
+  - name: StopFailure
+    group: 会话生命周期
+    description: 本轮因 API 错误结束
+  - name: FinalStop
+    group: 会话生命周期
+    description: 轮次到达最终终态（WorkBuddy 独有）
+  - name: Interrupt
+    group: 会话生命周期
+    description: 用户中断进行中的回合
+  # — 提示词 —
+  - name: UserPromptSubmit
+    group: 提示词
+    description: 用户提交提示词
+  - name: UserPromptExpansion
+    group: 提示词
+    description: 命令 / 斜杠命令展开为提示词
+  - name: BeforeSubmitPrompt
+    group: 提示词
+    description: 提交提示词前（可拦截）
+  # — 工具调用 —
+  - name: PreToolUse
+    group: 工具调用
+    description: 工具调用前（可拦截 / 改写入参）
+  - name: PostToolUse
+    group: 工具调用
+    description: 工具调用成功后
+  - name: PostToolUseFailure
+    group: 工具调用
+    description: 工具调用失败后
+  - name: PostToolBatch
+    group: 工具调用
+    description: 一批并行工具调用全部结束后
+  - name: PermissionRequest
+    group: 工具调用
+    description: 需要权限决策时
+  - name: PermissionDenied
+    group: 工具调用
+    description: 权限被自动拒绝后
+  # — shell / MCP / 文件 —
+  - name: BeforeShellExecution
+    group: shell / MCP / 文件
+    description: shell 命令执行前
+  - name: AfterShellExecution
+    group: shell / MCP / 文件
+    description: shell 命令执行后
+  - name: BeforeMCPExecution
+    group: shell / MCP / 文件
+    description: MCP 工具调用前
+  - name: AfterMCPExecution
+    group: shell / MCP / 文件
+    description: MCP 工具调用后
+  - name: BeforeReadFile
+    group: shell / MCP / 文件
+    description: 读取文件前（可拒绝）
+  - name: AfterFileEdit
+    group: shell / MCP / 文件
+    description: 编辑文件后
+  - name: BeforeTabFileRead
+    group: shell / MCP / 文件
+    description: 行内补全读取文件前（Cursor Tab）
+  - name: AfterTabFileEdit
+    group: shell / MCP / 文件
+    description: 行内补全编辑文件后（Cursor Tab）
+  - name: FileChanged
+    group: shell / MCP / 文件
+    description: 被监视的文件在磁盘上变更
+  # — 子代理 / 任务 —
+  - name: SubagentStart
+    group: 子代理 / 任务
+    description: 子代理启动
+  - name: SubagentStop
+    group: 子代理 / 任务
+    description: 子代理结束
+  - name: TaskCreated
+    group: 子代理 / 任务
+    description: 任务创建
+  - name: TaskCompleted
+    group: 子代理 / 任务
+    description: 任务完成
+  - name: TeammateIdle
+    group: 子代理 / 任务
+    description: 团队成员即将进入空闲
+  # — 上下文压缩 / 模型 —
+  - name: PreCompact
+    group: 上下文压缩 / 模型
+    description: 上下文压缩前
+  - name: PostCompact
+    group: 上下文压缩 / 模型
+    description: 上下文压缩后
+  - name: PreModelSwitch
+    group: 上下文压缩 / 模型
+    description: 模型切换前
+  - name: PostModelSwitch
+    group: 上下文压缩 / 模型
+    description: 模型切换后
+  # — 观察 / 通知 —
+  - name: Notification
+    group: 观察 / 通知
+    description: 发送通知时
+  - name: MessageDisplay
+    group: 观察 / 通知
+    description: 助手消息显示到界面时
+  - name: AfterAgentResponse
+    group: 观察 / 通知
+    description: 助手完成一条消息
+  - name: AfterAgentThought
+    group: 观察 / 通知
+    description: 完成一个思考块
+  # — 指令 / 配置 / 目录 —
+  - name: InstructionsLoaded
+    group: 指令 / 配置 / 目录
+    description: 指令文件（CLAUDE.md 等）加载
+  - name: ConfigChange
+    group: 指令 / 配置 / 目录
+    description: 配置文件在会话期间变更
+  - name: CwdChanged
+    group: 指令 / 配置 / 目录
+    description: 工作目录变更
+  - name: DirectoryAdded
+    group: 指令 / 配置 / 目录
+    description: 会话中途新增工作目录
+  - name: WorkspaceOpen
+    group: 指令 / 配置 / 目录
+    description: 打开工作区（Cursor App 生命周期）
+  - name: WorktreeCreate
+    group: 指令 / 配置 / 目录
+    description: 创建工作树
+  - name: WorktreeRemove
+    group: 指令 / 配置 / 目录
+    description: 移除工作树
+  # — MCP 交互 —
+  - name: Elicitation
+    group: MCP 交互
+    description: MCP 服务器请求用户输入
+  - name: ElicitationResult
+    group: MCP 交互
+    description: 用户响应回传 MCP 服务器前
+
+  # 各客户端的 hook 配置位置、事件命名规范与**能力全集**。
+  # events  = 该客户端支持的全部事件（用它自己的命名）→ GUI 展示 + 写入校验
+  # scopes  = 分层作用域目录（用户级 / 项目级 / 本地级 / 托管级）→ GUI 展示
+  # entry_style = 事件条目的结构形态，两套**不可混用**（本机实测）：
+  #   nested → {matcher, hooks: [{type, command}]}（Claude Code / TRAE / Codex / WorkBuddy）
+  #   flat   → {type, command, matcher}（Cursor）
   clients:
   - name: Claude Code
     config_path: ~/.claude/settings.json
     format: json
     hook_key_path: [hooks]
     event_format: pascal_case
-    events: [SessionStart, UserPromptSubmit, SessionEnd, Stop]
+    entry_style: nested
     fix_supported: true
-    note: Claude Code 生命周期 hooks（settings.json）
-    # 标准注入模板：事件 → ai-memory hook 命令
+    note: Claude Code 生命周期 hooks（settings.json；官方 33 个事件）
+    scopes:
+    - id: user
+      label: 用户级
+      config_path: ~/.claude/settings.json
+    - id: project
+      label: 项目级
+      config_path: <项目根>/.claude/settings.json
+    - id: local
+      label: 项目本地级
+      config_path: <项目根>/.claude/settings.local.json
+    - id: managed
+      label: 企业托管策略级
+      config_path: /Library/Application Support/ClaudeCode/managed-settings.json
+    events: [SessionStart, Setup, UserPromptSubmit, UserPromptExpansion, PreToolUse,
+             PermissionRequest, PermissionDenied, PostToolUse, PostToolUseFailure,
+             PostToolBatch, Notification, MessageDisplay, SubagentStart, SubagentStop,
+             TaskCreated, TaskCompleted, Stop, StopFailure, TeammateIdle,
+             InstructionsLoaded, ConfigChange, CwdChanged, DirectoryAdded, FileChanged,
+             WorktreeCreate, WorktreeRemove, PreCompact, PostCompact, PreModelSwitch,
+             PostModelSwitch, Elicitation, ElicitationResult, SessionEnd]
     template:
       SessionStart: ai-memory hook --event session_start
       SessionEnd: ai-memory hook --event session_end
       Stop: ai-memory hook --event stop
+      UserPromptSubmit: ai-memory hook --event user_prompt_submit
+      PreCompact: ai-memory hook --event pre_compact
+      SubagentStop: ai-memory hook --event subagent_stop
   - name: Cursor
     config_path: ~/.cursor/hooks.json
     format: json
     hook_key_path: [hooks]
     event_format: camel_case
-    events: [sessionStart, sessionEnd, stop]
+    entry_style: flat
     fix_supported: true
-    note: Cursor 生命周期 hooks（hooks.json；事件名为小写 camelCase）
+    note: Cursor 生命周期 hooks（hooks.json；官方 21 个事件，条目为扁平结构）
+    scopes:
+    - id: user
+      label: 用户级
+      config_path: ~/.cursor/hooks.json
+    - id: project
+      label: 项目级
+      config_path: <项目根>/.cursor/hooks.json
+    events: [sessionStart, sessionEnd, preToolUse, postToolUse, postToolUseFailure,
+             subagentStart, subagentStop, beforeShellExecution, afterShellExecution,
+             beforeMCPExecution, afterMCPExecution, beforeReadFile, afterFileEdit,
+             beforeSubmitPrompt, preCompact, stop, afterAgentResponse,
+             afterAgentThought, beforeTabFileRead, afterTabFileEdit, workspaceOpen]
     template:
       sessionStart: ai-memory hook --event session_start
       sessionEnd: ai-memory hook --event session_end
       stop: ai-memory hook --event stop
+      beforeSubmitPrompt: ai-memory hook --event user_prompt_submit
+      preCompact: ai-memory hook --event pre_compact
   - name: WorkBuddy
     config_path: ~/.workbuddy/settings.json
     format: json
     hook_key_path: [hooks]
     event_format: pascal_case
-    events: [PreToolUse, UserPromptSubmit, PostToolUse, SessionStart, Notification, SubagentStop, PreCompact, SubagentStart, SessionEnd, Stop]
+    entry_style: nested
     fix_supported: true
-    note: WorkBuddy 生命周期 hooks（settings.json；Claude 派生架构）
+    note: WorkBuddy / CodeBuddy 生命周期 hooks（settings.json；Claude 派生，29 个事件）
+    scopes:
+    - id: user
+      label: 用户级（桌面产品）
+      config_path: ~/.workbuddy/settings.json
+    - id: user_legacy
+      label: 用户级（CodeBuddy Code CLI）
+      config_path: ~/.codebuddy/settings.json
+    - id: project
+      label: 项目级
+      config_path: <项目根>/.codebuddy/settings.json
+    - id: project_local
+      label: 项目本地级
+      config_path: <项目根>/.codebuddy/settings.local.json
+    events: [SessionStart, Setup, UserPromptSubmit, UserPromptExpansion, PreToolUse,
+             PermissionRequest, PermissionDenied, PostToolUse, PostToolUseFailure,
+             Notification, SubagentStart, SubagentStop, TaskCreated, TaskCompleted,
+             Stop, StopFailure, FinalStop, TeammateIdle, InstructionsLoaded,
+             ConfigChange, CwdChanged, FileChanged, WorktreeCreate, WorktreeRemove,
+             PreCompact, PostCompact, Elicitation, ElicitationResult, SessionEnd]
     template:
       SessionStart: ai-memory hook --event session_start
       SessionEnd: ai-memory hook --event session_end
       Stop: ai-memory hook --event stop
+      UserPromptSubmit: ai-memory hook --event user_prompt_submit
+      PreCompact: ai-memory hook --event pre_compact
+      SubagentStop: ai-memory hook --event subagent_stop
   - name: Codex
     config_path: ~/.codex/hooks.json
     format: json
     hook_key_path: [hooks]
     event_format: pascal_case
-    events: [SessionStart, UserPromptSubmit, Stop]
+    entry_style: nested
     fix_supported: true
-    note: Codex 生命周期 hooks（hooks.json；无 true SessionEnd）
+    note: Codex 生命周期 hooks（hooks.json；官方 12 个事件，需 [features].hooks = true）
+    scopes:
+    - id: user
+      label: 用户级
+      config_path: ~/.codex/hooks.json
+    - id: user_inline
+      label: 用户级（config.toml 内联 [hooks]）
+      config_path: ~/.codex/config.toml
+    - id: project
+      label: 项目级
+      config_path: <repo>/.codex/hooks.json
+    events: [SessionStart, SessionEnd, SubagentStart, PreToolUse, PermissionRequest,
+             PostToolUse, PreCompact, PostCompact, UserPromptSubmit, SubagentStop,
+             Stop, Interrupt]
     template:
       SessionStart: ai-memory hook --event session_start
       Stop: ai-memory hook --event stop
-  - name: OpenCode
-    config_path: ~/.config/opencode/plugins/ai-memory.ts
-    format: plugin
-    hook_key_path: []
-    events: []
-    fix_supported: false
-    plugin: true
-    note: OpenCode 用 TS 插件（plugins/ai-memory.ts）而非 JSON hooks，不支持模板注入
+      UserPromptSubmit: ai-memory hook --event user_prompt_submit
+      PreCompact: ai-memory hook --event pre_compact
+      PreToolUse: ai-memory hook --event pre_tool_use
+      PostToolUse: ai-memory hook --event post_tool_use
+      SubagentStop: ai-memory hook --event subagent_stop
   - name: TRAE
     config_path: ~/.trae-cn/hooks.json
     format: json
     hook_key_path: [hooks]
-    event_format: camel_case
-    events: [beforeSubmitPrompt, stop]
+    # 官方规范为 PascalCase（docs.trae.cn 六类事件）。本机 ~/.trae-cn/hooks.json 里的
+    # camelCase 键是第三方桥接工具（codeisland-bridge）写入的，不是 TRAE 的事件 ——
+    # 故此处按官方规范写 pascal_case（2026-10-12 修正，此前误配为 camel_case）。
+    event_format: pascal_case
+    entry_style: nested
     fix_supported: true
-    note: TRAE（国内版）生命周期 hooks（hooks.json；事件名为小写 camelCase，与 Cursor 同构）
+    note: TRAE（国内版）生命周期 hooks（hooks.json；官方 6 个事件，PascalCase）
+    scopes:
+    - id: user
+      label: 用户级（全局 Hook）
+      config_path: ~/.trae-cn/hooks.json
+    - id: project
+      label: 项目级
+      config_path: <项目根>/.trae/hooks.json
+    events: [SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop, Notification]
     template:
-      beforeSubmitPrompt: ai-memory hook --event session_start
-      stop: ai-memory hook --event stop
-
+      SessionStart: ai-memory hook --event session_start
+      Stop: ai-memory hook --event stop
+      UserPromptSubmit: ai-memory hook --event user_prompt_submit
+      PreToolUse: ai-memory hook --event pre_tool_use
+      PostToolUse: ai-memory hook --event post_tool_use
+      Notification: ai-memory hook --event notification
+  - name: OpenCode
+    config_path: ~/.config/opencode/plugins/ai-memory.ts
+    format: plugin
+    hook_key_path: []
+    event_format: lowercase_dotted
+    fix_supported: false
+    plugin: true
+    note: OpenCode 用 TS 插件（plugins/ai-memory.ts）而非 JSON hooks；下列为插件钩子，仅供查看，不支持模板注入
+    scopes:
+    - id: user
+      label: 用户级（全局插件目录，自动加载）
+      config_path: ~/.config/opencode/plugins/
+    - id: project
+      label: 项目级（插件目录，自动加载）
+      config_path: .opencode/plugins/
+    - id: user_config
+      label: 用户级（全局配置的插件数组）
+      config_path: ~/.config/opencode/opencode.json
+    events: [event, config, dispose, chat.message, tool.execute.before,
+             tool.execute.after, permission.ask, shell.env, command.execute.before,
+             experimental.chat.system.transform, experimental.session.compacting]
 # ── 后台巡检设置（Phase D）──────────────────────────────────
 # patrol_enabled：后台巡检总开关，默认关闭；启用后每隔 patrol_interval_minutes
 #   自动运行一次 --snapshot，检测到变更时更新托盘图标状态。
@@ -348,4 +607,51 @@ hooks:
 settings:
   patrol_enabled: false
   patrol_interval_minutes: 15
-  hook_events: []
+  hook_events:
+  - SessionStart
+  - SessionEnd
+  - Setup
+  - Stop
+  - StopFailure
+  - FinalStop
+  - Interrupt
+  - UserPromptSubmit
+  - UserPromptExpansion
+  - BeforeSubmitPrompt
+  - PreToolUse
+  - PostToolUse
+  - PostToolUseFailure
+  - PostToolBatch
+  - PermissionRequest
+  - PermissionDenied
+  - BeforeShellExecution
+  - AfterShellExecution
+  - BeforeMCPExecution
+  - AfterMCPExecution
+  - BeforeReadFile
+  - AfterFileEdit
+  - BeforeTabFileRead
+  - AfterTabFileEdit
+  - FileChanged
+  - SubagentStart
+  - SubagentStop
+  - TaskCreated
+  - TaskCompleted
+  - TeammateIdle
+  - PreCompact
+  - PostCompact
+  - PreModelSwitch
+  - PostModelSwitch
+  - Notification
+  - MessageDisplay
+  - AfterAgentResponse
+  - AfterAgentThought
+  - InstructionsLoaded
+  - ConfigChange
+  - CwdChanged
+  - DirectoryAdded
+  - WorkspaceOpen
+  - WorktreeCreate
+  - WorktreeRemove
+  - Elicitation
+  - ElicitationResult

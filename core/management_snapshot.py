@@ -187,6 +187,11 @@ def _agent_entry(tool: Dict[str, Any], config: Dict[str, Any], scan_result: Dict
         "hooks_fix_supported": hooks_inv["hooks_fix_supported"],
         "hooks_inventory": hooks_inv["hooks_inventory"],
         "missing_key_events": hooks_inv.get("missing_key_events", []),
+        # Hook 能力域（2026-10-12）：供「IDE / Agent → 详情 → Hook 配置」展示该客户端
+        # 支持哪些事件、配置落在哪些分层作用域（user/project/local）。写入校验同源。
+        "hooks_scopes": hooks_inv.get("hooks_scopes", []),
+        "hooks_supported_events": hooks_inv.get("hooks_supported_events", []),
+        "hooks_event_format": hooks_inv.get("hooks_event_format", ""),
         "aliases": tool.get("aliases", []) or [],
         "mcp_attach": resolved_attach,
         "has_explicit_attach": has_explicit,
@@ -516,6 +521,10 @@ def build_management_snapshot(
             inst = detect_installation(mt)
             norm = "".join(c for c in mt["name"].lower() if c.isalnum())
             hooks_inv = inventory_for_tool(mt, config)
+            # 复用 _agent_entry：设置页的 IDE/Agent 卡片要在**卡片上**直接显示
+            # 「详情里那些内容」（2026-10-12 用户要求）—— Skills/MCP 摘要必须与
+            # agents 面板同源，否则两处口径会漂移。原先卡片只有 APP/CLI/CONFIG。
+            _extra = _agent_entry(mt, config, scan_result, unified_dir)
             mainstream_tools.append({
                 "name": mt["name"],
                 "type": mt.get("type", ""),
@@ -538,6 +547,16 @@ def build_management_snapshot(
                 "hooks_fix_supported": hooks_inv["hooks_fix_supported"],
                 "hooks_inventory": hooks_inv["hooks_inventory"],
                 "missing_key_events": hooks_inv.get("missing_key_events", []),
+                "hooks_scopes": hooks_inv.get("hooks_scopes", []),
+                "hooks_supported_events": hooks_inv.get("hooks_supported_events", []),
+                "hooks_event_format": hooks_inv.get("hooks_event_format", ""),
+                # Skills / MCP 摘要域：供设置页卡片直接展示（不必点开「详情」）
+                "skills_dir_found": _extra.get("skills_dir_found", False),
+                "skills_total": _extra.get("skills_total", 0),
+                "skills_enabled_count": _extra.get("skills_enabled_count", 0),
+                "mcp_config_path": _extra.get("mcp_config_path", ""),
+                "mcp_attach": _extra.get("mcp_attach", []),
+                "has_explicit_attach": _extra.get("has_explicit_attach", False),
             })
     except Exception:
         mainstream_tools = []
@@ -564,7 +583,13 @@ def build_management_snapshot(
     # 标准清单在 config.yaml 的 hooks.events，生效清单在 settings.hook_events。
     _hooks_cfg = config.get("hooks") or {}
     _hook_events_catalog = [
-        {"name": e.get("name", ""), "description": e.get("description", "")}
+        {
+            "name": e.get("name", ""),
+            "description": e.get("description", ""),
+            # group：规范词表的分类（会话生命周期 / 工具调用 / …）。词表已扩到
+            # 47 项，GUI 需要靠它分组渲染，否则是一张难读的长表。
+            "group": e.get("group", ""),
+        }
         for e in (_hooks_cfg.get("events") or [])
         if e.get("name")
     ]
@@ -574,8 +599,13 @@ def build_management_snapshot(
             "name": cl.get("name", ""),
             "config_path": cl.get("config_path", ""),
             "event_format": cl.get("event_format"),
+            "entry_style": cl.get("entry_style", "nested"),
             "fix_supported": bool(cl.get("fix_supported", False)),
+            # declared_events 自 2026-10-12 起是该客户端的**能力全集**，GUI 用它算
+            # 某个规范事件会写到哪些客户端（先按 event_format 转成该客户端的名字，
+            # 再看是否落在集合里）—— 不再只看 fix_supported。
             "declared_events": cl.get("events") or [],
+            "scopes": cl.get("scopes") or [],
         }
         for cl in (_hooks_cfg.get("clients") or [])
         if cl.get("name")
