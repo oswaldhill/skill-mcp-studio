@@ -248,20 +248,22 @@ def inventory_for_tool(tool: Dict[str, Any], config: Dict[str, Any]) -> Dict[str
         }
 
     entries = list_client_hook_entries(tool, config)
-    ai_events = sorted({e.event for e in entries if e.is_ai_memory})
+    # **只看有没有配置，不看配置内容**（2026-10-13 按用户要求变更）。
+    #
+    # 此前只统计「命中 ai-memory 命令签名」的事件（``e.is_ai_memory``），于是：
+    #   · 同一事件被别的工具占着（如第三方桥接工具）时，我们报「未配置」，
+    #     而实际上该客户端**确实配了这个 hook**；
+    #   · 审计的判据与「写入内容」耦合 —— 而写入内容尚未定案，判据不该依赖它。
+    # 现在改为：某事件下只要存在 hook 条目，就算「已配置」，命令是什么一概不管。
+    configured_events = sorted({e.event for e in entries})
     supported_events = client_supported_events(hc)
-    # 「缺关键事件」审计由**写入意图**推导，而不是由能力全集推导。
-    # 为什么必须改（2026-10-12）：``events`` 从「关注的小集合」升级为「该客户端支持的
-    # 全部事件」后（Claude Code 33 项、WorkBuddy 29 项），若仍拿它算缺失，审计会把
-    # 二十多个「支持、但本次并没打算写」的事件全报成「缺关键事件」—— 语义被撑爆且全是
-    # 假警报。意图的取法与 ``hooks_fixer`` 同源（同一份 settings.hook_events、同一套
-    # event_format 转换、同一道能力过滤），避免「写入端写 A、审计端查 B」的漂移。
-    missing_key = [e for e in _intended_events(hc, config) if e not in ai_events]
+    # 「缺关键事件」= 该客户端**支持但完全没有配置**的事件（同样是只看有无）。
+    missing_key = [e for e in supported_events if e not in configured_events]
 
     return {
         "hooks_config_path": hc.get("config_path", ""),
-        "hooks_configured": bool(ai_events),
-        "hook_events": ai_events,
+        "hooks_configured": bool(configured_events),
+        "hook_events": configured_events,
         "hooks_fix_supported": hc.get("fix_supported", False),
         # 能力域：供 GUI 的 IDE/Agent 详情展示「支持哪些事件 / 配置落在哪些层级」，
         # 也是写入端做能力校验的事实来源（见 hooks_fixer）。

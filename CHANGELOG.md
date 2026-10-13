@@ -20,6 +20,18 @@
 
 ### 变更
 
+- **Hook 检查改为「只看有没有配置，不看配置内容」**（用户要求）。某事件下只要存在任意
+  hook 条目即算「已配置」——命令写的是什么、是不是 ai-memory、是不是第三方工具，一概不
+  参与判定。此前只统计「命中 ai-memory 命令签名」的事件，于是同一事件被别的工具占着时
+  报「未配置」，而客户端**其实配了这个 hook**；更根本的是该判据与「写入什么内容」耦合，
+  而写入内容尚未定案，判据不该依赖未定的东西。相应地，「缺关键事件」= 该客户端支持但
+  完全没有配置的事件。GUI 文案同步：`已写入` → `已配置`（列表列、图例、卡片摘要、详情
+  事件清单），规范 §2.3b/§2.3c 已更新。
+- **移除仓库内全部第三方桥接工具（codeisland）信息**：`core/checker.py` 里它曾作为
+  Codex 的安装探测路径之一（实测本机不存在该 app，且 Codex 经 `ChatGPT.app` 正常识别，
+  删除无影响）；注释、CHANGELOG、两份取证 JSON 中的具名引用一并改为中性说法。
+
+
 - **IDE / Agent 列表视图新增 Hook 列（与 MCP 同待遇）**：用户要求「在 IDE 的 tab 中增加 hook 的
   配置和 scale，和 MCP 一样」。列序变为 `名称 | 类型 | 安装 | APP | CLI | CONFIG | 技能目录 |
   MCP | Hook | 操作`，并补一条与 MCP 图例同款的 Hook 图例（复用既有 `.skill-legend`）。
@@ -137,8 +149,7 @@
   `{type, command, matcher}`，而写入端一律按 Claude/TRAE 的嵌套
   `{matcher, hooks:[...]}` 写 —— 产物 Cursor 不认。现按客户端 `entry_style` 分别渲染。
 - **TRAE 事件命名规范配错**：`event_format` 原为 `camel_case`，与官方文档（6 类
-  PascalCase 事件）不符；本机 camelCase 键实为第三方桥接工具
-  （`codeisland-bridge`）写入。已改为 `pascal_case` 并按官方六类收录。
+  PascalCase 事件）不符；本机 camelCase 键实为第三方桥接工具写入。已改为 `pascal_case` 并按官方六类收录。
 - **「缺关键事件」审计假警报**：改为由**写入意图**（`settings.hook_events` ∩ 能力，
   或回落 `template` 键）推导，而不是由能力全集推导 —— 否则 Claude Code 会把 29 个
   「支持但本次没打算写」的事件全报成缺失。
@@ -192,7 +203,7 @@
   `event_format` 转成规范名（pascal/camel）后写入。新增 `event_name_for_client()`
   承担这套映射（此前靠 template 的 key 手写，无法统一管理）。
   全局列表选中某客户端 template 没有的事件时用 `ai-memory hook --event <snake_case>`
-  兜底 —— **不允许静默漏写**。实测 Codex 的该事件终于写入，且与既有的 codeisland
+  兜底 —— **不允许静默漏写**。实测 Codex 的该事件终于写入，且与既有的第三方
   hook 并存不冲突（审计 `missing_key_events` 由 `['UserPromptSubmit']` 变为 `[]`）。
 - **`--set-setting` 支持列表值**：`_render_scalar` 渲染块序列，`_set_setting_in_text`
   支持多行插入/替换；空列表显式写 `[]`（第一版返回空串走单值分支，导致**清空时旧元素

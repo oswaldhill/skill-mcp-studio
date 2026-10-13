@@ -280,7 +280,7 @@ TOOL_INSTALL_SIGNS = {
     "opencode":     {"cli": ["opencode"], "apps": ["OpenCode.app"]},
     "workbuddy":    {"cli": ["workbuddy"], "apps": ["WorkBuddy.app"]},
     "ccswitch":     {"cli": ["cc-switch"], "apps": ["CC Switch.app"]},
-    "codex":        {"cli": ["codex"], "apps": ["ChatGPT.app", "Codex.app", "CodeIsland.app"]},
+    "codex":        {"cli": ["codex"], "apps": ["ChatGPT.app", "Codex.app"]},
     "reasonix":     {"cli": ["reasonix"], "apps": ["Reasonix.app"]},
     "qoderwork":    {"cli": ["qoderwork"], "apps": ["QoderWork.app"]},
     "qoder":        {"cli": ["qoder"], "apps": ["Qoder.app"]},

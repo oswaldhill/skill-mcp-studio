@@ -85,3 +85,82 @@ class HookCapabilityDataTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HookCheckIsPresenceOnlyTest(unittest.TestCase):
+    """Hook 检查**只看有没有配置，不看配置内容**（2026-10-13 用户要求）。
+
+    背景：此前只统计「命中 ai-memory 命令签名」的事件，于是同一事件被别的工具占着时
+    报「未配置」，而客户端其实配了这个 hook。更根本的是该判据与「写入什么内容」耦合，
+    而写入内容尚未定案 —— 判据不该依赖一个未定的东西。
+
+    本类守住新口径：任意命令（含第三方工具）都算「已配置」。
+    """
+
+    def _config(self):
+        return {
+            "settings": {},
+            "hooks": {
+                "events": [{"name": "SessionStart", "description": "x"}],
+                "clients": [{
+                    "name": "PresenceCli",
+                    "config_path": "",
+                    "format": "json",
+                    "hook_key_path": ["hooks"],
+                    "event_format": "pascal_case",
+                    "events": ["SessionStart", "Stop"],
+                    "fix_supported": True,
+                }],
+            },
+        }
+
+    def test_third_party_command_counts_as_configured(self):
+        """非 ai-memory 的命令也必须算「已配置」（这是本次变更的核心）。"""
+        import tempfile
+        import json as _json
+        import os
+        from hooks_inventory import inventory_for_tool
+        with tempfile.TemporaryDirectory() as td:
+            p = os.path.join(td, "settings.json")
+            with open(p, "w", encoding="utf-8") as f:
+                _json.dump({"hooks": {"SessionStart": [
+                    {"hooks": [{"type": "command", "command": "/usr/local/bin/other-tool --go"}]}
+                ]}}, f)
+            cfg = self._config()
+            cfg["hooks"]["clients"][0]["config_path"] = p
+            inv = inventory_for_tool({"name": "PresenceCli"}, cfg)
+            self.assertTrue(inv["hooks_configured"], "第三方命令应算已配置")
+            self.assertIn("SessionStart", inv["hook_events"])
+
+    def test_missing_key_events_is_presence_based(self):
+        """「缺关键事件」= 支持但**完全没有配置**的事件（同样只看有无）。"""
+        import tempfile
+        import json as _json
+        import os
+        from hooks_inventory import inventory_for_tool
+        with tempfile.TemporaryDirectory() as td:
+            p = os.path.join(td, "settings.json")
+            with open(p, "w", encoding="utf-8") as f:
+                _json.dump({"hooks": {
+                    "SessionStart": [{"hooks": [{"type": "command", "command": "/x/y"}]}]
+                }}, f)
+            cfg = self._config()
+            cfg["hooks"]["clients"][0]["config_path"] = p
+            inv = inventory_for_tool({"name": "PresenceCli"}, cfg)
+            # 支持 SessionStart + Stop；只配了 SessionStart → 缺 Stop
+            self.assertEqual(inv["missing_key_events"], ["Stop"])
+
+    def test_empty_config_is_not_configured(self):
+        import tempfile
+        import json as _json
+        import os
+        from hooks_inventory import inventory_for_tool
+        with tempfile.TemporaryDirectory() as td:
+            p = os.path.join(td, "settings.json")
+            with open(p, "w", encoding="utf-8") as f:
+                _json.dump({"hooks": {}}, f)
+            cfg = self._config()
+            cfg["hooks"]["clients"][0]["config_path"] = p
+            inv = inventory_for_tool({"name": "PresenceCli"}, cfg)
+            self.assertFalse(inv["hooks_configured"])
+            self.assertEqual(inv["hook_events"], [])

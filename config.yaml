@@ -558,7 +558,7 @@ hooks:
     format: json
     hook_key_path: [hooks]
     # 官方规范为 PascalCase（docs.trae.cn 六类事件）。本机 ~/.trae-cn/hooks.json 里的
-    # camelCase 键是第三方桥接工具（codeisland-bridge）写入的，不是 TRAE 的事件 ——
+    # camelCase 键是第三方桥接工具写入的，不是 TRAE 的原生事件 ——
     # 故此处按官方规范写 pascal_case（2026-10-12 修正，此前误配为 camel_case）。
     event_format: pascal_case
     entry_style: nested

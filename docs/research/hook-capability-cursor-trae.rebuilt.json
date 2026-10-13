@@ -195,7 +195,7 @@
         "events": "官方文档确认 6 类 PascalCase 事件",
         "scopes": "官方文档确认（user/project）"
       },
-      "notes": "1) **两套命名并存，是本表最大不确定点**：官方只承认 6 类 PascalCase；本机 ~/.trae-cn/hooks.json 实测 10 个 camelCase 键（['afterAgentResponse', 'afterAgentThought', 'afterFileEdit', 'afterMCPExecution', 'afterShellExecution', 'beforeMCPExecution', 'beforeReadFile', 'beforeShellExecution', 'beforeSubmitPrompt', 'stop']），与 Cursor 事件集高度重合，推测由第三方桥接工具 codeisland-bridge 写入（本机该文件的条目命令确实指向 codeisland）。2) 其中 10 个事件经实测确认命令来自 codeisland，**不是 TRAE 的原生事件**，故未收录进 config.yaml。3) 配置结构为三层嵌套 {version,hooks:{事件:[{matcher,loop_limit,hooks:[{type,command,timeout}]}]}}。4) 事件名规范已按官方改为 pascal_case（原 config 误配 camel_case）。"
+      "notes": "1) **两套命名并存，是本表最大不确定点**：官方只承认 6 类 PascalCase；本机 ~/.trae-cn/hooks.json 实测 10 个 camelCase 键（['afterAgentResponse', 'afterAgentThought', 'afterFileEdit', 'afterMCPExecution', 'afterShellExecution', 'beforeMCPExecution', 'beforeReadFile', 'beforeShellExecution', 'beforeSubmitPrompt', 'stop']），与 Cursor 事件集高度重合，推测由第三方桥接工具 第三方桥接工具 写入（本机该文件的条目命令确实指向 第三方工具）。2) 其中 10 个事件经实测确认命令来自 第三方工具，**不是 TRAE 的原生事件**，故未收录进 config.yaml。3) 配置结构为三层嵌套 {version,hooks:{事件:[{matcher,loop_limit,hooks:[{type,command,timeout}]}]}}。4) 事件名规范已按官方改为 pascal_case（原 config 误配 camel_case）。"
     }
   ]
 }

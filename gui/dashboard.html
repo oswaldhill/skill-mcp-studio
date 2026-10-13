@@ -2449,11 +2449,11 @@ function renderAgents() {
          mcp-badge-legend 就是没有 CSS 规则的幽灵类，已被冻结在 GHOST_BASELINE，不应复制。 -->
     <div class="skill-legend">
       <span class="legend-label">Hook</span>
-      <span class="legend-item"><span class="legend-swatch ok"></span>全部已写入</span>
-      <span class="legend-item"><span class="legend-swatch"></span>部分已写入</span>
-      <span class="legend-item"><span class="legend-swatch warn"></span>未写入</span>
+      <span class="legend-item"><span class="legend-swatch ok"></span>全部已配置</span>
+      <span class="legend-item"><span class="legend-swatch"></span>部分已配置</span>
+      <span class="legend-item"><span class="legend-swatch warn"></span>未配置</span>
       <span class="legend-item"><span class="legend-swatch na"></span>未收录配置 / 仅审计</span>
-      <span class="legend-note">N / M = 已写入事件数 / 该客户端支持的事件数；「N 档」为分层作用域</span>
+      <span class="legend-note">N / M = 已配置事件数 / 该客户端支持的事件数（只看有无配置，不看内容）；「N 档」为分层作用域</span>
     </div>
     <div id="agent-home-body"></div>`;
 
@@ -2747,10 +2747,11 @@ function renderHomeListView(q) {
       mcpCell = `<span class="tag err" title="端点未在设置中配置（可用「修复 MCP」接入）">${mcpConfigured}/${mcpTotal}</span>`;
     }
     // Hook 列（2026-10-12 用户要求）：与 MCP 列同待遇 —— 状态标签 + 分层作用域档数。
-    // 口径：hooks_supported_events 是"该客户端支持的事件全集"，hook_events 是"已写入的"。
+    // 口径（2026-10-13 变更）：hooks_supported_events 是"该客户端支持的事件全集"，
+    // hook_events 是"该客户端**已配置** hook 的事件"——**只看有没有配置，不看配置内容**。
     // 颜色由「是否全部写入」驱动（部分写入用中性，不用绿：绿色=已就绪）。
     const hookSupported = (a.hooks_supported_events || []).length;
-    const hookWritten = (a.hook_events || []).length;
+    const hookConfigured = (a.hook_events || []).length;
     const hookScopes = (a.hooks_scopes || []).length;
     const scopeTag = hookScopes
       ? `<span class="al-scope" title="分层作用域 ${hookScopes} 档（用户级 / 项目级 / 本地级…）">${hookScopes} 档</span>`
@@ -2765,12 +2766,12 @@ function renderHomeListView(q) {
       hookCell = '<span class="ok-na" title="尚未收录该客户端的 Hook 配置路径（不等于不支持）；可在客户端详情中登记">未收录</span>';
     } else if (!a.hooks_fix_supported) {
       hookCell = `<span class="ok-na" title="插件型客户端，不支持模板注入${hookSupported ? `（可用钩子 ${hookSupported} 个）` : ""}">仅审计</span>`;
-    } else if (!hookWritten) {
-      hookCell = `<span class="tag warn" title="尚未写入 ai-memory hook（共支持 ${hookSupported} 个事件）">未写入</span>`;
-    } else if (hookWritten >= hookSupported) {
-      hookCell = `<span class="tag ok" title="已写入 ${hookWritten} 个 / 共支持 ${hookSupported} 个事件">${hookWritten}/${hookSupported}</span>`;
+    } else if (!hookConfigured) {
+      hookCell = `<span class="tag warn" title="该客户端尚未配置任何 hook（共支持 ${hookSupported} 个事件）">未配置</span>`;
+    } else if (hookConfigured >= hookSupported) {
+      hookCell = `<span class="tag ok" title="已配置 ${hookConfigured} 个事件 / 共支持 ${hookSupported} 个">${hookConfigured}/${hookSupported}</span>`;
     } else {
-      hookCell = `<span class="tag" title="部分写入：${hookWritten} 个 / 共支持 ${hookSupported} 个事件">${hookWritten}/${hookSupported}</span>`;
+      hookCell = `<span class="tag" title="已配置 ${hookConfigured} 个事件 / 共支持 ${hookSupported} 个">${hookConfigured}/${hookSupported}</span>`;
     }
     return `<tr>
       <td><span class="dot ${dot}" aria-hidden="true"></span> <span class="sr-only">${escapeHtml(statusText)}</span> <span class="al-name">${escapeHtml(a.name)}</span></td>
@@ -3644,7 +3645,7 @@ function _agentHookSummary(t) {
   const scopes = (t.hooks_scopes || []).length;
   const supported = (t.hooks_supported_events || []).length;
   const written = (t.hook_events || []).length;
-  // 胶囊最多两个：把「支持 N」并进「已写入 N/M」的分母，避免第三个胶囊换行后
+  // 胶囊最多两个：把「支持 N」并进「已配置 N/M」的分母，避免第三个胶囊换行后
   // 与标签列错位（用户反馈「最好保持对齐」）。
   const bits = [];
   if (scopes) bits.push(`<span class="tag" title="分层作用域（用户级/项目级/本地级…）">${scopes} 档作用域</span>`);
@@ -3654,15 +3655,15 @@ function _agentHookSummary(t) {
     // 用绿色会让人扫一眼以为已经完成 —— 属状态色语义错误。
     const allWritten = written >= supported;
     bits.push(written
-      ? `<span class="tag${allWritten ? " ok" : ""}" title="已写入 ${written} 个 / 共支持 ${supported} 个事件">已写入 ${written}/${supported}</span>`
+      ? `<span class="tag${allWritten ? " ok" : ""}" title="已配置 ${written} 个 / 共支持 ${supported} 个事件">已配置 ${written}/${supported}</span>`
       : (t.hooks_fix_supported
-        ? `<span class="tag warn" title="尚未写入 ai-memory hook（共支持 ${supported} 个事件）">未写入 · 支持 ${supported}</span>`
+        ? `<span class="tag warn" title="该客户端尚未配置任何 hook（共支持 ${supported} 个事件）">未配置 · 支持 ${supported}</span>`
         : `<span class="tag" title="插件型客户端，不支持模板注入（可用钩子 ${supported} 个）">仅审计 · ${supported}</span>`));
   } else {
     bits.push(written
-      ? `<span class="tag ok" title="已写入的 ai-memory hook 事件数">已写入 ${written}</span>`
+      ? `<span class="tag ok" title="已配置 hook 的事件数">已配置 ${written}</span>`
       : (t.hooks_fix_supported
-        ? '<span class="tag warn" title="尚未写入 ai-memory hook">未写入</span>'
+        ? '<span class="tag warn" title="该客户端尚未配置任何 hook">未配置</span>'
         : '<span class="tag" title="插件型客户端，不支持模板注入">仅审计</span>'));
   }
   return pathTag + bits.join("");
@@ -5739,7 +5740,7 @@ function showAgentDetail(name) {
   // 为什么放在这里：原先这块信息是「设置 → Hook」里的一张只读表（客户端 / Hook 配置
   // 文件 / 命名规范 / 示例 / 是否可写），与 IDE/Agent 页各说各话。按用户要求合并过来
   // 它就是「这个客户端」的属性，与上面 APP/CLI/CONFIG 路径同类；且只有在这里才能
-  // 与 Skills、MCP 并列地看到「该客户端支持哪些事件、已写入哪些」。
+  // 与 Skills、MCP 并列地看到「该客户端支持哪些事件、已配置哪些」。
   const hkScopes = a.hooks_scopes || [];
   const hkSupported = a.hooks_supported_events || [];
   const hkWritten = new Set(a.hook_events || []);
@@ -5747,11 +5748,11 @@ function showAgentDetail(name) {
   const scopeList = hkScopes.length
     ? `<div class="ad-entries">${hkScopes.map((s) => `<div class="ad-entry"><span class="ad-e-key">${escapeHtml(s.label || s.id || "")}</span><span class="ad-e-loc ad-e-loc-full">${escapeHtml(s.config_path || "")}</span></div>`).join("")}</div>`
     : '<span class="ad-none">未声明分层作用域</span>';
-  // 事件清单：已写入 ai-memory hook 的用 ok 态标签，其余为中性胶囊；颜色只是辅助，
+  // 事件清单：已配置 hook 的用 ok 态标签，其余为中性胶囊；颜色只是辅助，
   // 名称本身可读（规范 3b：不得只靠颜色传达信息）。
   const eventChips = hkSupported.length
     ? `<div class="ad-pills">${hkSupported.map((e) => (hkWritten.has(e)
-      ? `<span class="tag ok" title="已写入 ai-memory hook">${escapeHtml(e)}</span>`
+      ? `<span class="tag ok" title="该事件已配置 hook">${escapeHtml(e)}</span>`
       : `<span class="ad-pill">${escapeHtml(e)}</span>`)).join("")}</div>`
     : '<span class="ad-none">未声明支持事件</span>';
   const hooksSection = `<div class="ad-section">
@@ -5759,7 +5760,7 @@ function showAgentDetail(name) {
       ${kv("配置文件", textVal(a.hooks_config_path))}
       ${kv("分层作用域", scopeList)}
       ${kv("事件命名", textVal(a.hooks_event_format))}
-      ${kv("支持事件", `<span class="ad-v">${hkSupported.length} 个${hkWritten.size ? `，其中已写入 ${hkWritten.size} 个` : ""}</span>`)}
+      ${kv("支持事件", `<span class="ad-v">${hkSupported.length} 个${hkWritten.size ? `，其中已配置 ${hkWritten.size} 个` : ""}</span>`)}
       ${kv("事件清单", eventChips)}
       ${hkMissing.length ? kv("缺关键事件", `<span class="ad-v">${escapeHtml(hkMissing.join(", "))}</span>`) : ""}
     </div>`;
@@ -7067,7 +7068,7 @@ async function fixHooksFor(name) {
   await runTaskModal(`写入 ${name} 的 Hook`, async () => {
     const res = await runCli(["--fix-hooks", "--client", name]);
     if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
-    if (res.code === 0) return { ok: true, message: `${name} 的 Hook 已写入` };
+    if (res.code === 0) return { ok: true, message: `${name} 的 Hook 已配置` };
     return { ok: false, message: "Hook 写入失败", detail: cliFailLines(res) || cliErrDetail(res) };
   }, () => refreshBlocks(["agents", "mainstream"]), ["读取 Hook 配置", "写入标准模板", "校验回写", "刷新状态"]);
 }

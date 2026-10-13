@@ -772,10 +772,13 @@ class HookSettingsPlacementTest(unittest.TestCase):
         for field in ("hooks_scopes", "hooks_supported_events", "hooks_event_format"):
             self.assertIn(field, src, f"详情未消费 {field}（合并后信息反而丢了）")
 
-    def test_written_events_marked_without_relying_on_color(self):
-        """已写入的事件用 .tag.ok 标注；颜色只是辅助，事件名必须可读（§3b）。"""
+    def test_configured_events_marked_without_relying_on_color(self):
+        """已**配置**的事件用 .tag.ok 标注；颜色只是辅助，事件名必须可读（§3b）。
+
+        口径已于 2026-10-13 改为「只看有没有配置，不看配置内容」，故标签文案同步。
+        """
         src = _src()
-        self.assertIn('class="tag ok" title="已写入 ai-memory hook"', src)
+        self.assertIn('class="tag ok" title="该事件已配置 hook"', src)
 
     def test_canonical_to_client_matches_python_rule(self):
         """GUI 的规范名→客户端名规则必须与 Python 侧同源（camel 只改首字母）。"""
@@ -1111,13 +1114,18 @@ class CardLabelColumnAlignmentTest(unittest.TestCase):
         self.assertIn("al-scope", body, "Hook 单元格应含分层作用域徽标")
         self.assertIn("hooks_scopes", body, "作用域档数取自 hooks_scopes")
 
-    def test_partial_hook_write_is_not_green(self):
-        """Hook 列：部分写入用中性标签，只有全部写入才 ok（与卡片口径一致）。"""
+    def test_partial_hook_config_is_not_green(self):
+        """Hook 列：部分**配置**用中性标签，只有全部配置才 ok（与卡片口径一致）。
+
+        口径已于 2026-10-13 改为「只看有没有配置」，变量名同步为 hookConfigured。
+        """
         src = _src()
         i = src.index("const hookSupported =")
         body = src[i:i + 1800]
-        self.assertIn("hookWritten >= hookSupported", body,
-                      "缺少「是否全部写入」的判定")
+        self.assertIn("hookConfigured >= hookSupported", body,
+                      "缺少「是否全部配置」的判定")
+        # 判据只看有无配置，不得再依赖 is_ai_memory 之类的内容判定
+        self.assertNotIn("is_ai_memory", body)
 
     def test_label_column_is_58px(self):
         """标签列宽是不可协商的对齐基准；改它必须同时改规范 §2.9。"""
