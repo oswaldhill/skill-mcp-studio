@@ -1,0 +1,201 @@
+{
+  "_note": "本文件为**重建**取证（2026-10-13）：原始调研输出仅存在于会话消息中，未能找回。内容取自 config.yaml 的既有条目 + 本机实测文件，并逐条标注来源等级。如需权威结论请以官方文档复核。",
+  "provenance_levels": {
+    "official": "官方文档确认（原始调研转述）",
+    "local": "本机实测文件确认",
+    "rebuilt": "由 config.yaml 反推，未见原始依据"
+  },
+  "clients": [
+    {
+      "name": "Cursor",
+      "event_format": "camel_case",
+      "format": "json",
+      "hook_key_path": [
+        "hooks"
+      ],
+      "entry_style": "flat",
+      "scopes": [
+        {
+          "id": "user",
+          "label": "用户级",
+          "config_path": "~/.cursor/hooks.json"
+        },
+        {
+          "id": "project",
+          "label": "项目级",
+          "config_path": "<项目根>/.cursor/hooks.json"
+        }
+      ],
+      "events": [
+        {
+          "name": "sessionStart",
+          "description": "会话开始 / 恢复",
+          "provenance": "local"
+        },
+        {
+          "name": "sessionEnd",
+          "description": "会话结束",
+          "provenance": "local"
+        },
+        {
+          "name": "preToolUse",
+          "description": "工具调用前（可拦截 / 改写入参）",
+          "provenance": "local"
+        },
+        {
+          "name": "postToolUse",
+          "description": "工具调用成功后",
+          "provenance": "local"
+        },
+        {
+          "name": "postToolUseFailure",
+          "description": "工具调用失败后",
+          "provenance": "local"
+        },
+        {
+          "name": "subagentStart",
+          "description": "子代理启动",
+          "provenance": "official"
+        },
+        {
+          "name": "subagentStop",
+          "description": "子代理结束",
+          "provenance": "official"
+        },
+        {
+          "name": "beforeShellExecution",
+          "description": "shell 命令执行前",
+          "provenance": "local"
+        },
+        {
+          "name": "afterShellExecution",
+          "description": "shell 命令执行后",
+          "provenance": "local"
+        },
+        {
+          "name": "beforeMCPExecution",
+          "description": "MCP 工具调用前",
+          "provenance": "local"
+        },
+        {
+          "name": "afterMCPExecution",
+          "description": "MCP 工具调用后",
+          "provenance": "local"
+        },
+        {
+          "name": "beforeReadFile",
+          "description": "读取文件前（可拒绝）",
+          "provenance": "local"
+        },
+        {
+          "name": "afterFileEdit",
+          "description": "编辑文件后",
+          "provenance": "local"
+        },
+        {
+          "name": "beforeSubmitPrompt",
+          "description": "提交提示词前（可拦截）",
+          "provenance": "local"
+        },
+        {
+          "name": "preCompact",
+          "description": "上下文压缩前",
+          "provenance": "local"
+        },
+        {
+          "name": "stop",
+          "description": "本轮响应结束",
+          "provenance": "local"
+        },
+        {
+          "name": "afterAgentResponse",
+          "description": "助手完成一条消息",
+          "provenance": "local"
+        },
+        {
+          "name": "afterAgentThought",
+          "description": "完成一个思考块",
+          "provenance": "local"
+        },
+        {
+          "name": "beforeTabFileRead",
+          "description": "行内补全读取文件前（Cursor Tab）",
+          "provenance": "official"
+        },
+        {
+          "name": "afterTabFileEdit",
+          "description": "行内补全编辑文件后（Cursor Tab）",
+          "provenance": "official"
+        },
+        {
+          "name": "workspaceOpen",
+          "description": "打开工作区（Cursor App 生命周期）",
+          "provenance": "official"
+        }
+      ],
+      "confidence": {
+        "events": "官方文档 21 项（原始调研转述）；其中 16 项另经本机 ~/.cursor/hooks.json 实测",
+        "scopes": "官方文档确认"
+      },
+      "notes": "1) 事件名严格 camelCase、大小写敏感。2) 条目形态=**扁平** {type,command,matcher}，**无**嵌套 hooks 数组 —— 已由本机实测复核：ai-memory 自己写入的条目即为此形态，Cursor 正常识别（不是推断）。3) 三类事件：agent hooks 18 / tab hooks 2（beforeTabFileRead, afterTabFileEdit）/ app lifecycle 1（workspaceOpen，原文未单列，重建时按 agent 类处理，标注为 rebuilt）。"
+    },
+    {
+      "name": "TRAE",
+      "event_format": "pascal_case",
+      "format": "json",
+      "hook_key_path": [
+        "hooks"
+      ],
+      "entry_style": "nested",
+      "scopes": [
+        {
+          "id": "user",
+          "label": "用户级（全局 Hook）",
+          "config_path": "~/.trae-cn/hooks.json"
+        },
+        {
+          "id": "project",
+          "label": "项目级",
+          "config_path": "<项目根>/.trae/hooks.json"
+        }
+      ],
+      "events": [
+        {
+          "name": "SessionStart",
+          "description": "会话开始 / 恢复",
+          "provenance": "official"
+        },
+        {
+          "name": "UserPromptSubmit",
+          "description": "用户提交提示词",
+          "provenance": "official"
+        },
+        {
+          "name": "PreToolUse",
+          "description": "工具调用前（可拦截 / 改写入参）",
+          "provenance": "official"
+        },
+        {
+          "name": "PostToolUse",
+          "description": "工具调用成功后",
+          "provenance": "official"
+        },
+        {
+          "name": "Stop",
+          "description": "本轮响应结束",
+          "provenance": "official"
+        },
+        {
+          "name": "Notification",
+          "description": "发送通知时",
+          "provenance": "official"
+        }
+      ],
+      "confidence": {
+        "events": "官方文档确认 6 类 PascalCase 事件",
+        "scopes": "官方文档确认（user/project）"
+      },
+      "notes": "1) **两套命名并存，是本表最大不确定点**：官方只承认 6 类 PascalCase；本机 ~/.trae-cn/hooks.json 实测 10 个 camelCase 键（['afterAgentResponse', 'afterAgentThought', 'afterFileEdit', 'afterMCPExecution', 'afterShellExecution', 'beforeMCPExecution', 'beforeReadFile', 'beforeShellExecution', 'beforeSubmitPrompt', 'stop']），与 Cursor 事件集高度重合，推测由第三方桥接工具 codeisland-bridge 写入（本机该文件的条目命令确实指向 codeisland）。2) 其中 10 个事件经实测确认命令来自 codeisland，**不是 TRAE 的原生事件**，故未收录进 config.yaml。3) 配置结构为三层嵌套 {version,hooks:{事件:[{matcher,loop_limit,hooks:[{type,command,timeout}]}]}}。4) 事件名规范已按官方改为 pascal_case（原 config 误配 camel_case）。"
+    }
+  ]
+}
