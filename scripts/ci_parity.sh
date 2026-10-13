@@ -222,7 +222,16 @@ SKIP_SUFFIX = (
     ".pdf", ".zip", ".gz", ".woff", ".woff2", ".ttf", ".otf",
     ".dmg", ".exe", ".msi", ".deb", ".rpm", ".so", ".dylib",
 )
-files = subprocess.run(["git", "ls-files"], capture_output=True, text=True, check=True).stdout.split()
+# 文件清单：**已跟踪 + 未跟踪**都要查。
+# 为什么（2026-10-13 实测盲区）：原来只用 `git ls-files`，它只列已跟踪文件，
+# 于是「新增但尚未提交」的文件在本地完全不被检查 —— 本地门禁全绿、CI 却红。
+# 实测案例：docs/research/hook-capability-codex-opencode.json 从 /tmp 拷入时末尾
+# 缺换行，本地 ci_parity.sh 报「全部通过」，GitHub 的 Text encoding hygiene 直接
+# 失败。改用 `-co --exclude-standard` 把未跟踪（且未被忽略）的文件一并纳入。
+files = subprocess.run(
+    ["git", "ls-files", "-co", "--exclude-standard"],
+    capture_output=True, text=True, check=True,
+).stdout.split()
 problems, checked = [], 0
 for f in files:
     if f.lower().endswith(SKIP_SUFFIX):
@@ -301,8 +310,10 @@ PREFIX_PATTERNS = (
     re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
 )
 
+# 同文本卫生：已跟踪 + 未跟踪都扫，否则新增文件里的凭据在提交前不会被拦下
 files = subprocess.run(
-    ["git", "ls-files"], capture_output=True, text=True, check=True
+    ["git", "ls-files", "-co", "--exclude-standard"],
+    capture_output=True, text=True, check=True,
 ).stdout.split()
 problems = []
 for f in files:
