@@ -210,11 +210,22 @@ class StaticShapeTest(unittest.TestCase):
         self.assertIn("mcp_attach", hint, "页面提示须解释「自动」= 未显式声明 mcp_attach")
 
     def test_home_and_mcp_panel_share_unsupported_wording(self):
-        """首页 MCP 列与 MCP 面板用同一套词汇（此前首页写「无配置」）。"""
+        """首页 MCP 列与 MCP 面板用同一套词汇（此前首页写「无配置」）。
+
+        2026-10-14 变更：首页那条 MCP 图例已整块撤销（用户要求「全部有图例的话就太多
+        太长了」），其含义改由 **MCP 列头的 data-help 说明气泡** 承载 —— 所以不再断言
+        图例文案存在，改为断言列头 data-help 里带了同一套四态词汇。
+        注意锚点用 `>MCP<span`：列头文本后面跟着说明气泡的问号图标（.th-help），
+        不再是「文本紧邻 </th>」的形态。
+        """
         src = _src()
         self.assertNotIn("不支持 MCP 修复", src, "tooltip 文案应说明是能力缺失而非待修复")
-        self.assertIn("不支持 MCP / 无端点", src, "首页 MCP 图例须与面板一致")
-        self.assertGreaterEqual(src.count("不支持 MCP（非故障）"), 2, "首页两处单元格文案")
+        self.assertIn("不支持 MCP 或无端点", src, "MCP 列头说明须与面板用同一套词汇")
+        # 列头 data-help 里必须真的挂了这套词汇（图例撤销后含义的承载处）
+        head = [ln for ln in src.split("\n") if ">MCP<span" in ln]
+        self.assertTrue(head, "未找到 MCP 列头")
+        self.assertIn("不支持 MCP 或无端点", head[0], "MCP 列头 data-help 应带不支持口径")
+        self.assertGreaterEqual(src.count("不支持 MCP（非故障）"), 1, "首页单元格文案")
 
 
 @unittest.skipUnless(NODE, "需要 node 才能执行渲染护栏")

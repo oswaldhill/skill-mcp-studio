@@ -970,21 +970,93 @@
   /* 列表视图：表格全量清单 */
   .agent-list-wrap { margin-top: var(--sp-6); }
   .agent-list-count { font-size: var(--fs-xs); color: var(--muted); margin-bottom: var(--sp-3); }
-  .agent-list-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+  /* table-layout: fixed —— 列宽治理（2026-10-14），理由与定宽数值见下方「紧列定宽」注释块。 */
+  .agent-list-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); table-layout: fixed; }
   .agent-list-table th {
     text-align: left; font-size: var(--fs-2xs); text-transform: uppercase; letter-spacing: .06em;
     color: var(--faint); font-weight: 600; padding: var(--sp-3a) var(--sp-4); border-bottom: 1px solid var(--line-strong);
   }
-  .agent-list-table td { padding: var(--sp-3a) var(--sp-4); border-bottom: 1px solid var(--line); vertical-align: middle; }
+  /* overflow: hidden —— fixed 布局下超长内容不会自动换行，必须显式裁切兜底（2026-10-14）。 */
+  .agent-list-table td { padding: var(--sp-3a) var(--sp-4); border-bottom: 1px solid var(--line); vertical-align: middle; overflow: hidden; }
+  /* 带 data-help 的表头：**自绘**的说明气泡。
+     为什么不用原生 `title`（2026-10-14 用户反馈「提示…没有显示出来」）：
+     实测本应用（Tauri / macOS WKWebView）里 `cursor: help` 会生效（变成问号），
+     但原生 title 气泡**不弹出** —— 于是"能不能看说明"完全落空。
+     故改为自绘浮层：hover / focus 时把说明渲染到 #pop-root（复用既有挂载点与层级），
+     不依赖任何平台原生行为。`title` 属性保留一份，作为读屏与降级兜底。 */
+  .agent-list-table th[data-help] { white-space: nowrap; }
+  .agent-list-table th .th-help { display: inline-flex; align-items: center; margin-left: var(--sp-0c);
+    color: var(--faint); vertical-align: -1px; }
+  .agent-list-table th .th-help svg { width: 11px; height: 11px; display: block; }
+  .agent-list-table th[data-help]:hover .th-help,
+  .agent-list-table th[data-help]:focus-within .th-help { color: var(--accent); }
+  .agent-list-table th[data-help] { cursor: help; }
+  /* 说明气泡本体：默认隐藏，由 JS 定位后显示 */
+  .th-tip { position: fixed; z-index: 61; max-width: 320px; padding: var(--sp-3b) var(--sp-5);
+    background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--r-control);
+    box-shadow: var(--shadow-modal); color: var(--text); font-size: var(--fs-2xs);
+    font-weight: 400; line-height: 1.6; white-space: normal; text-align: left; }
+  .th-tip .tt-row { display: flex; gap: var(--gap-3); }
+  .th-tip .tt-k { flex: none; color: var(--muted); }
+  /* 气泡内的图例行：与表格内同形态的图标徽标 / 色点 + 标签。
+     用户要求「弹出的内容中最好有图标作为图例」—— 文字描述（"绿点 已安装"）
+     不如直接画出那个图标直观，且与表格里的实际渲染一一对应。 */
+  .th-tip .tt-legend { display: flex; flex-wrap: wrap; gap: var(--gap-2) var(--gap-4); }
+  .th-tip .tt-item { display: inline-flex; align-items: center; gap: var(--gap-2); white-space: nowrap; }
+  .th-tip .tt-item .al-ico { width: 16px; height: 16px; }
+  .th-tip .tt-item .al-ico svg { width: 10px; height: 10px; }
+  .th-tip .tt-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .th-tip .tt-dot.ok { background: var(--ok); }
+  .th-tip .tt-dot.warn { background: var(--warn); }
+  .th-tip .tt-dot.err { background: var(--err); }
+  .th-tip .tt-dot.na { background: var(--faint); }
+  .th-tip .tt-dot.neutral { background: var(--muted); }
+  /* 状态列（安装 / 技能目录 / MCP / Hook）内容居中，与列头对齐。
+     用户反馈「安装 技能目录等内容，没有和上面的标题栏居中对齐」：
+     这些列的单元格是单枚徽标/短标签，左对齐时徽标贴着单元格左缘，
+     而列头文字+问号图标整体更宽，视觉上徽标"偏左"。居中后两者轴线一致。 */
+  .agent-list-table th:nth-child(3),
+  .agent-list-table th:nth-child(7),
+  .agent-list-table th:nth-child(8),
+  .agent-list-table th:nth-child(9),
+  .agent-list-table td:nth-child(3),
+  .agent-list-table td:nth-child(7),
+  .agent-list-table td:nth-child(8),
+  .agent-list-table td:nth-child(9) { text-align: center; }
+  /* 列宽受控：紧列定宽 + 文本列弹性（2026-10-14 按量化诊断整改）。
+     问题：默认 auto 布局下浏览器把**全部**宽度按内容比例分摊，于是"只装一枚 20px 图标"
+     的列被分到 89-125px。1440px 窗口实测：技能目录列 125px 装 20px（浪费 105px）、
+     安装列 89px 装 20px（浪费 69px）、Hook 列 186px 装 54px（浪费 132px），
+     整表约 65% 是横向空白，徽标孤零零悬在列中。
+     解法：table-layout: fixed（已合并进上方 .agent-list-table 主规则）。
+     8 个紧列按"内容并集 + 单元格左右内边"给定宽，名称与类型两个文本列吸收剩余。
+     好处：任何窗口宽度下紧列都不会再被撑开，且不需要 min-width，也不会引入横向滚动。
+     数值来源：各列各行内容并集实测值 + var(--sp-4) x 2，向上取到 4 的倍数。 */
+  .agent-list-table th:nth-child(3),  .agent-list-table td:nth-child(3)  { width: 56px; }   /* 安装：一枚 20px 徽标 */
+  .agent-list-table th:nth-child(4),  .agent-list-table td:nth-child(4)  { width: 48px; }   /* APP：一枚计数徽标 */
+  .agent-list-table th:nth-child(5),  .agent-list-table td:nth-child(5)  { width: 48px; }   /* CLI：同上 */
+  .agent-list-table th:nth-child(6),  .agent-list-table td:nth-child(6)  { width: 70px; }   /* CONFIG：同上，表头词更长 */
+  .agent-list-table th:nth-child(7),  .agent-list-table td:nth-child(7)  { width: 82px; }   /* 技能目录：一枚链接徽标 */
+  .agent-list-table th:nth-child(8),  .agent-list-table td:nth-child(8)  { width: 78px; }   /* MCP：N/M 或「不支持」 */
+  .agent-list-table th:nth-child(9),  .agent-list-table td:nth-child(9)  { width: 104px; }  /* Hook：状态胶囊 + 档数注记（去盒化后实测 84+20） */
+  .agent-list-table th:nth-child(10), .agent-list-table td:nth-child(10) { width: 124px; }  /* 操作：详情按钮 + 更多菜单 */
+  /* fixed 布局下超长内容不会自动换行，必须显式裁切（overflow: hidden 已合并进上方 td 主规则）。
+     名称/类型两个文本列给省略号，保证长客户端名不撑破定宽。 */
+  .agent-list-table .al-name,
+  .agent-list-table .al-type { display: inline-block; max-width: 100%; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
   .agent-list-table tr:hover td { background: var(--bg-elev); }
   .al-name { font-weight: 600; color: var(--text); }
   .al-type { font-size: var(--fs-2xs); color: var(--muted); font-family: var(--mono); }
   .al-metrics { display: flex; gap: var(--gap-1); flex-wrap: wrap; }
-  /* 分层作用域徽标（Hook 列内）：与 .al-metric 同族但更弱 —— 它是元信息（该客户端
-     的 Hook 配置分几档作用域），不是可点的计数徽标，故不做 accent 高亮、不加 hover。 */
+  /* 分层作用域注记（Hook 列内）：**去盒化**的裸文本（2026-10-15 层级重构）。
+     此前是虚线描边徽标，与实底状态胶囊（.tag）并排时同一格出现两种盒子：
+     虚线那个并不显得"更弱"，反而像"另一种东西"，视觉噪音与主状态抢权重。
+     档数是元信息（该客户端 Hook 配置分几档作用域），不是主状态；
+     按密集数据表原则（盒子只承载主信息）降为 faint mono 裸文本，紧跟胶囊之后。
+     主次一眼可分：实底胶囊 = 状态，裸文本 = 注记。列宽也因此可收窄。 */
   .al-scope { display: inline-flex; align-items: center; font-size: var(--fs-2xs); color: var(--faint);
-    font-family: var(--mono); padding: var(--sp-0a) var(--sp-3a); border: 1px dashed var(--line);
-    border-radius: var(--r-pill); background: transparent; margin-left: var(--gap-2); }
+    font-family: var(--mono); margin-left: var(--gap-2); }
   .al-metric { display: inline-flex; align-items: center; gap: var(--gap-1); font-size: var(--fs-2xs); color: var(--muted); font-family: var(--mono); padding: var(--sp-0a) var(--sp-3a); border: 1px solid var(--line); border-radius: var(--r-pill); background: var(--panel); }
   .al-metric b { color: var(--text); font-weight: 600; }
   .al-metric.hit { border-color: var(--accent-border); background: var(--accent-bg); color: var(--accent); }
@@ -994,6 +1066,19 @@
   .al-metric-btn:active { transform: scale(.94); }
   .al-metric-btn.mcp { color: var(--ok); border-color: var(--ok-border); background: var(--ok-bg); }
   .al-metric-btn.mcp:hover { color: var(--ok); border-color: var(--ok-border); background: var(--ok-bg); }
+  /* 行内「图标徽标」：安装 / 技能目录两列用它替代长文字。
+     为什么用图标（2026-10-14 用户反馈）：这两列在多数行上取值相同（"已安装"、"链接统一目录"），
+     同一串中文逐行重复既冗长又抢眼 —— 而同行 APP/CLI/CONFIG 是紧凑数字徽标，
+     MCP/HOOK 是短标签，于是这两列成了整行最"重"的元素。
+     改为一枚 20px 的圆形图标徽标：与 .al-metric 同尺寸、同边框、同底色族，
+     量级与数字徽标一致；语义靠 title + .sr-only 保证可读（WCAG 1.4.1 不以颜色/图形单独传达）。 */
+  .al-ico { display: inline-flex; align-items: center; justify-content: center; flex: none;
+    width: 20px; height: 20px; border-radius: var(--r-pill);
+    border: 1px solid var(--line); background: var(--panel); color: var(--muted); }
+  .al-ico svg { width: 12px; height: 12px; display: block; }
+  .al-ico.ok { color: var(--ok); border-color: var(--ok-border); background: var(--ok-bg); }
+  .al-ico.warn { color: var(--warn); border-color: var(--warn-border); background: var(--warn-bg); }
+  .al-ico.err { color: var(--err); border-color: var(--err-border); background: var(--err-bg); }
   /* 分类筛选 chips */
   .agent-chips { display: flex; flex-wrap: wrap; gap: var(--gap-2); margin: var(--sp-0b) 0 var(--sp-4); }
   .agent-chip {
@@ -1306,13 +1391,21 @@
   /* 技能页工具栏：分段筛选 + 网格/列表切换 */
   .skill-toolbar { display: flex; align-items: center; gap: var(--gap-3); flex-wrap: wrap; margin-bottom: var(--sp-4); }
   .skill-legend { display: flex; align-items: center; gap: var(--gap-5); flex-wrap: wrap; padding: var(--sp-3a) var(--sp-5); margin-bottom: var(--sp-4); border: 1px solid var(--line); border-radius: var(--r-control); background: var(--bg-elev); font-size: var(--fs-xs); color: var(--muted); }
-  .skill-legend .legend-label { font-weight: 600; color: var(--text); }
+  /* 标签列**定宽**：同一页叠放的多条图例（如 MCP / Hook）名字长短不一，
+     不定宽就会让各自的第一个色点错开（实测 "MCP" 与 "Hook" 差 2px）。
+     定宽后所有图例的色点与条目列严格对齐。--sp-9(24px)+--sp-3a(7px)=31px,
+     覆盖最长的标签 "Hook"（实测 29px），与卡片标签列的定宽做法一致。 */
+  .skill-legend .legend-label { font-weight: 600; color: var(--text); min-width: calc(var(--sp-9) + var(--sp-3a)); }
   .skill-legend .legend-item { display: inline-flex; align-items: center; gap: var(--gap-1); white-space: nowrap; }
   .skill-legend .legend-swatch { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
   .skill-legend .legend-swatch.ok { background: var(--ok); }
   .skill-legend .legend-swatch.warn { background: var(--warn); }
   .skill-legend .legend-swatch.err { background: var(--err); }
   .skill-legend .legend-swatch.na { background: var(--faint); }
+  /* 中性变体：对应列表列里的中性 .tag（「部分已配置」这类"既非就绪也非缺失"的状态）。
+     缺了它会让那条 swatch 变成零宽 —— 既没有颜色，又把它后面的条目整体左移，
+     于是同一页两条图例的标签列对不齐（实测踩过）。 */
+  .skill-legend .legend-swatch.neutral { background: var(--muted); }
   .skill-legend .legend-note { color: var(--faint); font-family: var(--mono); font-size: var(--fs-2xs); margin-left: auto; }
   .skill-cat-chips { display: inline-flex; gap: var(--gap-2); flex-wrap: wrap; }
   .cat-chip { display: inline-flex; align-items: center; gap: var(--gap-1); border: 1px solid var(--line); background: var(--panel); color: var(--muted); border-radius: var(--r-pill); padding: var(--sp-0b) var(--sp-4); font-size: var(--fs-xs); font-weight: 500; cursor: pointer; box-shadow: none; }
@@ -2178,6 +2271,17 @@ const ICONS = {
   trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg>',
   refresh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>',
   chart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M6 21V11M12 21V5M18 21v-7"/></svg>',
+  // 列表行「技能目录」列用：已链接统一目录 / 独立目录 / 不适用。
+  // 画法与来源沿用本文件既有图标（lucide 几何 + stroke-width 2 + round 端点），
+  // 不自创路径 —— 规范 3b：UI 图标一律 SVG，不用 emoji。
+  link: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>',
+  folder: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>',
+  minus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg>',
+  // 「可悬停看说明」的可见提示标记（列头用）。
+  // 为什么必须有它：`cursor: help` 在 macOS 的 WKWebView 里**不生效** —— WebKit 不渲染
+  // help 光标（退化成普通箭头），用户实测反馈「问号没办法显示」。所以不能只靠光标暗示，
+  // 要给一个真正画出来的问号图标。
+  help: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2.4-3 4"/><path d="M12 17h.01"/></svg>',
 };
 const iconForKind = (kind) => `<span class="pi-ico">${ICONS.grid}</span>`;
 
@@ -2437,25 +2541,8 @@ function renderAgents() {
       </span>
     </div>
     <div class="agent-chips">${chips}</div>
-    <div class="skill-legend mcp-badge-legend">
-      <span class="legend-label">MCP</span>
-      <span class="legend-item"><span class="legend-swatch ok"></span>全部已设置</span>
-      <span class="legend-item"><span class="legend-swatch warn"></span>部分已设置</span>
-      <span class="legend-item"><span class="legend-swatch err"></span>未设置</span>
-      <span class="legend-item"><span class="legend-swatch na"></span>不支持 MCP / 无端点</span>
-      <span class="legend-note">N / M = 已设置端点数 / 声明挂载的端点总数</span>
-    </div>
-    <!-- Hook 图例：只复用既有 .skill-legend。不自造 hook-badge-legend 这类空壳类名：
-         mcp-badge-legend 就是没有 CSS 规则的幽灵类，已被冻结在 GHOST_BASELINE，不应复制。 -->
-    <div class="skill-legend">
-      <span class="legend-label">Hook</span>
-      <span class="legend-item"><span class="legend-swatch ok"></span>全部已配置</span>
-      <span class="legend-item"><span class="legend-swatch"></span>部分已配置</span>
-      <span class="legend-item"><span class="legend-swatch warn"></span>未配置</span>
-      <span class="legend-item"><span class="legend-swatch na"></span>未收录配置 / 仅审计</span>
-      <span class="legend-note">N / M = 已配置事件数 / 该客户端支持的事件数（只看有无配置，不看内容）；「N 档」为分层作用域</span>
-    </div>
-    <div id="agent-home-body"></div>`;
+    <div id="agent-home-body"></div>
+`;
 
   const body = $("agent-home-body");
   // 视图切换
@@ -2710,20 +2797,29 @@ function renderHomeListView(q) {
   const rows = list.map((a) => {
     const dot = dotFor(a.installed, a.install_state);
     const isConfigOnly = a.install_state === "config_only";
-    const statusCell = a.installed
-      ? '<span class="ok-true">已安装</span>'
-      : (isConfigOnly ? '<span class="ok-false" style="color:var(--warn)">仅配置</span>' : '<span class="ok-false">未安装</span>');
-    // S8：同一状态同时准备纯文本版本，供状态点的 .sr-only 使用 ——
-    // 原来该列只用 .dot 的 CSS 颜色表达状态，色盲与读屏用户拿不到信息
-    // （WCAG 1.4.1 用色传达信息）。同表 MCP 列本就用文字标签，口径也统一了。
-    const statusText = a.installed ? "已安装" : (isConfigOnly ? "仅配置" : "未安装");
-    const skillsCell = !a.installed
-      ? '<span class="ok-na" title="客户端未安装，技能目录状态不适用">不适用</span>'
-      : (!a.skills_dir_found
-        ? '<span class="ok-false" title="未找到该客户端的 skills 目录">无目录</span>'
-        : (a.skills_compliant
-          ? `<span class="ok-true" title="已通过软链接/快捷方式链接到统一技能目录（${linkFormText(a.skill_link_form)}）">链接统一目录</span>`
-          : '<span class="ok-false" title="使用客户端各自的独立 Skill 目录，未链接到统一技能目录">独立目录</span>'));
+    // 安装 / 技能目录两列统一为**图标徽标**（.al-ico），与 APP/CLI/CONFIG 的数字徽标同量级。
+// 为什么不用文字（2026-10-14 用户反馈「绿色胶囊里的文字显得也比较突兀」）：
+//   ① 这两列在多数行上取值相同（"已安装"、"链接统一目录"），同一串中文逐行重复很抢眼；
+//   ② 同行其它列都是紧凑徽标（数字 / 短标签 "2/2"），长文字让这两列成了整行最重的元素。
+//   ③ 图标能一眼扫完，文字需要逐行读。
+// 语义不丢：每个徽标都有 title，并配 .sr-only 文本（WCAG 1.4.1 不以图形单独传达信息）。
+const statusText = a.installed ? "已安装" : (isConfigOnly ? "仅配置" : "未安装");
+const statusCls = a.installed ? "ok" : (isConfigOnly ? "warn" : "err");
+const statusIco = a.installed ? ICONS.check : (isConfigOnly ? ICONS.warn : ICONS.cross);
+const statusCell = `<span class="al-ico ${statusCls}" title="${statusText}" aria-hidden="true">${statusIco}</span><span class="sr-only">${statusText}</span>`;
+// 技能目录：链接统一目录=link(ok) / 独立目录=folder(warn) / 无目录=cross(err) / 不适用=minus(中性)
+// 用三元 + 数组解构，**刻意不写 if/else 链**：本仓库测试用「换行 + 单个右花括号 + 换行」
+// 定位函数结尾（tests/test_dashboard_agents_panel.py::_fn），而 if/else 的收尾右花括号
+// 恰好会顶格出现在行首，被误判成函数结束 → 抽取出的脚本被截断、node 报
+// "Unexpected end of input"（实测踩过）。此处注释也刻意不含裸花括号字符。
+const [skillsText, skillsCls, skillsIco] = !a.installed
+  ? ["技能目录不适用（客户端未安装）", "", ICONS.minus]
+  : (!a.skills_dir_found
+    ? ["未找到该客户端的 skills 目录", "err", ICONS.cross]
+    : (a.skills_compliant
+      ? [`已通过软链接/快捷方式链接到统一技能目录（${linkFormText(a.skill_link_form)}）`, "ok", ICONS.link]
+      : ["使用客户端各自的独立 Skill 目录，未链接到统一技能目录", "warn", ICONS.folder]));
+const skillsCell = `<span class="al-ico ${skillsCls}" title="${escapeHtml(skillsText)}" aria-hidden="true">${skillsIco}</span><span class="sr-only">${escapeHtml(skillsText)}</span>`;
     // MCP 列与卡片页一致：显示「已配置 / 声明挂载」端点，颜色由是否全配置驱动
     // （不再只看 mcp_attach.length——那只是期望挂载数，不代表实际接上）。
     const eps = (SNAP && SNAP.mcp && SNAP.mcp.endpoint_status) || {};
@@ -2736,9 +2832,9 @@ function renderHomeListView(q) {
     }).length;
     let mcpCell;
     if (!a.mcp_config_path) {
-      mcpCell = '<span class="ok-na" title="该客户端未声明 MCP 配置文件，不支持 MCP（非故障）">不支持</span>';
+      mcpCell = '<span class="tag" title="该客户端未声明 MCP 配置文件，不支持 MCP（非故障）">不支持</span>';
     } else if (!mcpTotal) {
-      mcpCell = '<span class="ok-na" title="未声明要挂载的端点">0</span>';
+      mcpCell = '<span class="tag" title="未声明要挂载的端点">0</span>';
     } else if (mcpConfigured === mcpTotal) {
       mcpCell = `<span class="tag ok" title="${mcpConfigured}/${mcpTotal} 端点已在设置中配置">${mcpConfigured}/${mcpTotal}</span>`;
     } else if (mcpConfigured > 0) {
@@ -2763,9 +2859,9 @@ function renderHomeListView(q) {
       // Hook 配置路径"，不等于"该客户端没有 Hook 能力"。写成"不支持"是过度断言：
       // 实测 22 个已安装客户端里只有 6 个登记了 hooks.clients，若一律显示"不支持"，
       // 这一列对多数行都是误导。要接入请到「设置 → Hook / 客户端详情」补登记。
-      hookCell = '<span class="ok-na" title="尚未收录该客户端的 Hook 配置路径（不等于不支持）；可在客户端详情中登记">未收录</span>';
+      hookCell = '<span class="tag" title="尚未收录该客户端的 Hook 配置路径（不等于不支持）；可在客户端详情中登记">未收录</span>';
     } else if (!a.hooks_fix_supported) {
-      hookCell = `<span class="ok-na" title="插件型客户端，不支持模板注入${hookSupported ? `（可用钩子 ${hookSupported} 个）` : ""}">仅审计</span>`;
+      hookCell = `<span class="tag" title="插件型客户端，不支持模板注入${hookSupported ? `（可用钩子 ${hookSupported} 个）` : ""}">仅审计</span>`;
     } else if (!hookConfigured) {
       hookCell = `<span class="tag warn" title="该客户端尚未配置任何 hook（共支持 ${hookSupported} 个事件）">未配置</span>`;
     } else if (hookConfigured >= hookSupported) {
@@ -2790,7 +2886,7 @@ function renderHomeListView(q) {
   body.innerHTML = `<div class="agent-list-wrap">
       <div class="agent-list-count">共 ${list.length} 个（分类筛选：${homeType() === "all" ? "全部" : escapeHtml(homeType())}）</div>
       <div class="table-scroll"><table class="agent-list-table">
-        <thead><tr><th>名称</th><th>类型</th><th>安装</th><th>APP</th><th>CLI</th><th>CONFIG</th><th>技能目录</th><th>MCP</th><th>Hook</th><th style="text-align:right">操作</th></tr></thead>
+        <thead><tr><th>名称</th><th>类型</th><th data-help="#check.ok:已安装;warn.warn:仅配置;cross.err:未安装">安装<span class="th-help" aria-hidden="true">${ICONS.help}</span></th><th>APP</th><th>CLI</th><th>CONFIG</th><th data-help="#link.ok:已指向统一技能目录;folder.warn:独立目录;cross.err:无目录;minus:不适用">技能目录<span class="th-help" aria-hidden="true">${ICONS.help}</span></th><th data-help="N / M = 已设置端点数 / 声明挂载的端点总数|#.ok:全部已设置;.warn:部分已设置;.err:未设置;.na:不支持 MCP 或无端点">MCP<span class="th-help" aria-hidden="true">${ICONS.help}</span></th><th data-help="N / M = 已配置事件数 / 该客户端支持的事件数（只看有无配置，不看内容）|#.ok:全部已配置;.neutral:部分已配置;.warn:未配置;.na:未收录配置或仅审计|「N 档」为分层作用域">Hook<span class="th-help" aria-hidden="true">${ICONS.help}</span></th><th style="text-align:right">操作</th></tr></thead>
         <tbody>${rows || '<tr><td colspan="10" class="path-none">无匹配结果</td></tr>'}</tbody>
       </table></div>
     </div>`;
@@ -2800,6 +2896,60 @@ function renderHomeListView(q) {
   body.querySelectorAll("[data-popkind]").forEach((b) => {
     b.addEventListener("click", (e) => { e.stopPropagation(); togglePathPop(b); });
   });
+  // 表头说明气泡：hover / 键盘 focus 都出，移开即隐（自绘，不依赖原生 title）
+  body.querySelectorAll("th[data-help]").forEach((th) => {
+    th.tabIndex = 0;                       // 键盘可达：能 focus 才能读到说明
+    th.addEventListener("mouseenter", () => showThTip(th));
+    th.addEventListener("mouseleave", hideThTip);
+    th.addEventListener("focus", () => showThTip(th));
+    th.addEventListener("blur", hideThTip);
+  });
+}
+
+/** 显示表头说明气泡；内容按 `|` 分段，每段一行。
+ *  以 `#` 开头的段是**图例行**：条目用 `;` 分隔，每条格式为
+ *  「图标名.颜色类:标签」（图标名为空则渲染纯色点）。图例直接复用表内同款
+ *  .al-ico 徽标与色点形态 —— 用户在气泡里看到的就是列里的真实渲染
+ *  （2026-10-14 用户要求「弹出的内容中最好有图标作为图例」：
+ *  文字描述"绿点 已安装"不如直接画出那枚图标直观，且能与列内一一对应）。 */
+function showThTip(th) {
+  const root = $("pop-root");
+  if (!root || !th.dataset.help) return;
+  const r = th.getBoundingClientRect();
+  const rows = th.dataset.help.split("|")
+    .map((line) => {
+      if (line.startsWith("#")) {
+        const items = line.slice(1).split(";").map((item) => {
+          const ci = item.indexOf(":");
+          const spec = ci < 0 ? "" : item.slice(0, ci);
+          const label = ci < 0 ? item : item.slice(ci + 1);
+          const di = spec.indexOf(".");
+          const icon = di < 0 ? spec : spec.slice(0, di);
+          const color = di < 0 ? "" : spec.slice(di + 1);
+          const glyph = icon
+            ? `<span class="al-ico ${color}" aria-hidden="true">${ICONS[icon] || ""}</span>`
+            : `<span class="tt-dot ${color}" aria-hidden="true"></span>`;
+          return `<span class="tt-item">${glyph}<span>${escapeHtml(label)}</span></span>`;
+        }).join("");
+        return `<div class="tt-legend">${items}</div>`;
+      }
+      const i = line.indexOf("=");
+      if (i < 0) return `<div class="tt-row"><span>${escapeHtml(line)}</span></div>`;
+      return `<div class="tt-row"><span class="tt-k">${escapeHtml(line.slice(0, i + 1))}</span>`
+           + `<span>${escapeHtml(line.slice(i + 1).trim())}</span></div>`;
+    }).join("");
+  root.innerHTML = `<div class="th-tip" id="th-tip" role="tooltip" style="left:${Math.round(r.left)}px;top:${Math.round(r.bottom + 6)}px">${rows}</div>`;
+  // 超出右边界时左移，避免被窗口裁掉
+  const tip = $("th-tip");
+  if (tip) {
+    const over = tip.getBoundingClientRect().right - window.innerWidth + 12;
+    if (over > 0) tip.style.left = `${Math.round(r.left - over)}px`;
+  }
+}
+
+function hideThTip() {
+  const root = $("pop-root");
+  if (root && root.querySelector(".th-tip")) root.innerHTML = "";
 }
 
 // 列表视图数字徽章气泡：按 kind（app/cli/config/mcp）取对应路径/端点展示，点击路径复制。
@@ -6281,6 +6431,7 @@ function renderMergePreview(data) {
     <div id="merge-pager"></div>
 
     ${renderMergeChanges(data)}
+
 
     <div class="form-actions">
       <button class="btn-cancel" id="mg-cancel">取消</button>

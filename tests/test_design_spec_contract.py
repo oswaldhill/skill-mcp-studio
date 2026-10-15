@@ -304,9 +304,10 @@ class ComponentRegistrationTest(unittest.TestCase):
     })
 
     # 存量幽灵类基线（2026-10-11 实测）。只许减少：清掉一个就从这里删一个。
+    # 2026-10-14：`mcp-badge-legend` 已随 IDE/Agent 页图例撤销而不再使用，按规则收紧。
     GHOST_BASELINE = frozenset({
         "al-group-name", "btn-agent-detail", "btn-mt-settings", "ff-label",
-        "input", "kv", "mcp-badge-legend", "panel", "pf-add", "pf-rm", "ts-label",
+        "input", "kv", "panel", "pf-add", "pf-rm", "ts-label",
     })
 
     def test_no_ghost_classes_used_in_markup(self):
@@ -1081,16 +1082,26 @@ class CardLabelColumnAlignmentTest(unittest.TestCase):
         用户要求：「在 IDE 的 tab 中增加 hook 的配置和 scale（分层作用域），和 MCP 一样」。
         """
         src = _src()
-        head = [line for line in src.split("\n") if "技能目录</th>" in line]
+        # 锚点用 `<th>名称</th>` 起头的那一行：列头文本后面可能跟说明气泡的问号图标，
+        # 所以不能用「技能目录</th>」这类"文本紧邻闭合标签"的写法（已因加图标而失效）。
+        head = [line for line in src.split("\n") if "<th>名称</th>" in line and ">Hook" in line]
         self.assertTrue(head, "未找到列表视图表头")
         h = head[0]
-        self.assertIn("<th>MCP</th>", h)
-        self.assertIn("<th>Hook</th>", h, "表头缺少 Hook 列")
-        self.assertLess(h.index("<th>MCP</th>"), h.index("<th>Hook</th>"),
+        self.assertIn(">MCP<span", h)
+        self.assertIn(">Hook<span", h, "表头缺少 Hook 列")
+        self.assertLess(h.index(">MCP<span"), h.index(">Hook<span"),
                         "Hook 列应排在 MCP 之后（与用户截图列序一致）")
-        self.assertIn("Hook", src)  # 图例标题
-        self.assertIn("legend-note", src, "Hook 图例应有取值说明（N/M 含义）")
-        self.assertIn("mcp-badge-legend", src, "MCP 图例应保持存在")
+        # 图例已按用户要求撤销（2026-10-14，两整行图例太占空间），
+        # 状态色/图标的含义改由**列头说明气泡**承载。
+        # 注意用 `data-help` 而不是原生 `title`：实测本应用（Tauri/macOS WKWebView）里
+        # 原生 title 气泡不弹出（用户反馈「提示没有显示出来」），故改为自绘浮层。
+        self.assertRegex(h, r'<th data-help="[^"]*N / M[^"]*">MCP<span',
+                         "MCP 列头应带 data-help 说明（图例撤销后含义的承载处）")
+        self.assertRegex(h, r'<th data-help="[^"]*N / M[^"]*">Hook<span',
+                         "Hook 列头应带 data-help 说明（含 N/M 含义与「N 档」）")
+        self.assertIn("function showThTip", src, "说明气泡需有自绘实现（不依赖原生 title）")
+        self.assertNotIn(' title="N / M', src, "不得再依赖原生 title 承载说明")
+        self.assertNotIn("mcp-badge-legend", src, "IDE/Agent 页图例已撤销，不应再出现")
         # 空行 colspan 必须与列数一致（10 列）
         self.assertIn('colspan="10"', src, "空行 colspan 应与 10 列一致")
 
@@ -1135,3 +1146,219 @@ class CardLabelColumnAlignmentTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LegendPlacementAndAlignmentTest(unittest.TestCase):
+    """图例：统一放在内容最下方 + 标签列定宽对齐（2026-10-13 用户要求）。
+
+    用户反馈三点：① 图例里「部分已配置」那条色点没有颜色；② 两条图例的条目对不齐；
+    ③ 建议所有页面的图例都放到最下方。①② 的根因是同一个 ——那条色点漏了语义 class，
+    宽度为 0 既让它没颜色、又把它后面的条目整体左移。
+    """
+
+    def test_every_legend_has_a_colored_swatch(self):
+        """每条 legend-swatch 都必须带语义 class —— 否则没有背景色（不可见）。
+
+        这是本次 ① 的根因：`<span class="legend-swatch"></span>` 命中基类拿到 9px 宽，
+        但没有任何 background 规则，于是渲染成一个"看不见的占位"。
+        """
+        src = _src()
+        bare = re.findall(r'<span class="legend-swatch"\s*></span>', src)
+        self.assertEqual(bare, [], f"有 {len(bare)} 条色点缺语义 class（会没有颜色）")
+        # 基类必须仍是尺寸来源，各变体只负责颜色
+        self.assertEqual(_norm_ws(_decl(".skill-legend .legend-swatch", "width")), "9px")
+        self.assertEqual(_norm_ws(_decl(".skill-legend .legend-swatch", "height")), "9px")
+        for variant in ("ok", "warn", "err", "na", "neutral"):
+            with self.subTest(variant=variant):
+                self.assertTrue(_decl(f".skill-legend .legend-swatch.{variant}", "background"),
+                                f".legend-swatch.{variant} 缺 background（该状态无颜色）")
+
+    def test_legend_label_column_is_fixed_width(self):
+        """标签列必须定宽，否则多条图例的第一个色点会错开（实测差 2px）。"""
+        self.assertIn("min-width", _rule_body(".skill-legend .legend-label"),
+                      "标签列未定宽：MCP / Hook 名字长短不一会让色点列错位")
+
+    def test_legends_come_before_their_content(self):
+        """图例必须排在它所说明的内容**之前**（2026-10-14 用户定案：放上面好看）。
+
+        走过一次弯路：曾按要求把 5 处图例全移到最下方，用户看到实际效果后判定
+        「还是放在上面好看」，于是回退。本断言把当前选择钉住，避免又被改回去。
+
+        例外：**IDE/Agent 页的两条图例已整块撤销**（用户同日要求："全部有图例的话
+        就太多太长了"），含义改由列头 title 承载 —— 故不再参与本断言。
+        """
+        src = _src()
+        pairs = [
+            ("Skills 页", 'id="skills-list"', 'id="skill-legend"'),
+            ("MCP 页", "'<div class=\"table-scroll\"><table class=\"mcp-table\">", "el.innerHTML = legend"),
+        ]
+        for name, content, legend in pairs:
+            with self.subTest(page=name):
+                ci, li = src.find(content), src.find(legend)
+                self.assertNotEqual(ci, -1, f"{name}：未找到内容锚点")
+                self.assertNotEqual(li, -1, f"{name}：未找到图例锚点")
+                self.assertLess(li, ci, f"{name}：图例应排在内容之前")
+
+
+class RowStatusCellUniformityTest(unittest.TestCase):
+    """`.agent-list-table` 行内状态列必须形态统一，且**不使用纯着色文字**。
+
+    演进（三轮，均为用户反馈驱动）：
+      ① 原先 安装/技能目录 用 `.ok-true/.ok-false/.ok-na`（纯着色文字，只设 color），
+         同行 MCP/Hook 却是 `.tag` 胶囊 → 混形态。
+      ② 先统一成 `.tag` 胶囊 → 用户仍嫌「胶囊里的文字显得也比较突兀」：这两列在多数行
+         取值相同（"已安装"、"链接统一目录"），同一串中文逐行重复又长又抢眼。
+      ③ 最终定为**图标徽标 `.al-ico`**（与 APP/CLI/CONFIG 的数字徽标同尺寸同族），
+         语义由 title + .sr-only 承载。
+
+    本类守住最终形态：两列必须用 `.al-ico`，且不得回退到纯着色文字或长文字胶囊。
+    """
+
+    # 行内状态列可能出现的纯着色文字类
+    PLAIN = ("ok-true", "ok-false", "ok-na")
+
+    def _row_renderer_body(self) -> str:
+        """取出主列表行的渲染函数体（renderHomeListView）。"""
+        src = _src()
+        i = src.index("function renderHomeListView(")
+        j = src.index("\nfunction ", i + 10)
+        return src[i:j]
+
+    def test_status_and_skills_cells_are_icons(self):
+        """安装 / 技能目录 两列必须用 `.al-ico` 图标徽标。"""
+        body = self._row_renderer_body()
+        for cls in self.PLAIN:
+            with self.subTest(cls=cls):
+                self.assertNotIn(
+                    f'class="{cls}"', body,
+                    f"行内状态列不得用 .{cls}（纯着色文字）",
+                )
+        # 两列的核心实现必须存在（注意：skillsIco 是用 let 与其它两个变量一起声明的，
+        # 所以只断言标识符被使用，不绑定声明关键字）
+        self.assertIn("statusIco", body, "安装列应构造图标（statusIco）")
+        self.assertIn("skillsIco", body, "技能目录列应构造图标（skillsIco）")
+        self.assertRegex(body, r'class="al-ico \$\{statusCls\}"', "安装列应用 .al-ico 徽标")
+        self.assertRegex(body, r'class="al-ico \$\{skillsCls\}"', "技能目录列应用 .al-ico 徽标")
+        # 无障碍：图标必须带 title，并配 sr-only 文本（不以图形单独传达信息）
+        self.assertIn('class="sr-only"', body, "图标徽标必须配 .sr-only 文本")
+        # 图标取自 ICONS，不得用符号字符充当图标
+        for name in ("ICONS.check", "ICONS.warn", "ICONS.cross", "ICONS.link",
+                     "ICONS.folder", "ICONS.minus"):
+            with self.subTest(icon=name):
+                self.assertIn(name, body, f"缺少 {name}")
+
+    def test_mcp_and_hook_na_cells_are_tags(self):
+        """MCP / Hook 列里原先的纯文字「不支持 / 0 / 未收录 / 仅审计」用中性 .tag 胶囊。"""
+        body = self._row_renderer_body()
+        for label in ("不支持", "未收录", "仅审计"):
+            with self.subTest(label=label):
+                self.assertRegex(body, rf'class="tag"[^>]*>{label}<',
+                                 f"「{label}」应为中性 .tag 胶囊")
+
+    def test_tooltip_legend_renders_icons(self):
+        """列头气泡的图例行必须渲染图标/色点，不得用文字描述形状。
+
+        用户要求（2026-10-14）：「弹出的内容中，最好有图标作为图例」——
+        文字"绿点 已安装"要读者在脑中翻译成视觉，直接渲染那枚徽标才能与列内一一对应。
+        """
+        src = _src()
+        # 1) data-help 用图例行标记格式：#图标名.颜色类:标签;...
+        self.assertEqual(src.count('data-help="#'), 2,
+                         "安装/技能目录的 data-help 应为纯图例行（# 开头）")
+        self.assertIn("|#.ok:", src, "MCP/Hook 的 data-help 应含色点图例行")
+        # 2) showThTip 有图例行的渲染逻辑
+        i = src.index("function showThTip(")
+        j = src.index("\n}\n", i) + 3
+        fn = src[i:j]
+        self.assertIn('line.startsWith("#")', fn, "showThTip 应识别 # 图例行")
+        for marker in ("tt-legend", "tt-item", "tt-dot", "ICONS[icon]"):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, fn, f"showThTip 缺少 {marker} 渲染逻辑")
+        # 3) CSS 有 tt-dot 的颜色变体（与 legend-swatch 同色系，缺一个就有一种状态无色）
+        for variant in ("ok", "warn", "err", "na", "neutral"):
+            with self.subTest(variant=variant):
+                self.assertTrue(_decl(f".th-tip .tt-dot.{variant}", "background"),
+                                f".tt-dot.{variant} 缺 background")
+
+    def test_status_columns_are_centered(self):
+        """状态列（安装/技能目录/MCP/Hook）的 th 与 td 必须居中。
+
+        用户反馈（2026-10-14）：「安装 技能目录等内容，没有和上面的标题栏居中对齐」。
+        这四列的单元格是单枚徽标/短标签，左对齐时贴着单元格左缘，与更宽的列头
+        （文字+问号图标）轴线不一致；居中后实测偏差 0.0px。
+        """
+        css = _css()
+        for col in (3, 7, 8, 9):
+            with self.subTest(col=col):
+                self.assertIn(f".agent-list-table th:nth-child({col})", css,
+                              f"第 {col} 列 th 未纳入居中规则")
+                self.assertIn(f".agent-list-table td:nth-child({col})", css,
+                              f"第 {col} 列 td 未纳入居中规则")
+        m = re.search(r"\.agent-list-table th:nth-child\(3\)[^{]*\{([^}]*)\}", css, re.S)
+        self.assertIsNotNone(m, "未找到居中规则体")
+        self.assertIn("text-align: center", m.group(1), "居中规则应声明 text-align: center")
+
+
+class ColumnWidthGovernanceTest(unittest.TestCase):
+    """`.agent-list-table` 必须用 `table-layout: fixed` + 紧列定宽，防止图标列被撑宽。
+
+    量化诊断（2026-10-14）：默认 auto 布局下，只装一枚 20px 徽标的列被分到 89-125px，
+    1440px 窗口下整表约 65% 是横向空白。改为 fixed 布局 + 8 个紧列定宽后，
+    三个窗口宽度（1018/1440/1680px）均验证零溢出、零横向滚动。
+    不变量：table-layout: fixed 存在，且 8 个紧列各有 px 宽度声明。
+    """
+
+    def test_table_layout_is_fixed(self):
+        css = _css()
+        m = re.search(r"\.agent-list-table\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(m, "未找到 .agent-list-table 规则")
+        self.assertIn("table-layout: fixed", m.group(1),
+                      ".agent-list-table 必须声明 table-layout: fixed，否则紧列会被 auto 布局撑宽")
+
+    def test_tight_columns_have_px_width(self):
+        """8 个紧列（安装/APP/CLI/CONFIG/技能目录/MCP/Hook/操作）必须有 px 定宽。"""
+        css = _css()
+        # 列号 → 期望最小宽度（内容并集 + 20px 内边，向上取 4 的倍数）
+        expected = {3: 56, 4: 48, 5: 48, 6: 70, 7: 82, 8: 78, 9: 104, 10: 124}
+        for col, min_w in expected.items():
+            with self.subTest(col=col):
+                # th 或 td 任一声明了 width 即可（两者通常成对出现）
+                pat = rf"\.agent-list-table t[hd]:nth-child\({col}\)[^{{]*\{{[^}}]*width:\s*(\d+)px"
+                m = re.search(pat, css)
+                self.assertIsNotNone(m, f"第 {col} 列缺少 px 定宽声明")
+                self.assertGreaterEqual(int(m.group(1)), min_w,
+                                        f"第 {col} 列宽度 {m.group(1)}px 小于安全下限 {min_w}px")
+
+    def test_text_columns_have_no_fixed_width(self):
+        """名称（1）与类型（2）是弹性列，不得设 px 定宽，否则无法吸收剩余空间。"""
+        css = _css()
+        for col in (1, 2):
+            with self.subTest(col=col):
+                pat = rf"\.agent-list-table t[hd]:nth-child\({col}\)[^{{]*\{{[^}}]*width:\s*\d+px"
+                self.assertIsNone(re.search(pat, css),
+                                  f"第 {col} 列（文本列）不应设 px 定宽，应留弹性吸收剩余空间")
+
+    def test_td_overflow_hidden_for_fixed_layout(self):
+        """fixed 布局下 td 必须 overflow: hidden，否则超长内容会溢出到相邻列。"""
+        css = _css()
+        m = re.search(r"\.agent-list-table td\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(m, "未找到 .agent-list-table td 规则")
+        self.assertIn("overflow: hidden", m.group(1),
+                      "fixed 布局下 td 必须 overflow: hidden 兜底裁切")
+
+    def test_al_scope_is_deboxed(self):
+        """`.al-scope`（Hook 列档数注记）必须去盒化：无 border、无 padding、无 background。
+
+        2026-10-15 层级重构：此前是虚线描边徽标，与实底状态胶囊并排时同一格出现两种盒子，
+        虚线那个并不显得"更弱"，反而像"另一种东西"，视觉噪音与主状态抢权重。
+        档数是元信息，按密集数据表原则（盒子只承载主信息）降为裸文本。
+        """
+        css = _css()
+        m = re.search(r"\.al-scope\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(m, "未找到 .al-scope 规则")
+        body = m.group(1)
+        self.assertNotIn("border", body, ".al-scope 不应有 border（去盒化）")
+        self.assertNotIn("padding", body, ".al-scope 不应有 padding（去盒化）")
+        self.assertNotIn("background", body, ".al-scope 不应有 background（去盒化）")
+        self.assertIn("color: var(--faint)", body, ".al-scope 应为 faint 色裸文本")
+        self.assertIn("font-family: var(--mono)", body, ".al-scope 应为 mono 字体")
