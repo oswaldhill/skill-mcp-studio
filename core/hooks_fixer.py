@@ -1,26 +1,29 @@
-"""Hook 配置修复：写入 / 移除标准 ai-memory 生命周期 hook 模板。
+"""Hook 配置修复：写入 / 移除生命周期 hook 命令模板。
 
 参照 ``mcp_fixer.fix_mcp_tool`` 的 backup → atomic-write → validate → rollback
-安全链（``file_atomic`` 三件套）。模板来自 ``config.yaml`` 的
-``hooks.clients[].template`` 段（事件 → ai-memory hook 命令）。
+安全链（``file_atomic`` 三件套）。命令模板来自 ``config.yaml`` 的
+``hooks.clients[].template`` 段（事件 → 用户自定义命令）。
+
+v0.29.0 起：写入命令完全由用户自定义，不再内置任何特定工具的兜底命令。
+``_default_hook_command`` 返回空字符串（空 = 不写入兜底，该事件跳过）。
+移除语义改为「清除该事件下全部 hook 条目（含第三方）」。
 
 写入结构（Claude Code / WorkBuddy / Codex 风格）::
 
     {"hooks": {"SessionStart": [
-        {"matcher": "*", "hooks": [{"type": "command", "command": "ai-memory hook --event session_start"}]}
+        {"matcher": "*", "hooks": [{"type": "command", "command": "<your-command>"}]}
     ]}}
 """
 
 import json
 import os
-import re
 import shutil
 from typing import Any, Dict, List
 
 from file_atomic import atomic_write, backup_path, restore_backup
 from legacy_checker import _load_json_file, _norm_tool_name
 from config_codec import _find_in_dict
-from hooks_inventory import hooks_client_config, list_client_hook_entries, _is_ai_memory_hook_cmd
+from hooks_inventory import hooks_client_config, list_client_hook_entries
 from hooks_inventory import event_name_for_client, client_supported_events
 
 
@@ -36,14 +39,11 @@ def _result(name: str, status: str, message: str, **extra: Any) -> Dict[str, Any
 def _default_hook_command(canonical_event: str) -> str:
     """全局事件列表选中了某客户端 template 未定义的事件时的兜底命令。
 
-    命名沿用仓库既有 template 的规律：``ai-memory hook --event <snake_case>``。
-    例：``SessionStart`` -> ``session_start``、``UserPromptSubmit`` -> ``user_prompt_submit``。
-
-    为什么需要兜底：GUI 的「Hook 事件」是**全局**设置，勾选某事件时不会去问
-    每个客户端有没有对应 template。没有兜底就会出现「勾了却没写进去」的静默漏写。
+    v0.29.0 起 Hook 写入命令完全由用户自定义，不再内置任何特定工具的命令；
+    返回空字符串表示「不写入兜底，该事件跳过」。调用方据此把空命令的事件
+    排除出写入集合（见 ``fix_hooks_tool`` 的 to_write 计算）。
     """
-    snake = re.sub(r"(?<!^)(?=[A-Z])", "_", canonical_event).lower()
-    return f"ai-memory hook --event {snake}"
+    return ""
 
 
 def _build_hook_entry(command: str, entry_style: str = "nested") -> Dict[str, Any]:
@@ -71,8 +71,8 @@ def _build_hook_entry(command: str, entry_style: str = "nested") -> Dict[str, An
 def _ensure_hook_section(data: Dict[str, Any], hook_keys: List[str]) -> Dict[str, Any]:
     """沿 hook_keys 深入取 hooks 段（不存在则创建）。
 
-    与 ``ai_memory_checker._find_json_mcp_section`` 同语义：键不存在才创建，
-    键存在但非 dict 则抛 ``TypeError``（由调用方捕获转 error）。
+    键不存在才创建，键存在但非 dict 则抛 ``TypeError``（由调用方捕获转 error），
+    避免覆盖用户既有的非对象内容。
     """
     current = data
     for key in hook_keys:
@@ -92,7 +92,7 @@ def fix_hooks_tool(
     *,
     dry_run: bool = False,
 ) -> Dict[str, Any]:
-    """为单个客户端写入标准 ai-memory hook 模板。
+    """为单个客户端写入 Hook 命令模板。
 
     安全链：读原配置 → 渲染模板 → dry-run 判断 → 备份 → 原子写 → 重新解析校验 → 失败回滚。
     """
@@ -115,8 +115,8 @@ def fix_hooks_tool(
     # 补不上（假警报）。改为：全局列表给出**标准事件名**，这里按各客户端
     # event_format 转成它的规范名。
     #
-    # 命令文案仍取 template 里同名事件的值；没有对应 template 时用标准 ai-memory
-    # 命令兜底（`ai-memory hook --event <snake_case>`）。
+    # 命令文案取 template 里同名事件的值；没有对应 template 时用兜底命令
+    # （v0.29.0 起兜底为空 = 该事件跳过，不再硬写）。
     #
     # 能力校验（2026-10-12 按用户要求变更）：各客户端的 ``events`` 从「声明」升级为
     # **权威能力集**，写入前按它过滤 —— 只写该客户端真正认的事件。此前是「勾了就一定
@@ -178,13 +178,33 @@ def fix_hooks_tool(
     except TypeError as e:
         return _result(name, "error", f"hooks 段结构异常：{e}")
 
-    # 检查已配置事件（避免重复写入）
+    # 去重 + 空命令跳过（v0.29.0）：
+    #   - 空命令（template 无值且兜底返回空）= 该事件不写入，跳过；
+    #   - 命令级去重：要写的命令字面已在现有 hook 里出现过则跳过，避免重复条目。
+    #     不再用「签名级」识别（不区分「是不是我们写的」）—— 第三方 hook 存在时，
+    #     只要我们的命令与之不同，照常追加（保住「只增不减」语义）。
     existing_entries = list_client_hook_entries(tool, config)
-    existing_ai_events = {e.event for e in existing_entries if e.is_ai_memory}
-    to_write = {ev: cmd for ev, cmd in template.items() if ev not in existing_ai_events}
+    existing_cmds = {e.command for e in existing_entries}
+    to_write = {
+        ev: cmd for ev, cmd in template.items()
+        if cmd and cmd.strip() and cmd not in existing_cmds
+    }
+    skipped_empty = [ev for ev, cmd in template.items() if not (cmd and cmd.strip())]
 
     if not to_write:
-        return _result(name, "unchanged", "所有 template 事件已配置，跳过")
+        n_exists = len([ev for ev, cmd in template.items()
+                        if cmd and cmd.strip() and cmd in existing_cmds])
+        if skipped_empty and not n_exists:
+            return _result(
+                name, "unsupported",
+                f"所选 {len(skipped_empty)} 个事件均无命令模板（template 为空），请先填写命令",
+            )
+        parts = []
+        if n_exists:
+            parts.append(f"{n_exists} 个事件命令已存在")
+        if skipped_empty:
+            parts.append(f"{len(skipped_empty)} 个事件无命令模板已跳过")
+        return _result(name, "unchanged", "；".join(parts) + "，无新增写入")
 
     # 渲染：把 template 事件写入 hook_section（条目形态按客户端声明，不可混用）
     entry_style = hc.get("entry_style", "nested")
@@ -231,10 +251,11 @@ def fix_hooks_tool(
         return _result(name, "error", f"写入失败已回滚：{e}", backup=bak)
 
     _skip_note = f"；跳过该客户端不支持的 {len(skipped_unsupported)} 个：{', '.join(skipped_unsupported)}" if skipped_unsupported else ""
+    _empty_note = f"；{len(skipped_empty)} 个事件无命令模板已跳过" if skipped_empty else ""
     return _result(
         name,
         "updated" if had_file else "created",
-        (f"已写入 {len(to_write)} 个 hook 事件（备份 {bak}）" if bak else f"已创建配置并写入 {len(to_write)} 个 hook 事件") + _skip_note,
+        (f"已写入 {len(to_write)} 个 hook 事件（备份 {bak}）" if bak else f"已创建配置并写入 {len(to_write)} 个 hook 事件") + _skip_note + _empty_note,
         backup=bak,
         path=config_path,
         skipped=skipped_unsupported,
@@ -264,11 +285,14 @@ def fix_hooks_all(
     return results
 
 
-def _filter_ai_memory_from_event(event_hooks: Any) -> tuple:
-    """从事件的 hooks 数组过滤 ai-memory 条目，返回 (新数组, 移除数)。
+def _filter_all_hooks(event_hooks: Any) -> tuple:
+    """移除该事件下**全部** hook 条目（含第三方），返回 (新数组, 移除数)。
 
-    保留非 ai-memory 的 hook 条目；若整个 entry 的 hooks 全是 ai-memory 且
-    无其他字段，则整个 entry 移除。
+    v0.29.0 语义变更：移除不再区分来源 ——「移除 Hook」= 清除该事件下所有
+    hook 配置（含非本工具写入的第三方 hook）。原配置会先备份。
+
+    命令非空即视为一条 hook 条目（与 ``HookEntry.is_configured`` 口径一致）；
+    无 command 字段或命令为空的结构性条目予以保留。
     """
     if not isinstance(event_hooks, list):
         return event_hooks, 0
@@ -284,20 +308,19 @@ def _filter_ai_memory_from_event(event_hooks: Any) -> tuple:
             kept_hooks = []
             for h in hooks_arr:
                 cmd = h.get("command", "") if isinstance(h, dict) else ""
-                if _is_ai_memory_hook_cmd(cmd):
+                if isinstance(cmd, str) and cmd.strip():
                     removed += 1
                 else:
                     kept_hooks.append(h)
             if kept_hooks:
+                entry = dict(entry)
                 entry["hooks"] = kept_hooks
                 new_entries.append(entry)
-            else:
-                # 整个 entry 的 hooks 都是 ai-memory（或空），丢弃 entry
-                pass
+            # else: 整个 entry 的 hooks 全是命令 hook，丢弃 entry
         else:
-            # 非 hooks 数组结构，检查 command 字段
+            # 扁平结构：检查 command 字段
             cmd = entry.get("command", "")
-            if isinstance(cmd, str) and _is_ai_memory_hook_cmd(cmd):
+            if isinstance(cmd, str) and cmd.strip():
                 removed += 1
             else:
                 new_entries.append(entry)
@@ -310,9 +333,10 @@ def remove_hooks_tool(
     *,
     dry_run: bool = False,
 ) -> Dict[str, Any]:
-    """移除客户端的 ai-memory hook 事件（保留非 ai-memory hooks）。
+    """移除客户端该事件下**全部** hook 条目（含第三方）。
 
-    安全链同 ``fix_hooks_tool``。
+    v0.29.0 语义变更：此前只移除本工具写入的条目、保留第三方；现改为清除
+    该事件下所有 hook 配置。原配置会先备份。安全链同 ``fix_hooks_tool``。
     """
     name = tool.get("name", "")
     hc = hooks_client_config(config, name)
@@ -340,7 +364,7 @@ def remove_hooks_tool(
 
     removed = 0
     for event in list(hook_section.keys()):
-        new_entries, n = _filter_ai_memory_from_event(hook_section[event])
+        new_entries, n = _filter_all_hooks(hook_section[event])
         if n:
             removed += n
             if new_entries:
@@ -349,12 +373,12 @@ def remove_hooks_tool(
                 del hook_section[event]
 
     if removed == 0:
-        return _result(name, "unchanged", "无 ai-memory hook 可移除")
+        return _result(name, "unchanged", "无 hook 条目可移除")
 
     rendered = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
 
     if dry_run:
-        return _result(name, "dry-run", f"[dry-run] 将移除 {removed} 个 ai-memory hook")
+        return _result(name, "dry-run", f"[dry-run] 将移除 {removed} 个 hook 条目（含第三方）")
 
     mode = os.stat(config_path).st_mode & 0o777
     bak = backup_path(config_path)
@@ -372,7 +396,7 @@ def remove_hooks_tool(
     return _result(
         name,
         "updated",
-        f"已移除 {removed} 个 ai-memory hook（备份 {bak}）",
+        f"已移除 {removed} 个 hook 条目（含第三方，备份 {bak}）",
         backup=bak,
         path=config_path,
     )

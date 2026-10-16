@@ -8,7 +8,10 @@
 （假警报，因为写入只看 template）。
 
 改为：`settings.hook_events` 给出**标准事件名**列表，`--fix-hooks` 按各客户端
-`event_format` 转成它的规范名后写入。本文件守住这条链路的四个关键点。
+`event_format` 转成它的规范名后写入。本文件守住这条链路的几个关键点。
+
+v0.29.0 起：兜底命令为空（不再内置任何工具命令），无 template 的事件
+**跳过不写**；已有第三方 hook 照常保留，我们的命令按命令级去重追加。
 """
 
 from __future__ import annotations
@@ -48,7 +51,7 @@ def _config(hook_events=None) -> dict:
                     "event_format": "pascal_case",
                     "events": ["SessionStart", "UserPromptSubmit", "SessionEnd", "Stop"],
                     "fix_supported": True,
-                    "template": {"SessionStart": "ai-memory hook --event session_start"},
+                    "template": {"SessionStart": "my-tool on session_start"},
                 },
                 {
                     "name": "CamelCli",
@@ -58,7 +61,10 @@ def _config(hook_events=None) -> dict:
                     "event_format": "camel_case",
                     "events": ["sessionStart", "stop"],
                     "fix_supported": True,
-                    "template": {"stop": "ai-memory hook --event stop"},
+                    "template": {
+                        "sessionStart": "my-tool on session_start",
+                        "stop": "my-tool on stop",
+                    },
                 },
             ],
         },
@@ -83,8 +89,12 @@ class EventNameConversionTest(unittest.TestCase):
 class GlobalEventsDriveWritingTest(unittest.TestCase):
     """settings.hook_events 决定写入哪些事件（而不是 template）。"""
 
-    def test_configured_events_override_template(self):
-        """勾选了 template 没有的事件，也必须写上（这正是 Codex 的假警报场景）。"""
+    def test_template_command_drives_writing_empty_events_skipped(self):
+        """v0.29.0：有 template 命令的事件才写入；无 template 的事件兜底为空→跳过。
+
+        这是与旧版的核心差异：旧版无 template 的事件靠兜底命令硬写；
+        v0.29.0 兜底为空，无 template 的事件**跳过**（不写空命令条目）。
+        """
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "settings.json"
             path.write_text("{}\n", encoding="utf-8")
@@ -95,13 +105,10 @@ class GlobalEventsDriveWritingTest(unittest.TestCase):
 
             self.assertEqual(result["status"], "updated")
             hooks = json.loads(path.read_text(encoding="utf-8"))["hooks"]
-            self.assertEqual(
-                sorted(hooks.keys()),
-                ["SessionEnd", "SessionStart", "Stop", "UserPromptSubmit"],
-            )
-            # 未在 template 里的 UserPromptSubmit 用兜底命令写入，而不是静默漏掉
-            dumped = json.dumps(hooks["UserPromptSubmit"], ensure_ascii=False)
-            self.assertIn("ai-memory hook --event user_prompt_submit", dumped)
+            # 只有 SessionStart 在 template 里有命令；其余三个无 template 且兜底为空 → 跳过
+            self.assertEqual(list(hooks.keys()), ["SessionStart"])
+            dumped = json.dumps(hooks["SessionStart"], ensure_ascii=False)
+            self.assertIn("my-tool on session_start", dumped)
 
     def test_camel_client_gets_camel_event_names(self):
         with tempfile.TemporaryDirectory() as td:
@@ -149,8 +156,12 @@ class GlobalEventsDriveWritingTest(unittest.TestCase):
             hooks = (json.loads(path.read_text(encoding="utf-8")) or {}).get("hooks") or {}
             self.assertEqual(hooks, {})
 
-    def test_non_ai_memory_hooks_are_preserved(self):
-        """只增不减：客户端已有的非 ai-memory hook 必须原样保留。"""
+    def test_existing_third_party_hooks_preserved_and_new_appended(self):
+        """只增不减：客户端已有的第三方 hook 必须原样保留，我们的命令照常追加。
+
+        v0.29.0 去重改为命令级：要写的命令字面已在现有 hook 里出现过才跳过；
+        第三方 hook 与我们的命令不同 → 追加，不覆盖。
+        """
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "hooks.json"
             path.write_text(json.dumps({
@@ -167,8 +178,35 @@ class GlobalEventsDriveWritingTest(unittest.TestCase):
 
             hooks = json.loads(path.read_text(encoding="utf-8"))["hooks"]
             dumped = json.dumps(hooks["SessionStart"], ensure_ascii=False)
-            self.assertIn("other-bridge", dumped, "非 ai-memory hook 被删除了")
-            self.assertIn("ai-memory hook", dumped, "ai-memory hook 未写入")
+            self.assertIn("other-bridge", dumped, "第三方 hook 被删除了")
+            self.assertIn("my-tool on session_start", dumped, "新命令未追加写入")
+
+    def test_command_level_dedup_skips_already_written(self):
+        """命令级去重：要写的命令字面已存在则跳过，避免重复条目（v0.29.0）。"""
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "settings.json"
+            # 已有我们的命令 → 不应再追加一条
+            path.write_text(json.dumps({
+                "hooks": {
+                    "SessionStart": [
+                        {"matcher": "*", "hooks": [
+                            {"type": "command", "command": "my-tool on session_start"}
+                        ]}
+                    ]
+                }
+            }, indent=2) + "\n", encoding="utf-8")
+            config = _config(["SessionStart"])
+            config["hooks"]["clients"][0]["config_path"] = str(path)
+
+            result = fix_hooks_tool({"name": "PascalCli"}, config)
+
+            self.assertEqual(result["status"], "unchanged")
+            arr = json.loads(path.read_text(encoding="utf-8"))["hooks"]["SessionStart"]
+            # 仍只有一条（去重生效）
+            cmds = [h.get("command")
+                    for entry in arr for h in (entry.get("hooks") or [])
+                    if isinstance(h, dict)]
+            self.assertEqual(cmds.count("my-tool on session_start"), 1)
 
 
 if __name__ == "__main__":
@@ -235,6 +273,7 @@ class HookCapabilityValidationTest(unittest.TestCase):
             cl["event_format"] = "camel_case"
             cl["events"] = ["sessionStart"]
             cl["entry_style"] = "flat"
+            cl["template"] = {"sessionStart": "my-tool on session_start"}
             res = fix_hooks_tool({"name": "PascalCli"}, config)
             self.assertEqual(res["status"], "created")
             entry = json.loads(Path(path).read_text(encoding="utf-8"))["hooks"]["sessionStart"][0]

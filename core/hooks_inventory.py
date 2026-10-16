@@ -8,8 +8,8 @@
    hook_key_path / events / template / fix_supported）；
 2. 回退到 ``mcp_tools[].hooks_config_path``（兼容字段，仅知路径，不知事件签名）。
 
-ai-memory hook 识别依据（与 ``ai_memory_checker.AI_MEMORY_HOOK_SIGNATURE``
-对齐）：命令含 ``ai-memory`` + ``hook --event``，或含 ``ai-memory-hook``。
+hook 识别口径（2026-10-13 起）：某事件下只要存在 hook 条目（命令非空）即算
+「已配置」，命令是什么一概不管 —— 既不区分来源，也不依赖任何工具签名。
 """
 
 import os
@@ -32,18 +32,9 @@ class HookEntry:
     HookEntry 描述生命周期 hook 事件条目。
     """
 
-    event: str = ""            # 事件名（SessionStart / sessionStart / ...）
-    command: str = ""           # hook 命令字符串
-    is_ai_memory: bool = False  # 是否 ai-memory hook（命中签名）
-
-
-def _is_ai_memory_hook_cmd(cmd: str) -> bool:
-    """识别 ai-memory hook 命令。
-
-    标准 CLI（``ai-memory hook --event``）或本机 wrapper（``ai-memory-hook``）。
-    与 ``ai_memory_checker`` 的判定保持一致，避免两套签名漂移。
-    """
-    return ("ai-memory" in cmd and "hook --event" in cmd) or "ai-memory-hook" in cmd
+    event: str = ""               # 事件名（SessionStart / sessionStart / ...）
+    command: str = ""             # hook 命令字符串
+    is_configured: bool = False   # 是否已配置（命令非空即 True，不区分来源）
 
 
 def event_name_for_client(canonical: str, event_format: Optional[str]) -> str:
@@ -123,12 +114,12 @@ def _intended_events(hc: Dict[str, Any], config: Dict[str, Any]) -> List[str]:
         return sorted((hc.get("template") or {}).keys())
     event_format = hc.get("event_format")
     supported = client_supported_events(hc)
-    # 审计基准再收一道：只在 ai-memory **有命令模板**的事件里算「缺关键事件」。
+    # 审计基准再收一道：只在**有命令模板**的事件里算「缺关键事件」。
     # 为什么（2026-10-12 二次修正）：`settings.hook_events` 的默认值已改为**全选**
     # （47 项）。若意图直接取「选中 ∩ 能力」，Claude Code 会一次报出 33 个「缺失」
     # —— 那是「默认状态」而不是异常，页面会被假警报淹没，等于没有审计。
     # 取「选中 ∩ 能力 ∩ 模板键」后：默认全选时基准就是模板那几个核心事件（每个
-    # 客户端 5~7 个），与「是否接上 ai-memory 生命周期 hook」这个真问题对齐。
+    # 客户端 5~7 个），与「是否接上生命周期 hook」这个真问题对齐。
     templated = set((hc.get("template") or {}).keys())
     out: List[str] = []
     for canonical in settings.get("hook_events") or []:
@@ -147,11 +138,22 @@ def hooks_client_config(config: Dict[str, Any], tool_name: str) -> Dict[str, Any
 
     回退：若 hooks 段无该客户端，从 ``mcp_tools`` 段的 ``hooks_config_path``
     构造最小配置（仅路径，无事件签名 / template，``fix_supported=False``）。
+
+    **fix_supported 运行时重算**（v0.29.0）：声明的 ``fix_supported`` 只是
+    意向值；真正「能写入」还需客户端具备可写入的命令来源 —— ``agent_slug``
+    或非空 ``template`` 至少一个。template 清空且无 agent_slug 时，即便声明
+    ``fix_supported: true`` 也应判为不支持（否则 GUI 显示「支持修复」但实际
+    零写入）。此处统一计算 effective 值，下游 inventory / fixer 透传即可。
     """
     hooks = config.get("hooks", {}) or {}
     for cl in hooks.get("clients", []) or []:
         if _norm_tool_name(cl.get("name", "")) == _norm_tool_name(tool_name):
-            return cl
+            hc = dict(cl)  # 浅拷贝，避免回写 config 源对象
+            declared = bool(hc.get("fix_supported", False))
+            has_agent_slug = bool(str(hc.get("agent_slug", "")).strip())
+            has_template = bool(hc.get("template"))
+            hc["fix_supported"] = declared and (has_agent_slug or has_template)
+            return hc
     # 回退：mcp_tools 段的 hooks_config_path（兼容字段）
     for t in config.get("mcp_tools", []) or []:
         if _norm_tool_name(t.get("name", "")) == _norm_tool_name(tool_name):
@@ -170,9 +172,8 @@ def hooks_client_config(config: Dict[str, Any], tool_name: str) -> Dict[str, Any
 def list_client_hook_entries(tool: Dict[str, Any], config: Dict[str, Any]) -> List[HookEntry]:
     """读取客户端 hooks 配置，产出 ``HookEntry`` 清单。
 
-    复用 ``ai_memory_checker`` 的解析原语（``_load_json_file`` /
-    ``_load_toml_file`` / ``_find_in_dict`` / ``_extract_hook_commands``），
-    保证与 ``check_ai_memory_hooks`` 的读取语义一致。
+    复用 ``config_codec`` 的解析原语（``_load_json_file`` / ``_load_toml_file``
+    / ``_find_in_dict`` / ``_extract_hook_commands``），统一 hook 读取语义。
     """
     name = tool.get("name", "")
     hc = hooks_client_config(config, name)
@@ -188,8 +189,8 @@ def list_client_hook_entries(tool: Dict[str, Any], config: Dict[str, Any]) -> Li
         try:
             with open(config_path, "r", encoding="utf-8") as f:
                 content = f.read()
-            if "ai-memory" in content and ("hook" in content or "session" in content):
-                return [HookEntry(event="plugin", command="(TS plugin)", is_ai_memory=True)]
+            if "hook" in content or "session" in content:
+                return [HookEntry(event="plugin", command="(TS plugin)", is_configured=True)]
         except OSError:
             pass
         return []
@@ -220,7 +221,7 @@ def list_client_hook_entries(tool: Dict[str, Any], config: Dict[str, Any]) -> Li
                 HookEntry(
                     event=event_name,
                     command=cmd,
-                    is_ai_memory=_is_ai_memory_hook_cmd(cmd),
+                    is_configured=bool(cmd.strip()),
                 )
             )
     return entries
@@ -250,7 +251,7 @@ def inventory_for_tool(tool: Dict[str, Any], config: Dict[str, Any]) -> Dict[str
     entries = list_client_hook_entries(tool, config)
     # **只看有没有配置，不看配置内容**（2026-10-13 按用户要求变更）。
     #
-    # 此前只统计「命中 ai-memory 命令签名」的事件（``e.is_ai_memory``），于是：
+    # 此前只统计「命中某工具命令签名」的事件，于是：
     #   · 同一事件被别的工具占着（如第三方桥接工具）时，我们报「未配置」，
     #     而实际上该客户端**确实配了这个 hook**；
     #   · 审计的判据与「写入内容」耦合 —— 而写入内容尚未定案，判据不该依赖它。
@@ -271,7 +272,7 @@ def inventory_for_tool(tool: Dict[str, Any], config: Dict[str, Any]) -> Dict[str
         "hooks_supported_events": supported_events,
         "hooks_event_format": hc.get("event_format") or "",
         "hooks_inventory": [
-            {"event": e.event, "command": e.command, "is_ai_memory": e.is_ai_memory}
+            {"event": e.event, "command": e.command, "is_configured": e.is_configured}
             for e in entries
         ],
         "missing_key_events": missing_key,
