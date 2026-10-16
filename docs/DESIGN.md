@@ -623,7 +623,7 @@ Agent 卡片里有两组「标签 + 值」行：**路径区**（APP / CLI / CONF
 | Skill `general` | 技能使用统计（自动统计间隔） |
 | IDE / Agent `agents` | IDE / Agent 默认路径；**卡片/列表上的能力摘要**（Skills / MCP / Hook 三行，无需点开详情）；客户端详情内的「Hook 配置」 |
 | **Hook `hooks`** | 要写入的 Hook 事件（勾选，按分类分组） |
-| MCP `mcp` | MCP 端点库 |
+| MCP `mcp` | **活动端点**（下拉切换）、**自动发现**（开关 + 扫描路径只读）、MCP 端点库 |
 
 **后台巡检（定时检查）**：开关 + 间隔（5 / 15 / 30 / 60 / 120 分钟）。
 取值**不在 localStorage**，而是写进 `config.yaml` 的 `settings` 段
@@ -631,6 +631,20 @@ Agent 卡片里有两组「标签 + 值」行：**路径区**（APP / CLI / CONF
 勾选项读同一份值，两处必须同源，否则托盘显示"已开"而实际没跑。
 读写一律经 CLI `--get-setting` / `--set-setting`（后者带备份 → 原子写 → 校验 → 回滚），
 GUI 不直接改配置文件。间隔由 CLI 钳到 ≥5 分钟，界面需回读落盘值而不是假定已生效。
+
+**MCP tab（`mcp`）**：三张卡片（2026-10-15 补齐 PRD §10 #1）。
+
+1. **活动端点**：`<select>` 下拉，列出 `settings.endpoints` 全部 key。
+   切换后弹确认框（影响所有客户端），确认后经 CLI `--set-active-profile <key>` 写 overlay。
+   空值 = 清除活动端点。
+2. **自动发现**：开关（`.seg-btn`）+ 扫描路径只读展示（`<code class="mono">` 每行一条）。
+   切换后经 CLI `--set-auto-discover enabled=<true|false>` 写 overlay。
+   扫描路径与排除清单在 `config.yaml` 的 `auto_discover` 段，不经 GUI 编辑。
+3. **MCP 端点库**：端点 CRUD（增删改），此前已有。
+
+> 为什么活动端点排在端点库之前："选哪个端点活动"是比"管理端点库"更上层的操作。
+> 两条新 CLI 命令走 overlay 路径（与 `--set-setting` 同模式），早返回不跑审计，
+> 均在 Rust `run_cli` 白名单内（不是重定向命令，不进 `DENIED_FLAG_PREFIXES`）。
 
 **Hook tab（`hooks`）**：**管理「要写入哪些生命周期事件」**，不是展示各 IDE 的接入状态。
 

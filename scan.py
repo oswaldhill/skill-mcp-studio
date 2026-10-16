@@ -1533,6 +1533,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="读取 config.yaml 的 settings 段键值后退出",
     )
     parser.add_argument(
+        "--set-active-profile", type=str, default=None, metavar="KEY",
+        help="设置活动 endpoint profile（空字符串清除），写入 overlay 带备份",
+    )
+    parser.add_argument(
+        "--set-auto-discover", type=str, default=None, metavar="KEY=VALUE",
+        help="设置 auto_discover 段字段（目前仅 enabled=true|false），写入 overlay 带备份",
+    )
+    parser.add_argument(
         "--profile", type=str, default=None,
         help="指定 endpoint profile（覆盖 config.yaml 的 active_profile）",
     )
@@ -2202,6 +2210,105 @@ def _run_get_setting(args, config) -> int:
     return 0
 
 
+def _run_set_active_profile(args, config, config_path) -> int:
+    """设置活动 endpoint profile，写入 overlay（带备份）。
+
+    独立早返回出口（与 --set-setting 同一模式）：校验 key 存在性后写 overlay，
+    不跑后续审计。空字符串 = 清除活动端点。
+    """
+    from endpoint_store import _load_target, _write_target, _ensure_profiles
+    import os as _os
+    import yaml as _yaml
+    from config_store import _overlay_target, _atomic_write
+
+    key = (args.set_active_profile or "").strip()
+
+    print("")
+    print("=" * 60)
+    print("  Set active profile")
+    print("=" * 60)
+    try:
+        if not key:
+            # 清除：写空字符串到 overlay
+            target = _overlay_target(config_path)
+            existing = {}
+            if _os.path.isfile(target):
+                with open(target, "r", encoding="utf-8") as fh:
+                    existing = _yaml.safe_load(fh) or {}
+            existing["active_profile"] = ""
+            rendered = _yaml.safe_dump(existing, allow_unicode=True, default_flow_style=False)
+            _atomic_write(target, rendered, 0o644)
+            print("  ✅ active_profile = (已清除)")
+            return 0
+
+        # 校验 key 存在
+        path = _write_target(config)
+        data = _ensure_profiles(_load_target(path)) if os.path.isfile(path) else {}
+        profiles = data.get("profiles") or {}
+        trunk_profiles = config.get("profiles") or {}
+        if key not in profiles and key not in trunk_profiles:
+            print(f"  ❌ endpoint '{key}' 不存在（可用: {', '.join(sorted(set(list(profiles) + list(trunk_profiles))))}）")
+            return 2
+
+        # 写入 overlay（与 config_store.set_unified_dir 同路径）
+        target = _overlay_target(config_path)
+        existing = {}
+        if _os.path.isfile(target):
+            with open(target, "r", encoding="utf-8") as fh:
+                existing = _yaml.safe_load(fh) or {}
+        existing["active_profile"] = key
+        rendered = _yaml.safe_dump(existing, allow_unicode=True, default_flow_style=False)
+        _atomic_write(target, rendered, 0o644)
+        print(f"  ✅ active_profile = {key}")
+        return 0
+    except Exception as e:
+        print(f"\n  ❌ Set active profile failed: {e}")
+        return 2
+
+
+def _run_set_auto_discover(args, config, config_path) -> int:
+    """设置 auto_discover 段字段，写入 overlay（带备份）。
+
+    目前仅支持 enabled=true|false。auto_discover 是顶层键（不在 settings 下），
+    但走 overlay 同一路径。
+    """
+    import os as _os
+    import yaml as _yaml
+    from config_store import _overlay_target, _atomic_write
+
+    print("")
+    print("=" * 60)
+    print("  Set auto-discover")
+    print("=" * 60)
+    try:
+        spec = args.set_auto_discover
+        parts = spec.split("=", 1)
+        if len(parts) != 2:
+            raise ValueError(f"格式错误，需 KEY=VALUE，得到: {spec}")
+        _key, _val = parts[0].strip(), parts[1].strip()
+        if _key != "enabled":
+            raise ValueError(f"不支持的 auto_discover 字段: {_key}（目前仅支持 enabled）")
+        _val_norm = _val.lower() in ("true", "1", "yes", "on")
+
+        target = _overlay_target(config_path)
+        existing = {}
+        if _os.path.isfile(target):
+            with open(target, "r", encoding="utf-8") as fh:
+                existing = _yaml.safe_load(fh) or {}
+        ad = existing.get("auto_discover") or {}
+        if not isinstance(ad, dict):
+            ad = {}
+        ad["enabled"] = _val_norm
+        existing["auto_discover"] = ad
+        rendered = _yaml.safe_dump(existing, allow_unicode=True, default_flow_style=False)
+        _atomic_write(target, rendered, 0o644)
+        print(f"  ✅ auto_discover.{_key} = {_val_norm}")
+        return 0
+    except Exception as e:
+        print(f"\n  ❌ Set auto-discover failed: {e}")
+        return 2
+
+
 def _parse_fingerprint(raw: str):
     """解析 ``DIM:NAME:TYPE`` 形式的变更指纹。
 
@@ -2529,6 +2636,13 @@ def main() -> int:
     # 早返回后退出码只反映写入本身，不再被后续审计结论污染（见 _run_set_setting）。
     if getattr(args, "set_setting", None):
         return _run_set_setting(args, config_path)
+
+    # 设置活动 endpoint profile / 自动发现开关（PRD §10 #1）：独立写命令，
+    # 走 overlay 路径（与 --set-setting 同一模式），早返回不跑审计。
+    if getattr(args, "set_active_profile", None) is not None:
+        return _run_set_active_profile(args, config, config_path)
+    if getattr(args, "set_auto_discover", None):
+        return _run_set_auto_discover(args, config, config_path)
 
     # 变更检测（B 阶段）：只读 + 支持 --format json，GUI 解析整个 stdout，
     # 必须排在通用快照路由之前，否则输出会被快照截走。

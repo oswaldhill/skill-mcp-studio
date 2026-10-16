@@ -4402,8 +4402,41 @@ function renderSettings() {
     <div id="settings-agents-table" style="margin-top:var(--sp-4)"></div>
   </div>`;
 
-  // 「MCP」：端点库 CRUD（含探活列移除，端点列表是配置数据而非审计结果）
-  const mcpCard = `<div class="settings-card">
+  // 「MCP」：活动端点 + 自动发现 + 端点库 CRUD
+  // PRD §10 #1：此前仅有只读展示，缺少 --set-active-profile / --set-auto-discover
+  // 后端写命令与 GUI 编辑。现补齐（2026-10-15）。
+  const _eps = (SNAP && SNAP.settings && SNAP.settings.endpoints) || [];
+  const _activeProfile = (SNAP && SNAP.settings && SNAP.settings.active_profile) || "";
+  const _adEnabled = (SNAP && SNAP.settings && SNAP.settings.auto_discover && SNAP.settings.auto_discover.enabled) || false;
+  const _adPaths = (SNAP && SNAP.settings && SNAP.settings.auto_discover && SNAP.settings.auto_discover.scan_paths) || [];
+  const _epOpts = _eps.map(e => `<option value="${escapeHtml(e.key)}" ${e.key === _activeProfile ? "selected" : ""}>${escapeHtml(e.name || e.key)} (${escapeHtml(e.key)})</option>`).join("");
+  const _activeProfileCard = `<div class="settings-card">
+    <h4>活动端点</h4>
+    <div class="rows" style="font-size:var(--fs-sm)">
+      <div class="row"><span class="k">当前活动</span><span class="v">
+        <select id="settings-active-profile" class="modal-form .form-field input" style="width:auto;min-width:200px" aria-label="活动端点">
+          <option value="" ${!_activeProfile ? "selected" : ""}>无活动端点</option>
+          ${_epOpts}
+        </select>
+      </span></div>
+    </div>
+    <div class="note" style="margin-top:var(--sp-4)">活动端点是所有客户端共享的统一 MCP 端点。切换后所有客户端的 MCP 配置将指向新端点。</div>
+  </div>`;
+  const _adPathsHtml = _adPaths.length
+    ? _adPaths.map(p => `<code class="mono" style="display:block;padding:var(--sp-0a) 0">${escapeHtml(p)}</code>`).join("")
+    : '<span class="muted">未配置</span>';
+  const _autoDiscoverCard = `<div class="settings-card">
+    <h4>自动发现</h4>
+    <div class="rows" style="font-size:var(--fs-sm)">
+      <div class="row"><span class="k">状态</span><span class="v">
+        <button type="button" class="seg-btn${_adEnabled ? " active" : ""}" data-ad-toggle="true">开启</button>
+        <button type="button" class="seg-btn${!_adEnabled ? " active" : ""}" data-ad-toggle="false">关闭</button>
+      </span></div>
+      <div class="row"><span class="k">扫描路径</span><span class="v" style="flex:1;min-width:0">${_adPathsHtml}</span></div>
+    </div>
+    <div class="note" style="margin-top:var(--sp-4)">开启后扫描时会自动发现未登记的技能目录。扫描路径与排除清单在 config.yaml 中维护。</div>
+  </div>`;
+  const mcpCard = `${_activeProfileCard}${_autoDiscoverCard}<div class="settings-card">
     <h4>MCP 端点库</h4>
     <div class="card-link"><div class="grow note">端点库为通用 MCP 配置，增删改在此集中进行。</div><button class="primary" data-action="add-endpoint">添加端点</button></div>
     <div id="settings-endpoints" style="margin-top:var(--sp-4)"></div>
@@ -4484,6 +4517,25 @@ function renderSettings() {
       const min = parseInt(b.dataset.patrolInterval, 10);
       if (min === _patrolInterval) return;
       setPatrolSetting("patrol_interval_minutes", String(min), "巡检间隔");
+    });
+  });
+  // 活动端点切换：弹出确认（影响所有客户端的 MCP 配置），确认后写 overlay
+  const _apSel = $("settings-active-profile");
+  if (_apSel) {
+    _apSel.addEventListener("change", async () => {
+      const key = _apSel.value;
+      const label = key ? `设为「${key}」` : "清除活动端点";
+      const ok = await confirmModal("切换活动端点", `确认${label}？切换后所有客户端的 MCP 配置将指向新端点。`);
+      if (!ok) { renderSettings(); return; }   // 取消则恢复原选中
+      runTaskModal("切换活动端点", () => runCli(["--set-active-profile", key], label), () => refreshBlocks(["settings", "agents"]), ["校验 key 存在性", "写入 overlay", "刷新快照"]);
+    });
+  }
+  // 自动发现开关
+  el.querySelectorAll("[data-ad-toggle]").forEach((b) => {
+    b.addEventListener("click", () => {
+      const want = b.dataset.adToggle === "true";
+      if (want === _adEnabled) return;
+      runTaskModal("切换自动发现", () => runCli(["--set-auto-discover", `enabled=${want}`], `自动发现: ${want ? "开启" : "关闭"}`), () => refreshBlocks(["settings"]), ["写入 overlay", "刷新快照"]);
     });
   });
   applyScale(currentScale(), false);

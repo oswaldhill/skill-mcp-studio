@@ -546,6 +546,10 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
         // 后台巡检设置（D 阶段）：读写 config.yaml 的 settings 段。
         "--set-setting",
         "--get-setting",
+        // 设置活动 endpoint profile / 自动发现开关（PRD §10 #1）。
+        // 写命令但不是重定向（不改变 config 文件路径），不进 DENIED_FLAG_PREFIXES。
+        "--set-active-profile",
+        "--set-auto-discover",
         // 变更忽略清单（E 阶段）：列出 / 忽略 / 取消忽略 / 清理。
         "--list-ignored",
         "--ignore-change",
