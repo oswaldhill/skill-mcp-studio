@@ -44,7 +44,7 @@ jobs:
       # Round 32：beforeBuildCommand 跑 Python 脚本 scripts/build_gui.py，
       # 构建依赖必须显式声明（原先靠 runner 自带 python3 侥幸通过）。
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
 
