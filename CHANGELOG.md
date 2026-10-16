@@ -139,6 +139,30 @@
 - **「缺关键事件」审计基准再收一道**：改为「选中 ∩ 能力 ∩ `template` 键」。
   默认全选后若直接取「选中 ∩ 能力」，Claude Code 会一次报 33 个「缺失」——
   那是默认状态而非异常，会把页面淹没成假警报。
+- **IDE / Agent 列表视图 UI 排版优化（六批迭代，均走规范登记 + 断言 + 反向验证）**：
+  ① 图例色点补 `neutral` 变体（「部分已配置」原为零宽无色）；图例标签列定宽 31px，
+  消除 MCP/Hook 两条图例色点 2px 错位。
+  ② 图例位置：曾把 5 处图例移到内容最下方，用户看实际渲染后定案「还是放在上面好看」，
+  回退；断言反向为 `test_legends_come_before_their_content` 钉住。
+  ③ 行内状态统一：安装 / 技能目录列从纯着色文字（`.ok-true` 族）改为图标徽标
+  （`.al-ico`，20px 与 `.al-metric` 同族）；新增 `link` / `folder` / `minus` 图标；
+  MCP / Hook 的「不支持 / 未收录 / 仅审计」改中性 `.tag` 胶囊。每枚徽标带 `title`
+  + `.sr-only`（WCAG 1.4.1）。规范 §2.3c 新增「行内形态」映射表。
+  ④ 图例撤销：IDE / Agent 页两条图例整块删除（用户：全部有图例太多太长），语义移入
+  列头 `data-help` 自绘气泡（`.th-tip`，`showThTip` 渲染到 `#pop-root`）。原生 `title`
+  在 WKWebView 实测不弹出，故必须自绘；图例行（`#` 前缀）渲染与表内同款的图标徽标 /
+  色点。列头带 `.th-help` 问号图标 + `tabIndex` 键盘可达。规范 §2.3c 新增气泡组件
+  登记与图例行格式说明。
+  ⑤ 列宽治理：`table-layout: fixed` + 8 个紧列定宽（headless Chrome 实测内容并集 +
+  20px 内边，向上取 4 的倍数），名称 / 类型文本列弹性。三窗口宽度实测零溢出、零横向
+  滚动，整表余量 917→574px；状态列（3 / 7 / 8 / 9）`th` / `td` 居中（实测偏差 0.0px）。
+  规范 §2.3c 新增列宽表与治理说明；护栏为 `ColumnWidthGovernanceTest`。
+  ⑥ Hook 列去盒化：`.al-scope` 档数注记去掉虚线描边，降为 `--faint` mono 裸文本，
+  消除「同格两种盒子」的视觉噪音（taste-skill §4.4：盒子只承载主信息）；Hook 列宽
+  122→104px。规范 §2.3c 登记；护栏为 `test_al_scope_is_deboxed`。
+  以上六批均同步更新 `docs/DESIGN.md`、`tests/test_design_spec_contract.py`（含反向
+  验证）、`tests/test_dashboard_mcp_ui.py`；幽灵类基线收紧（`mcp-badge-legend` 移除）。
+  全量 1194 tests OK，CI 四 workflow 全绿。
 
 ### 修复
 
