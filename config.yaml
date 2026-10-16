@@ -69,6 +69,7 @@ profiles:
     transport: streamable-http
     url_policy: strict
     required_capabilities: {}
+    hooks_required: true   # v0.29.0：显式声明该端点要求客户端配 hook（解耦，不再寄生在能力组键名上）
 mcp_tools:
 - name: Claude Code
   aliases: [claude, claude-code]
@@ -256,11 +257,12 @@ unified_skills_dir: ~/.skills-manager/skills
 
 # ── Hook 管理域（参照 mcp_tools / tools 范式）──────────────────────────
 # 各 IDE/Agent 的生命周期 hook 配置位置、事件签名与标准注入模板。
-# 此前 ai_memory_checker.AI_MEMORY_HOOKS_PATHS 是硬编码，现提升为声明式
+# 此前 hook 路径是硬编码，现提升为声明式
 # 配置：management_snapshot 优先读本段产出 hooks inventory，hooks_fixer
 # 据此写入标准 hook 模板（backup → atomic-write → validate → rollback）。
 # mcp_tools[].hooks_config_path 作为兼容字段保留，本段为权威来源。
 hooks:
+  default_command: ""  # 全局默认命令模板（空 = 不写入兜底，该事件跳过）；v0.29.0 起不再内置任何工具命令
   # ── 规范事件词表（canonical）─────────────────────────────────────
   # GUI「Hook 事件」可勾选的**全集**：跨客户端归一的规范名（PascalCase）。
   # 各客户端用它自己的命名写在 hooks.clients[].events（该客户端**能力全集**）里；
@@ -430,6 +432,7 @@ hooks:
   #   flat   → {type, command, matcher}（Cursor）
   clients:
   - name: Claude Code
+    agent_slug: claude-code
     config_path: ~/.claude/settings.json
     format: json
     hook_key_path: [hooks]
@@ -457,14 +460,9 @@ hooks:
              InstructionsLoaded, ConfigChange, CwdChanged, DirectoryAdded, FileChanged,
              WorktreeCreate, WorktreeRemove, PreCompact, PostCompact, PreModelSwitch,
              PostModelSwitch, Elicitation, ElicitationResult, SessionEnd]
-    template:
-      SessionStart: ai-memory hook --event session_start
-      SessionEnd: ai-memory hook --event session_end
-      Stop: ai-memory hook --event stop
-      UserPromptSubmit: ai-memory hook --event user_prompt_submit
-      PreCompact: ai-memory hook --event pre_compact
-      SubagentStop: ai-memory hook --event subagent_stop
+    template: {}  # v0.29.0：清空，用户在 GUI/CLI 自行填写命令
   - name: Cursor
+    agent_slug: cursor
     config_path: ~/.cursor/hooks.json
     format: json
     hook_key_path: [hooks]
@@ -484,12 +482,7 @@ hooks:
              beforeMCPExecution, afterMCPExecution, beforeReadFile, afterFileEdit,
              beforeSubmitPrompt, preCompact, stop, afterAgentResponse,
              afterAgentThought, beforeTabFileRead, afterTabFileEdit, workspaceOpen]
-    template:
-      sessionStart: ai-memory hook --event session_start
-      sessionEnd: ai-memory hook --event session_end
-      stop: ai-memory hook --event stop
-      beforeSubmitPrompt: ai-memory hook --event user_prompt_submit
-      preCompact: ai-memory hook --event pre_compact
+    template: {}  # v0.29.0：清空，用户在 GUI/CLI 自行填写命令
   - name: WorkBuddy
     config_path: ~/.workbuddy/settings.json
     format: json
@@ -517,14 +510,9 @@ hooks:
              Stop, StopFailure, FinalStop, TeammateIdle, InstructionsLoaded,
              ConfigChange, CwdChanged, FileChanged, WorktreeCreate, WorktreeRemove,
              PreCompact, PostCompact, Elicitation, ElicitationResult, SessionEnd]
-    template:
-      SessionStart: ai-memory hook --event session_start
-      SessionEnd: ai-memory hook --event session_end
-      Stop: ai-memory hook --event stop
-      UserPromptSubmit: ai-memory hook --event user_prompt_submit
-      PreCompact: ai-memory hook --event pre_compact
-      SubagentStop: ai-memory hook --event subagent_stop
+    template: {}  # v0.29.0：清空，用户在 GUI/CLI 自行填写命令
   - name: Codex
+    agent_slug: codex
     config_path: ~/.codex/hooks.json
     format: json
     hook_key_path: [hooks]
@@ -545,14 +533,7 @@ hooks:
     events: [SessionStart, SessionEnd, SubagentStart, PreToolUse, PermissionRequest,
              PostToolUse, PreCompact, PostCompact, UserPromptSubmit, SubagentStop,
              Stop, Interrupt]
-    template:
-      SessionStart: ai-memory hook --event session_start
-      Stop: ai-memory hook --event stop
-      UserPromptSubmit: ai-memory hook --event user_prompt_submit
-      PreCompact: ai-memory hook --event pre_compact
-      PreToolUse: ai-memory hook --event pre_tool_use
-      PostToolUse: ai-memory hook --event post_tool_use
-      SubagentStop: ai-memory hook --event subagent_stop
+    template: {}  # v0.29.0：清空，用户在 GUI/CLI 自行填写命令
   - name: TRAE
     config_path: ~/.trae-cn/hooks.json
     format: json
@@ -572,21 +553,15 @@ hooks:
       label: 项目级
       config_path: <项目根>/.trae/hooks.json
     events: [SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop, Notification]
-    template:
-      SessionStart: ai-memory hook --event session_start
-      Stop: ai-memory hook --event stop
-      UserPromptSubmit: ai-memory hook --event user_prompt_submit
-      PreToolUse: ai-memory hook --event pre_tool_use
-      PostToolUse: ai-memory hook --event post_tool_use
-      Notification: ai-memory hook --event notification
+    template: {}  # v0.29.0：清空，用户在 GUI/CLI 自行填写命令
   - name: OpenCode
-    config_path: ~/.config/opencode/plugins/ai-memory.ts
+    config_path: ~/.config/opencode/plugins/hooks.ts
     format: plugin
     hook_key_path: []
     event_format: lowercase_dotted
     fix_supported: false
     plugin: true
-    note: OpenCode 用 TS 插件（plugins/ai-memory.ts）而非 JSON hooks；下列为插件钩子，仅供查看，不支持模板注入
+    note: OpenCode 用 TS 插件（plugins 目录下的 .ts）而非 JSON hooks；下列为插件 钩子，仅供查看，不支持模板注入
     scopes:
     - id: user
       label: 用户级（全局插件目录，自动加载）
