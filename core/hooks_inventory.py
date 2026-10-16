@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from legacy_checker import _load_json_file, _norm_tool_name
-from ai_memory_checker import (
+from config_codec import (
     _load_toml_file,
     _find_in_dict,
     _extract_hook_commands,

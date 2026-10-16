@@ -17,7 +17,8 @@ re-introduce the ``mcp_checker``/``mcp_fixer`` load-time cycle.
 """
 
 import json
-from typing import Any, Dict
+import os
+from typing import Any, Dict, List, Optional
 
 try:
     import tomllib as _toml
@@ -173,3 +174,56 @@ def parse_reasonix_toml(text: str) -> Dict[str, Dict[str, Any]]:
             key: value for key, value in plugin.items() if key != "name"
         }
     return servers
+
+
+# ── Hook-section parsing primitives ──────────────────────────────────
+# Shared by ``hooks_inventory`` and ``hooks_fixer``. These are generic
+# JSON/TOML traversal helpers (load a TOML file, walk a key path, extract
+# command strings from a hook section) and carry no tool-specific logic.
+
+
+def _load_toml_file(filepath: str) -> Optional[Dict[str, Any]]:
+    """读取 TOML 配置文件（尽力而为，失败返回 None）。"""
+    expanded = os.path.expanduser(filepath)
+    if not os.path.isfile(expanded):
+        return None
+    try:
+        with open(expanded, "rb") as f:
+            return _toml.load(f)
+    except (OSError, _toml.TOMLDecodeError):
+        return None
+
+
+def _find_in_dict(data: Any, key_path: List[str]) -> Any:
+    """沿 key_path 深入取 dict 值。"""
+    current = data
+    for key in key_path:
+        if isinstance(current, dict) and key in current:
+            current = current[key]
+        else:
+            return None
+    return current
+
+
+def _extract_hook_commands(hook_section: Any) -> List[str]:
+    """从 hooks 配置段递归提取所有 command 字符串。
+
+    兼容两种结构：
+    - Claude Code: {"hooks": {"SessionStart": [{"matcher": "...", "hooks": [{"type":"command","command":"..."}]}]}}
+    - Codex:       {"hooks": {"SessionStart": [{"matcher": "...", "hooks": [{"type":"command","command":"..."}]}]}}
+    """
+    commands = []
+
+    def walk(node: Any):
+        if isinstance(node, dict):
+            cmd = node.get("command")
+            if isinstance(cmd, str):
+                commands.append(cmd)
+            for v in node.values():
+                walk(v)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    walk(hook_section)
+    return commands

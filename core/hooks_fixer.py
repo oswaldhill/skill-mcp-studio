@@ -19,7 +19,7 @@ from typing import Any, Dict, List
 
 from file_atomic import atomic_write, backup_path, restore_backup
 from legacy_checker import _load_json_file, _norm_tool_name
-from ai_memory_checker import _find_in_dict
+from config_codec import _find_in_dict
 from hooks_inventory import hooks_client_config, list_client_hook_entries, _is_ai_memory_hook_cmd
 from hooks_inventory import event_name_for_client, client_supported_events
 
