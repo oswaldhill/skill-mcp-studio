@@ -9,6 +9,8 @@
 
 ## [v0.28.0] - 2026-10-15
 
+当前发布版本（build 122）。
+
 ### 新增
 
 - **Hook 事件词表扩容 + 客户端能力集**（`config.yaml` / `core/hooks_*` / `gui/dashboard.html`）。
@@ -1537,7 +1539,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.27.1...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.28.0...HEAD
+[v0.28.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.28.0
 [v0.27.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.27.1
 [v0.27.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.27.0
 [v0.26.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.26.1
