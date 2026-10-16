@@ -51,7 +51,7 @@ jobs:
           python-version: '3.11'
 
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@1.98.1  # Q0-1: 钉具体版本；@stable 会在上游发版时无声切换编译器
+        uses: dtolnay/rust-toolchain@1.120.0  # Q0-1: 钉具体版本；@stable 会在上游发版时无声切换编译器
         with:
           targets: x86_64-pc-windows-msvc
 
