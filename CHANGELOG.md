@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+## [v0.28.0] - 2026-10-15
+
 ### 新增
 
 - **Hook 事件词表扩容 + 客户端能力集**（`config.yaml` / `core/hooks_*` / `gui/dashboard.html`）。
