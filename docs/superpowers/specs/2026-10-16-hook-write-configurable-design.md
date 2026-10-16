@@ -2,6 +2,86 @@
 
 > v0.29.0 核心改动。本文是设计文档，不是产品方案。
 > 修订 v2（2026-10-16）：按四维评审（安全/架构/产品/测试）补齐 5 个阻断项 + 6 个改进建议。
+> 修订 v3（2026-10-16）：补齐 §0 功能能力基线（Hook 与 MCP 的完整能力清单 + 耦合点 + 剥离后边界）。
+
+## 0. 功能能力基线
+
+### 0a. Hook 功能的完整能力
+
+**产品定位**：Hook 是生命周期事件配置管理，管理"客户端在什么时机执行什么命令"。Skill MCP Studio 负责：检查哪些客户端配了哪些事件、写入/移除配置、展示各客户端的能力集与配置状态。
+
+| 层 | 能力 | 现状 |
+|---|---|---|
+| 规范词表 | 47 个规范事件，按 9 个 group 分组（会话生命周期 / 提示词 / 工具调用 / shell·MCP·文件 / 子代理·任务 / 上下文压缩·模型 / 观察·通知 / 指令·配置·目录 / MCP 交互） | 完整 |
+| 客户端能力集 | 6 个客户端声明各自支持的事件全集：Claude Code 33 / Cursor 21 / WorkBuddy 29 / Codex 12 / TRAE 6 / OpenCode 11 | 完整 |
+| 分层作用域 | 每个客户端声明多档作用域（用户级 / 项目级 / 本地级 / 托管级），Claude Code 4 档 / WorkBuddy 4 档 / Codex 3 档 / OpenCode 3 档 / Cursor 2 档 / TRAE 2 档 | 完整 |
+| 事件命名转换 | canonicalToClient：规范 PascalCase 转各客户端格式（Cursor camelCase / TRAE PascalCase / OpenCode lowercase_dotted 等） | 完整 |
+| 配置检查（hooks_checker） | 扫描各客户端配置文件，列出已配置的事件和命令 | 完整 |
+| 配置清单（hooks_inventory） | 按客户端 x 事件粒度，产出结构化清单：支持事件数 / 已配置事件数 / 缺失事件 / 配置路径 / 作用域 | 完整 |
+| 写入（hooks_fixer） | --fix-hooks：按用户选中的事件 + 能力集过滤，写入各客户端配置（含备份 + 原子写 + 回滚） | broken：写入的命令是 ai-memory hook --event ...（硬编码外部工具命令，且该命令本身缺参数） |
+| 移除（hooks_fixer） | --remove-hooks：移除已写入的 hook 条目（含备份） | 只移除 ai-memory 签名的条目 |
+| GUI 展示 | IDE/Agent 列表 Hook 列（N/M 胶囊 + 档数注记）、Hook 业务页（47 事件分组表）、设置页 Hook tab（事件勾选） | 完整 |
+| CLI 命令 | --list-hooks / --fix-hooks / --remove-hooks（均在 Rust 白名单） | 完整 |
+| 事件选择 | 设置页 GUI 勾选后写 settings.hook_events（默认全选 47） | 完整 |
+
+**Hook 功能不涉及** MCP 协议、不涉及端点连接、不涉及探活。Hook 管理的是"客户端配置文件里写了什么命令"，至于这个命令连到哪里、是不是 MCP，Hook 功能不管。
+
+### 0b. MCP 功能的完整能力
+
+**产品定位**：MCP 是端点连接与挂载管理，管理"客户端连到哪个 MCP 端点、端点是否可用、端点上挂了哪些工具"。Skill MCP Studio 负责：端点库 CRUD、活动 profile 切换、逐客户端挂载、探活、MCP 条目审计/清理。
+
+| 层 | 能力 | 现状 |
+|---|---|---|
+| 端点 profile 抽象 | config.yaml 的 profiles 段，每 profile 声明 name / url / transport / required_capabilities / legacy_names | 完整 |
+| 活动 profile 切换 | --set-active-profile：写 overlay，切换所有客户端共享的统一端点 | v0.28.0 新增 |
+| 端点库 CRUD | --add-endpoint / --remove-endpoint / --update-endpoint | 完整 |
+| 端点挂载 | --attach-endpoints：每客户端声明挂载哪些端点 | 完整 |
+| 探活 | --probe-mcp / --endpoint-status：MCP initialize + tools/list + 能力组验证 | 完整 |
+| MCP 配置审计（mcp_checker） | 扫描各客户端 MCP 配置文件，检查是否接入了统一端点 | 完整 |
+| MCP 条目清单（mcp_inventory） | 列出每个客户端配置文件里的所有 MCP server 条目 | 完整 |
+| MCP 配置修复（mcp_fixer） | --fix-mcp：写入统一端点配置到各客户端（含备份 + 回滚） | 完整 |
+| MCP 条目清理 | --remove-mcp-entry / --remove-mcp-class / --remove-legacy-mcp（含风险门） | 完整 |
+| legacy 通道检测（legacy_checker） | 检测旧的 Hermes / ai-memory legacy 通道条目 | 含 ai-memory 检测块（待移入 profile） |
+| 能力组验证 | combined_checker 检查端点是否声明了 required_capabilities 里的能力组 | 完整（ai_memory 是其中一个能力组） |
+| GUI 展示 | MCP 页（客户端 x 端点 覆盖矩阵）、概览页端点状态区、设置页 MCP tab | 完整 |
+| profile 分发 | profile_sources：个人端点隔离在 ~/.skills-manager/profiles.local.yaml（仓库外） | 完整 |
+
+**profiles-hermes-home/config.yaml 的能力组**（profile 专属，不清理）：
+
+| 能力组 | 成员工具 | 语义 |
+|---|---|---|
+| hermes_memory | memory_search, memory_add | Hermes 记忆服务 |
+| ai_memory | ai_memory_query, ai_memory_handoff_begin, ai_memory_call | AI 记忆查询/交接 |
+| tdai | tdai_memory_search, tdai_conversation_search, tdai_knowledge | TDAI 记忆服务 |
+| hermes | hermes_health, hermes_chat | Hermes 健康检查与聊天 |
+
+**MCP 功能不涉及** Hook 写入命令。MCP 管的是"端点连没连上"，Hook 管的是"配置文件里写了什么命令"。
+
+### 0c. 两者的关系与耦合点
+
+Hook 与 MCP 是两个独立功能域，仅在 combined_checker 有一个耦合点：
+
+```
+combined_checker: hooks_required = "ai_memory" in required
+```
+
+这行代码的语义是"端点声明了 ai_memory 能力组时，才要求客户端配 hook"。这是一个隐式耦合：hook 是否 required 寄生在某个能力组的键名上。
+
+本设计文档的解耦方案：改为 profile 显式声明 `hooks_required: true`（布尔字段），不再依赖任何能力组键名。解耦后两个功能域完全独立。
+
+### 0d. ai-memory 耦合点完整清单
+
+| 耦合点 | 所在功能域 | 处理方式 |
+|---|---|---|
+| config.yaml template 段命令值 | Hook | 清空（C 轨） |
+| _default_hook_command() 兜底命令 | Hook | 改为返回空字符串（D 轨） |
+| _is_ai_memory_hook_cmd() / HookEntry.is_ai_memory | Hook | 删除，改为 is_configured（D 轨） |
+| _filter_ai_memory_from_event() / remove_hooks_tool | Hook | 改为全删（D 轨） |
+| ai_memory_checker.py 整个模块 | MCP（ai-memory 专属检查器） | 删除（A 轨） |
+| unified_mcp_server.py 整个模块 | MCP（ai-memory HTTP 网关代理） | 删除（A 轨） |
+| legacy_checker.py 的 AI_MEMORY_DETECTION | MCP（legacy 检测） | 移入 profiles-hermes-home/（E 轨） |
+| combined_checker.py 的 hooks_required = "ai_memory" in required | 交叉耦合点 | 解耦为 hooks_required: true（E 轨） |
+| profiles-hermes-home/config.yaml 的 required_capabilities.ai_memory | MCP（profile 专属能力组） | 保留（profile 专属，不清理） |
 
 ## 1. 背景
 
