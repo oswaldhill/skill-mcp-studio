@@ -676,7 +676,8 @@ GUI 不直接改配置文件。间隔由 CLI 钳到 ≥5 分钟，界面需回�
    - 预设下拉 + 「应用预设」按钮（`empty` 空模板 / `logging` 日志记录 / `webhook` 回调通知
      / `local-script` 本地脚本 / `custom` 不改）→ `--apply-hook-preset <name> --client <name>`
      （覆盖该客户端全部事件命令，弹确认框）。
-   - 「默认命令」输入框（`hooks.default_command`，**暂只读**，无专门 CLI）。
+   - 「默认命令」输入框（`hooks.default_command`，全局兜底）→
+     `--set-hook-template default=<command>`（无需 `--client`，写 `hooks.default_command` 顶层字段）。
    - 各事件命令输入（按客户端 `events` 全集，空 = 不写入该事件）。
    - 可用变量胶囊：`{event}`（snake_case 事件名）/ `{agent}`（agent_slug）/
      `{server_url}`（活动 profile URL），由 `hooks_fixer` 写入时插值。

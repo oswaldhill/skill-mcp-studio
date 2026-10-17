@@ -296,5 +296,5 @@ github develop 仍停 `36b3afc`（落后 4 commit，门禁拦截 github 推送�
 
 **遗留（非设计内容开发，属部署/发布/规范细化）**：
 - 安装到 /Applications：`.app` 已构建（`src-tauri/target/release/bundle/macos/skill-mcp-studio.app`），未 copy 到 `/Applications`（部署步骤）。
-- §6b tests/ 13 行合法保留：测 `--ai-memory` 别名 / legacy 示例 / 反向守护等被保留行为（§3.6/§3.8 明示保留），无法清零；§6b tests/ 豁免规则需放宽（加 `assertNotIn|args\.(fix_)?ai_memory|is_ai_memory`）或接受为合法残留。
-- `default_command` 编辑：卡片里只读（无专门 CLI）；如需可编辑，加 `--set-hook-template default=...` 特例。
+- §6b tests/ 13 行合法保留（**已定案：接受为合法残留**，不改 grep 规则）：测 `--ai-memory` 别名（`test_cli`/`test_set_setting` 的 args.ai_memory）/ legacy 示例名（`test_mcp_fixer` 的 assertNotIn）/ 反向守护（`test_design_spec_contract` 的 is_ai_memory 缺席断言 + §6c）等**被保留行为**（§3.6 别名保留 / §3.8 明示保留）。这些测试若删会破坏被保留行为的覆盖，故 §6b tests/ grep 不追求字面零，以这 13 行为既定合法残留。
+- `default_command` 编辑：已支持（`--set-hook-template default=<command>`，无需 `--client`，text-rewrite `hooks.default_command` 保注释；卡片「默认命令」输入框已从只读改可编辑，随保存一并写入）。

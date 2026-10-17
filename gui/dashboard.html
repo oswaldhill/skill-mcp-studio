@@ -4791,7 +4791,7 @@ function _renderHookTmplBody() {
   body.innerHTML = '<div class="rows">' +
     '<div class="row"><span class="k">客户端</span><span class="v"><select id="hook-tmpl-client" style="' + is + '">' + opts + '</select></span></div>' +
     '<div class="row"><span class="k">预设</span><span class="v"><select id="hook-tmpl-preset" style="' + is + '"><option value="custom">不改</option><option value="empty">空模板</option><option value="logging">日志记录</option><option value="webhook">回调通知</option><option value="local-script">本地脚本</option></select> <button class="ghost sm" data-action="apply-hook-preset">应用预设</button></span></div>' +
-    '<div class="row"><span class="k">默认命令</span><span class="v"><input type="text" value="' + escapeHtml(_hookTmplData.default_command || "") + '" placeholder="空=不写兜底" readonly style="' + is + '"> <span class="muted">（只读，编辑 config.yaml hooks.default_command）</span></span></div>' +
+    '<div class="row"><span class="k">默认命令</span><span class="v"><input type="text" id="hook-tmpl-default" value="' + escapeHtml(_hookTmplData.default_command || "") + '" placeholder="空=不写兜底" style="' + is + '"> <span class="muted">（全局兜底，应用到所有客户端；空=跳过未定义事件）</span></span></div>' +
     '</div><div class="rows" style="margin-top:var(--sp-4)">' + (evRows || '<div class="empty">该客户端无声明事件</div>') + '</div>' +
     '<div class="card-link" style="margin-top:var(--sp-4)"><button class="primary" data-action="save-hook-templates">保存</button></div>';
   const cs = $("hook-tmpl-client");
@@ -4827,18 +4827,30 @@ async function _saveHookTemplates() {
     const ev = inp.dataset.tmplEvent;
     if ((inp.value || "") !== (orig[ev] || "")) changes.push([ev, inp.value]);
   });
-  if (!changes.length) { showBanner("info", "无变更"); return; }
-  const ok = await confirmModal("保存命令模板", "将更新 " + _hookTmplClient + " 的 " + changes.length + " 个事件命令模板。\n原配置会先备份。继续？", false);
+  // 默认命令（hooks.default_command，全局字段）：与事件模板一起纳入保存
+  const defInput = $("hook-tmpl-default");
+  const defChanged = !!defInput && (defInput.value || "") !== (_hookTmplData.default_command || "");
+  const defVal = defInput ? defInput.value : "";
+  if (!changes.length && !defChanged) { showBanner("info", "无变更"); return; }
+  const parts = [];
+  if (changes.length) parts.push(_hookTmplClient + " 的 " + changes.length + " 个事件命令模板");
+  if (defChanged) parts.push("全局默认命令");
+  const ok = await confirmModal("保存命令模板", "将更新 " + parts.join(" 与 ") + "。\n原配置会先备份。继续？", false);
   if (!ok) return;
-  runTaskModal("保存 " + _hookTmplClient + " 命令模板", async () => {
+  runTaskModal("保存命令模板", async () => {
     let failed = 0;
+    if (defChanged) {
+      const r0 = await runCli(["--set-hook-template", "default=" + defVal]);
+      if (!r0 || r0.code !== 0) failed++;
+    }
     for (const [ev, val] of changes) {
       const res = await runCli(["--set-hook-template", ev + "=" + val, "--client", _hookTmplClient]);
       if (!res || res.code !== 0) failed++;
     }
-    if (failed) return { ok: false, message: failed + " 个事件保存失败", detail: (changes.length - failed) + " 个成功" };
-    return { ok: true, message: "已保存 " + changes.length + " 个事件命令模板" };
-  }, async () => { await loadHookTemplates(); refreshBlocks(["agents", "mainstream"]); }, ["备份原配置", "逐事件写入", "校验回写", "刷新状态"]);
+    const total = changes.length + (defChanged ? 1 : 0);
+    if (failed) return { ok: false, message: failed + " 项保存失败", detail: (total - failed) + " 项成功" };
+    return { ok: true, message: "已保存 " + total + " 项（" + parts.join(" / ") + "）" };
+  }, async () => { await loadHookTemplates(); refreshBlocks(["agents", "mainstream"]); }, ["备份原配置", "逐项写入", "校验回写", "刷新状态"]);
 }
 
 function showSkeleton() {

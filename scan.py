@@ -1502,7 +1502,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--set-hook-template", type=str, default=None, metavar="EVENT=COMMAND",
-        help="设置某客户端某事件的 Hook 命令模板（需配合 --client；空 COMMAND=清空该事件）",
+        help="设置某客户端某事件的 Hook 命令模板（需配合 --client；空 COMMAND=清空该事件）；event 用 default 写全局 hooks.default_command（无需 --client）",
     )
     parser.add_argument(
         "--apply-hook-preset", type=str, default=None, metavar="NAME",
@@ -2332,11 +2332,58 @@ def _rewrite_client_template(raw: str, client_name: str, new_template: dict) -> 
     return raw[:start_off] + rendered + raw[end_off:]
 
 
+def _set_default_command_in_text(raw: str, command: str) -> str:
+    """在 config.yaml 的 ``hooks:`` 段内改写 ``default_command`` 的值，保留行尾注释。
+
+    与 ``_set_setting_in_text`` 同属文本级改写（保注释、不重排），但定位 ``hooks:``
+    段而非 ``settings:``，且只替换值部分（``default_command: "<old>"`` →
+    ``default_command: "<new>"``），行尾 ``# ...`` 注释原样保留。
+    """
+    import re as _re
+    lines = raw.split("\n")
+    # 1. 定位 hooks: 段
+    sec_start = None
+    for i, line in enumerate(lines):
+        if line.rstrip() == "hooks:" or line.rstrip().startswith("hooks:"):
+            sec_start = i
+            break
+    if sec_start is None:
+        raise ValueError("config.yaml 无 hooks: 段")
+    # 2. 段范围：到下一个顶格行
+    sec_end = len(lines)
+    for j in range(sec_start + 1, len(lines)):
+        line = lines[j]
+        if line and not line[0].isspace() and not line.lstrip().startswith("#"):
+            sec_end = j
+            break
+    # 3. 找 default_command: 行（2-space 缩进）
+    target = None
+    for j in range(sec_start + 1, sec_end):
+        if lines[j].lstrip().startswith("default_command:"):
+            target = j
+            break
+    if target is None:
+        raise ValueError("hooks: 段内无 default_command 字段")
+    # 4. 替换值部分（保留行尾注释）：default_command: "<old>"  # ...
+    old_line = lines[target]
+    new_line = _re.sub(
+        r'(default_command:\s*)"([^"]*)"',
+        lambda m: f'{m.group(1)}"{command}"',
+        old_line,
+        count=1,
+    )
+    lines[target] = new_line
+    return "\n".join(lines)
+
+
 def _run_set_hook_template(args, config_path) -> int:
-    """--set-hook-template <event>=<command> --client <name>：设置单事件命令模板。
+    """--set-hook-template <event>=<command> [--client <name>]：设置单事件命令模板。
 
     独立早返回出口（与 --set-setting 同模式）：text-rewrite config.yaml 保注释。
     空 command = 从 template 移除该事件。
+
+    特例：event == "default" 时写 ``hooks.default_command`` 顶层字段（无 --client），
+    让 GUI 卡片的「默认命令」输入框可编辑。
     """
     from file_atomic import atomic_write, backup_path
     print("")
@@ -2349,11 +2396,19 @@ def _run_set_hook_template(args, config_path) -> int:
             raise ValueError(f"格式错误，需 EVENT=COMMAND，得到: {spec}")
         event, command = spec.split("=", 1)
         event, command = event.strip(), command.strip()
-        client = (args.client or "").strip()
-        if not client:
-            raise ValueError("--set-hook-template 需配合 --client <客户端名>")
         with open(config_path, "r", encoding="utf-8") as fh:
             raw = fh.read()
+        if event == "default":
+            new_raw = _set_default_command_in_text(raw, command)
+            bak = backup_path(config_path)
+            atomic_write(config_path, new_raw, 0o644)
+            print(f"  ✅ hooks.default_command = {command or '(空)'}")
+            if bak:
+                print(f"  备份: {bak}")
+            return 0
+        client = (args.client or "").strip()
+        if not client:
+            raise ValueError("--set-hook-template 需配合 --client <客户端名>（或 event=default 写全局默认命令）")
         span = _find_client_template_span(raw, client)
         if span is None:
             raise ValueError(f"未找到客户端「{client}」的 template 段")
