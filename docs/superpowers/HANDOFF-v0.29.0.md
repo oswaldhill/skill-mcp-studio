@@ -254,8 +254,25 @@ github develop 仍停 `36b3afc`（落后 4 commit，门禁拦截 github 推送�
 
 ### 6d. 新会话接续方法
 
-1. `git pull origin develop`（拉到 `9aaa4fd`）。
-2. 跑门禁确认 1173 OK：`CI_ALLOW_SKIP_DRIFT=1 bash scripts/ci_parity.sh`。
+1. `git pull origin develop`（拉到 `788b05c`）。
+2. 跑门禁确认 1174 OK：`CI_ALLOW_SKIP_DRIFT=1 bash scripts/ci_parity.sh`。
 3. 读本节 §6 + 设计文档 §3.7 / §3.8 / §4。
 4. 从 F（步骤 6）起。F 建议先做 §3.7a 文案（独立），再 step8 CLI，再 §3.7b 新卡片（接 CLI）。
 5. 关键决策已在 §6b 落定，勿重做步骤 1-5。
+
+### 6e. 续作进度（2026-10-16 goal-round 1，截至 codeup `788b05c`）
+
+> 在 §6a 五轨基础上，goal-round 1 又推进了 §6c / H / G / CLI-partial。门禁 1174 OK。
+
+| 项 | 状态 | commit | 备注 |
+|---|---|---|---|
+| §6c 反向断言 | ✅ 完成 | `b857087` | `test_no_ai_memory_in_trunk_sources`（hooks_fixer 零 ai-memory 命令/字段断言，CI 门禁化强 grep） |
+| H 轨 SECURITY/CHANGELOG/README/SKILL/PRD | ✅ 完成 | `b857087`/`84dbf39`/`6158167` | PRD §6.4/§8/§10、SECURITY 删 `_redact` 引用、CHANGELOG [Unreleased] v0.29.0、README/SKILL 去 ai-memory |
+| H 轨 DESIGN.md §2.3c/§2.10 | ⏳ 待 F 会话 | — | 与 dashboard.html 镜像耦合（test_design_spec_contract 校验 MD↔HTML），F 会话同做 |
+| G 轨 tests/ grep 清理 | ✅ 完成 | `84dbf39` | 过时 fixture/注释全清；§6b tests/ 残留降至 13 行，**全为合法保留**（见下） |
+| CLI `--list-hook-templates`（读） | ✅ 完成 | `788b05c` | 纯读 + JSON，Rust 白名单已加；GUI 卡片据此填充 |
+| CLI `--set-hook-template`/`--apply-hook-preset`（写） | ⏳ 待 F 会话 | — | 需嵌套 `hooks.clients[].template` 的 overlay/config 文本写逻辑，与 §3.7b 卡片同做 |
+
+**剩余**：F（GUI §3.7a 文案 + §3.7b 新卡片）、CLI 写命令、DESIGN.md、最终验证（门禁 1174 已绿；§6b 强/弱零；tests/ 仅合法保留；待：构建 + 安装 + `GITHUB_PUSH_ALLOW=1` 同步 github）。
+
+**§6b tests/ grep 现状**：13 行合法保留（测 `--ai-memory` 别名 / legacy 示例名 / 反向守护等**被保留的行为**），无法在不破坏保留行为测试的前提下清零；§6b tests/ 豁免规则需放宽（或接受为合法残留）—— 这是 §10 最终验证时要定的。
