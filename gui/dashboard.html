@@ -1923,7 +1923,7 @@
     <!-- ===== Hook（生命周期 hook 配置状态与修复） ===== -->
     <section id="page-hooks" class="hidden">
       <div class="page-head">
-        <div class="hd"><h2>Hook</h2><div class="hint">生命周期 hook 配置状态与修复；ai-memory 自动交接依赖 hooks（SessionStart / SessionEnd / Stop 等）</div></div>
+        <div class="hd"><h2>Hook</h2><div class="hint">生命周期 hook 配置状态与修复（SessionStart / SessionEnd / Stop 等）</div></div>
         <div class="page-actions">
           <button class="btn-soft" data-action="fix-hooks-all">一键写入 Hook</button>
           <button class="btn-soft" data-action="refresh">刷新</button>
@@ -3032,7 +3032,7 @@ const SKILL_CATEGORIES = [
   { re: /^(email|imap|himalaya|agent-email)/, label: "邮件" },
   { re: /^(docx|pptx|xlsx|pdf|notion|aippt|ardot|doc-coauthoring|documentation)/, label: "文档办公" },
   { re: /^(frontend|design-taste|ui-ux|v0|figma|web-design|web-artifacts|vercel|prd)/, label: "前端设计" },
-  { re: /^(memory|hermes|ai-memory|qclaw|llm-wiki|native-mcp|brainstorming|using-superpowers|find-skills|create-skill|plugin-|skill-vetter|skills-|graphify|writing-skills|skill-)/, label: "AI 记忆" },
+  { re: /^(memory|hermes|qclaw|llm-wiki|native-mcp|brainstorming|using-superpowers|find-skills|create-skill|plugin-|skill-vetter|skills-|graphify|writing-skills|skill-)/, label: "AI 记忆" },
 ];
 function skillCategory(name) {
   const key = String(name || "").toLowerCase();
@@ -7196,7 +7196,7 @@ async function fixMcpFor(name) {
 }
 
 async function cleanLegacyMcp(name) {
-  const ok = await confirmModal("清理旧 MCP", `将直接移除 ${name} 的旧 Hermes/ai-memory 通道条目（旧通道），原配置会先备份。若该旧通道是它当前唯一的连接，删除后可用「修复 MCP」重新接入。未纳管条目不会被删除。继续？`, true);
+  const ok = await confirmModal("清理旧 MCP", `将直接移除 ${name} 的旧 Hermes/legacy 通道条目（旧通道），原配置会先备份。若该旧通道是它当前唯一的连接，删除后可用「修复 MCP」重新接入。未纳管条目不会被删除。继续？`, true);
   if (!ok) return;
   await runTaskModal(`清理 ${name} 的旧 MCP`, async () => {
     const res = await runCli(["--remove-legacy-mcp", "--client", name]);
@@ -7266,7 +7266,7 @@ function mcpResultToTask(res, okMessage) {
 
 // ---------------- Hook 管理：写入 / 移除 / 批量 ----------------
 async function fixHooksFor(name) {
-  const ok = await confirmModal("写入 Hook", `将对 ${name} 写入标准 ai-memory 生命周期 hook 模板（SessionStart / SessionEnd / Stop 等）。\n原配置会先备份。继续？`, false);
+  const ok = await confirmModal("写入 Hook", `将对 ${name} 写入 Hook 命令模板（SessionStart / SessionEnd / Stop 等）。\n原配置会先备份。继续？`, false);
   if (!ok) return;
   await runTaskModal(`写入 ${name} 的 Hook`, async () => {
     const res = await runCli(["--fix-hooks", "--client", name]);
@@ -7277,18 +7277,18 @@ async function fixHooksFor(name) {
 }
 
 async function removeHooksFor(name) {
-  const ok = await confirmModal("移除 Hook", `将移除 ${name} 的 ai-memory 生命周期 hook（保留非 ai-memory hooks）。\n原配置会先备份。继续？`, true);
+  const ok = await confirmModal("移除 Hook", `将清除 ${name} 该事件下全部 hook 条目（含第三方）。\n原配置会先备份。继续？`, true);
   if (!ok) return;
   await runTaskModal(`移除 ${name} 的 Hook`, async () => {
     const res = await runCli(["--remove-hooks", "--client", name]);
     if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
     if (res.code === 0) return { ok: true, message: `${name} 的 Hook 已移除` };
     return { ok: false, message: "Hook 移除失败", detail: cliFailLines(res) || cliErrDetail(res) };
-  }, () => refreshBlocks(["agents", "mainstream"]), ["备份原配置", "移除 ai-memory hook", "校验回写", "刷新状态"]);
+  }, () => refreshBlocks(["agents", "mainstream"]), ["备份原配置", "移除 Hook 条目", "校验回写", "刷新状态"]);
 }
 
 async function fixHooksAll() {
-  const ok = await confirmModal("一键写入 Hook", "将对所有支持模板注入的客户端写入标准 ai-memory 生命周期 hook 模板。\n原配置会先备份。继续？", false);
+  const ok = await confirmModal("一键写入 Hook", "将对所有支持模板注入的客户端写入 Hook 命令模板。\n原配置会先备份。继续？", false);
   if (!ok) return;
   await runTaskModal("一键写入 Hook", async () => {
     const res = await runCli(["--fix-hooks"]);
@@ -7402,7 +7402,7 @@ async function fixChange(dim, name, type) {
   }
   const ok = await confirmModal(
     "修复 Hook 配置",
-    `将按标准模板为「${name}」写入 ai-memory 生命周期 hook。\n原配置会先备份。继续？`,
+    `将按标准模板为「${name}」写入 Hook 命令模板。\n原配置会先备份。继续？`,
     false
   );
   if (!ok) return;
