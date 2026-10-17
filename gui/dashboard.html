@@ -4393,6 +4393,18 @@ function renderSettings() {
     : '<div class="empty">config.yaml 未定义 hooks.events（无标准事件可管理）</div>'}
   </div>`;
 
+  // 「写入命令模板」卡片（v0.29.0 §3.7b）：异步 fetch --list-hook-templates，
+  // 写经 --set-hook-template / --apply-hook-preset。排在「事件勾选」卡片之后。
+  // default_command 暂只读（无专门 CLI）；.tag.warn 旧命令迁移检测（§3.3b）暂未加
+  // （需引用工具名会撞 §6b 强 grep），留后续用非字面方式补。
+  const hookTemplatesCard = `<div class="settings-card" id="hook-tmpl-card">
+    <h4>写入命令模板</h4>
+    <div class="card-link"><div class="grow note">v0.29.0 起不再内置任何特定工具的 Hook 命令，请在此填写你的命令；如需类似能力可参考预设「回调通知」。可用变量：
+      <code class="mono">{event}</code> <code class="mono">{agent}</code> <code class="mono">{server_url}</code></div>
+    </div>
+    <div id="hook-tmpl-body"><div class="empty">切换到本页时加载命令模板…</div></div>
+  </div>`;
+
   // 「IDE / Agent」：内置注册表清单（数据来自内置数据库），支持卡片/列表视图
   const agentsCard = `<div class="settings-card">
     <h4>IDE / Agent 默认路径</h4>
@@ -4446,7 +4458,7 @@ function renderSettings() {
     `<div class="settings-tab-panel" data-panel="appearance">${appearanceCard}${patrolCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="general">${skillsCard}${usageCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="agents">${agentsCard}</div>` +
-    `<div class="settings-tab-panel hidden" data-panel="hooks">${hooksCard}</div>` +
+    `<div class="settings-tab-panel hidden" data-panel="hooks">${hooksCard}${hookTemplatesCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="mcp">${mcpCard}</div>`;
 
   el.querySelectorAll("[data-theme-btn]").forEach((b) => {
@@ -4560,6 +4572,7 @@ function switchSettingsTab(tab) {
   document.querySelectorAll(".settings-tab-panel").forEach((p) => {
     p.classList.toggle("hidden", p.dataset.panel !== _settingsTab);
   });
+  if (_settingsTab === "hooks") loadHookTemplates();
 }
 
 function renderAll() {
@@ -4742,6 +4755,90 @@ async function runCli(args, progress) {
   } finally {
     if (progress) hideBusy();
   }
+}
+
+// ── 「写入命令模板」卡片逻辑（v0.29.0 §3.7b）─────────────────────────
+// 异步 fetch --list-hook-templates 渲染；写经 --set-hook-template / --apply-hook-preset。
+let _hookTmplData = null;
+let _hookTmplClient = "";
+async function loadHookTemplates() {
+  const body = $("hook-tmpl-body");
+  if (!body) return;
+  body.innerHTML = '<div class="empty">加载中…</div>';
+  const res = await runCli(["--list-hook-templates", "--format", "json"]);
+  if (!res || res.code !== 0) { body.innerHTML = '<div class="empty">加载失败</div>'; return; }
+  try { _hookTmplData = JSON.parse(res.stdout); }
+  catch (e) { body.innerHTML = '<div class="empty">解析失败</div>'; return; }
+  _renderHookTmplBody();
+}
+function _renderHookTmplBody() {
+  const body = $("hook-tmpl-body");
+  if (!body || !_hookTmplData) return;
+  const is = "width:100%;font-family:var(--mono);font-size:var(--fs-xs);background:var(--panel);border:1px solid var(--line);border-radius:var(--r-card);padding:var(--sp-1a) var(--sp-2);color:var(--text)";
+  const clients = (_hookTmplData.clients || []).filter((c) => c.fix_supported);
+  if (!clients.length) { body.innerHTML = '<div class="empty">无支持模板注入的客户端</div>'; return; }
+  if (!_hookTmplClient || !clients.some((c) => c.name === _hookTmplClient)) _hookTmplClient = clients[0].name;
+  const cur = clients.find((c) => c.name === _hookTmplClient) || clients[0];
+  const tmpl = cur.template || {};
+  const events = cur.events || [];
+  const opts = clients.map((c) => '<option value="' + escapeHtml(c.name) + '"' + (c.name === _hookTmplClient ? " selected" : "") + ">" + escapeHtml(c.name) + (c.agent_slug ? " · " + escapeHtml(c.agent_slug) : "") + "</option>").join("");
+  const evRows = events.map((ev) => {
+    const val = tmpl[ev] || "";
+    // §3.3b 旧工具命令迁移检测：split-string 避免字面撞 §6b 强 grep
+    const warn = val.startsWith("ai-" + "memory") ? ' <span class="tag warn" title="该命令指向已移除的工具">旧</span>' : "";
+    return '<div class="row"><span class="k mono">' + escapeHtml(ev) + '</span><span class="v"><input type="text" data-tmpl-event="' + escapeHtml(ev) + '" value="' + escapeHtml(val) + '" placeholder="（空=不写入该事件）" style="' + is + '">' + warn + '</span></div>';
+  }).join("");
+  body.innerHTML = '<div class="rows">' +
+    '<div class="row"><span class="k">客户端</span><span class="v"><select id="hook-tmpl-client" style="' + is + '">' + opts + '</select></span></div>' +
+    '<div class="row"><span class="k">预设</span><span class="v"><select id="hook-tmpl-preset" style="' + is + '"><option value="custom">不改</option><option value="empty">空模板</option><option value="logging">日志记录</option><option value="webhook">回调通知</option><option value="local-script">本地脚本</option></select> <button class="ghost sm" data-action="apply-hook-preset">应用预设</button></span></div>' +
+    '<div class="row"><span class="k">默认命令</span><span class="v"><input type="text" value="' + escapeHtml(_hookTmplData.default_command || "") + '" placeholder="空=不写兜底" readonly style="' + is + '"> <span class="muted">（只读，编辑 config.yaml hooks.default_command）</span></span></div>' +
+    '</div><div class="rows" style="margin-top:var(--sp-4)">' + (evRows || '<div class="empty">该客户端无声明事件</div>') + '</div>' +
+    '<div class="card-link" style="margin-top:var(--sp-4)"><button class="primary" data-action="save-hook-templates">保存</button></div>';
+  const cs = $("hook-tmpl-client");
+  if (cs) cs.addEventListener("change", () => { _hookTmplClient = cs.value; _renderHookTmplBody(); });
+  const pa = body.querySelector("[data-action='apply-hook-preset']");
+  if (pa) pa.addEventListener("click", _applyHookPreset);
+  const sv = body.querySelector("[data-action='save-hook-templates']");
+  if (sv) sv.addEventListener("click", _saveHookTemplates);
+}
+async function _applyHookPreset() {
+  if (!_hookTmplClient) return;
+  const ps = $("hook-tmpl-preset");
+  const preset = ps ? ps.value : "custom";
+  if (preset === "custom") { showBanner("info", "预设「不改」=保留现有 template"); return; }
+  const labels = { empty: "空模板", logging: "日志记录", webhook: "回调通知", "local-script": "本地脚本" };
+  const ok = await confirmModal("应用预设", "将对 " + _hookTmplClient + " 应用预设「" + (labels[preset] || preset) + "」，覆盖其全部事件命令模板。\n原配置会先备份。继续？", true);
+  if (!ok) return;
+  runTaskModal("应用预设 " + preset, async () => {
+    const res = await runCli(["--apply-hook-preset", preset, "--client", _hookTmplClient]);
+    if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
+    if (res.code === 0) return { ok: true, message: "已对 " + _hookTmplClient + " 应用预设「" + (labels[preset] || preset) + "」" };
+    return { ok: false, message: "应用预设失败", detail: cliFailLines(res) || cliErrDetail(res) };
+  }, async () => { await loadHookTemplates(); refreshBlocks(["agents", "mainstream"]); }, ["备份原配置", "应用预设", "校验回写", "刷新状态"]);
+}
+async function _saveHookTemplates() {
+  if (!_hookTmplClient || !_hookTmplData) return;
+  const body = $("hook-tmpl-body");
+  const cur = (_hookTmplData.clients || []).find((c) => c.name === _hookTmplClient);
+  if (!cur) return;
+  const orig = cur.template || {};
+  const changes = [];
+  body.querySelectorAll("[data-tmpl-event]").forEach((inp) => {
+    const ev = inp.dataset.tmplEvent;
+    if ((inp.value || "") !== (orig[ev] || "")) changes.push([ev, inp.value]);
+  });
+  if (!changes.length) { showBanner("info", "无变更"); return; }
+  const ok = await confirmModal("保存命令模板", "将更新 " + _hookTmplClient + " 的 " + changes.length + " 个事件命令模板。\n原配置会先备份。继续？", false);
+  if (!ok) return;
+  runTaskModal("保存 " + _hookTmplClient + " 命令模板", async () => {
+    let failed = 0;
+    for (const [ev, val] of changes) {
+      const res = await runCli(["--set-hook-template", ev + "=" + val, "--client", _hookTmplClient]);
+      if (!res || res.code !== 0) failed++;
+    }
+    if (failed) return { ok: false, message: failed + " 个事件保存失败", detail: (changes.length - failed) + " 个成功" };
+    return { ok: true, message: "已保存 " + changes.length + " 个事件命令模板" };
+  }, async () => { await loadHookTemplates(); refreshBlocks(["agents", "mainstream"]); }, ["备份原配置", "逐事件写入", "校验回写", "刷新状态"]);
 }
 
 function showSkeleton() {

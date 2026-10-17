@@ -2204,6 +2204,7 @@ def _run_list_hook_templates(args, config) -> int:
                 "agent_slug": c.get("agent_slug", ""),
                 "fix_supported": c.get("fix_supported", False),
                 "template": c.get("template", {}) or {},
+                "events": c.get("events") or [],
             }
             for c in hooks.get("clients", []) or []
         ],
