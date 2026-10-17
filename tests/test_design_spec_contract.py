@@ -1148,6 +1148,22 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class TrunkSourceGuardTest(unittest.TestCase):
+    """主干源码不得出现已剥离工具的命令字符串 / 字段（v0.29.0 剥离后的反向守护）。
+
+    将 §6b 的强 grep 从人工验证升级为 CI 门禁：一旦主干源码回退引入 ai-memory
+    命令字符串或 is_ai_memory 字段，本断言立即红灯。
+    """
+
+    def test_no_ai_memory_in_trunk_sources(self):
+        """主干源码不得出现 ai-memory 命令字符串（v0.29.0 剥离后）。"""
+        import pathlib
+        root = pathlib.Path(__file__).resolve().parents[1]
+        trunk = (root / "core" / "hooks_fixer.py").read_text(encoding="utf-8")
+        self.assertNotIn("ai-memory hook", trunk, "hooks_fixer 不得含 ai-memory 命令")
+        self.assertNotIn("is_ai_memory", trunk, "hooks_fixer 不得含 is_ai_memory 字段")
+
+
 class LegendPlacementAndAlignmentTest(unittest.TestCase):
     """图例：统一放在内容最下方 + 标签列定宽对齐（2026-10-13 用户要求）。
 

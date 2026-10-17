@@ -33,4 +33,4 @@ skill-mcp-studio 本身是一款 **Skill / MCP 合规审计与修复工具**，�
 - 写操作统一走「备份 → 原子写 → 校验 → 回滚」链，见 `core/mcp_fixer.py` 与相关模块；
 - 个人真实端点 / 密钥**不在本仓库**：经 `profile_sources` 从仓库外
   `~/.skills-manager/profiles.local.yaml` 合并，仓库内 `config.yaml` 仅保留通用占位；
-- 诊断输出会脱敏凭据（见 `scripts/unified_mcp_server.py` 的 `_redact`）。
+- 配置文件写入权限 0o600（承载 token 时由写入侧强制）；v0.29.0 起不再内置 MCP server 网关代理（`unified_mcp_server.py` 已删除）。

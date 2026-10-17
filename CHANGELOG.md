@@ -5,7 +5,45 @@
 
 > 注：项目早期历史未按版本逐次发布，以下按可识别的版本里程碑汇总。
 
-## [Unreleased]
+## [Unreleased] — v0.29.0 开发中
+
+### 重大变更：剥离 ai-memory + Hook 写入命令可配置
+
+ai-memory 是早期绑定的外部 MCP 服务，其命令被硬编码进 `config.yaml` 的 hook
+template。v0.29.0 全面剥离：Hook 写入命令完全由用户自定义，产品不再内置任何
+特定工具的命令。详见 `docs/superpowers/specs/2026-10-16-hook-write-configurable-design.md`。
+
+#### 新增
+
+- **Hook 命令模板可配置**（`config.yaml`）：`hooks.default_command`（全局默认，
+  空 = 不写兜底、跳过该事件）+ `hooks.clients[].agent_slug`（用于 `{agent}` 变量插值）。
+- **profile 显式声明 `hooks_required: true`**：解耦 —— hook 是否 required 不再寄生
+  在能力组键名上（`combined_checker` 改读 `expected.get("hooks_required")`）。
+- **反向守护断言** `test_no_ai_memory_in_trunk_sources`：把 §6b 强 grep 升级为 CI 门禁。
+
+#### 变更
+
+- `hooks_inventory.HookEntry.is_ai_memory` → `is_configured`（命令非空即 True，
+  不区分来源）；`hooks_fixer._default_hook_command` 返回空（不写兜底）；写入去重
+  改命令级（要写的命令字面已存在才跳过）；移除 Hook 改为清除全部 hook 条目（含第三方）。
+- `fix_supported` 运行时重算：`declared and (has_agent_slug or has_template)`，
+  template 清空且无 slug 时降为 effective false。
+- `config.yaml` 各客户端 `template` 清空为 `{}`；OpenCode 配置路径中性化。
+- 提取公共解析原语 `_load_toml_file` / `_find_in_dict` / `_extract_hook_commands`
+  到 `core/config_codec.py`（一处定义、两处复用）。
+
+#### 删除
+
+- `core/ai_memory_checker.py`（ai-memory 专属检查器，566 行）
+- `scripts/unified_mcp_server.py`（ai-memory HTTP 网关代理，827 行）及 `_redact` 脱敏机制
+- `core/legacy_checker.AI_MEMORY_DETECTION` 常量（`DEFAULT_DETECTIONS` 退化为只检 hermes）
+- `combined_checker` 的 `ai_memory_available` 字段 + `CAPABILITY_DISPLAY_NAMES` 的 ai_memory 键
+- 测试 `test_ai_memory_section_guard.py` / `test_unified_mcp_server.py`（共 28 用例）
+
+#### CLI（保留别名，向后兼容）
+
+- `--ai-memory` / `--fix-ai-memory` 保留为纯别名，help 标已废弃；
+  `--ai-memory` 等价 `--mcp --hooks`，`--fix-ai-memory` 转发到 `--fix-mcp`。
 
 ## [v0.28.0] - 2026-10-15
 
