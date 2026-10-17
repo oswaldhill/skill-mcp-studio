@@ -130,7 +130,7 @@ All summary counts must be derived from these detail records. If summary and det
 
 Stage 4 (L5) normalizes each installed-client × repo-skill pair to `enabled` / `disabled` / `not_in_repo`. Per-skill toggling only targets clients whose skills dir uses per-skill symlinks; whole-directory (root) symlink clients are audit-only. Toggle writes reuse the backup → atomic write → validate → rollback safety shape and are atomic (`os.symlink(temp)` + `os.replace`). The audit channel is strictly read-only. Toggle exit codes: `0` all green, `1` post-write validation failure (rolled back), `2` skill not in repo / unsupported client form / rollback failure.
 
-Legacy flags (`--hermes`, `--ai-memory`) remain aliases during migration. They route to the single profile-driven legacy-channel check rather than an obsolete hardcoded channel standard.
+Legacy flags (`--hermes` 及旧通道别名) remain aliases during migration. They route to the single profile-driven legacy-channel check rather than an obsolete hardcoded channel standard.
 
 ## Repair and Rollback
 

@@ -196,6 +196,7 @@ skill-mcp-studio 是一台面向开发者的**管理型桌面应用**（Tauri 2 
 |------|------|----------|
 | 统一技能目录（可改） | 写 | `--set-unified-dir` |
 | MCP 端点库（增删改） | 写 | 端点 CRUD 命令 |
+| Hook 命令模板（按事件编辑 + 预设） | 写 | `--set-hook-template` / `--apply-hook-preset`（v0.29.0） |
 | 自动发现开关 + 扫描 / 排除路径 | 读（当前只读） | 快照 `settings.auto_discover`；**编辑待后端命令** |
 | 活动 endpoint（active_profile）切换 | 读（当前只读） | 快照 `settings.active_profile`；**编辑待后端命令** |
 | 版本 / 构建号 | 读 | `--version` 快照 |
@@ -244,6 +245,8 @@ skill-mcp-studio 是一台面向开发者的**管理型桌面应用**（Tauri 2 
 - **不做**技能市场 / 商店（agentregistry、gh skill 领域）。
 - **不做**多用户权限体系与云端同步（企业级平台，部署成本不符）。
 - **不做**云端托管与跨设备实时同步（本地工具）。
+- **不内置任何特定工具的 Hook 命令**：Hook 写入命令完全由用户在 `config.yaml` / GUI 自行配置，产品不预设任何第三方工具的命令（v0.29.0 起剥离 ai-memory 后确立）。
+- **不内置 MCP server 远程入口**：v0.29.0 不提供 MCP server 远程配置入口（`unified_mcp_server.py` 已删除），远程配置留待 v0.30+ 专项立项。
 - 按需加载（阶段四 L5）作为增值层，立项时独立决策。
 
 ### 当前已知缺口（缺口看板，逐项标注关闭版本）
@@ -253,6 +256,7 @@ skill-mcp-studio 是一台面向开发者的**管理型桌面应用**（Tauri 2 
 | 1 | **自动发现、活动 endpoint 的 GUI 编辑**：设置页仅有只读展示，缺少 `--set-auto-discover` / `--set-active-profile` 后端写命令，UI 标注「即将支持」 | 🟡 待实现 | — |
 | 2 | **逐技能启停的 GUI 运行时边界**：GUI 的 ToggleSwitch 已绑定 `--enable-skill` / `--disable-skill` | ✅ 已关闭（已加入 Rust `run_cli` 白名单） | v0.20.0 |
 | 3 | **端点 transport 选择、能力组编辑**：端点详情编辑最初仅支持 name / url | ✅ 已关闭（`--endpoint-url` / `--endpoint-command` / `--endpoint-required-yaml` 补全 transport 与 required_capabilities 编辑） | v0.20.0 |
+| 4 | **Hook 命令模板可配置 + 剥离 ai-memory**：Hook 写入命令曾硬编码为外部工具命令，且 ai-memory 专属检查器 / 网关代理住在主干 | ✅ 已关闭（命令模板可配置 + 剥离 ai-memory 专属模块） | v0.29.0 |
 
 ---
 
@@ -284,6 +288,7 @@ skill-mcp-studio 是一台面向开发者的**管理型桌面应用**（Tauri 2 
 | 「一句话定位 = 审计与修复工具」 | 已转向管理型 | 定位更新为「通用管理台」（本文 §2） |
 | 缺少「通用 / 业务设置分离」 | 设置页为新结构 | 加入 §5.3 通用/业务分离原则 |
 | 缺少主题 / 命令面板 / 抽屉 / 开关等交互描述 | GUI 二轮演进补充 | 加入 §6.5 |
+| ai-memory 曾作为内置 Hook 命令 + 专属检查器 / 网关代理住在主干 | v0.29.0 已剥离 | Hook 命令完全用户自定义（设计 §3.7b「写入命令模板」卡片），ai-memory 专属模块删除；不内置任何特定工具命令（见 §8） |
 
 **文档层级**（建议）：README（入口）→ **PRD（本文，产品层权威）** → 产品定位与路线图 / 产品形态与开发计划（战略与计划，需按本文勘正）→ 详细设计文档-阶段一~五（实现层，阶段五为准）→ docs/ 评审与数据（过程记录）。
 
