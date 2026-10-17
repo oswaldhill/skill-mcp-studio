@@ -1497,6 +1497,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="列出各客户端生命周期 hook 配置状态（hook 接入情况）",
     )
     parser.add_argument(
+        "--list-hook-templates", action="store_true",
+        help="列出各客户端 Hook 命令模板（default_command + clients[].template + agent_slug，JSON）",
+    )
+    parser.add_argument(
         "--fix-hooks", action="store_true",
         help="写入生命周期 hook 命令模板（带备份，支持 --dry-run / --client）",
     )
@@ -2176,6 +2180,45 @@ def _run_set_setting(args, config_path) -> int:
         return 2
 
 
+def _run_list_hook_templates(args, config) -> int:
+    """列出各客户端 Hook 命令模板（default_command + clients[].template + agent_slug）。
+
+    独立早返回出口（与 --get-setting 同类）：只读、支持 --format json，GUI 的
+    「写入命令模板」卡片据此填充输入。v0.29.0 起 template 由用户自定义。
+    """
+    _as_json = getattr(args, "format", None) == "json"
+    hooks = config.get("hooks", {}) or {}
+    out = {
+        "default_command": hooks.get("default_command", ""),
+        "clients": [
+            {
+                "name": c.get("name", ""),
+                "agent_slug": c.get("agent_slug", ""),
+                "fix_supported": c.get("fix_supported", False),
+                "template": c.get("template", {}) or {},
+            }
+            for c in hooks.get("clients", []) or []
+        ],
+    }
+    if _as_json:
+        print(json.dumps(out, ensure_ascii=False, indent=2))
+        return 0
+    print("")
+    print("=" * 60)
+    print("  Hook command templates")
+    print("=" * 60)
+    print(f"  default_command: {out['default_command']!r}")
+    for c in out["clients"]:
+        print(f"  {c['name']} (agent={c['agent_slug'] or '-'}, fix_supported={c['fix_supported']})")
+        tmpl = c["template"] or {}
+        if tmpl:
+            for ev, cmd in tmpl.items():
+                print(f"    {ev}: {cmd!r}")
+        else:
+            print("    (template 为空，用户自行填写)")
+    return 0
+
+
 def _run_get_setting(args, config) -> int:
     """读取 config.yaml 的 settings 段单个键。
 
@@ -2631,6 +2674,11 @@ def main() -> int:
     # 菜单勾选态都按结构化字段取值，必须排在通用快照路由之前。
     if getattr(args, "get_setting", None):
         return _run_get_setting(args, config)
+
+    # 列出 Hook 命令模板（v0.29.0）：只读 + 支持 --format json，GUI「写入命令模板」
+    # 卡片据此填充；与 --get-setting 同为独立早返回出口。
+    if getattr(args, "list_hook_templates", False):
+        return _run_list_hook_templates(args, config)
 
     # 写入单个 setting（2026-10-12）：与 --get-setting 同为独立出口 —— 写操作
     # 早返回后退出码只反映写入本身，不再被后续审计结论污染（见 _run_set_setting）。

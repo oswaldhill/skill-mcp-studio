@@ -539,6 +539,7 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
         "--remove-legacy-mcp",
         // Hook 管理域（A 阶段）：生命周期 hook 的列出 / 写入 / 移除。
         "--list-hooks",
+        "--list-hook-templates",
         "--fix-hooks",
         "--remove-hooks",
         // 变更检测（B 阶段）：产出持久化快照并与上次对比（只读不探活）。
