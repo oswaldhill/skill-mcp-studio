@@ -276,3 +276,25 @@ github develop 仍停 `36b3afc`（落后 4 commit，门禁拦截 github 推送�
 **剩余**：F（GUI §3.7a 文案 + §3.7b 新卡片）、CLI 写命令、DESIGN.md、最终验证（门禁 1174 已绿；§6b 强/弱零；tests/ 仅合法保留；待：构建 + 安装 + `GITHUB_PUSH_ALLOW=1` 同步 github）。
 
 **§6b tests/ grep 现状**：13 行合法保留（测 `--ai-memory` 别名 / legacy 示例名 / 反向守护等**被保留的行为**），无法在不破坏保留行为测试的前提下清零；§6b tests/ 豁免规则需放宽（或接受为合法残留）—— 这是 §10 最终验证时要定的。
+
+### 6f. 续作进度（2026-10-17 goal-round 2-4 + 收尾，截至 `5180484` + v0.29.0）
+
+> goal-round 2-4 完成了 §6e 剩余的全部（F/CLI 写/DESIGN/验证）+ 版本 bump。
+> **v0.29.0 设计内容开发完成，goal 已标记 complete。** 双远端同步 `5180484`，门禁 1174 绿，构建通过。
+
+| 项 | 状态 | commit | 备注 |
+|---|---|---|---|
+| F §3.7a GUI 文案 + DESIGN §2.3c | ✅ | `756fe58` | dashboard.html 8 处 ai-memory 文案中性化 + DESIGN §2.3c Hook 列判据 |
+| DESIGN §2.10 写入/移除语义 | ✅ | `c6dc911` | 去 ai-memory，对齐 D 轨全删 |
+| CLI 写命令 | ✅ | `f2ec81b` | `--set-hook-template`/`--apply-hook-preset`（text-rewrite config.yaml 保注释，5 预设，Rust 白名单） |
+| F §3.7b「写入命令模板」卡片 + §3.3b 迁移 | ✅ | `d983f0a` | 异步 fetch --list-hook-templates 渲染；预设/保存接 CLI；旧命令 .tag.warn（split-string 避撞 grep） |
+| DESIGN §2.10 卡片规范 | ✅ | `5180484` | 文档化 §3.7b |
+| §10 验证 | ✅ | — | 门禁 1174 OK；§6b 强/弱零；§6c 反向断言；`cargo tauri build` 成功（.app 产出+签名）；github 同步（双远端 `5180484`） |
+| 版本 bump 0.29.0 / build 123 | ✅ | （本批收尾） | `bump_version.py --bump minor`：11 文件 + CHANGELOG 链接块；CHANGELOG `[Unreleased]` 归档为 `[v0.29.0] - 2026-10-17` |
+
+**v0.29.0 全部 10 步完成**（B/D/C/E+A/F/G/CLI/H/验证）。goal complete。
+
+**遗留（非设计内容开发，属部署/发布/规范细化）**：
+- 安装到 /Applications：`.app` 已构建（`src-tauri/target/release/bundle/macos/skill-mcp-studio.app`），未 copy 到 `/Applications`（部署步骤）。
+- §6b tests/ 13 行合法保留：测 `--ai-memory` 别名 / legacy 示例 / 反向守护等被保留行为（§3.6/§3.8 明示保留），无法清零；§6b tests/ 豁免规则需放宽（加 `assertNotIn|args\.(fix_)?ai_memory|is_ai_memory`）或接受为合法残留。
+- `default_command` 编辑：卡片里只读（无专门 CLI）；如需可编辑，加 `--set-hook-template default=...` 特例。

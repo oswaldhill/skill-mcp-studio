@@ -5,7 +5,11 @@
 
 > 注：项目早期历史未按版本逐次发布，以下按可识别的版本里程碑汇总。
 
-## [Unreleased] — v0.29.0 开发中
+## [Unreleased]
+
+## [v0.29.0] - 2026-10-17
+
+当前发布版本（build 123）。
 
 ### 重大变更：剥离 ai-memory + Hook 写入命令可配置
 
@@ -47,7 +51,7 @@ template。v0.29.0 全面剥离：Hook 写入命令完全由用户自定义，�
 
 ## [v0.28.0] - 2026-10-15
 
-当前发布版本（build 122）。
+v0.28.0（build 122）。
 
 ### 新增
 
@@ -1577,7 +1581,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.28.0...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.29.0...HEAD
+[v0.29.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.29.0
 [v0.28.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.28.0
 [v0.27.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.27.1
 [v0.27.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.27.0
