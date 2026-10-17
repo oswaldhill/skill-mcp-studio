@@ -1501,6 +1501,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="列出各客户端 Hook 命令模板（default_command + clients[].template + agent_slug，JSON）",
     )
     parser.add_argument(
+        "--set-hook-template", type=str, default=None, metavar="EVENT=COMMAND",
+        help="设置某客户端某事件的 Hook 命令模板（需配合 --client；空 COMMAND=清空该事件）",
+    )
+    parser.add_argument(
+        "--apply-hook-preset", type=str, default=None, metavar="NAME",
+        help="应用 Hook 命令预设到客户端（empty/logging/webhook/local-script/custom；未指定 --client 则应用到所有 fix_supported 客户端）",
+    )
+    parser.add_argument(
         "--fix-hooks", action="store_true",
         help="写入生命周期 hook 命令模板（带备份，支持 --dry-run / --client）",
     )
@@ -2219,6 +2227,206 @@ def _run_list_hook_templates(args, config) -> int:
     return 0
 
 
+# ── Hook 命令模板预设（v0.29.0，设计 §4.2）──────────────────────────────
+# 命令含变量 {event}/{agent}/{server_url}，存原样；由 hooks_fixer 写入客户端时插值。
+# empty=清空、custom=保留现有，二者不下发具体命令。
+HOOK_PRESETS = {
+    "logging": "echo {event} triggered >> ~/.hook.log",
+    "webhook": 'curl -s -X POST <your-endpoint>/hook -d \'{"event":"{event}","agent":"{agent}"}\'',
+    "local-script": "~/.local/bin/on-hook.sh {event} {agent}",
+}
+
+
+def _find_client_template_span(raw: str, client_name: str):
+    """在 config.yaml 的 ``hooks.clients`` 段内定位 ``[client_name].template`` 块。
+
+    返回 ``(tpl_line_idx, block_end_idx, current_dict)`` 或 None。
+    必须限定在 hooks 段（mcp_tools 段也有 ``- name:`` 会误匹配）。
+    """
+    import re as _re
+    lines = raw.splitlines()
+    pat_hooks = _re.compile(r"^hooks:\s*$")
+    pat_top = _re.compile(r"^[a-zA-Z]")  # 下一个顶层 key（结束 hooks 段）
+    pat_clients = _re.compile(r"^  clients:\s*$")
+    pat_name = _re.compile(r"^  - name:\s+(.+?)\s*$")
+    pat_tpl_inline = _re.compile(r"^    template:\s*\{\}\s*(#.*)?$")
+    pat_tpl_block = _re.compile(r"^    template:\s*$")
+    pat_entry = _re.compile(r"^        (.+?):\s*(.*?)\s*$")
+    n = len(lines)
+    # 1. 定位 hooks: 段
+    i = 0
+    while i < n and not pat_hooks.match(lines[i]):
+        i += 1
+    if i >= n:
+        return None  # 无 hooks 段
+    i += 1
+    # 2. 在 hooks 段内找 clients:
+    while i < n:
+        if pat_top.match(lines[i]):
+            return None  # 离开 hooks 段
+        if pat_clients.match(lines[i]):
+            break
+        i += 1
+    else:
+        return None  # 无 clients 段
+    i += 1
+    # 3. 在 clients 列表里找 - name: <client_name>
+    while i < n:
+        if pat_top.match(lines[i]) or (lines[i].startswith("  - name:") is False and lines[i].startswith("    ") is False and lines[i].strip() and not lines[i].startswith(" ")):
+            break  # 离开 clients 段
+        m = pat_name.match(lines[i])
+        if m and m.group(1).strip() == client_name:
+            # 4. 在该客户端块内找 template:
+            j = i + 1
+            while j < n:
+                if pat_name.match(lines[j]):
+                    return None  # 下一个客户端，本块无 template
+                if pat_tpl_inline.match(lines[j]):
+                    return (j, j + 1, {})
+                if pat_tpl_block.match(lines[j]):
+                    k = j + 1
+                    cur = {}
+                    while k < n:
+                        em = pat_entry.match(lines[k])
+                        if em:
+                            cur[em.group(1)] = em.group(2)
+                            k += 1
+                            continue
+                        break
+                    return (j, k, cur)
+                j += 1
+            return None
+        i += 1
+    return None
+
+
+def _render_template_block(template: dict) -> list:
+    """渲染 template 块行（不含尾换行）。空 dict → inline ``{}``。"""
+    if not template:
+        return ["    template: {}"]
+    lines = ["    template:"]
+    for ev, cmd in template.items():
+        lines.append(f"        {ev}: {cmd}")
+    return lines
+
+
+def _rewrite_client_template(raw: str, client_name: str, new_template: dict) -> str:
+    """text-rewrite：替换 hooks.clients[client_name] 的 template 块为 new_template。
+
+    保留其余所有行/注释（同 _set_setting_in_text 保注释理由）。
+    """
+    span = _find_client_template_span(raw, client_name)
+    if span is None:
+        raise ValueError(f"未在 hooks.clients 找到客户端「{client_name}」或其 template 段")
+    tpl_idx, end_idx, _cur = span
+    lines = raw.splitlines(keepends=True)
+    # 计算字节偏移（lines[k] 含尾换行）
+    start_off = sum(len(lines[k]) for k in range(tpl_idx))
+    end_off = sum(len(lines[k]) for k in range(end_idx))
+    new_lines = _render_template_block(new_template)
+    rendered = "".join(ln + "\n" for ln in new_lines)
+    # 若原块末行无尾换行（EOF），去掉 rendered 末尾换行以对齐
+    if end_off <= len(raw) and (end_off == len(raw) or raw[end_off] == "\n") is False and not lines[end_idx - 1].endswith("\n"):
+        rendered = rendered.rstrip("\n")
+    return raw[:start_off] + rendered + raw[end_off:]
+
+
+def _run_set_hook_template(args, config_path) -> int:
+    """--set-hook-template <event>=<command> --client <name>：设置单事件命令模板。
+
+    独立早返回出口（与 --set-setting 同模式）：text-rewrite config.yaml 保注释。
+    空 command = 从 template 移除该事件。
+    """
+    from file_atomic import atomic_write, backup_path
+    print("")
+    print("=" * 60)
+    print("  Set hook template")
+    print("=" * 60)
+    try:
+        spec = args.set_hook_template
+        if "=" not in spec:
+            raise ValueError(f"格式错误，需 EVENT=COMMAND，得到: {spec}")
+        event, command = spec.split("=", 1)
+        event, command = event.strip(), command.strip()
+        client = (args.client or "").strip()
+        if not client:
+            raise ValueError("--set-hook-template 需配合 --client <客户端名>")
+        with open(config_path, "r", encoding="utf-8") as fh:
+            raw = fh.read()
+        span = _find_client_template_span(raw, client)
+        if span is None:
+            raise ValueError(f"未找到客户端「{client}」的 template 段")
+        cur = span[2]
+        if command == "":
+            cur.pop(event, None)
+        else:
+            cur[event] = command
+        new_raw = _rewrite_client_template(raw, client, cur)
+        bak = backup_path(config_path)
+        atomic_write(config_path, new_raw, 0o644)
+        print(f"  ✅ {client}.template[{event}] = {command or '(清空)'}")
+        if bak:
+            print(f"  备份: {bak}")
+        return 0
+    except Exception as e:
+        print(f"\n  ❌ Set hook template failed: {e}")
+        return 2
+
+
+def _run_apply_hook_preset(args, config, config_path) -> int:
+    """--apply-hook-preset <name> [--client <name>]：应用预设到客户端模板。
+
+    empty=清空、custom=保留、logging/webhook/local-script=按事件填命令（含变量，
+    由 hooks_fixer 写入时插值）。未指定 --client 则应用到所有 fix_supported 客户端。
+    """
+    from file_atomic import atomic_write, backup_path
+    print("")
+    print("=" * 60)
+    print("  Apply hook preset")
+    print("=" * 60)
+    try:
+        preset = (args.apply_hook_preset or "").strip()
+        if preset not in {"empty", "logging", "webhook", "local-script", "custom"}:
+            raise ValueError(f"未知预设: {preset}（允许: empty/logging/webhook/local-script/custom）")
+        client = (args.client or "").strip()
+        hooks = config.get("hooks", {}) or {}
+        clients = hooks.get("clients", []) or []
+        if client:
+            targets = [c for c in clients if c.get("name", "").strip() == client]
+        else:
+            # 设计 §4.3：未指定 --client 则应用到所有 fix_supported 客户端
+            # （跳过 OpenCode 等无 template 字段的插件型客户端）
+            targets = [c for c in clients if c.get("fix_supported", False)]
+        if not targets:
+            raise ValueError(f"未找到匹配的客户端（--client {client!r}）")
+        with open(config_path, "r", encoding="utf-8") as fh:
+            raw = fh.read()
+        for c in targets:
+            cname = c.get("name", "").strip()
+            if preset == "custom":
+                print(f"  ⏭️ {cname}: custom（保留现有 template）")
+                continue
+            if preset == "empty":
+                raw = _rewrite_client_template(raw, cname, {})
+                print(f"  ✅ {cname}: empty（清空 template）")
+            else:
+                cmd_tmpl = HOOK_PRESETS[preset]
+                events = c.get("events") or []
+                if events and isinstance(events[0], dict):
+                    events = [e.get("name", "") if isinstance(e, dict) else e for e in events]
+                new_tpl = {ev: cmd_tmpl for ev in events if isinstance(ev, str) and ev.strip()}
+                raw = _rewrite_client_template(raw, cname, new_tpl)
+                print(f"  ✅ {cname}: {preset}（{len(new_tpl)} 个事件）")
+        bak = backup_path(config_path)
+        atomic_write(config_path, raw, 0o644)
+        if bak:
+            print(f"  备份: {bak}")
+        return 0
+    except Exception as e:
+        print(f"\n  ❌ Apply hook preset failed: {e}")
+        return 2
+
+
 def _run_get_setting(args, config) -> int:
     """读取 config.yaml 的 settings 段单个键。
 
@@ -2679,6 +2887,13 @@ def main() -> int:
     # 卡片据此填充；与 --get-setting 同为独立早返回出口。
     if getattr(args, "list_hook_templates", False):
         return _run_list_hook_templates(args, config)
+
+    # 设置 / 应用 Hook 命令模板（v0.29.0）：text-rewrite config.yaml 保注释，
+    # 与 --set-setting 同为独立早返回出口，不跑后续审计。
+    if getattr(args, "set_hook_template", None):
+        return _run_set_hook_template(args, config_path)
+    if getattr(args, "apply_hook_preset", None):
+        return _run_apply_hook_preset(args, config, config_path)
 
     # 写入单个 setting（2026-10-12）：与 --get-setting 同为独立出口 —— 写操作
     # 早返回后退出码只反映写入本身，不再被后续审计结论污染（见 _run_set_setting）。
