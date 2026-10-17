@@ -72,7 +72,7 @@ class NestedSubTableTest(unittest.TestCase):
         text = (
             "[mcp_servers.hermes]\n"
             'url = "https://mcp.example.com/mcp"\n'
-            "[mcp_servers.hermes.tools.ai_memory_query]\n"
+            "[mcp_servers.hermes.tools.query_logs]\n"
             'approval_mode = "approve"\n'
         )
         servers = config_codec.parse_toml_mcp_servers(text)
@@ -130,7 +130,7 @@ class NestedSubTableTest(unittest.TestCase):
             'approval_mode = "approve"\n'
             "[mcp_servers.hermes]\n"
             'url = "https://hermes.example.com/mcp"\n'
-            "[mcp_servers.hermes.tools.ai_memory_query]\n"
+            "[mcp_servers.hermes.tools.query_logs]\n"
             'approval_mode = "approve"\n'
         )
         servers = config_codec.parse_toml_mcp_servers(text)

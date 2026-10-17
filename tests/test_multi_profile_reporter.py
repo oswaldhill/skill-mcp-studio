@@ -38,11 +38,11 @@ def _result(profile, groups, ok=True):
 class MultiProfileReporterTest(unittest.TestCase):
     def test_csv_union_groups_with_empty_cells(self):
         results = [
-            _result("a", ["hermes_memory", "ai_memory"]),
+            _result("a", ["hermes_memory", "tdai"]),
             _result("b", []),
         ]
         output = report_all_profiles(results, "csv")
-        self.assertIn("hermes_memory,ai_memory,", output.splitlines()[0])
+        self.assertIn("hermes_memory,tdai,", output.splitlines()[0])
         # profile b has empty cells for the union groups
         row_b = output.splitlines()[2]
         self.assertIn("b,Claude,True,True,True,True,True,,,True,", row_b)

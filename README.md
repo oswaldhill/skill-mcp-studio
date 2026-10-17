@@ -153,7 +153,7 @@ cleanup / commit / push / 修复。
 --fix-skills       修复 Skills 路径 —— 各客户端目录统一对齐 symlink（带备份回滚）
 --fix-mcp          写入统一 Hermes MCP 配置（带备份）
 --setup-all        一键设置并检查所有已安装 IDE/Agent 的 Skills + 统一 MCP
---remove-legacy-mcp  备份并移除旧 Hermes/ai-memory MCP 条目
+--remove-legacy-mcp  备份并移除旧 Hermes/legacy MCP 条目
 --set-unified-dir PATH   写入 unified_skills_dir
 ```
 

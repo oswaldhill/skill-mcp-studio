@@ -35,7 +35,7 @@ def _make_config(tmp: str) -> dict:
     with open(hooks_json, "w", encoding="utf-8") as handle:
         json.dump({
             "hooks": {
-                "on_session_end": {"command": "ai-memory-sync --write"},
+                "on_session_end": {"command": "memory-sync --write"},
             }
         }, handle)
 

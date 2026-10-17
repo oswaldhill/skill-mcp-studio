@@ -90,7 +90,7 @@ if __name__ == "__main__":
 class HookCheckIsPresenceOnlyTest(unittest.TestCase):
     """Hook 检查**只看有没有配置，不看配置内容**（2026-10-13 用户要求）。
 
-    背景：此前只统计「命中 ai-memory 命令签名」的事件，于是同一事件被别的工具占着时
+    背景：此前只统计「命中特定工具命令签名」的事件，于是同一事件被别的工具占着时
     报「未配置」，而客户端其实配了这个 hook。更根本的是该判据与「写入什么内容」耦合，
     而写入内容尚未定案 —— 判据不该依赖一个未定的东西。
 
@@ -115,7 +115,7 @@ class HookCheckIsPresenceOnlyTest(unittest.TestCase):
         }
 
     def test_third_party_command_counts_as_configured(self):
-        """非 ai-memory 的命令也必须算「已配置」（这是本次变更的核心）。"""
+        """第三方命令也必须算「已配置」（这是本次变更的核心）。"""
         import tempfile
         import json as _json
         import os

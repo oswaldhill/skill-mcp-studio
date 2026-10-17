@@ -429,8 +429,8 @@ class ResultOkTest(unittest.TestCase):
         self.assertTrue(result_ok(result))
 
     def test_tool_endpoint_does_not_require_hooks(self):
-        # 纯工具端点（required_capabilities 无 ai_memory）标记 hooks_required=False，
-        # 客户端未配 hermes hooks 也不阻断 ok（hooks 是 AI-memory 特有概念）。
+        # 纯工具端点（无 hooks_required）标记 hooks_required=False，
+        # 客户端未配 hook 也不阻断 ok（hooks 由端点显式声明，非默认）。
         result = {
             "probe": {"error": ""},
             "records": [
