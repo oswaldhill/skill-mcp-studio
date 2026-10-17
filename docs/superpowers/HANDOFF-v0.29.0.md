@@ -11,7 +11,7 @@
 |---|---|
 | 当前版本 | v0.28.0 (build 122)，已发布（tag v0.28.0 推送至 codeup + github） |
 | 分支 | develop（与 origin 同步，工作区干净） |
-| HEAD | `48bcfcd` docs: 设计文档 v3 |
+| HEAD（实施前基线） | `36b3afc` 交接文档 v0.29.0（2026-10-16 会话已推进至 `9aaa4fd`，见 §6） |
 | 已安装 app | /Applications/skill-mcp-studio.app (0.28.0) |
 | CI | 四 workflow 全绿（Test / Build macOS / Build Windows / Build Linux） |
 | 测试 | 1200 tests OK（CI_ALLOW_SKIP_DRIFT=1） |
@@ -216,3 +216,46 @@ cat docs/superpowers/specs/2026-10-16-hook-write-configurable-design.md
 
 # 6. 按 §2b 的步骤开始实施
 ```
+
+---
+
+## 6. 实施进度（2026-10-16 会话，截至 codeup `9aaa4fd`）
+
+> 本节由 2026-10-16 会话追加。新会话先读本节，再决定从哪步起。
+
+### 6a. 已完成（设计步骤 1-5，全绿，已推 codeup）
+
+| 步骤 | 轨 | commit | 门禁 | §6b grep |
+|---|---|---|---|---|
+| 1 | B（提取 config_codec） | `55091a9` | 1200 OK | — |
+| 2 | D（hooks 剥离 ai-memory） | `5dedcaa` | 1201 OK | — |
+| 3 | C（config.yaml 可配置） | `913edc4` | 1201 OK | config.yaml 强零 ✓ |
+| 4-5 | E（解耦）+ A（删模块） | `9aaa4fd` | 1173 OK | 强+弱零 ✓ |
+
+**不要重做这 5 步** —— 已在 codeup develop（`9aaa4fd`）落定、门禁绿。
+github develop 仍停 `36b3afc`（落后 4 commit，门禁拦截 github 推送，按约定留到最后统一同步）。
+
+### 6b. 已替用户定案的关键决策（写进对应 commit message，可复核/否决）
+
+- **D**：空命令事件跳过不写（§3.4「空=跳过」明示）；写入去重改**命令级**（要写的命令字面已存在才跳过，第三方 hook 存在仍追加 —— 由 `test_existing_third_party_hooks_preserved_and_new_appended` 钉死）。
+- **C**：WorkBuddy/TRAE 保留声明 `fix_supported: true` 不动，靠 D 轨重算降级为 effective false；agent_slug 用小写连字符占位（claude-code / cursor / codex）；OpenCode config_path 中性化为 `~/.config/opencode/plugins/hooks.ts`（无测试依赖）。
+- **E（用户拍板「严格零 grep」）**：combined_checker 删除 `ai_memory_available` 字段 + `CAPABILITY_DISPLAY_NAMES` 的 ai_memory 键 + fast-path 表头 AI memory 列。代价：丢失「端点记忆能力」指标，但 combined_checker 强 grep 零命中。
+- **E 修了一个设计 bug**：`hooks_required` 解耦，设计写 `required.get("hooks_required", False)` 会恒 False（hooks_required 是 profile 顶层字段、不在 `required_capabilities` 字典内），改为 `expected.get("hooks_required", False)`。
+
+### 6c. 剩余步骤（从 F 起）
+
+| 步骤 | 轨 | 状态 | 备注 |
+|---|---|---|---|
+| 6 | F（GUI） | **下一个** | §3.7a 文案改写（独立、不依赖 CLI）+ §3.7b 新增「写入命令模板」卡片（依赖 step8 CLI 命令）。注意 build_gui.py 拆 `<script>` 到 app.js、注释别写裸 `}`、CSS 别写字面 px。 |
+| 7 | G（测试） | 待做 | 改写 17 测试 + 新增反向断言 `test_no_ai_memory_in_trunk_sources`；清 test_mcp_checker / multi_profile_reporter / cli 的 ai_memory 能力组 fixture（§6b tests/ grep 当前有残留）。test_mcp_fixer 的 legacy 示例名 + test_design_spec_contract 反向守护按 §3.8 保留。 |
+| 8 | 新 CLI | 待做 | scan.py 新增 `--list-hook-templates` / `--set-hook-template` / `--apply-hook-preset` + Rust 白名单。**建议排在 F 的 §3.7b 新卡片之前**（卡片按钮要接这些 CLI）。 |
+| 9 | H（文档） | 待做 | PRD §6.4/§8/§10、DESIGN.md §2.10、SECURITY.md（删 `unified_mcp_server` `_redact` 引用，L36）、CHANGELOG、README、SKILL.md。 |
+| 10 | 验证 | 待做 | 全量门禁 1172+ OK；§6b 三级 grep（强/弱已零，tests/ 待 G 轨清）；反向断言；构建；安装。最后 `GITHUB_PUSH_ALLOW=1` 同步 github。 |
+
+### 6d. 新会话接续方法
+
+1. `git pull origin develop`（拉到 `9aaa4fd`）。
+2. 跑门禁确认 1173 OK：`CI_ALLOW_SKIP_DRIFT=1 bash scripts/ci_parity.sh`。
+3. 读本节 §6 + 设计文档 §3.7 / §3.8 / §4。
+4. 从 F（步骤 6）起。F 建议先做 §3.7a 文案（独立），再 step8 CLI，再 §3.7b 新卡片（接 CLI）。
+5. 关键决策已在 §6b 落定，勿重做步骤 1-5。
