@@ -1490,19 +1490,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--remove-legacy-mcp",
         action="store_true",
-        help="直接备份并移除旧 Hermes/ai-memory MCP 条目（纯删除，配合 --client 定向清理单个客户端）",
+        help="直接备份并移除旧 Hermes/legacy MCP 条目（纯删除，配合 --client 定向清理单个客户端）",
     )
     parser.add_argument(
         "--list-hooks", action="store_true",
-        help="列出各客户端生命周期 hook 配置状态（ai-memory hook 接入情况）",
+        help="列出各客户端生命周期 hook 配置状态（hook 接入情况）",
     )
     parser.add_argument(
         "--fix-hooks", action="store_true",
-        help="写入标准 ai-memory 生命周期 hook 模板（带备份，支持 --dry-run / --client）",
+        help="写入生命周期 hook 命令模板（带备份，支持 --dry-run / --client）",
     )
     parser.add_argument(
         "--remove-hooks", action="store_true",
-        help="移除 ai-memory 生命周期 hook（保留非 ai-memory hooks，带备份，支持 --dry-run / --client）",
+        help="移除该事件下全部 hook 条目（含第三方，带备份，支持 --dry-run / --client）",
     )
     parser.add_argument(
         "--snapshot", action="store_true",
@@ -2020,7 +2020,7 @@ def _run_hooks(args, config, config_path) -> int:
         if not _as_json:
             print("")
             print("=" * 60)
-            print("  Hook inventory (ai-memory lifecycle hooks)")
+            print("  Hook inventory (lifecycle hooks)")
             print("=" * 60)
         try:
             from hooks_inventory import inventory_all
@@ -2039,7 +2039,7 @@ def _run_hooks(args, config, config_path) -> int:
                         if _missing:
                             print(f"      ⚠️ 缺关键事件: {', '.join(_missing)}")
                         else:
-                            print("      ⚠️ 未接入 ai-memory")
+                            print("      ⚠️ 未接入 hook")
         except Exception as e:
             if _as_json:
                 print(json.dumps({"error": str(e)}, ensure_ascii=False, indent=2))
@@ -2051,7 +2051,7 @@ def _run_hooks(args, config, config_path) -> int:
         if not _as_json:
             print("")
             print("=" * 60)
-            print("  Hook repair (ai-memory lifecycle hooks)")
+            print("  Hook repair (lifecycle hooks)")
             print("=" * 60)
         try:
             from hooks_fixer import fix_hooks_all
@@ -2082,7 +2082,7 @@ def _run_hooks(args, config, config_path) -> int:
         if not _as_json:
             print("")
             print("=" * 60)
-            print("  Hook removal (ai-memory lifecycle hooks)")
+            print("  Hook removal (lifecycle hooks)")
             print("=" * 60)
         try:
             from hooks_fixer import remove_hooks_tool
@@ -2471,11 +2471,11 @@ def main() -> int:
     # 码判成功与否）能识别——否则失败也恒为 0，前端会误报"修复成功"。
     repair_errors: List[str] = []
 
-    # D-2: 旧参数仅作别名/废弃。--hermes/--ai-memory 不再运行旧多通道检查器（其
-    # 语义已并入 --mcp 统一检查的 legacy_channels 与 hooks 字段）；--fix-ai-memory
-    # 转发到 --fix-mcp。显式废弃告警，避免"失效门面"静默误导调用方。
+    # D-2: 旧参数仅作别名/废弃。--hermes 与旧通道别名不再运行旧多通道检查器
+    # （其语义已并入 --mcp 统一检查的 legacy_channels 与 hooks 字段）；
+    # --fix 旧别名转发到 --fix-mcp。显式废弃告警，避免"失效门面"静默误导调用方。
     if args.hermes or args.ai_memory:
-        print("  ⚠️ --hermes/--ai-memory 已废弃，改用 --mcp（统一检查已含旧通道与 hooks）。")
+        print("  ⚠️ --hermes/旧通道别名 已废弃，改用 --mcp（统一检查已含旧通道与 hooks）。")
     args.fix = args.fix or args.fix_skills
     args.fix_mcp = args.fix_mcp or args.fix_ai_memory
     args.hermes = False

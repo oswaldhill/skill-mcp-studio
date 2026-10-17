@@ -100,24 +100,10 @@ DEFAULT_LEGACY_DETECTION = {
     ],
 }
 
-# ai-memory (会话交接层) legacy entry — same shape, token-based deep-check.
-AI_MEMORY_DETECTION = {
-    "label": "ai-memory",
-    "server_name_keywords": ["ai-memory", "aimemory"],
-    "command_patterns": ["ai-memory-bridge"],
-    "env_keys": ["AI_MEMORY_SERVER_URL", "AI_MEMORY_AUTH_TOKEN"],
-    "url_pattern": "",
-    "gateway_url_env": "AI_MEMORY_SERVER_URL",
-    "api_key_env": "AI_MEMORY_AUTH_TOKEN",
-    "placeholder_keys": ["REPLACE_ME", "your-token-here", "<AI_MEMORY_TOKEN>"],
-    "passthrough_patterns": [],
-    "verify_script": False,
-    "channels": [],
-}
-
-# When a profile declares no legacy_detection, check both legacy channels so the
-# historical --hermes and --ai-memory aliases keep working through one path.
-DEFAULT_DETECTIONS = [dict(DEFAULT_LEGACY_DETECTION), dict(AI_MEMORY_DETECTION)]
+# When a profile declares no legacy_detection, check the hermes legacy channel.
+# (v0.29.0: the second built-in detection block was removed; profiles that need
+# token-based legacy detection declare their own legacy_detection in profile config.)
+DEFAULT_DETECTIONS = [dict(DEFAULT_LEGACY_DETECTION)]
 
 
 def _resolve_block(block: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -285,7 +271,7 @@ def _check_legacy_server(
                 elif passthrough:
                     result["server_details"]["key_valid"] = True
     elif result["is_legacy"]:
-        # token-based deep-check (e.g. ai-memory): verify URL + token presence/value.
+        # token-based deep-check (e.g. token servers): verify URL + token presence/value.
         if not result["gateway_url"]:
             result["server_details"]["key_valid"] = False
             result["server_details"]["deep_check_note"] = (

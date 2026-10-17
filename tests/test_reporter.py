@@ -29,7 +29,7 @@ class MarkdownReporterTest(unittest.TestCase):
                 "hooks_configured": 0,
                 "legacy_channels": 1,
             },
-            "capability_groups": ["hermes_memory", "ai_memory", "tdai", "hermes"],
+            "capability_groups": ["hermes_memory", "tdai", "hermes"],
             "records": [{
                 "name": "Reasonix",
                 "installed": True,
@@ -39,7 +39,6 @@ class MarkdownReporterTest(unittest.TestCase):
                 "mcp_tools_list_ok": True,
                 "capabilities": {
                     "hermes_memory": True,
-                    "ai_memory": True,
                     "tdai": True,
                     "hermes": True,
                 },
@@ -55,7 +54,7 @@ class MarkdownReporterTest(unittest.TestCase):
         self.assertIn("## IDE / Agent Unified MCP", text)
         self.assertIn("https://mcp.example.com/mcp", text)
         self.assertIn("| Reasonix | True | True | True |", text)
-        self.assertIn("Hermes memory | AI memory | TDAI | Hermes", text)
+        self.assertIn("Hermes memory | TDAI | Hermes", text)
         self.assertIn("hermes-gateway", text)
 
 

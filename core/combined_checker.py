@@ -31,7 +31,6 @@ def _has_group(tool_names: List[str], required: List[str]) -> bool:
 
 CAPABILITY_DISPLAY_NAMES = {
     "hermes_memory": "Hermes memory",
-    "ai_memory": "AI memory",
     "tdai": "TDAI",
     "hermes": "Hermes",
 }
@@ -217,10 +216,13 @@ def check_agents(
     }
     required = expected.get("required_capabilities", {}) or {}
     capability_groups = list(required.keys())
-    # hooks（AI-memory lifecycle hooks）只在端点声明 ai_memory 能力时才适用。
-    # 纯工具端点（如 K8s/Kuboard，required_capabilities={}）没有 hooks 概念，
-    # 不应被「客户端未配 hermes hooks」拖累其合规判定。
-    hooks_required = "ai_memory" in required
+    # hooks 只在端点显式声明 hooks_required 时才适用（v0.29.0 解耦：不再寄生
+    # 在能力组键名上）。纯工具端点（如 K8s/Kuboard，无 hooks_required）没有
+    # hooks 概念，不应被「客户端未配 hook」拖累其合规判定。
+    # 注：读 expected（profile 顶层）而非 required（required_capabilities 字典）——
+    # hooks_required 是 profile 级布尔字段，不在 required_capabilities 内；设计
+    # 原文写 required.get(...) 会恒为 False，此处修正为 expected.get(...)。
+    hooks_required = bool(expected.get("hooks_required", False))
     registry = effective_tools(config)
     # Stage-5 P2: per-client attachment narrows which clients are expected to
     # mount THIS endpoint.  Only when at least one client declares ``mcp_attach``
@@ -285,9 +287,9 @@ def check_agents(
             "mcp_initialize_ok": configured_and_probed and probe["initialize_ok"],
             "mcp_tools_list_ok": configured_and_probed and probe["tools_list_ok"],
             "capabilities": capabilities,
-            # 平铺四组能力布尔字段（规格 Status Model）。缺组的 profile 落 False。
+            # 平铺三组能力布尔字段（规格 Status Model）。缺组的 profile 落 False。
+            # v0.29.0：移除原第四组平铺字段（剥离该工具后 combined_checker 不再单独上报）。
             "hermes_memory_available": capabilities.get("hermes_memory", False),
-            "ai_memory_available": capabilities.get("ai_memory", False),
             "tdai_available": capabilities.get("tdai", False),
             "hermes_available": capabilities.get("hermes", False),
             "hooks_configured": hooks["hooks_configured"],
@@ -435,9 +437,9 @@ def format_combined_markdown(result: Dict[str, Any]) -> str:
     if groups == list(CAPABILITY_DISPLAY_NAMES):
         header = (
             "| Client | Installed | Skills | MCP configured | Initialize | Tools list | "
-            "Hermes memory | AI memory | TDAI | Hermes | Hooks | Legacy channels |"
+            "Hermes memory | TDAI | Hermes | Hooks | Legacy channels |"
         )
-        separator = "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|"
+        separator = "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|"
     else:
         prefix = "| Client | Installed | Skills | MCP configured | Initialize | Tools list | "
         if cap_headers:

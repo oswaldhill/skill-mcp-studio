@@ -127,13 +127,14 @@ class GitSyncTest(unittest.TestCase):
 class HooksCheckerTest(unittest.TestCase):
     """真实 hook 配置检测（history: combined_checker 测试用空 required_capabilities 短路了 hooks 分支）。"""
 
-    def test_detects_ai_memory_hook(self):
+    def test_detects_any_configured_hook(self):
+        """v0.29.0：任意非空命令都算已配置（不区分来源，不再识别特定工具签名）。"""
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
             import json
 
             json.dump({
                 "hooks": {
-                    "Stop": [{"command": "ai-memory hook --event stop"}],
+                    "Stop": [{"command": "my-tool on stop"}],
                     "Start": [{"command": "echo hello"}],
                 }
             }, f)
@@ -141,7 +142,8 @@ class HooksCheckerTest(unittest.TestCase):
         try:
             res = hooks_checker.check_hooks(path)
             self.assertTrue(res["hooks_configured"])
-            self.assertEqual(res["events"], ["Stop"])
+            # 两事件都有非空命令 → 都检测到（字典序）
+            self.assertEqual(res["events"], ["Start", "Stop"])
         finally:
             os.unlink(path)
 
@@ -150,11 +152,12 @@ class HooksCheckerTest(unittest.TestCase):
         self.assertFalse(res["hooks_configured"])
         self.assertEqual(res["events"], [])
 
-    def test_no_hooks_when_no_ai_memory_command(self):
+    def test_empty_command_is_not_configured(self):
+        """空命令不算已配置。"""
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
             import json
 
-            json.dump({"hooks": {"Stop": [{"command": "other tool"}]}}, f)
+            json.dump({"hooks": {"Stop": [{"command": ""}]}}, f)
             path = f.name
         try:
             res = hooks_checker.check_hooks(path)

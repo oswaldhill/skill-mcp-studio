@@ -7,7 +7,6 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "core"))
 
 from legacy_checker import (  # noqa: E402
-    AI_MEMORY_DETECTION,
     DEFAULT_LEGACY_DETECTION,
     _check_legacy_server,
     _legacy_channel_of,
@@ -87,9 +86,9 @@ class LegacyChannelMappingTest(unittest.TestCase):
 
 
 class DetectionResolutionTest(unittest.TestCase):
-    def test_default_blocks_are_hermes_and_ai_memory(self):
+    def test_default_block_is_hermes(self):
         blocks = _resolve_detections(None)
-        self.assertEqual([b["label"] for b in blocks], ["hermes", "ai-memory"])
+        self.assertEqual([b["label"] for b in blocks], ["hermes"])
         self.assertEqual(blocks[0]["server_name_keywords"], ["hermes"])
         self.assertEqual(blocks[0]["gateway_url_env"], "NAS_GATEWAY_URL")
         self.assertEqual(blocks[0]["api_key_env"], "NAS_API_KEY")
@@ -99,8 +98,9 @@ class DetectionResolutionTest(unittest.TestCase):
         self.assertEqual([b["label"] for b in blocks], ["hermes"])
 
     def test_list_is_preserved(self):
-        blocks = _resolve_detections([DEFAULT_LEGACY_DETECTION, AI_MEMORY_DETECTION])
-        self.assertEqual([b["label"] for b in blocks], ["hermes", "ai-memory"])
+        custom = {"label": "acme", "server_name_keywords": ["acme"]}
+        blocks = _resolve_detections([DEFAULT_LEGACY_DETECTION, custom])
+        self.assertEqual([b["label"] for b in blocks], ["hermes", "acme"])
 
     def test_env_keys_derive_gateway_and_api_key(self):
         det = _resolve_block({"env_keys": ["FOO_URL", "FOO_KEY"]})
@@ -108,28 +108,48 @@ class DetectionResolutionTest(unittest.TestCase):
         self.assertEqual(det["api_key_env"], "FOO_KEY")
 
     def test_token_suffix_derives_secret_env(self):
-        det = _resolve_block({"env_keys": ["AI_MEMORY_SERVER_URL", "AI_MEMORY_AUTH_TOKEN"]})
-        self.assertEqual(det["gateway_url_env"], "AI_MEMORY_SERVER_URL")
-        self.assertEqual(det["api_key_env"], "AI_MEMORY_AUTH_TOKEN")
+        det = _resolve_block({"env_keys": ["MYAPP_SERVER_URL", "MYAPP_AUTH_TOKEN"]})
+        self.assertEqual(det["gateway_url_env"], "MYAPP_SERVER_URL")
+        self.assertEqual(det["api_key_env"], "MYAPP_AUTH_TOKEN")
 
 
-class AiMemoryDetectionTest(unittest.TestCase):
-    def test_matches_ai_memory_server_name(self):
+class TokenDeepCheckTest(unittest.TestCase):
+    """token-based 深检（gateway_url_env + api_key_env + 占位值/有效值判定）。
+
+    用自定义检测块测同一套 _check_legacy_server 深检逻辑，不再依赖已删除的
+    内置检测块。
+    """
+
+    _BLOCK = {
+        "label": "acme",
+        "server_name_keywords": ["acme"],
+        "command_patterns": ["acme-bridge"],
+        "env_keys": ["MYAPP_SERVER_URL", "MYAPP_AUTH_TOKEN"],
+        "url_pattern": "",
+        "gateway_url_env": "MYAPP_SERVER_URL",
+        "api_key_env": "MYAPP_AUTH_TOKEN",
+        "placeholder_keys": ["REPLACE_ME", "your-token-here"],
+        "passthrough_patterns": [],
+        "verify_script": False,
+        "channels": [],
+    }
+
+    def test_matches_server_name_keyword(self):
         result = _check_legacy_server(
-            "ai-memory",
+            "acme-prod",
             {"command": "python3", "args": ["bridge.py"]},
-            detection=AI_MEMORY_DETECTION,
+            detection=self._BLOCK,
         )
         self.assertTrue(result["is_legacy"])
-        self.assertEqual(result["server_details"]["kind"], "ai-memory")
+        self.assertEqual(result["server_details"]["kind"], "acme")
 
     def test_token_placeholder_is_flagged(self):
         result = _check_legacy_server(
-            "ai-memory",
-            {"command": "python3", "args": ["ai-memory-bridge.py"],
-             "env": {"AI_MEMORY_SERVER_URL": "http://127.0.0.1:49374/mcp",
-                     "AI_MEMORY_AUTH_TOKEN": "REPLACE_ME"}},
-            detection=AI_MEMORY_DETECTION,
+            "acme-prod",
+            {"command": "python3", "args": ["acme-bridge.py"],
+             "env": {"MYAPP_SERVER_URL": "http://127.0.0.1:49374/mcp",
+                     "MYAPP_AUTH_TOKEN": "REPLACE_ME"}},
+            detection=self._BLOCK,
         )
         self.assertTrue(result["is_legacy"])
         self.assertFalse(result["server_details"]["key_valid"])
@@ -137,11 +157,11 @@ class AiMemoryDetectionTest(unittest.TestCase):
 
     def test_valid_token_is_accepted(self):
         result = _check_legacy_server(
-            "ai-memory",
-            {"command": "python3", "args": ["ai-memory-bridge.py"],
-             "env": {"AI_MEMORY_SERVER_URL": "http://127.0.0.1:49374/mcp",
-                     "AI_MEMORY_AUTH_TOKEN": "real-token-123"}},
-            detection=AI_MEMORY_DETECTION,
+            "acme-prod",
+            {"command": "python3", "args": ["acme-bridge.py"],
+             "env": {"MYAPP_SERVER_URL": "http://127.0.0.1:49374/mcp",
+                     "MYAPP_AUTH_TOKEN": "real-token-123"}},
+            detection=self._BLOCK,
         )
         self.assertTrue(result["is_legacy"])
         self.assertTrue(result["server_details"]["key_valid"])

@@ -29,6 +29,7 @@ def check_hooks(config_path: str) -> Dict[str, Any]:
     events = []
     if isinstance(hooks, dict):
         for event, value in hooks.items():
-            if any("ai-memory" in command for command in _commands(value)):
+            # 命令非空即算该事件已配置（不区分来源；v0.29.0 起不再识别特定工具签名）
+            if any(command.strip() for command in _commands(value)):
                 events.append(event)
     return {"hooks_configured": bool(events), "events": sorted(events)}
