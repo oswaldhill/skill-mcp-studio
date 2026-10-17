@@ -652,7 +652,7 @@ GUI 不直接改配置文件。间隔由 CLI 钳到 ≥5 分钟，界面需回�
 > 一致 —— 列出可选项、由用户决定要哪些。各客户端的接入状态与写入/移除是 **Hook 业务页**
 > 的职责（那里显示审计结果）。
 
-一张卡：
+两张卡：
 
 1. **要写入的 Hook 事件**：列出 `config.yaml` 的 `hooks.events` 全部**规范事件**
    （勾选框 + 事件名 + 说明 + 「写往」几个客户端），保存写入 `settings.hook_events`。
@@ -664,6 +664,27 @@ GUI 不直接改配置文件。间隔由 CLI 钳到 ≥5 分钟，界面需回�
    词表已扩到 47 项（各客户端官方事件集的并集），故按 `group` **分组渲染**，
    分组表头用 `.hook-group-row`（`--panel-2` 底色 + `--faint` 字 + `--fs-2xs`）；
    不分组会是一张 47 行的难读长表。
+
+2. **写入命令模板**（v0.29.0）：列出各客户端 `hooks.clients[].template` 的事件命令，
+   供用户编辑（v0.29.0 起命令完全用户自定义，不再内置特定工具命令）。排在「事件勾选」
+   卡片之后。**异步数据流**：切到 Hook tab 时 `runCli(["--list-hook-templates",
+   "--format","json"])` 取 `default_command` + 各客户端 `agent_slug` / `fix_supported` /
+   `template` / `events`，渲染选中客户端的事件输入（template 值或空）。**读写一律经 CLI**，
+   GUI 不直接改 config.yaml。结构：
+
+   - 客户端下拉（仅 `fix_supported` 客户端，显示 `name · agent_slug`）。
+   - 预设下拉 + 「应用预设」按钮（`empty` 空模板 / `logging` 日志记录 / `webhook` 回调通知
+     / `local-script` 本地脚本 / `custom` 不改）→ `--apply-hook-preset <name> --client <name>`
+     （覆盖该客户端全部事件命令，弹确认框）。
+   - 「默认命令」输入框（`hooks.default_command`，**暂只读**，无专门 CLI）。
+   - 各事件命令输入（按客户端 `events` 全集，空 = 不写入该事件）。
+   - 可用变量胶囊：`{event}`（snake_case 事件名）/ `{agent}`（agent_slug）/
+     `{server_url}`（活动 profile URL），由 `hooks_fixer` 写入时插值。
+   - §3.3b 迁移检测：事件命令以旧工具名开头时打 `.tag.warn`（「旧」标）提示该工具已移除
+     （split-string 避免字面撞 §6b 强 grep）。
+   - 「保存」→ 逐事件 `--set-hook-template <event>=<command> --client <name>`（仅写变更项，
+     `runTaskModal` + 备份 + 回滚 + 刷新）。
+   - 状态覆盖：加载中 / 加载失败 / 无支持客户端 / 该客户端无声明事件。
 
 **「客户端事件命名规范」表已移入「IDE / Agent → 详情」**（2026-10-12 按用户要求）。
 
