@@ -347,3 +347,71 @@ github develop 仍停 `36b3afc`（落后 4 commit，门禁拦截 github 推送�
 ### 7e. 非阻断可选项
 
 - §6b tests/ 若要**字面零**，需放宽 §6b tests/ 的豁免正则（加 `assertNotIn|args\.(fix_)?ai_memory|is_ai_memory`）；当前选择是接受 13 行合法残留。
+
+### 7f. v0.29.1 缺陷记录：§3.7b 卡片控件被裁剪（AX 可读、像素不画）
+
+> 2026-10-18 追加。§7a 的「唯一待办 = §3.7b 卡片视觉确认」**已执行并完成**，而且这次视觉确认
+> **发现了缺陷**（不是"确认通过"）—— v0.29.1（build 124）就是它的补丁版。修后的**应用内**
+> 像素复验由 Lead 另行执行；本节只记录缺陷、修法、边界与可复现的验证技术。
+
+**缺陷**：「写入命令模板」卡片里，与输入控件同行的兄弟节点被裁掉、从不绘制 —— 「应用预设」按钮、
+「默认命令」输入框后的「（全局兜底，应用到所有客户端；空=跳过未定义事件）」提示、旧命令行的
+`.tag.warn`「旧」标。三者**在 AX 树里存在、`AXEnabled=true`、带 `AXPress` action**，但屏幕上没有
+像素、鼠标点不到。v0.29.0 出厂即带此缺陷（卡片随 `d983f0a` 引入）。
+
+**证据（AX + 像素）**：
+
+| 观测 | 结果 |
+|---|---|
+| AX 树中的「应用预设」按钮 | 有真实 frame、`AXEnabled=true`、提供 `AXPress` action |
+| 该 frame 区域的像素 | **全白**（无任何绘制内容） |
+| 「默认命令」行已绘制内容 | 止于 `x=2197.5`（== 输入框右边缘） |
+| 提示文本的布局区间 | `x=2201..2543` —— 落在已绘制范围之外，被裁 |
+
+**根因**：行内控件带 inline `width:100%`，而它所在的 `.row .v` 是 **max-content 定宽 +
+`overflow:hidden`**（`gui/dashboard.html:315`）。控件撑满 `.v` 后，其后的兄弟节点被排到 `.v`
+之外，`.v` 又把溢出裁掉 ⇒ 有布局、无像素、不可点。
+
+**修法**（`gui/dashboard.html`）：控件 inline 样式 `width:100%` → `flex:1 1 auto;min-width:8rem;…`
+（`is` 常量，L4785）；新增作用域规则
+`#hook-tmpl-body .row .v { display:flex; align-items:center; gap:var(--gap-2); overflow:visible; white-space:normal; }`
++ `#hook-tmpl-body .row .v > *:not(input):not(select) { flex:0 0 auto; }`（L1268-1269）。
+
+**独立复验（CDP，与 AX/像素观测互相独立）**：
+
+- `getBoundingClientRect()` / `elementFromPoint()` 打在按钮应有的位置，返回的是 `div.row`、
+  **不是按钮** —— 该点不在按钮上；
+- `.v` 的 `clientWidth=152` vs `scrollWidth=221` —— 内容比可视宽 69px，确实被裁；
+- 给 `.v` 临时加 `overflow:visible` 后内容立刻出现 ⇒ 坐实是**裁剪**，不是透明/未渲染；
+- 1280px 宽度下**只**去掉 inline `width:100%` 就已足够（其余规则是窄宽度兜底，非该宽度所必需）。
+
+**边界与既有问题（本次一并摸清）**：
+
+- 只去掉 `width:100%` 在**窄宽度**下不够（内容不换行、仍溢出）⇒ 故加 `white-space:normal` 让 `.v` 内换行；
+- **600–700px** 时控件被挤得过窄 ⇒ 故加 `min-width:8rem` 保底；
+- **480px 以下** `.v` 会塌缩 —— **修前/修后两种变体都塌**，属**既有问题**，本次未处理。
+
+**环境勘误（修正 §7d）**：
+
+- §7d 写「自动化 → System Events 已授权」**是错的**：本 shell 下 System Events / AppleEvents 自动化
+  **未授权**，调用报 `-10004`（权限违例）—— 不要再走 osascript 路线。
+- **辅助功能（Accessibility / AX）权限确实已授权**（`/tmp/axprompt` → `trusted=true`）；§7d 这条正确。
+
+**可复现的验证/操作技术（推翻 §7c 的「不能用脚本点进去」）**：
+
+§7c 的结论「Tauri/WebKit webview 不响应合成输入，AX 只能读、不能点」**不成立**。实测有效的组合是
+**AX API + CGEvent 网格**：
+
+1. `NSRunningApplication.activate` —— 把 app 前置激活；
+2. AX 读元素树定位目标：拿真实 frame、`AXEnabled`、`AXPress` action；
+3. `AXScrollToVisible` —— 把视口外元素（§3.7b 卡片排在 47 行事件表之后）滚进可见区；
+4. `AXPress` —— 直接触发按钮动作，**无需**把合成鼠标事件送进 webview；
+5. 像素判定 —— 用 CGEvent 在网格点上采样，与 AX frame 对照，区分「画出来了」与「只有元素没有像素」
+   （AX 有元素 ≠ 像素有内容；这次缺陷正是靠第 2 步与第 5 步的差异抓到的）。
+
+工具脚本仍在 `/tmp`（未入库，重启后可能被清；§7c 的 `/tmp/axprompt`、`/tmp/axscroll` 属同族）。
+若已丢失，按上述 5 步重建即可。`xbrowser` 仍拦 `127.0.0.1`（§7d），「本地起 http 服务 + 浏览器渲染」
+的兜底路径依旧不通。
+
+**版本**：v0.29.1 / build 124（`version.json`）；CHANGELOG 链接块已由 `bump_version.py` 生成，
+`[v0.29.1]` 正文由本次补齐。

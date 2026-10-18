@@ -1259,6 +1259,22 @@
   .settings-card .rows .row:last-child { border-bottom: none; }
   .settings-card .row .k { flex: 0 0 150px; font-weight: 500; color: var(--text); }
   .settings-card .row .v { color: var(--muted); }
+  /* v0.29.1 修复：命令模板卡片的行内控件改用 flex 填充（不再用 inline width:100%）。
+     原因（实测）：`.row .v` 的宽度是 max-content（含后续兄弟节点），而控件上的
+     inline `width:100%` 会把它自己撑满整个 `.v`；其后的兄弟节点（「应用预设」按钮 /
+     「（全局兜底…）」提示 / 旧命令「旧」标）于是落到 `.v` 之外，被 `.row .v` 的
+     `overflow: hidden` 裁掉 —— 布局位置仍在（无障碍树可见、可聚焦），但既不可见
+     也不可点。改为 flex 行 + `overflow: visible`，兄弟节点保持自身宽度不再被裁。
+     配套：`.v` 自身改为 `flex: 1 1 auto` 填满整行（否则输入框只剩内在宽度）；
+     下拉保持自身宽度不伸长，输入框吃掉剩余宽度；提示行可收缩换行，
+     避免窗口收到最小宽度（900px）时溢出卡片。 */
+  #hook-tmpl-body .row .v { display: flex; align-items: center; gap: var(--gap-2); flex: 1 1 auto; min-width: 0; flex-wrap: wrap; overflow: visible; white-space: normal; }
+  #hook-tmpl-body .row .v > select,
+  #hook-tmpl-body .row .v > input { min-width: 8rem; }
+  #hook-tmpl-body .row .v > select { flex: 0 1 auto; }
+  #hook-tmpl-body .row .v > input { flex: 1 1 auto; }
+  #hook-tmpl-body .row .v > *:not(input):not(select) { flex: 0 0 auto; }
+  #hook-tmpl-body .row .v > span.muted { flex: 0 1 auto; min-width: 0; }
   .card-link { margin-top: var(--sp-5); display: flex; align-items: center; gap: var(--gap-4); }
   .card-link .grow { flex: 1; }
   .about-card { background: var(--bg-elev); }
@@ -4395,8 +4411,8 @@ function renderSettings() {
 
   // 「写入命令模板」卡片（v0.29.0 §3.7b）：异步 fetch --list-hook-templates，
   // 写经 --set-hook-template / --apply-hook-preset。排在「事件勾选」卡片之后。
-  // default_command 暂只读（无专门 CLI）；.tag.warn 旧命令迁移检测（§3.3b）暂未加
-  // （需引用工具名会撞 §6b 强 grep），留后续用非字面方式补。
+  // v0.29.1：行内控件改用 flex 填充（原先的 inline width:100% 会把同行的兄弟节点
+  // 挤出 `.v` 并被 overflow:hidden 裁掉，详见样式表里 `#hook-tmpl-body .row .v` 注释）。
   const hookTemplatesCard = `<div class="settings-card" id="hook-tmpl-card">
     <h4>写入命令模板</h4>
     <div class="card-link"><div class="grow note">v0.29.0 起不再内置任何特定工具的 Hook 命令，请在此填写你的命令；如需类似能力可参考预设「回调通知」。可用变量：
@@ -4774,7 +4790,9 @@ async function loadHookTemplates() {
 function _renderHookTmplBody() {
   const body = $("hook-tmpl-body");
   if (!body || !_hookTmplData) return;
-  const is = "width:100%;font-family:var(--mono);font-size:var(--fs-xs);background:var(--panel);border:1px solid var(--line);border-radius:var(--r-card);padding:var(--sp-1a) var(--sp-2);color:var(--text)";
+  const is = "min-width:8rem;font-family:var(--mono);font-size:var(--fs-xs);background:var(--panel);border:1px solid var(--line);border-radius:var(--r-card);padding:var(--sp-1a) var(--sp-2);color:var(--text)";
+  // v0.29.1：默认命令是全局兜底命令，通常更长 —— 单独给更宽的下限（内联样式优先于样式表）。
+  const isWide = is.replace("min-width:8rem", "min-width:24rem");
   const clients = (_hookTmplData.clients || []).filter((c) => c.fix_supported);
   if (!clients.length) { body.innerHTML = '<div class="empty">无支持模板注入的客户端</div>'; return; }
   if (!_hookTmplClient || !clients.some((c) => c.name === _hookTmplClient)) _hookTmplClient = clients[0].name;
@@ -4791,7 +4809,7 @@ function _renderHookTmplBody() {
   body.innerHTML = '<div class="rows">' +
     '<div class="row"><span class="k">客户端</span><span class="v"><select id="hook-tmpl-client" style="' + is + '">' + opts + '</select></span></div>' +
     '<div class="row"><span class="k">预设</span><span class="v"><select id="hook-tmpl-preset" style="' + is + '"><option value="custom">不改</option><option value="empty">空模板</option><option value="logging">日志记录</option><option value="webhook">回调通知</option><option value="local-script">本地脚本</option></select> <button class="ghost sm" data-action="apply-hook-preset">应用预设</button></span></div>' +
-    '<div class="row"><span class="k">默认命令</span><span class="v"><input type="text" id="hook-tmpl-default" value="' + escapeHtml(_hookTmplData.default_command || "") + '" placeholder="空=不写兜底" style="' + is + '"> <span class="muted">（全局兜底，应用到所有客户端；空=跳过未定义事件）</span></span></div>' +
+    '<div class="row"><span class="k">默认命令</span><span class="v"><input type="text" id="hook-tmpl-default" value="' + escapeHtml(_hookTmplData.default_command || "") + '" placeholder="空=不写兜底" style="' + isWide + '"> <span class="muted">（全局兜底，应用到所有客户端；空=跳过未定义事件）</span></span></div>' +
     '</div><div class="rows" style="margin-top:var(--sp-4)">' + (evRows || '<div class="empty">该客户端无声明事件</div>') + '</div>' +
     '<div class="card-link" style="margin-top:var(--sp-4)"><button class="primary" data-action="save-hook-templates">保存</button></div>';
   const cs = $("hook-tmpl-client");
@@ -7640,7 +7658,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.29.0", build: 123, build_number: 123, semver_ok: true, full: "v0.29.0 (build 123)" },
+  app: { name: "Skill MCP Studio", version: "0.29.1", build: 124, build_number: 124, semver_ok: true, full: "v0.29.1 (build 124)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

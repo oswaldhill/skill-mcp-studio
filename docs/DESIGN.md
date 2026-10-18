@@ -687,6 +687,14 @@ GUI 不直接改配置文件。间隔由 CLI 钳到 ≥5 分钟，界面需回�
      `runTaskModal` + 备份 + 回滚 + 刷新）。
    - 状态覆盖：加载中 / 加载失败 / 无支持客户端 / 该客户端无声明事件。
 
+**组件约束（v0.29.1 缺陷教训）**：同一 `.row` 行内若还有兄弟节点，控件**不得**写 inline
+`width:100%` —— `.row .v` 按 **max-content** 定宽且 `overflow:hidden`，控件撑满后其后的兄弟节点
+被排到 `.v` 之外并裁掉：元素仍在无障碍树里、可聚焦、可 `AXPress`，但**不绘制、点不到**。
+控件改用 **flex 填充**（`flex:1 1 auto;min-width:8rem`），并由作用域规则
+`#hook-tmpl-body .row .v { display:flex; align-items:center; gap:var(--gap-2); overflow:visible; white-space:normal; }`
+兜住窄宽度换行（+ `> *:not(input):not(select) { flex:0 0 auto; }`）。缺陷取证见
+`docs/superpowers/HANDOFF-v0.29.0.md` §7f。
+
 **「客户端事件命名规范」表已移入「IDE / Agent → 详情」**（2026-10-12 按用户要求）。
 
 > 为什么：客户端清单、hook 配置文件路径、命名规范、分层作用域本就是「这个客户端」

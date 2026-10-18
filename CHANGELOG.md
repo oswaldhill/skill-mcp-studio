@@ -7,6 +7,26 @@
 
 ## [Unreleased]
 
+## [v0.29.1] - 2026-10-18
+
+当前发布版本（build 124）。v0.29.0 的补丁版：只修 §3.7b「写入命令模板」卡片的一处渲染缺陷，
+无新增功能。
+
+### 修复
+
+- **「写入命令模板」卡片把同一行的兄弟节点裁掉 —— 按钮与提示「排布了、但不绘制、也点不到」**
+  （`gui/dashboard.html`，v0.29.0 引入）。受影响三处：「应用预设」按钮、「默认命令」输入框后的
+  「（全局兜底，应用到所有客户端；空=跳过未定义事件）」提示、旧命令行的 `.tag.warn`「旧」标。
+  三者在无障碍（AX）树里都有真实 frame、`AXEnabled=true` 且可触发 `AXPress`，但对应像素区
+  全白 —— 用户看得到输入框，却找不到也用不了这三样。根因：这些行渲染时给控件加了 inline
+  `width:100%`，而控件所在的 `.row .v` 是 **max-content 定宽 + `overflow:hidden`**，控件撑满后
+  其后的兄弟节点落到 `.v` 之外被裁掉（是**布局裁剪**，不是透明或 display 隐藏）。
+  修法：控件改为 flex 填充（inline `flex:1 1 auto;min-width:8rem;…`），并新增作用域规则
+  `#hook-tmpl-body .row .v { display:flex; align-items:center; gap:var(--gap-2); overflow:visible;
+  white-space:normal; }`（含 `> *:not(input):not(select) { flex:0 0 auto; }`）。
+  缺陷取证、CDP 独立复验与窄宽度边界见 `docs/superpowers/HANDOFF-v0.29.0.md` §7f；
+  组件约束已回写 `docs/DESIGN.md` §2.10。
+
 ## [v0.29.0] - 2026-10-17
 
 当前发布版本（build 123）。
@@ -1581,7 +1601,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.29.0...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.29.1...HEAD
+[v0.29.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.29.1
 [v0.29.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.29.0
 [v0.28.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.28.0
 [v0.27.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.27.1
