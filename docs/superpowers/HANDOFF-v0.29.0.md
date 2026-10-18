@@ -473,6 +473,10 @@ github develop 仍停 `36b3afc`（落后 4 commit，门禁拦截 github 推送�
 - **GitHub「Latest」标记**：补打 `v0.29.0` 后 GitHub 会把 Latest 指向 `v0.29.0`（按 tag/release
   创建时间而非版本号排序）。已用 `gh release edit v0.29.1 --latest` 改回 **v0.29.1**。
   **后续补打旧版本 tag 时要记得再校正一次 Latest。**
-- **`master` 尚未归位**：`master`（本地 `56dd1e8` / 远端 `d542563`）落后 `develop` **88 个提交**，
-  且**不能** fast-forward（历史分叉）。本次未动它 —— 归位方式（把 develop 合并进 master、
-  还是把 master 重置到 develop、还是正式宣布 master 退役并改默认分支）需单独决策。
+- **`master` 的定位（用户已定案：暂不处理，后续有用）**：`master` 本地 `56dd1e8` / 远端 `d542563`，
+  落后 `develop` **88 个提交**，且**不能** fast-forward（历史已分叉）。**用户明确要求本次不要动它**，
+  保留待后续用途。故请勿为了让 `release.sh` 的 `develop → master` 流程"看起来自洽"而去
+  合并 / 重置 / 删除它，也不要改默认分支 —— 发布点就是 `develop`（见上一节）。
+  真要启用 master 时，先决定：合并归位、重置到 develop、还是正式退役并改默认分支 + 改 `release.sh`
+  的 `SOURCE_BRANCH`/`TARGET_BRANCH`（当前脚本仍是 `develop → master`，与现状不符，属**已知文档级
+  不一致**，不影响 develop 发布）。
