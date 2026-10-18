@@ -466,5 +466,13 @@ github develop 仍停 `36b3afc`（落后 4 commit，门禁拦截 github 推送�
   （各自建 Release 并上传资产）、以及由它们 `workflow_run` 触发的 `Release notes`
   （把 CHANGELOG 里 `## [vX.Y.Z]` 段落写进 Release 正文；段落为空会直接失败）。
   故**打 tag 前必须先写好 CHANGELOG 正文段落**。
-- 注意：`v0.29.0` 从未打过 tag，故 tag 谱系是 `v0.28.0 → v0.29.1`；若需要补 `v0.29.0`，
-  应明确它指向 `1d4844c` 并同步补 CHANGELOG 段落存在性（当前已存在，可补）。
+- 注意：`v0.29.0` 当时**未打 tag**，本次已**补打**（指向 `1d4844c`，附注 tag `9de5bbb1…`，
+  双远端一致，`version.json` = 0.29.0 / build 123，CHANGELOG 段落非空）。于是 tag 谱系现为
+  `v0.28.0 → v0.29.0 → v0.29.1`，两个 tag 均触发并跑绿了 `Test` + 三平台 `Build & Release`，
+  Release 正文由 `Release notes` 自动写入对应 CHANGELOG 段落。
+- **GitHub「Latest」标记**：补打 `v0.29.0` 后 GitHub 会把 Latest 指向 `v0.29.0`（按 tag/release
+  创建时间而非版本号排序）。已用 `gh release edit v0.29.1 --latest` 改回 **v0.29.1**。
+  **后续补打旧版本 tag 时要记得再校正一次 Latest。**
+- **`master` 尚未归位**：`master`（本地 `56dd1e8` / 远端 `d542563`）落后 `develop` **88 个提交**，
+  且**不能** fast-forward（历史分叉）。本次未动它 —— 归位方式（把 develop 合并进 master、
+  还是把 master 重置到 develop、还是正式宣布 master 退役并改默认分支）需单独决策。
