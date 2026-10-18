@@ -21,11 +21,13 @@
   全白 —— 用户看得到输入框，却找不到也用不了这三样。根因：这些行渲染时给控件加了 inline
   `width:100%`，而控件所在的 `.row .v` 是 **max-content 定宽 + `overflow:hidden`**，控件撑满后
   其后的兄弟节点落到 `.v` 之外被裁掉（是**布局裁剪**，不是透明或 display 隐藏）。
-  修法：控件改为 flex 填充（inline `flex:1 1 auto;min-width:8rem;…`），并新增作用域规则
-  `#hook-tmpl-body .row .v { display:flex; align-items:center; gap:var(--gap-2); overflow:visible;
-  white-space:normal; }`（含 `> *:not(input):not(select) { flex:0 0 auto; }`）。
-  缺陷取证、CDP 独立复验与窄宽度边界见 `docs/superpowers/HANDOFF-v0.29.0.md` §7f；
-  组件约束已回写 `docs/DESIGN.md` §2.10。
+  修法：控件改为 flex 填充（inline `min-width:8rem;…`，由作用域规则驱动布局），并新增规则
+  `#hook-tmpl-body .row .v { display:flex; align-items:center; gap:var(--gap-2); flex:1 1 auto;
+  min-width:0; flex-wrap:wrap; overflow:visible; white-space:normal; }` —— `.v` 自己填满整行，
+  下拉不伸长、输入框吃掉剩余宽度、提示可收缩换行；「默认命令」另用 24rem 下限（`isWide`），
+  故窗口收到最小宽 900pt 时提示换行到独立一行而不是溢出卡片。
+  缺陷取证、CDP 独立复验（含变体 V1/V2/V3 实测与窄宽度边界）见
+  `docs/superpowers/HANDOFF-v0.29.0.md` §7f；组件约束已回写 `docs/DESIGN.md` §2.10。
 
 ## [v0.29.0] - 2026-10-17
 
