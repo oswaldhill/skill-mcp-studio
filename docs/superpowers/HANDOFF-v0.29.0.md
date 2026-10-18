@@ -453,3 +453,18 @@ github develop 仍停 `36b3afc`（落后 4 commit，门禁拦截 github 推送�
   该节点合法地不存在；它只在同渲染器的 Chromium harness 里验过；② 安装包内嵌前端是**压缩存储**
   （二进制里搜不到 `flex-wrap`/`isWide`），无法逐字节比对嵌入资源，改用"几何唯一性"论证；
   ③ 默认命令行在窗口宽 <~1225pt 时变为两行（设计如此，代价约 +28pt 行高）。
+
+**发布形态（本次定案，供后续版本照做）**：
+
+- 发布点在 **develop**（本仓库近年不再走 `master`：`master` 停在 `56dd1e8`，release.sh 里的
+  `develop → master` 合并流程已与现状不符，**后续如要恢复该流程需先决定 master 的定位**）。
+- 版本源：`version.json`（`bump_version.py` 会同步 11 处）；`v0.29.1` 为**附注 tag**，
+  指向 `72eec5f`，已推 codeup + github 双远端（远端 tag 对象 `064aac42…` 与本地一致）。
+- tag 名必须等于 `v<version.json.version>`——`test.yml` 的 `tag-version-consistency` job 会硬校验
+  （`if: startsWith(github.ref, 'refs/tags/v')`）。
+- 推 `v*` tag 会触发：`Test`（含上述一致性校验）、`Build & Release macOS/Linux/Windows App`
+  （各自建 Release 并上传资产）、以及由它们 `workflow_run` 触发的 `Release notes`
+  （把 CHANGELOG 里 `## [vX.Y.Z]` 段落写进 Release 正文；段落为空会直接失败）。
+  故**打 tag 前必须先写好 CHANGELOG 正文段落**。
+- 注意：`v0.29.0` 从未打过 tag，故 tag 谱系是 `v0.28.0 → v0.29.1`；若需要补 `v0.29.0`，
+  应明确它指向 `1d4844c` 并同步补 CHANGELOG 段落存在性（当前已存在，可补）。
