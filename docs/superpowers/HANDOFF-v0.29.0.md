@@ -298,3 +298,52 @@ github develop 仍停 `36b3afc`（落后 4 commit，门禁拦截 github 推送�
 - 安装到 /Applications：`.app` 已构建（`src-tauri/target/release/bundle/macos/skill-mcp-studio.app`），未 copy 到 `/Applications`（部署步骤）。
 - §6b tests/ 13 行合法保留（**已定案：接受为合法残留**，不改 grep 规则）：测 `--ai-memory` 别名（`test_cli`/`test_set_setting` 的 args.ai_memory）/ legacy 示例名（`test_mcp_fixer` 的 assertNotIn）/ 反向守护（`test_design_spec_contract` 的 is_ai_memory 缺席断言 + §6c）等**被保留行为**（§3.6 别名保留 / §3.8 明示保留）。这些测试若删会破坏被保留行为的覆盖，故 §6b tests/ grep 不追求字面零，以这 13 行为既定合法残留。
 - `default_command` 编辑：已支持（`--set-hook-template default=<command>`，无需 `--client`，text-rewrite `hooks.default_command` 保注释；卡片「默认命令」输入框已从只读改可编辑，随保存一并写入）。
+
+---
+
+## 7. 最终状态与续作清单（2026-10-18 收口）
+
+### 7a. 一句话状态
+
+**v0.29.0 开发完成 + 发布收口 + 已安装运行；唯一待办 = 新「写入命令模板」卡片的运行态视觉确认。**
+
+### 7b. 已确认落地（新会话可直接信）
+
+| 项 | 值 |
+|---|---|
+| HEAD | `11b72bc`（develop，工作区干净） |
+| codeup + github | 双远端均在 `11b72bc` |
+| 门禁 | 1174 tests OK (skipped=2) |
+| §6b 强 grep（7 文件） | 零 |
+| §6b 弱 grep（scan.py） | 零 |
+| §6b tests/ | 13 行合法保留（已定案） |
+| 安装 | `/Applications/skill-mcp-studio.app` = **0.29.0**，`codesign` valid |
+| 运行 | 进程在跑，LaunchServices Foreground |
+| 运行态实证 | 设置→Hook 页正常；Hook 页 hint 已中性化（§3.7a）；OpenCode 路径 `hooks.ts`（C 轨）；左下角 `v0.29.0 (build 123)` |
+
+### 7c. 唯一待办：§3.7b 卡片视觉确认
+
+- **位置**：设置页 → **Hook** 子页；卡片「写入命令模板」排在「要写入的 HOOK 事件」47 行事件表**之后**（在视口下方，需滚动）。
+- **难点（已踩实）**：Tauri/WebKit webview **不响应合成输入** —— CGEvent 鼠标点击、滚轮、System Events `keystroke` 都进不去；AX 能读元素树但不能点 webview 内部。**不能用脚本点进去。**
+- **可用的工具（本次已编译，重启后可能被清）**：
+  - `/tmp/axprompt` → 打印 `trusted=true` 表示辅助功能已授权
+  - `/tmp/axscroll <pid> 1.0` → 走 AX 设垂直滚动条值（*已编译成功，**尚未验证是否真能滚动 webview***，新会话第一件事就是试它）
+- **推荐步骤（新会话）**：
+  1. `open -a /Applications/skill-mcp-studio.app`，`osascript ... set frontmost to true`
+  2. `/tmp/axscroll $(pgrep -f 'skill-mcp-studio.app/Contents/MacOS' | head -1) 1.0`
+  3. 截图；若已滚到底 → 核验卡片；若没动 → **请真人手动滚动**（真触控板），再截图
+- **验收点清单**：卡片标题「写入命令模板」；note（"v0.29.0 起不再内置任何特定工具的 Hook 命令…"）；变量胶囊 `{event}` `{agent}` `{server_url}`；客户端下拉（Claude Code / Cursor / WorkBuddy / Codex / TRAE，仅 fix_supported）；预设下拉（不改 / 空模板 / 日志记录 / 回调通知 / 本地脚本）+「应用预设」按钮；「默认命令」输入框（**已可编辑**）；各事件命令输入；「保存」按钮；旧命令行 `.tag.warn`「旧」标。
+- **兜底**：卡片的**逻辑**已被门禁 1174 用例 + `--list-hook-templates` CLI 实测 + `--set-hook-template`/`--apply-hook-preset` temp 副本端到端测试覆盖，`gui/dist/app.js` 已含 `hook-tmpl-default`（grep 命中 2 处）。若视觉确认始终拿不到，可接受「逻辑已验、视觉未验」。
+
+### 7d. 环境事实（新会话别踩坑）
+
+- 本机 macOS 27；**辅助功能已授权**（`/tmp/axprompt` → trusted=true）；**自动化 → System Events 已授权**（`隐私与安全性 → 自动化 → DeepSeek Harness → System Events` 打开）。
+- **cargo 在 `$HOME/.cargo/bin`**（`cargo 1.98.1` + `tauri-cli 2.11.5`）。**仓库内没有 `.cargo-home` / `.rustup-home`** —— 本文档 §1b 那句「仓库内自带工具链」是**错的**。
+- 构建：`export PATH="$HOME/.cargo/bin:/opt/homebrew/bin:$PATH"; cd src-tauri && cargo tauri build`（增量 ~47s / 全量 ~5m22s）。`beforeBuildCommand` 会跑 `python3 scripts/build_gui.py` 重生成 `gui/dist/`，所以**改了 `gui/dashboard.html` 必须重新 build 才会进 .app**。
+- github 推送需显式放行：`GITHUB_PUSH_ALLOW=1 git push github develop`（否则被门禁脚本拦）。
+- `xbrowser` 技能的网络防护会拦 `127.0.0.1`（所以「本地起 http 服务 + 浏览器渲染」的兜底路径走不通）。
+- `gui/dist/`、`src-tauri/target/` 均 gitignored，不入提交。
+
+### 7e. 非阻断可选项
+
+- §6b tests/ 若要**字面零**，需放宽 §6b tests/ 的豁免正则（加 `assertNotIn|args\.(fix_)?ai_memory|is_ai_memory`）；当前选择是接受 13 行合法残留。
