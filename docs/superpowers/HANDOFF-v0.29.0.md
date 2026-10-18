@@ -415,3 +415,23 @@ github develop 仍停 `36b3afc`（落后 4 commit，门禁拦截 github 推送�
 
 **版本**：v0.29.1 / build 124（`version.json`）；CHANGELOG 链接块已由 `bump_version.py` 生成，
 `[v0.29.1]` 正文由本次补齐。
+
+**最终落地与运行态复验（2026-10-18 完成）**：
+
+- 提交：`4758ea7`（develop），已推 codeup(`origin`) + github 双远端，两侧均为 `4758ea7`；
+- 门禁：`CI_ALLOW_SKIP_DRIFT=1 bash scripts/ci_parity.sh` → **1174 tests OK (skipped=2)**，
+  含 ruff / node `--test`（6 pass）/ `cargo test`（12 pass）/ 文本卫生 / 密钥扫描；
+- 安装：`/Applications/skill-mcp-studio.app` = **0.29.1**，`codesign --verify --strict` valid，
+  侧栏显示 `v0.29.1 (build 124)`；
+- **应用内复验（AX frame + 像素采样，屏幕 2x）**：
+  - **@1280×860（默认）**：`应用预设` 帧 (1219,684,66x27) → **7128/7128 非白**；
+    `（全局兜底…）` 帧 (1522,734,341x18) → **24552/24552 非白**；两者修复前均为 **0**；
+    `预设` 下拉 128x21、`客户端` 下拉 212x21、`默认命令` 输入框 **432pt**、各事件输入框 778pt；
+  - **@900×700（窗口真实 `minWidth`）**：卡片内容盒 x 927..1483；`应用预设` right=1285、
+    提示 right=1426，**均在卡片内**且均已绘制；提示**换行到独立一行**（输入框 y=768、提示 y=804），
+    `默认命令` 输入框仍有 **398pt** —— 即窄宽度下不裁、不溢出；
+- **终版变体（V3）**：在 `flex:1 1 auto` 基础上加 `flex-wrap:wrap`，并让「默认命令」用
+  `isWide`（24rem 下限）。独立 CDP 实测（`layout-verifier`）：`flex-wrap` **不改变** `.v` 的
+  max-content（nowrap/wrap 同为 732.92、1 行），故 @1280 行为不变、@900 由「输入框仅 117.5pt
+  内宽 + 提示两行挤压」变为「输入框 394pt + 提示独占一行」；单独加 24rem 而不加 `flex-wrap`
+  会让提示被压成 18×470.2px，**已被证伪**。
