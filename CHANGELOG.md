@@ -7,6 +7,37 @@
 
 ## [Unreleased]
 
+## [v0.29.2] - 2026-10-19
+
+当前发布版本（build 125）。v0.29.1 的文档/规范/测试收口版：补全 PRD 文档同步、
+README 命令清单、DESIGN.md 规范字面规则、v0.29.1 修复的测试轨断言，以及设置页
+「关于」卡片挂载；无功能代码（`scan.py` / `core/` / `src-tauri/src/lib.rs`）变更。
+
+### 新增
+
+- **设置页「关于」卡片**（`gui/dashboard.html`）：设置页 appearance tab 末尾挂载关于
+  卡片（应用名 / 版本 / 许可 / 说明），版本号与页脚同源（`SNAP.app.full`）。此前
+  `.about-card` CSS 已预留但未挂载、版本信息仅散落页脚；现复用预留样式落地。
+- **v0.29.1 布局修复的可失败断言**（`tests/test_design_spec_contract.py`）：
+  新增 `HookTemplateLayoutGuardTest` 两条断言，守住 `#hook-tmpl-body .row .v` 的 8 项
+  flex 修复属性齐全 + 控件用 `flex:1 1 auto` 填充（不回归 inline `width:100%` 缺陷
+  根因）。经反向验证（临时改 `overflow: visible`→`hidden` 即精确失败）。
+
+### 变更（文档同步）
+
+- **PRD §8 缺口#1 关闭**（`docs/product/PRD-产品需求文档.md`）：
+  `--set-auto-discover` / `--set-active-profile` 两条写命令早于 v0.28.0 落地
+  （DESIGN.md §2.10 标 2026-10-15 补齐），但 PRD §8 缺口表仍标「🟡 待实现」、
+  §6.4 仍写「编辑待后端命令」。现同步为「✅ 已关闭 / v0.28.0」，§6.4 改为写、
+  P-3 定案段重写为「v0.28.0 落地」。
+- **README 命令速查补全**（`README.md`）：新增「Hook 命令模板（v0.29.0）」与
+  「设置（通用配置）」两组，列出 `--list-hook-templates` / `--set-hook-template` /
+  `--apply-hook-preset` 与 `--get-setting` / `--set-setting` / `--set-active-profile`
+  / `--set-auto-discover`（此前速查表零命中）。
+- **DESIGN.md §2.10 兜底 CSS 字面规则补全**（`docs/DESIGN.md`）：v0.29.1 修复规则
+  在 `dashboard.html:1271` 全 8 项，但 DESIGN.md:694 仅回写 6 项；现补全
+  `flex: 1 1 auto` / `min-width: 0` / `flex-wrap: wrap`，规范↔代码字面级镜像对齐。
+
 ## [v0.29.1] - 2026-10-18
 
 当前发布版本（build 124）。v0.29.0 的补丁版：只修 §3.7b「写入命令模板」卡片的一处渲染缺陷，
@@ -1603,7 +1634,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.29.1...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.29.2...HEAD
+[v0.29.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.29.2
 [v0.29.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.29.1
 [v0.29.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.29.0
 [v0.28.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.28.0

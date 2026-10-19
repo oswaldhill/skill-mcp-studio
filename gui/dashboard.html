@@ -4312,6 +4312,18 @@ function renderSettings() {
     <div class="note" style="margin-top:var(--sp-4)">开启后按间隔在后台运行快照对比（4 维度：IDE/Agent · MCP · Skill · Hook），检测到变更时更新托盘图标状态并发通知。关闭则只在手动点「检查变更」时执行。与托盘菜单的「后台巡检」是同一个开关。</div>
   </div>`;
 
+  // 「通用」：关于（版本 / 许可 / 说明）—— 数据源是快照 SNAP.app.full（与页脚同源）。
+  // 叠加 .about-card 类以引用已预留的样式（避免死 CSS）。
+  const _aboutCard = `<div class="settings-card about-card">
+    <h4>关于</h4>
+    <div class="rows" style="font-size:var(--fs-sm)">
+      <div class="row"><span class="k">应用</span><span class="v">Skill MCP Studio</span></div>
+      <div class="row"><span class="k">版本</span><span class="v"><code class="mono">${(SNAP && SNAP.app && SNAP.app.full) || "预览模式"}</code></span></div>
+      <div class="row"><span class="k">许可</span><span class="v">MIT</span></div>
+    </div>
+    <div class="note" style="margin-top:var(--sp-4)">本地多客户端 Skill / MCP 合规审计与修复工具。完整文档见仓库 README · CHANGELOG · SECURITY。</div>
+  </div>`;
+
   // 「通用」：Skills 统一目录（纯配置，路径类设置集中于此）
   const skillsCard = settingsCard("Skills 统一目录",
     kv("统一技能目录", `<code class="mono">${escapeHtml(sk.unified_dir || "未设置")}</code>`),
@@ -4471,7 +4483,7 @@ function renderSettings() {
   </div>`;
 
   el.innerHTML =
-    `<div class="settings-tab-panel" data-panel="appearance">${appearanceCard}${patrolCard}</div>` +
+    `<div class="settings-tab-panel" data-panel="appearance">${appearanceCard}${patrolCard}${_aboutCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="general">${skillsCard}${usageCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="agents">${agentsCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="hooks">${hooksCard}${hookTemplatesCard}</div>` +
@@ -7658,7 +7670,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.29.1", build: 124, build_number: 124, semver_ok: true, full: "v0.29.1 (build 124)" },
+  app: { name: "Skill MCP Studio", version: "0.29.2", build: 125, build_number: 125, semver_ok: true, full: "v0.29.2 (build 125)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

@@ -1,8 +1,8 @@
 # Skill MCP Studio
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v0.29.1-blue" alt="version">
-  <img src="https://img.shields.io/badge/build-124-lightgrey" alt="build">
+  <img src="https://img.shields.io/badge/version-v0.29.2-blue" alt="version">
+  <img src="https://img.shields.io/badge/build-125-lightgrey" alt="build">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="license">
   <img src="https://img.shields.io/badge/python-%3E%3D3.11-3776AB" alt="python">
   <img src="https://img.shields.io/github/actions/workflow/status/oswaldhill/skill-mcp-studio/build-macos.yml?branch=develop&label=CI%20(macOS)" alt="CI">
@@ -155,6 +155,23 @@ cleanup / commit / push / 修复。
 --setup-all        一键设置并检查所有已安装 IDE/Agent 的 Skills + 统一 MCP
 --remove-legacy-mcp  备份并移除旧 Hermes/legacy MCP 条目
 --set-unified-dir PATH   写入 unified_skills_dir
+```
+
+**Hook 命令模板（v0.29.0）**
+
+```text
+--list-hook-templates                     只读：列出各客户端 hook 模板与可用变量（JSON）
+--set-hook-template EVENT=COMMAND [--client C]   写入单事件命令模板（text-rewrite 保注释）
+--apply-hook-preset NAME [--client C]      应用预设（empty/logging/webhook/local-script/custom）
+```
+
+**设置（通用配置）**
+
+```text
+--get-setting KEY                         只读：读取 config.yaml 的 settings 键
+--set-setting KEY=VALUE                   写入 settings 键（备份→原子写→校验→回滚）
+--set-active-profile KEY                  切换活动端点（写 overlay，早返回不跑审计）
+--set-auto-discover enabled=true|false    开关自动发现（写 overlay）
 ```
 
 **endpoint profile 与能力组**
@@ -414,7 +431,7 @@ cargo tauri build --target universal-apple-darwin
 | --- | --- |
 | push / PR 到 `master` | 构建 universal `.app` + `.dmg`，上传为 workflow artifact |
 | 手动 `workflow_dispatch` | 同上 |
-| push `v*` tag（如 `v0.29.1`） | 构建并**自动创建 GitHub Release**，上传 `.dmg` 与 `.app.zip` |
+| push `v*` tag（如 `v0.29.2`） | 构建并**自动创建 GitHub Release**，上传 `.dmg` 与 `.app.zip` |
 
 产物为**通用二进制（universal）**，原生运行于 Intel 与 Apple Silicon，无需 Rosetta。
 

@@ -197,11 +197,11 @@ skill-mcp-studio 是一台面向开发者的**管理型桌面应用**（Tauri 2 
 | 统一技能目录（可改） | 写 | `--set-unified-dir` |
 | MCP 端点库（增删改） | 写 | 端点 CRUD 命令 |
 | Hook 命令模板（按事件编辑 + 预设） | 写 | `--set-hook-template` / `--apply-hook-preset`（v0.29.0） |
-| 自动发现开关 + 扫描 / 排除路径 | 读（当前只读） | 快照 `settings.auto_discover`；**编辑待后端命令** |
-| 活动 endpoint（active_profile）切换 | 读（当前只读） | 快照 `settings.active_profile`；**编辑待后端命令** |
+| 自动发现开关 + 扫描 / 排除路径 | 写 | `--set-auto-discover enabled=<true\|false>`（写 overlay）；扫描 / 排除路径仍只读 |
+| 活动 endpoint（active_profile）切换 | 写 | `--set-active-profile <key>`（写 overlay） |
 | 版本 / 构建号 | 读 | `--version` 快照 |
 
-> **P-3 定案**：`auto_discover` 与 `active_profile` 两项在当前版本**保持只读展示**（不出编辑项）。未来的写命令命名为 `--set-auto-discover` / `--set-active-profile`（编辑 config 对应键），与 Rust `DENIED_FLAGS` 拒绝的**重定向参数** `--active-profile`／`--profile`／`--config`（把引擎指向任意配置文件、属提权面）是两组不同的 flag，**互不冲突**。切「默认端点」的受控写形态留待后续版本立项。
+> **P-3 定案（v0.28.0 落地）**：`--set-auto-discover` / `--set-active-profile` 两条写命令已实现，走 overlay 路径（与 `--set-setting` 同模式、早返回不跑审计），均在 Rust `run_cli` 白名单内。它们与 `DENIED_FLAG_PREFIXES` 拒绝的**重定向参数** `--active-profile`／`--profile`／`--config`（把引擎指向任意配置文件、属提权面）是两组不同的 flag，**互不冲突**——写命令经白名单放行，重定向命令被拒。设置页 MCP tab 已提供切换控件（活动端点 `<select>` + 自动发现 `.seg-btn`）。
 
 ### 6.5 交互与视觉（当前实现）
 
@@ -253,7 +253,7 @@ skill-mcp-studio 是一台面向开发者的**管理型桌面应用**（Tauri 2 
 
 | # | 缺口 | 状态 | 关闭版本 |
 |---|------|------|---------|
-| 1 | **自动发现、活动 endpoint 的 GUI 编辑**：设置页仅有只读展示，缺少 `--set-auto-discover` / `--set-active-profile` 后端写命令，UI 标注「即将支持」 | 🟡 待实现 | — |
+| 1 | **自动发现、活动 endpoint 的 GUI 编辑**：`--set-auto-discover` / `--set-active-profile` 后端写命令已落地（写 overlay，Rust 白名单收口），GUI 设置页 MCP tab 已提供活动端点 `<select>` 切换与自动发现开关（DESIGN.md §2.10 标 2026-10-15 补齐） | ✅ 已关闭 | v0.28.0 |
 | 2 | **逐技能启停的 GUI 运行时边界**：GUI 的 ToggleSwitch 已绑定 `--enable-skill` / `--disable-skill` | ✅ 已关闭（已加入 Rust `run_cli` 白名单） | v0.20.0 |
 | 3 | **端点 transport 选择、能力组编辑**：端点详情编辑最初仅支持 name / url | ✅ 已关闭（`--endpoint-url` / `--endpoint-command` / `--endpoint-required-yaml` 补全 transport 与 required_capabilities 编辑） | v0.20.0 |
 | 4 | **Hook 命令模板可配置 + 剥离 ai-memory**：Hook 写入命令曾硬编码为外部工具命令，且 ai-memory 专属检查器 / 网关代理住在主干 | ✅ 已关闭（命令模板可配置 + 剥离 ai-memory 专属模块） | v0.29.0 |

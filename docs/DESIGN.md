@@ -691,7 +691,7 @@ GUI 不直接改配置文件。间隔由 CLI 钳到 ≥5 分钟，界面需回�
 `width:100%` —— `.row .v` 按 **max-content** 定宽且 `overflow:hidden`，控件撑满后其后的兄弟节点
 被排到 `.v` 之外并裁掉：元素仍在无障碍树里、可聚焦、可 `AXPress`，但**不绘制、点不到**。
 控件改用 **flex 填充**（`flex:1 1 auto;min-width:8rem`），并由作用域规则
-`#hook-tmpl-body .row .v { display:flex; align-items:center; gap:var(--gap-2); overflow:visible; white-space:normal; }`
+`#hook-tmpl-body .row .v { display:flex; align-items:center; gap:var(--gap-2); flex:1 1 auto; min-width:0; flex-wrap:wrap; overflow:visible; white-space:normal; }`
 兜住窄宽度换行（+ `> *:not(input):not(select) { flex:0 0 auto; }`）。缺陷取证见
 `docs/superpowers/HANDOFF-v0.29.0.md` §7f。
 

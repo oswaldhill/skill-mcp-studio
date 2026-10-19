@@ -1164,6 +1164,44 @@ class TrunkSourceGuardTest(unittest.TestCase):
         self.assertNotIn("is_ai_memory", trunk, "hooks_fixer 不得含 is_ai_memory 字段")
 
 
+class HookTemplateLayoutGuardTest(unittest.TestCase):
+    """§2.10「写入命令模板」卡片的 v0.29.1 布局修复不变量（双轨测试轨）。
+
+    v0.29.1 修了卡片控件 inline ``width:100%`` 把同行兄弟节点裁掉的缺陷
+    （HANDOFF §7f；规范 §2.10「组件约束」）。``.row .v`` 必须 8 项属性齐全、
+    控件必须 flex 填充——任一缺失会让「应用预设」按钮 / 「（全局兜底…）」提示 /
+    旧命令「旧」标回到「有元素、无像素、点不到」。本断言把该修复钉为可失败门禁，
+    避免后续改动无声回退缺陷。
+    """
+
+    # `#hook-tmpl-body .row .v` 的 8 项属性（dashboard.html:1271）。改代码必须
+    # 同步改规范 §2.10 的字面规则（二者由本表交叉锁定）。
+    _V8 = [
+        "display: flex", "align-items: center", "gap: var(--gap-2)",
+        "flex: 1 1 auto", "min-width: 0", "flex-wrap: wrap",
+        "overflow: visible", "white-space: normal",
+    ]
+
+    def test_row_v_has_all_eight_flex_props(self):
+        """``#hook-tmpl-body .row .v`` 必须含 v0.29.1 修复的全部 8 项属性。"""
+        body = _norm_ws(_rule_body("#hook-tmpl-body .row .v"))
+        missing = [p for p in self._V8 if p not in body]
+        self.assertEqual(
+            missing, [],
+            "#hook-tmpl-body .row .v 缺这些属性（v0.29.1 修复回退，兄弟节点会被 "
+            "overflow:hidden 裁掉）：%r" % missing,
+        )
+
+    def test_control_uses_flex_fill_not_width_100pct(self):
+        """控件（input）用 ``flex:1 1 auto`` 填充，不再回归 inline ``width:100%``（缺陷根因）。"""
+        css = _norm_ws(_css())
+        self.assertIn(
+            "#hook-tmpl-body .row .v > input { flex: 1 1 auto; }", css,
+            "hook-tmpl 控件未声明 flex:1 1 auto（v0.29.1 修复回退，控件会撑满 .v "
+            "并把同行兄弟节点裁掉）",
+        )
+
+
 class LegendPlacementAndAlignmentTest(unittest.TestCase):
     """图例：统一放在内容最下方 + 标签列定宽对齐（2026-10-13 用户要求）。
 
