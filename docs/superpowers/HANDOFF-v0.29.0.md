@@ -426,6 +426,13 @@ github develop 仍停 `36b3afc`（落后 4 commit，门禁拦截 github 推送�
    填值的端到端只能真人敲键盘。
 4. 授权方式：`AXIsProcessTrustedWithOptions(kAXTrustedCheckOptionPrompt: true)`
    弹系统设置，用户打开开关后**同 shell 的子进程立即生效**（无需重启）。
+6. **真机验证不得打真实私人端点**（2026-10-21 用户明确反馈）：验证
+   `--endpoint-status` / 探活类功能时曾直接跑 CLI，真实请求打到了用户端点库里的
+   内网端点（k8s.carobo.cn）——私人服务不该被开发验证触碰。正确做法：用 tmp
+   config + 假端点 fixture（同 config_porter 测试的隔离纪律）。另：`--set-active-profile`
+   走 `_overlay_target`（第一个**已存在**的 profile_source），会 safe_dump 整体重写
+   用户手工维护的 `~/.skills-manager/profiles.local.yaml`（重排键序/丢注释，无备份）——
+   改用户文件前先手动 cp 备份。
 5. **设置页 tab 按钮点不到**：settings-tab 的 AX title 为空、文字在子节点，且
    聚合文本匹配不稳定（侧栏「MCP 2」带计数会抢先 contains 匹配；精确匹配又
    拿不到 tab 的聚合文本）——实测多次仍落到侧栏业务页。设置页内部 tab 导航
