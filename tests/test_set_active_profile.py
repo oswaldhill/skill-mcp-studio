@@ -119,6 +119,34 @@ class SetAutoDiscoverTest(unittest.TestCase):
                        "--set-auto-discover", "scan_paths=~/.test"], self.tmp)
         self.assertEqual(r.returncode, 2, f"应 exit 2，实际 {r.returncode}")
 
+    def test_written_value_takes_effect_on_reload(self):
+        """写后生效回归（v0.30.0 修复的断链）。
+
+        v0.28.0 的 ``--set-auto-discover`` 把 enabled 写进 overlay，但
+        ``apply_profile_sources`` 此前不合并该键 —— ``load_config`` 读回的
+        仍是 trunk 值，开关形同虚设。本用例守住「写 → 重新加载 → 生效」
+        全链路（trunk=false / overlay=true 的暴露组合）。
+        """
+        cfg_path = Path(self.tmp) / "config.yaml"
+        # trunk 关、overlay 开：断链时 load_config 会读回 False
+        cfg_path.write_text(
+            "auto_discover:\n"
+            "  enabled: false\n"
+            f"profile_sources:\n"
+            f"  - {self.overlay}\n",
+            encoding="utf-8",
+        )
+        self.overlay.write_text("auto_discover:\n  enabled: true\n", encoding="utf-8")
+
+        sys.path.insert(0, str(ROOT / "core"))
+        from scanner import load_config  # noqa: E402
+
+        cfg = load_config(str(cfg_path))
+        self.assertTrue(
+            (cfg.get("auto_discover") or {}).get("enabled", False),
+            "overlay 的 auto_discover.enabled=true 未生效（apply_profile_sources 断链回归）",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -87,6 +87,19 @@ def apply_profile_sources(config: Dict[str, Any]) -> Dict[str, Any]:
             if isinstance(override_dir, str) and override_dir.strip():
                 config["unified_skills_dir"] = override_dir
 
+        # v0.30.0 fix（2026-10-21 实测发现断链）：``--set-auto-discover`` 自
+        # v0.28.0 起把 ``auto_discover.enabled`` 写进 overlay，但本函数此前
+        # **不合并**该键 —— ``load_config`` 读回的仍是 trunk 值，开关形同虚设
+        # （本机恰好 trunk/overlay 同为 true 才没暴露；v0.28.0 的测试只验
+        # 「写入打印 ✅」没验「写后生效」）。与 unified_skills_dir 同构：浅
+        # 合并、overlay 键覆盖 trunk 同名字段（enabled / scan_paths /
+        # exclude_paths 逐键覆盖，未声明的键保留 trunk 值）。
+        override_ad = data.get("auto_discover")
+        if isinstance(override_ad, dict) and override_ad:
+            merged_ad = dict(config.get("auto_discover") or {})
+            merged_ad.update(override_ad)
+            config["auto_discover"] = merged_ad
+
         source_templates = data.get("templates")
         if isinstance(source_templates, dict) and source_templates:
             templates = config.get("templates")
