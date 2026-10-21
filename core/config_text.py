@@ -254,5 +254,3 @@ def _set_default_command_in_text(raw: str, command: str) -> str:
     )
     lines[target] = new_line
     return "\n".join(lines)
-
-
