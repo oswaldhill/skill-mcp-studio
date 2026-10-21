@@ -1559,6 +1559,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="设置 auto_discover 段字段（目前仅 enabled=true|false），写入 overlay 带备份",
     )
     parser.add_argument(
+        "--export-config", type=str, default=None, metavar="PATH|icloud",
+        help="导出配置为单 JSON（生效视图 + 端点库 auth_token 脱敏 + 自动发现清单）；"
+             "icloud 别名解析为 iCloud Drive 固定路径（仅 macOS）",
+    )
+    parser.add_argument(
+        "--skip-discovered", action="store_true",
+        help="配合 --export-config：省略 discovered_tools 段（目标机自行重新发现）",
+    )
+    parser.add_argument(
+        "--import-config", type=str, default=None, metavar="PATH|icloud",
+        help="合并导入配置导出包（导入值优先、不删除本地键；按正典通道分流写 "
+             "overlay / trunk / discovered，导入前自动备份）",
+    )
+    parser.add_argument(
         "--profile", type=str, default=None,
         help="指定 endpoint profile（覆盖 config.yaml 的 active_profile）",
     )
@@ -2385,6 +2399,67 @@ def _run_set_auto_discover(args, config, config_path) -> int:
         return 2
 
 
+def _run_export_config(args, config_path) -> int:
+    """--export-config <path|icloud>：导出配置为单 JSON（v0.30.0 #3）。
+
+    独立早返回出口（与 --set-setting 同模式）：导出是否成功只由导出本身
+    决定，不跑后续审计。退出码 0=成功；2=路径/写入失败（icloud 别名在非
+    macOS 上报错也走这里）。
+    """
+    print("")
+    print("=" * 60)
+    print("  Export config")
+    print("=" * 60)
+    try:
+        from config_porter import export_config
+
+        result = export_config(
+            args.export_config,
+            config_path=config_path,
+            include_discovered=not getattr(args, "skip_discovered", False),
+            dry_run=bool(getattr(args, "dry_run", False)),
+        )
+        if result["status"] == "dry-run":
+            print(f"  {result['message']}")
+            return 0
+        print(f"  ✅ {result['message']}")
+        if result.get("backup"):
+            print(f"  备份（覆盖旧导出）: {result['backup']}")
+        return 0
+    except Exception as e:
+        print(f"\n  ❌ Export config failed: {e}")
+        return 2
+
+
+def _run_import_config(args, config_path) -> int:
+    """--import-config <path|icloud>：合并导入配置导出包（v0.30.0 #3）。
+
+    独立早返回出口。导入值优先、不删除本地键；按正典通道分流（overlay /
+    text-rewrite trunk / discovered），导入前自动备份。退出码 0=成功（含
+    「无变更」）；2=包校验或写入失败。
+    """
+    print("")
+    print("=" * 60)
+    print("  Import config")
+    print("=" * 60)
+    try:
+        from config_porter import import_config
+
+        result = import_config(
+            args.import_config,
+            config_path=config_path,
+            dry_run=bool(getattr(args, "dry_run", False)),
+        )
+        print(f"  {'✅' if result['status'] == 'ok' else 'ℹ️'} {result['message']}")
+        for label, bak in (result.get("backups") or {}).items():
+            if bak:
+                print(f"  备份（{label}）: {bak}")
+        return 0
+    except Exception as e:
+        print(f"\n  ❌ Import config failed: {e}")
+        return 2
+
+
 def _parse_fingerprint(raw: str):
     """解析 ``DIM:NAME:TYPE`` 形式的变更指纹。
 
@@ -2731,6 +2806,13 @@ def main() -> int:
         return _run_set_active_profile(args, config, config_path)
     if getattr(args, "set_auto_discover", None):
         return _run_set_auto_discover(args, config, config_path)
+
+    # 配置导入/导出（v0.30.0 #3）：独立早返回出口——导出/导入是否成功只由
+    # 该操作本身决定；导入是写操作，早返回后不跑后续无关审计阶段。
+    if getattr(args, "export_config", None):
+        return _run_export_config(args, config_path)
+    if getattr(args, "import_config", None):
+        return _run_import_config(args, config_path)
 
     # 变更检测（B 阶段）：只读 + 支持 --format json，GUI 解析整个 stdout，
     # 必须排在通用快照路由之前，否则输出会被快照截走。

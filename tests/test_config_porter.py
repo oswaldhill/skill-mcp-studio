@@ -327,5 +327,87 @@ class ImportTest(unittest.TestCase):
             self.assertEqual(r2["status"], "ok")
 
 
+class CliEntryTest(unittest.TestCase):
+    """``--export-config`` / ``--import-config`` CLI 入口（subprocess 端到端）。
+
+    隔离纪律（同模块 docstring，CLI 层同样适用）：
+    - tmp config 的 ``profile_sources`` 必须指向 tmp overlay（否则导入写入
+      会落到仓库真实 ``data/local_overrides.yaml``——CLI 端到端实测踩过两次）；
+    - 导出用 ``--skip-discovered`` 生成导入源，避免读写真实
+      ``data/discovered_tools.yaml``（subprocess 内无法 monkeypatch）。
+    """
+
+    def _env(self):
+        env = _TmpEnv()
+        env.__enter__()
+        self.addCleanup(env.__exit__, None, None, None)
+        return env
+
+    def _cli(self, *argv):
+        import subprocess
+        return subprocess.run(
+            [sys.executable, str(ROOT / "scan.py"), *argv],
+            capture_output=True, text=True, timeout=120,
+        )
+
+    def test_export_then_import_roundtrip(self):
+        env = self._env()
+        out = env.dir / "export.json"
+        # 导出（--skip-discovered：不读真实 discovered 文件）
+        r = self._cli("--config", str(env.trunk), "--export-config", str(out),
+                      "--skip-discovered")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("已导出", r.stdout)
+        self.assertTrue(out.exists())
+
+        # 导入到「新机器」（trunk2 带 profile_sources 指向自己的 tmp overlay）
+        trunk2 = env.dir / "config2.yaml"
+        overlay2 = env.dir / "data2" / "local_overrides.yaml"
+        overlay2.parent.mkdir(parents=True, exist_ok=True)
+        overlay2.write_text("active_profile: k8s-uat\n", encoding="utf-8")
+        trunk2.write_text(
+            TRUNK + f"profile_sources:\n  - {overlay2}\n", encoding="utf-8"
+        )
+        r2 = self._cli("--config", str(trunk2), "--import-config", str(out))
+        self.assertEqual(r2.returncode, 0, r2.stdout + r2.stderr)
+        self.assertIn("已导入", r2.stdout)
+
+        import yaml
+        ov2 = yaml.safe_load(overlay2.read_text(encoding="utf-8"))
+        self.assertEqual(ov2["active_profile"], "k8s-uat")  # 导出包的生效值
+        # 仓库真实 overlay 未被触碰（隔离断言）
+        real = ROOT / "data" / "local_overrides.yaml"
+        if real.exists():
+            real_ov = yaml.safe_load(real.read_text(encoding="utf-8"))
+            self.assertEqual(real_ov.get("active_profile"), "k8s-uat")
+            self.assertEqual(real_ov.get("disabled_tools"), ["ZZProbeAgent", "FooAgent"])
+
+    def test_import_dry_run_via_cli(self):
+        env = self._env()
+        out = env.dir / "export.json"
+        self._cli("--config", str(env.trunk), "--export-config", str(out),
+                  "--skip-discovered")
+        r = self._cli("--config", str(env.trunk), "--import-config", str(out),
+                      "--dry-run")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("[dry-run]", r.stdout)
+
+    def test_missing_file_fails_with_exit_2(self):
+        env = self._env()
+        r = self._cli("--config", str(env.trunk), "--import-config",
+                      str(env.dir / "nope.json"))
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertIn("不存在", r.stdout)
+
+    def test_icloud_alias_dry_run_on_macos(self):
+        if sys.platform != "darwin":
+            self.skipTest("仅 macOS")
+        env = self._env()
+        r = self._cli("--config", str(env.trunk), "--export-config", "icloud",
+                      "--dry-run", "--skip-discovered")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Mobile Documents", r.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()
