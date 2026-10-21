@@ -27,6 +27,9 @@ sys.path.insert(0, str(ROOT / "core"))
 sys.path.insert(0, str(ROOT))
 
 import scan  # noqa: E402
+import yaml  # noqa: E402
+from config_text import _render_scalar  # noqa: E402  (v0.30.0 抽取到 core)
+from config_text import _set_default_command_in_text  # noqa: E402
 
 
 class SetSettingInTextTest(unittest.TestCase):
@@ -88,11 +91,11 @@ class SetSettingInTextTest(unittest.TestCase):
 class RenderScalarTest(unittest.TestCase):
     def test_bool_renders_lowercase(self):
         """与仓库既有 config.yaml 的写法一致（true/false，非 True/False）。"""
-        self.assertEqual(scan._render_scalar(True), "true")
-        self.assertEqual(scan._render_scalar(False), "false")
+        self.assertEqual(_render_scalar(True), "true")
+        self.assertEqual(_render_scalar(False), "false")
 
     def test_number_renders_plain(self):
-        self.assertEqual(scan._render_scalar(15), "15")
+        self.assertEqual(_render_scalar(15), "15")
 
 
 class TrunkConfigStaysCleanTest(unittest.TestCase):
@@ -109,6 +112,49 @@ class TrunkConfigStaysCleanTest(unittest.TestCase):
     def test_tracked_config_declares_profile_sources(self):
         raw = (ROOT / "config.yaml").read_text(encoding="utf-8")
         self.assertIn("profile_sources:", raw)
+
+
+class SetDefaultCommandTest(unittest.TestCase):
+    """``_set_default_command_in_text`` 行为契约（v0.30.0 补测，此前零覆盖）。
+
+    v0.30.0 加固背景：旧正则只认双引号值，单引号（``''``）或裸值风格的行
+    会**静默不匹配**（sub 无效果、返回原文）——config_porter 导入路径用
+    单引号风格的 fixture 时暴露。现支持三种既有风格 + 命令内引号转义。
+    """
+
+    def _run(self, old_line, command):
+        raw = f"hooks:\n{old_line}\nclients: []\n"
+        out = _set_default_command_in_text(raw, command)
+        new_line = [ln for ln in out.split("\n") if "default_command" in ln][0]
+        return out, new_line
+
+    def test_double_quoted_value_with_trailing_comment(self):
+        out, line = self._run('  default_command: ""  # 全局兜底', "notify {event}")
+        self.assertIn('"notify {event}"', line)
+        self.assertIn("# 全局兜底", line)  # 行尾注释保留
+        self.assertEqual(yaml.safe_load(out)["hooks"]["default_command"], "notify {event}")
+
+    def test_single_quoted_value(self):
+        out, line = self._run("  default_command: ''", "notify {event}")
+        self.assertIn('"notify {event}"', line)
+        self.assertEqual(yaml.safe_load(out)["hooks"]["default_command"], "notify {event}")
+
+    def test_bare_value(self):
+        out, _ = self._run("  default_command: bare-cmd", "new-cmd")
+        self.assertEqual(yaml.safe_load(out)["hooks"]["default_command"], "new-cmd")
+
+    def test_command_containing_quotes_is_escaped(self):
+        out, line = self._run('  default_command: ""', 'notify "x" {event}')
+        self.assertEqual(yaml.safe_load(out)["hooks"]["default_command"], 'notify "x" {event}')
+        self.assertIn('\\"x\\"', line)  # 双引号转义可见
+
+    def test_missing_hooks_section_raises(self):
+        with self.assertRaises(ValueError):
+            _set_default_command_in_text("settings: {}\n", "x")
+
+    def test_missing_field_raises(self):
+        with self.assertRaises(ValueError):
+            _set_default_command_in_text("hooks:\n  clients: []\n", "x")
 
 
 if __name__ == "__main__":
