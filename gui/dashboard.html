@@ -5140,6 +5140,22 @@ function renderEndpointStatus() {
     return;
   }
 
+  // 执行失败（CLI 返回 error JSON、无 state 字段，如 active_profile 大小写
+  // 不匹配导致 profile 解析失败）：明确红色「检查执行失败」+ 错误详情，
+  // **不得**落到下面的 "not_run" 分支画成「尚未检查」——实测误导（用户
+  // 看到的是"没测过"，实际是"测不了"）。
+  if (st.error && !st.state) {
+    el.innerHTML =
+      '<div><span class="tag err">检查执行失败</span></div>' +
+      '<table class="kv"><tbody>' +
+      `<tr><th>错误</th><td>${escapeHtml(String(st.error))}</td></tr>` +
+      "</tbody></table>" +
+      '<div class="quickbox">' +
+      '<button class="btn-soft" data-action="reprobe">重试检查</button>' +
+      "</div>" + note;
+    return;
+  }
+
   const state = st.state || "not_run";
   // 未检查必须是**中性色**（""），不能是 warn —— 沿用原总览护栏的口径：
   // 「没测过」既不是通过也不是故障，用警告色会让人误以为端点有问题。
