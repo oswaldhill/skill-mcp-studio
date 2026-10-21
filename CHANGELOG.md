@@ -7,7 +7,13 @@
 
 ## [Unreleased]
 
-### 新增（v0.30.0 开发中）
+## [v0.30.0] - 2026-10-21
+
+当前发布版本（build 126）。Hook 命令变量插值补齐（v0.29.0 设计承诺）+ 配置导入/导出
+（本地 + iCloud，路线图 P0#3 前半）+ 两项计划外修复（auto_discover overlay 断链、
+default_command 引号加固）。
+
+### 新增
 
 - **Hook 命令写入时变量插值**（`core/hooks_fixer.py`）：补齐 v0.29.0 设计 §4.1
   承诺但未实现的 `{event}` / `{agent}` / `{server_url}` 插值——此前 template 命令
@@ -1674,7 +1680,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.29.2...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.30.0...HEAD
+[v0.30.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.30.0
 [v0.29.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.29.2
 [v0.29.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.29.1
 [v0.29.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.29.0
