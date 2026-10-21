@@ -426,6 +426,10 @@ github develop 仍停 `36b3afc`（落后 4 commit，门禁拦截 github 推送�
    填值的端到端只能真人敲键盘。
 4. 授权方式：`AXIsProcessTrustedWithOptions(kAXTrustedCheckOptionPrompt: true)`
    弹系统设置，用户打开开关后**同 shell 的子进程立即生效**（无需重启）。
+5. **设置页 tab 按钮点不到**：settings-tab 的 AX title 为空、文字在子节点，且
+   聚合文本匹配不稳定（侧栏「MCP 2」带计数会抢先 contains 匹配；精确匹配又
+   拿不到 tab 的聚合文本）——实测多次仍落到侧栏业务页。设置页内部 tab 导航
+   是本探针的能力边界，需真人点击或增强探针（按 DOM 结构定位 tab 栏容器）。
 若已丢失，按上述 5 步重建即可。`xbrowser` 仍拦 `127.0.0.1`（§7d），「本地起 http 服务 + 浏览器渲染」
 的兜底路径依旧不通。
 
