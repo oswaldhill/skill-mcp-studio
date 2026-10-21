@@ -174,6 +174,14 @@ cleanup / commit / push / 修复。
 --set-auto-discover enabled=true|false    开关自动发现（写 overlay）
 ```
 
+**配置导入 / 导出（v0.30.0）**
+
+```text
+--export-config PATH|icloud               导出配置为单 JSON（端点密钥自动脱敏；icloud 别名仅 macOS）
+--import-config PATH|icloud               合并导入（导入值优先、不删除本地项；导入前自动备份）
+--skip-discovered                         配合 --export-config：省略自动发现清单
+```
+
 **endpoint profile 与能力组**
 
 ```text

@@ -1,7 +1,9 @@
 # 设计文档：Hook 命令变量插值（补 v0.29.0 缺口）+ 配置导入/导出（v0.30.0 #3 本地+iCloud）
 
 - 日期：2026-10-21 ｜ 分支：develop ｜ 基线 `14f41e7`（v0.29.2 / build 125）
-- 状态：已批准（用户 2026-10-21 拍板：本地+iCloud 先行、WebDAV 留后续；CLI + GUI 卡片）
+- 状态：已实施（2026-10-21，D1/D2/D3/E/F/H 七步全部落地；实施中新增两项计划外修复：
+  auto_discover overlay 断链（§3.3 前置）与 _set_default_command_in_text 引号加固，
+  详见 CHANGELOG [Unreleased]）
 - 上游需求：路线图 §4c P0#1（插值半项）+ P0#3（导入/导出）；PRD §6.4
 
 ## 1. 背景与问题

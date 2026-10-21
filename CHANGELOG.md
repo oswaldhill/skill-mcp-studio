@@ -7,6 +7,46 @@
 
 ## [Unreleased]
 
+### 新增（v0.30.0 开发中）
+
+- **Hook 命令写入时变量插值**（`core/hooks_fixer.py`）：补齐 v0.29.0 设计 §4.1
+  承诺但未实现的 `{event}` / `{agent}` / `{server_url}` 插值——此前 template 命令
+  原样写入，用户应用「日志记录」预设后客户端执行的是字面 `{event}`（坏命令）。
+  `{event}` → canonical snake_case 事件名；`{agent}` → `agent_slug`（缺省客户端名
+  slug 化）；`{server_url}` → 活动 profile URL（取不到保留占位符原样）。字面
+  `str.replace` 实现：未识别 `{xxx}` / `${VAR}` 天然保留、无占位符 no-op（旧命令
+  零影响）；dry-run 消息附插值样例。`tests/test_hook_interpolation.py` 15 例。
+- **配置导入/导出**（`core/config_porter.py` + CLI + GUI，路线图 §4c P0#3 本地+iCloud）：
+  - `--export-config <path|icloud>`：导出为单 JSON（生效视图 + 端点库
+    `auth_token` 脱敏 + 自动发现清单）；`icloud` 别名解析为 iCloud Drive 固定路径
+    （仅 macOS）；`--skip-discovered` 省略发现清单；dry-run 不落盘。
+  - `--import-config <path|icloud>`：合并导入（导入值优先、不删除本地已有键），
+    **按各键正典通道分流**（overlay 键写 overlay、settings/hooks 走 text-rewrite
+    trunk 保注释、discovered 按 name 去重）；遇 `<redacted>` 占位的密钥跳过并
+    保留本地值；导入前对将改文件各生成真实备份（`shutil.copy2`）；语义值相同
+    不写盘不虚报。`tests/test_config_porter.py` 20 例（含 CLI 端到端与隔离断言）。
+  - 设置页通用 tab 新增「配置导入 / 导出」卡片（`#cfg-port-card`）：路径输入 +
+    导出/导入按钮；导入前 confirmModal 说明合并语义；行内控件 flex 布局
+    （不写 inline `width:100%`，v0.29.1 裁剪教训）。DESIGN.md §2.10 增补规范，
+    `ConfigPortCardContractTest` 3 断言（含反向验证）。
+  - Rust `run_cli` 白名单加 `--export-config` / `--import-config` /
+    `--skip-discovered`。
+- **text-rewrite 函数抽取**（`core/config_text.py` 新模块）：把 scan.py 的 6 个
+  保注释改写函数抽到 core（config_porter 复用正典通道；同 B 轨 config_codec
+  先例），scan.py import 引用，调用点与既有测试零改动。
+
+### 修复
+
+- **`apply_profile_sources` 合并 overlay 的 `auto_discover`**（v0.28.0 断链）：
+  `--set-auto-discover` 写 overlay 后 `load_config` 读回的仍是 trunk 值（本函数
+  此前不合并该键），开关形同虚设——本机恰好 trunk/overlay 同值才未暴露，v0.28.0
+  测试只验「写入打印」没验「写后生效」。修法与 `unified_skills_dir` 的 B3 fix
+  同构（浅合并、overlay 键覆盖、未声明键保留 trunk 值）；补
+  `test_written_value_takes_effect_on_reload` 全链路回归。
+- **`_set_default_command_in_text` 引号风格加固**：旧正则只认双引号值，单引号
+  （`''`）或裸值风格的行会静默不匹配（sub 无效果返回原文）；现支持三种既有
+  风格 + `json.dumps` 转义命令内引号；补 6 例单测（此前零覆盖）。
+
 ## [v0.29.2] - 2026-10-19
 
 当前发布版本（build 125）。v0.29.1 的文档/规范/测试收口版：补全 PRD 文档同步、
