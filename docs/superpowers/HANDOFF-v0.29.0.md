@@ -410,6 +410,22 @@ github develop 仍停 `36b3afc`（落后 4 commit，门禁拦截 github 推送�
    （AX 有元素 ≠ 像素有内容；这次缺陷正是靠第 2 步与第 5 步的差异抓到的）。
 
 工具脚本仍在 `/tmp`（未入库，重启后可能被清；§7c 的 `/tmp/axprompt`、`/tmp/axscroll` 属同族）。
+
+**v0.30.0 视觉验收的 AX 重建经验（2026-10-21，下次直接照做）**：
+
+1. **AXWebArea 的 DOM 直接可读**——无需 `AXManualAccessibility` 激活；window →
+   group → group → scrollArea → **AXWebArea** → LandmarkComplementary（侧栏）/
+   LandmarkMain（内容区）。
+2. **按钮文本在 `kAXTitleAttribute`**（`AXValue` 恒空）；侧栏 9 个 AXButton 挂在
+   LandmarkNavigation 下。按 title 聚合匹配 + `AXPress` 即可导航（实测
+   PRESSED:设置 一次成功）。
+3. **`AXUIElementSetAttributeValue(kAXValue)` 填 webview 输入框不触发 DOM
+   input 事件**——JS 读到的 value 仍为空（实测 toast 报「请先填写导出路径」）。
+   真实键盘输入需 CGEvent，而 **CGEvent 合成事件与 AX 是两个授权面**：辅助功能
+   开关打开后 AX 可用，CGEvent 仍被静默丢弃（实测点 Apple 菜单无效）。GUI 表单
+   填值的端到端只能真人敲键盘。
+4. 授权方式：`AXIsProcessTrustedWithOptions(kAXTrustedCheckOptionPrompt: true)`
+   弹系统设置，用户打开开关后**同 shell 的子进程立即生效**（无需重启）。
 若已丢失，按上述 5 步重建即可。`xbrowser` 仍拦 `127.0.0.1`（§7d），「本地起 http 服务 + 浏览器渲染」
 的兜底路径依旧不通。
 
