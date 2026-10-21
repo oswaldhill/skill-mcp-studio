@@ -1,6 +1,6 @@
 # 技能整理建议设计（FEAT-11）
 
-日期：2026-09-23　状态：已批准，待实现
+日期：2026-09-23　状态：已实现（`core/skill_merge_advisor.py` + `--merge-advice`；执行能力 FEAT-12 亦已落地为 `core/skill_merge_exec.py`。2026-10-21 回写）
 上游需求：「增加一个整理 skill 的功能，需要识别出最后的使用情况，看看是否有合并的必要」
 前置：FEAT-10 技能使用统计（`docs/superpowers/specs/2026-09-23-skill-usage-statistics-design.md`）
 本期定位：**只读建议报告**。不删、不改、不移动任何文件；执行能力另立 FEAT-12。

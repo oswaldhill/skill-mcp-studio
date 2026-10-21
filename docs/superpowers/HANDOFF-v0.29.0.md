@@ -338,7 +338,7 @@ github develop 仍停 `36b3afc`（落后 4 commit，门禁拦截 github 推送�
 ### 7d. 环境事实（新会话别踩坑）
 
 - 本机 macOS 27；**辅助功能已授权**（`/tmp/axprompt` → trusted=true）；**自动化 → System Events 已授权**（`隐私与安全性 → 自动化 → DeepSeek Harness → System Events` 打开）。
-- **cargo 在 `$HOME/.cargo/bin`**（`cargo 1.98.1` + `tauri-cli 2.11.5`）。**仓库内没有 `.cargo-home` / `.rustup-home`** —— 本文档 §1b 那句「仓库内自带工具链」是**错的**。
+- **cargo 位置（2026-10-21 勘误的勘误）**：本条原文写「cargo 在 `$HOME/.cargo/bin`、仓库内没有 `.cargo-home`」——**两处均与当前实测不符**：`$HOME/.cargo/bin` 下无 cargo；仓库工作区内**存在** `.cargo-home/`（含 `bin/cargo`、`cargo-tauri` 等）与 `.rustup-home/`，`cargo test` 已用 `.cargo-home/bin/cargo` 实跑通过（12 passed）。注意这两个目录是 **gitignored 的本地缓存**（Q2-1 曾清理过 633MB，后来又出现），**设备间状态可能不同**——新设备上先 `ls .cargo-home/bin/` 确认，没有再装。§1b「仓库内自带工具链」对本机当前状态反而成立。
 - 构建：`export PATH="$HOME/.cargo/bin:/opt/homebrew/bin:$PATH"; cd src-tauri && cargo tauri build`（增量 ~47s / 全量 ~5m22s）。`beforeBuildCommand` 会跑 `python3 scripts/build_gui.py` 重生成 `gui/dist/`，所以**改了 `gui/dashboard.html` 必须重新 build 才会进 .app**。
 - github 推送需显式放行：`GITHUB_PUSH_ALLOW=1 git push github develop`（否则被门禁脚本拦）。
 - `xbrowser` 技能的网络防护会拦 `127.0.0.1`（所以「本地起 http 服务 + 浏览器渲染」的兜底路径走不通）。
