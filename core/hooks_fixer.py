@@ -46,6 +46,76 @@ def _default_hook_command(canonical_event: str) -> str:
     return ""
 
 
+def _canonical_to_snake(canonical_event: str) -> str:
+    """PascalCase 规范事件名 → snake_case（``SessionStart`` → ``session_start``）。
+
+    ``{event}`` 变量的取值口径（设计 2026-10-16 §4.1 / 2026-10-21 §3.1）：
+    与客户端格式无关的规范名，便于同一条命令模板跨客户端复用。
+    """
+    out = []
+    for ch in canonical_event:
+        if ch.isupper() and out:
+            out.append("_")
+        out.append(ch.lower())
+    return "".join(out)
+
+
+def _client_agent_slug(hc: Dict[str, Any], client_name: str) -> str:
+    """``{agent}`` 变量取值：声明值优先，缺省回退客户端名 slug 化。
+
+    回退规则（小写 + 空格转连字符）与 config.yaml 既有 ``agent_slug``
+    声明风格一致（``Claude Code`` → ``claude-code``）。
+    """
+    declared = hc.get("agent_slug")
+    if declared and str(declared).strip():
+        return str(declared).strip()
+    return str(client_name or "").strip().lower().replace(" ", "-")
+
+
+def _active_server_url(config: Dict[str, Any]) -> str:
+    """``{server_url}`` 变量取值：活动 profile 的 url；取不到返回空串。
+
+    返回空串时 ``_interpolate`` 会**保留 ``{server_url}`` 原样**（不吞占位
+    符），dry-run 消息里可见，用户补上活动端点后重写即生效。
+    """
+    profiles = config.get("profiles")
+    active = config.get("active_profile")
+    if not isinstance(profiles, dict) or not active:
+        return ""
+    profile = profiles.get(active)
+    if not isinstance(profile, dict):
+        return ""
+    url = profile.get("url")
+    return str(url) if isinstance(url, str) else ""
+
+
+def _interpolate(
+    command: str,
+    *,
+    canonical: str,
+    agent_slug: str,
+    server_url: str,
+) -> str:
+    """写入前对命令模板做变量插值（v0.30.0 补齐 v0.29.0 设计 §4.1 承诺）。
+
+    - ``{event}``       → 该事件 canonical snake_case 名（必有）；
+    - ``{agent}`        → agent_slug（空则保留占位符原样）；
+    - ``{server_url}``  → 活动 profile url（空则保留占位符原样）。
+
+    用字面 ``str.replace`` 而非正则：未识别的 ``{xxx}`` / ``${VAR}`` 天然
+    保留原样（不误伤 shell 语法），无占位符的命令是 no-op——已写入的旧
+    命令零影响。不做转义语法（设计 §5）。
+    """
+    if not command:
+        return command
+    cmd = command.replace("{event}", _canonical_to_snake(canonical))
+    if agent_slug:
+        cmd = cmd.replace("{agent}", agent_slug)
+    if server_url:
+        cmd = cmd.replace("{server_url}", server_url)
+    return cmd
+
+
 def _build_hook_entry(command: str, entry_style: str = "nested") -> Dict[str, Any]:
     """构造单个 hook 事件的标准写入结构。
 
@@ -138,15 +208,22 @@ def fix_hooks_tool(
     if configured_events:
         event_format = hc.get("event_format")
         supported = client_supported_events(hc)
+        # 插值上下文（v0.30.0）：循环外算一次，{agent}/{server_url} 对同一
+        # 客户端是常量；{event} 在循环内按事件取 canonical snake_case。
+        agent_slug = _client_agent_slug(hc, name)
+        server_url = _active_server_url(config)
         template = {}
         for canonical in configured_events:
             client_name = event_name_for_client(canonical, event_format)
             if supported and client_name not in supported:
                 skipped_unsupported.append(canonical)
                 continue
-            template[client_name] = (
+            template[client_name] = _interpolate(
                 (hc.get("template") or {}).get(client_name)
-                or _default_hook_command(canonical)
+                or _default_hook_command(canonical),
+                canonical=canonical,
+                agent_slug=agent_slug,
+                server_url=server_url,
             )
     if not template:
         # 三种「无事件可写」要分开说，否则会让人以为配置丢了：
@@ -216,7 +293,12 @@ def fix_hooks_tool(
     rendered = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
 
     if dry_run:
-        return _result(name, "dry-run", f"[dry-run] 将写入 {len(to_write)} 个 hook 事件：{', '.join(to_write)}")
+        sample = next(iter(to_write.values()))
+        return _result(
+            name, "dry-run",
+            f"[dry-run] 将写入 {len(to_write)} 个 hook 事件：{', '.join(to_write)}"
+            f"（插值样例：{sample!r}）",
+        )
 
     # 备份
     mode = 0o600
