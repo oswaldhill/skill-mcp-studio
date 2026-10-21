@@ -399,6 +399,29 @@ class CliEntryTest(unittest.TestCase):
         self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
         self.assertIn("不存在", r.stdout)
 
+    def test_export_dry_run_prints_full_json(self):
+        """设计 §3.4：导出 dry-run 打印将写的 JSON（脱敏后），可预览全文。"""
+        env = self._env()
+        out = env.dir / "export.json"
+        r = self._cli("--config", str(env.trunk), "--export-config", str(out),
+                      "--dry-run", "--skip-discovered")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("将导出到", r.stdout)          # 摘要行
+        self.assertIn('"kind"', r.stdout)            # 完整 JSON
+        self.assertIn(EXPORT_KIND, r.stdout)
+        self.assertIn('"profiles"', r.stdout)        # 脱敏后的 profiles 可预览
+        self.assertFalse(out.exists())               # dry-run 不落盘
+
+    def test_list_config_backups_without_client_lists_engine_files(self):
+        """设计 §3.3：不带 --client 时列引擎三件套备份（导入备份的列出入口）。"""
+        env = self._env()
+        r = self._cli("--config", str(env.trunk), "--list-config-backups")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("config.yaml 的备份", r.stdout)
+        self.assertIn("overlay 的备份", r.stdout)
+        self.assertIn("discovered_tools 的备份", r.stdout)
+        self.assertIn("引擎配置备份", r.stdout)
+
     def test_icloud_alias_dry_run_on_macos(self):
         if sys.platform != "darwin":
             self.skipTest("仅 macOS")

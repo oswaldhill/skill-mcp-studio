@@ -704,8 +704,33 @@ def _run_remove_mcp_class(args, config, config_path) -> int:
 def _run_list_config_backups(args, config, config_path) -> int:
     client = getattr(args, "client", None)
     if not client:
-        print("  ❌ --list-config-backups 需要配合 --client <客户端名>")
-        return 2
+        # v0.30.0（设计 §3.3）：不带 --client 时列**引擎配置三件套**的备份
+        # （config.yaml / overlay / discovered_tools）——--import-config 导入前
+        # 自动生成的备份此前没有任何列出入口，用户无从得知备份在哪。
+        from config_store import _overlay_target
+        from config_porter import _discovered_file
+        targets = [
+            ("config.yaml", os.path.normpath(config_path)),
+            ("overlay", _overlay_target(config_path)),
+            ("discovered_tools", _discovered_file()),
+        ]
+        as_json = getattr(args, "format", None) == "json"
+        all_backups = {}
+        total = 0
+        for label, path in targets:
+            backups = list_config_backups(path)
+            all_backups[label] = {"path": path, "backups": backups}
+            total += len(backups)
+            if not as_json:
+                print(f"  {label} 的备份（{len(backups)} 个，{path}）:")
+                for item in backups:
+                    print(f"    {item['mtime_text']}  {item['size']:>8} B  {item['path']}")
+        if as_json:
+            print(json.dumps({"status": "ok", "scope": "engine-config",
+                              "backups": all_backups}, ensure_ascii=False, indent=2))
+            return 0
+        print(f"  共 {total} 个引擎配置备份（导入/写入前自动生成；客户端配置备份请加 --client）")
+        return 0
     tool = _find_client_tool(config, client)
     if tool is None:
         print(f"  ❌ 未找到客户端 {client}")
@@ -2421,6 +2446,9 @@ def _run_export_config(args, config_path) -> int:
         )
         if result["status"] == "dry-run":
             print(f"  {result['message']}")
+            # 设计 §3.4：dry-run 打印将写的 JSON（脱敏后）——用户能预览导出包
+            # 全文（含脱敏后的 profiles），确认无误再实写。
+            print(json.dumps(result.get("payload") or {}, ensure_ascii=False, indent=2))
             return 0
         print(f"  ✅ {result['message']}")
         if result.get("backup"):

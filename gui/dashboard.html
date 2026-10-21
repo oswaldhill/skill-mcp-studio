@@ -4585,7 +4585,12 @@ function renderSettings() {
       const label = key ? `设为「${key}」` : "清除活动端点";
       const ok = await confirmModal("切换活动端点", `确认${label}？切换后所有客户端的 MCP 配置将指向新端点。`);
       if (!ok) { renderSettings(); return; }   // 取消则恢复原选中
-      runTaskModal("切换活动端点", () => runCli(["--set-active-profile", key], label), () => refreshBlocks(["settings", "agents"]), ["校验 key 存在性", "写入 overlay", "刷新快照"]);
+      runTaskModal("切换活动端点", async () => {
+        const res = await runCli(["--set-active-profile", key], label);
+        if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
+        if (res.code === 0) return { ok: true, message: `已${label}（写入 overlay）` };
+        return { ok: false, message: "切换失败", detail: cliFailLines(res) || cliErrDetail(res) };
+      }, () => refreshBlocks(["settings", "agents"]), ["校验 key 存在性", "写入 overlay", "刷新快照"]);
     });
   }
   // 自动发现开关
@@ -4593,7 +4598,12 @@ function renderSettings() {
     b.addEventListener("click", () => {
       const want = b.dataset.adToggle === "true";
       if (want === _adEnabled) return;
-      runTaskModal("切换自动发现", () => runCli(["--set-auto-discover", `enabled=${want}`], `自动发现: ${want ? "开启" : "关闭"}`), () => refreshBlocks(["settings"]), ["写入 overlay", "刷新快照"]);
+      runTaskModal("切换自动发现", async () => {
+        const res = await runCli(["--set-auto-discover", `enabled=${want}`], `自动发现: ${want ? "开启" : "关闭"}`);
+        if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
+        if (res.code === 0) return { ok: true, message: `自动发现已${want ? "开启" : "关闭"}（写入 overlay）` };
+        return { ok: false, message: "切换失败", detail: cliFailLines(res) || cliErrDetail(res) };
+      }, () => refreshBlocks(["settings"]), ["写入 overlay", "刷新快照"]);
     });
   });
   applyScale(currentScale(), false);
@@ -6571,8 +6581,15 @@ function exportConfigAction() {
   const input = $("cfg-export-path");
   const path = (input && input.value || "").trim();
   if (!path) { showToast("err", "请先填写导出路径（绝对路径或 icloud）"); return; }
-  runTaskModal("导出配置", () => runCli(["--export-config", path], `导出到 ${path}`), null,
-    ["打包生效配置", "脱敏端点密钥", "写出 JSON"]);
+  // 回调必须返回 {ok, message, detail}：runTaskModal 判 ok=!!r.ok，而 runCli
+  // 返回 {code, stdout, stderr}（无 ok 字段）——裸传会让成功也显示「失败」
+  // （与「应用预设」的既有包装模式一致；v0.28.0 的两处裸传见同批修复）。
+  runTaskModal("导出配置", async () => {
+    const res = await runCli(["--export-config", path], `导出到 ${path}`);
+    if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
+    if (res.code === 0) return { ok: true, message: `已导出到 ${path}` };
+    return { ok: false, message: "导出失败", detail: cliFailLines(res) || cliErrDetail(res) };
+  }, null, ["打包生效配置", "脱敏端点密钥", "写出 JSON"]);
 }
 
 async function importConfigAction() {
@@ -6582,8 +6599,18 @@ async function importConfigAction() {
   const ok = await confirmModal("导入配置",
     "将按「导入值优先、不删除本地已有项」合并导入（端点密钥若已脱敏则保留本地值）。\n写入前自动备份。继续？");
   if (!ok) return;
-  runTaskModal("导入配置", () => runCli(["--import-config", path], `从 ${path} 导入`),
-    () => refreshBlocks(["settings", "agents"]),
+  // 同 exportConfigAction：包装 {ok, message, detail}；redacted 提示（「N 个
+  // 端点的 auth_token 需手动补」）来自 CLI stdout，透传进任务结果（设计 §3.5）。
+  runTaskModal("导入配置", async () => {
+    const res = await runCli(["--import-config", path], `从 ${path} 导入`);
+    if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
+    if (res.code === 0) {
+      const lines = (res.stdout || "").split("\n").map(s => s.trim())
+        .filter(s => /已导入|无变更|auth_token/.test(s));
+      return { ok: true, message: lines[0] || `已从 ${path} 导入`, detail: lines.slice(1).join("\n") || "" };
+    }
+    return { ok: false, message: "导入失败", detail: cliFailLines(res) || cliErrDetail(res) };
+  }, () => refreshBlocks(["settings", "agents"]),
     ["校验导出包", "合并写入（自动备份）", "刷新快照"]);
 }
 

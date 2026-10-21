@@ -1466,3 +1466,37 @@ class ConfigPortCardContractTest(unittest.TestCase):
         self.assertIn("#cfg-port-card", spec, "规范未登记 #cfg-port-card 选择器")
         src = _src()
         self.assertIn("<h4>配置导入 / 导出</h4>", src, "HTML 卡片标题与规范不一致")
+
+
+class RunTaskModalWrapperContractTest(unittest.TestCase):
+    """runTaskModal 回调必须返回 {ok, message, detail}（v0.30.0 修复的缺陷门禁）。
+
+    缺陷机理：``runTaskModal`` 判 ``ok = !!r.ok``，而 ``runCli`` 返回
+    ``{code, stdout, stderr}``（Rust run_cli 的 JSON 外壳，无 ok 字段）——
+    回调裸传 ``() => runCli(...)`` 时**即使 CLI 成功（code 0）任务模态也显示
+    「失败」**。v0.28.0 的活动端点/自动发现切换两处即中招（成功也报失败），
+    v0.30.0 的导入/导出初版复制了同一模式。本断言守住四处调用都必须走
+    async 包装（与「应用预设」的既有正确模式一致）。
+    """
+
+    # 四处调用点（改代码必须同步更新此表）。
+    _CALLS = [
+        "runTaskModal(\"导出配置\", async () =>",
+        "runTaskModal(\"导入配置\", async () =>",
+        "runTaskModal(\"切换活动端点\", async () =>",
+        "runTaskModal(\"切换自动发现\", async () =>",
+    ]
+
+    def test_all_four_calls_use_async_wrapper(self):
+        src = _src()
+        for call in self._CALLS:
+            self.assertIn(call, src, f"缺少包装模式: {call!r}（裸传 runCli 会让成功显示失败）")
+
+    def test_no_bare_runcb_in_taskmodal(self):
+        """runTaskModal 的回调里不得再出现裸 ``() => runCli(`` 形态。"""
+        src = _src()
+        bare = re.findall(r"runTaskModal\([^,]+,\s*\(\)\s*=>\s*runCli\(", src)
+        self.assertEqual(
+            bare, [],
+            "runTaskModal 回调裸传 runCli（{code,stdout,stderr} 无 ok 字段，成功也显示失败）",
+        )
