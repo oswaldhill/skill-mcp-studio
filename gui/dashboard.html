@@ -4324,6 +4324,24 @@ function renderSettings() {
     <div class="note" style="margin-top:var(--sp-4)">本地多客户端 Skill / MCP 合规审计与修复工具。完整文档见仓库 README · CHANGELOG · SECURITY。</div>
   </div>`;
 
+  // 「通用」：配置导入/导出（v0.30.0 #3）—— 换机 / 分享的配置迁移入口。
+  // 读写一律经 CLI（--export-config / --import-config），GUI 不直接碰文件。
+  // 行内控件容器用 flex（v0.29.1 教训：不写 inline width:100%，防 .row .v 裁剪）。
+  const configPortCard = `<div class="settings-card" id="cfg-port-card">
+    <h4>配置导入 / 导出</h4>
+    <div class="rows" style="font-size:var(--fs-sm)">
+      <div class="row"><span class="k">导出配置</span><span class="v" style="display:flex;align-items:center;gap:var(--gap-2);flex-wrap:wrap">
+        <input type="text" id="cfg-export-path" placeholder="导出路径（绝对路径或 icloud）">
+        <button type="button" class="ghost sm" data-action="export-config">导出</button>
+      </span></div>
+      <div class="row"><span class="k">导入配置</span><span class="v" style="display:flex;align-items:center;gap:var(--gap-2);flex-wrap:wrap">
+        <input type="text" id="cfg-import-path" placeholder="导入包路径（绝对路径或 icloud）">
+        <button type="button" class="ghost sm" data-action="import-config">导入</button>
+      </span></div>
+    </div>
+    <div class="note" style="margin-top:var(--sp-4)">导出为单个 JSON（端点密钥自动脱敏，可安全放进 iCloud 或分享）；导入按「导入值优先、不删除本地已有项」合并，写入前自动备份。icloud 别名指向 iCloud Drive（仅 macOS）。</div>
+  </div>`;
+
   // 「通用」：Skills 统一目录（纯配置，路径类设置集中于此）
   const skillsCard = settingsCard("Skills 统一目录",
     kv("统一技能目录", `<code class="mono">${escapeHtml(sk.unified_dir || "未设置")}</code>`),
@@ -4483,7 +4501,7 @@ function renderSettings() {
   </div>`;
 
   el.innerHTML =
-    `<div class="settings-tab-panel" data-panel="appearance">${appearanceCard}${patrolCard}${_aboutCard}</div>` +
+    `<div class="settings-tab-panel" data-panel="appearance">${appearanceCard}${patrolCard}${configPortCard}${_aboutCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="general">${skillsCard}${usageCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="agents">${agentsCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="hooks">${hooksCard}${hookTemplatesCard}</div>` +
@@ -6546,6 +6564,29 @@ function openUnifiedDirModal() {
   }
 }
 
+// ---------------- 配置导入/导出（v0.30.0 #3，设置页「通用」卡片） ----------------
+// 读写一律经 CLI；导出是写新文件（低风险），导入改配置（先 confirmModal 说明
+// 合并语义，再 runTaskModal 走异步写流）。路径为空时就地 toast，不弹任务模态。
+function exportConfigAction() {
+  const input = $("cfg-export-path");
+  const path = (input && input.value || "").trim();
+  if (!path) { showToast("err", "请先填写导出路径（绝对路径或 icloud）"); return; }
+  runTaskModal("导出配置", () => runCli(["--export-config", path], `导出到 ${path}`), null,
+    ["打包生效配置", "脱敏端点密钥", "写出 JSON"]);
+}
+
+async function importConfigAction() {
+  const input = $("cfg-import-path");
+  const path = (input && input.value || "").trim();
+  if (!path) { showToast("err", "请先填写导入包路径（绝对路径或 icloud）"); return; }
+  const ok = await confirmModal("导入配置",
+    "将按「导入值优先、不删除本地已有项」合并导入（端点密钥若已脱敏则保留本地值）。\n写入前自动备份。继续？");
+  if (!ok) return;
+  runTaskModal("导入配置", () => runCli(["--import-config", path], `从 ${path} 导入`),
+    () => refreshBlocks(["settings", "agents"]),
+    ["校验导出包", "合并写入（自动备份）", "刷新快照"]);
+}
+
 async function openMergePreview() {
   showToast("info", "正在生成合并预览（dry-run）…", { loading: true });
   const preview = await runCli(["--fix-skills", "--dry-run", "--format", "json"], "生成链接修复预览（只读 dry-run）");
@@ -7147,6 +7188,8 @@ document.addEventListener("click", (e) => {
     else if (a === "endpoint-check") reprobeEndpoints(act);
     else if (a === "fix-all") fixAllSkillsMcp();
     else if (a === "set-dir") openUnifiedDirModal();
+    else if (a === "export-config") exportConfigAction();
+    else if (a === "import-config") importConfigAction();
     else if (a === "merge") openMergePreview();
     else if (a === "add-endpoint") openAddEndpointModal();
     else if (a === "edit-endpoint") openEditEndpoint(act.dataset);

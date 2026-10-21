@@ -619,7 +619,7 @@ Agent 卡片里有两组「标签 + 值」行：**路径区**（APP / CLI / CONF
 
 | tab | 卡片 |
 |---|---|
-| 通用 `appearance` | 外观（主题 / 缩放）、**后台巡检（定时检查）**、Skills 统一目录 |
+| 通用 `appearance` | 外观（主题 / 缩放）、**后台巡检（定时检查）**、Skills 统一目录、**配置导入 / 导出**（v0.30.0）、关于 |
 | Skill `general` | 技能使用统计（自动统计间隔） |
 | IDE / Agent `agents` | IDE / Agent 默认路径；**卡片/列表上的能力摘要**（Skills / MCP / Hook 三行，无需点开详情）；客户端详情内的「Hook 配置」 |
 | **Hook `hooks`** | 要写入的 Hook 事件（勾选，按分类分组） |
@@ -694,6 +694,30 @@ GUI 不直接改配置文件。间隔由 CLI 钳到 ≥5 分钟，界面需回�
 `#hook-tmpl-body .row .v { display:flex; align-items:center; gap:var(--gap-2); flex:1 1 auto; min-width:0; flex-wrap:wrap; overflow:visible; white-space:normal; }`
 兜住窄宽度换行（+ `> *:not(input):not(select) { flex:0 0 auto; }`）。缺陷取证见
 `docs/superpowers/HANDOFF-v0.29.0.md` §7f。
+
+**配置导入 / 导出卡片**（v0.30.0 #3，`#cfg-port-card`，通用 tab，排在后台巡检与
+关于之间）：换机 / 分享的配置迁移入口。结构：
+
+```
+┌ settings-card#cfg-port-card ────────────────────────────────┐
+│ H4: 配置导入 / 导出                                          │
+│ row: 导出配置 | [input#cfg-export-path] [ghost sm 导出]      │
+│ row: 导入配置 | [input#cfg-import-path] [ghost sm 导入]      │
+│ note: 单 JSON · 密钥脱敏 · 合并语义 · icloud 别名说明         │
+└─────────────────────────────────────────────────────────────┘
+```
+
+- **读写一律经 CLI**（`--export-config` / `--import-config`，Rust 白名单内），
+  GUI 不直接碰配置文件——与后台巡检 / 活动端点同一纪律。
+- 行内控件容器用 inline `display:flex; gap:var(--gap-2); flex-wrap:wrap`
+  （**不写 `width:100%`**，v0.29.1 裁剪教训）；输入框取全局
+  `input[type="text"]` 样式（`flex:1; min-width:160px`）。
+- 交互：路径为空 → 就地 `toast`（不弹任务模态）；导出走 `runTaskModal`
+  （无刷新）；导入先 `confirmModal` 说明合并语义（导入值优先、不删除本地
+  已有项、脱敏密钥保留本地值、自动备份），确认后 `runTaskModal` +
+  `refreshBlocks(["settings","agents"])`。
+- 为什么放通用 tab：导入/导出的是**整份配置**（跨 Skill / MCP / Hook 三域），
+  属通用配置级操作，与「关于」同为全局卡片；不放 MCP tab（那只是端点域）。
 
 **「客户端事件命名规范」表已移入「IDE / Agent → 详情」**（2026-10-12 按用户要求）。
 

@@ -1416,3 +1416,53 @@ class ColumnWidthGovernanceTest(unittest.TestCase):
         self.assertNotIn("background", body, ".al-scope 不应有 background（去盒化）")
         self.assertIn("color: var(--faint)", body, ".al-scope 应为 faint 色裸文本")
         self.assertIn("font-family: var(--mono)", body, ".al-scope 应为 mono 字体")
+
+
+class ConfigPortCardContractTest(unittest.TestCase):
+    """§2.10「配置导入 / 导出」卡片契约（v0.30.0 双轨测试轨）。
+
+    守住三件事：① 卡片与两个动作入口存在（HTML 结构 + data-action 分发）；
+    ② 行内控件容器不写 inline ``width:100%``（v0.29.1 裁剪缺陷根因，规范
+    §2.10「组件约束」）；③ 规范 §2.10 与 dashboard.html 的卡片标题字面
+    镜像（MD↔HTML 同源，防漂移）。
+    """
+
+    def test_card_and_actions_exist(self):
+        src = _src()
+        self.assertIn('id="cfg-port-card"', src, "设置页缺少 #cfg-port-card 卡片")
+        self.assertIn('id="cfg-export-path"', src, "缺少导出路径输入框")
+        self.assertIn('id="cfg-import-path"', src, "缺少导入路径输入框")
+        self.assertIn('data-action="export-config"', src, "缺少导出按钮动作入口")
+        self.assertIn('data-action="import-config"', src, "缺少导入按钮动作入口")
+        # 分发器接线：两个动作必须挂进全局 data-action 分发链
+        self.assertIn('a === "export-config") exportConfigAction()', src)
+        self.assertIn('a === "import-config") importConfigAction()', src)
+
+    def test_control_rows_no_inline_width_100pct(self):
+        """卡片行内控件容器不得写 inline width:100%（v0.29.1 裁剪根因）。
+
+        缺陷机理：``.row .v`` 按 max-content 定宽 + overflow:hidden，控件
+        inline ``width:100%`` 撑满后，同行兄弟节点（按钮）被排到 .v 之外
+        裁掉——有元素、无像素、点不到。守卫方式：cfg-port 卡片的两个
+        ``.v`` 容器必须用 flex 布局且不含 ``width:100%``。
+        """
+        src = _src()
+        # 卡片模板整体片段（从 cfg-port-card 到卡片闭合）
+        m = re.search(r'id="cfg-port-card".*?</div>\s*`;\n', src, re.S)
+        self.assertIsNotNone(m, "找不到 cfg-port-card 模板片段")
+        frag = m.group(0)
+        self.assertNotIn(
+            "width:100%", frag,
+            "cfg-port-card 行内控件写了 inline width:100%（v0.29.1 裁剪缺陷根因，"
+            "改用 flex 填充，见规范 §2.10「组件约束」）",
+        )
+        self.assertIn("display:flex", frag, "控件容器应为 flex 布局")
+        self.assertIn("flex-wrap:wrap", frag, "控件容器应允许换行（窄宽度兜底）")
+
+    def test_spec_and_html_title_mirror(self):
+        """规范 §2.10 与 dashboard.html 的卡片标题字面一致（MD↔HTML 镜像）。"""
+        spec = SPEC.read_text(encoding="utf-8")
+        self.assertIn("配置导入 / 导出卡片", spec, "DESIGN.md §2.10 缺该卡片规范")
+        self.assertIn("#cfg-port-card", spec, "规范未登记 #cfg-port-card 选择器")
+        src = _src()
+        self.assertIn("<h4>配置导入 / 导出</h4>", src, "HTML 卡片标题与规范不一致")
