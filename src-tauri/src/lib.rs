@@ -553,6 +553,12 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
         // 写命令但不是重定向（不改变 config 文件路径），不进 DENIED_FLAG_PREFIXES。
         "--set-active-profile",
         "--set-auto-discover",
+        // 配置导入/导出（v0.30.0 #3）：导出目标 / 导入源由用户在 GUI 输入，
+        // 值是导出 JSON 路径（或 icloud 别名），不改变引擎的 config 指向，
+        // 与 --set-active-profile 同理不属重定向参数。
+        "--export-config",
+        "--import-config",
+        "--skip-discovered",
         // 变更忽略清单（E 阶段）：列出 / 忽略 / 取消忽略 / 清理。
         "--list-ignored",
         "--ignore-change",
