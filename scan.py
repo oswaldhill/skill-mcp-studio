@@ -1160,7 +1160,7 @@ def _run_market(args) -> int:
                 return 2
             payload = search(args.market_query)
         elif args.market == "check":
-            payload = check_updates()
+            payload = check_updates(force=bool(getattr(args, "force", False)))
         else:
             print(f"  ❌ 未知的 --market 子命令: {args.market}")
             return 2
@@ -1172,6 +1172,70 @@ def _run_market(args) -> int:
     else:
         _print_market(payload, args.market)
     return 0
+
+
+def _run_market_source_cmds(args) -> int:
+    """市场源 CRUD（v0.31.0 #4）：独立早返回出口，读写 data/market_sources.yaml。"""
+    from market_sources import list_sources, remove_source, set_source
+
+    as_json = getattr(args, "format", None) == "json"
+    try:
+        if getattr(args, "list_market_sources", False):
+            sources, fallback, invalid = list_sources()
+            payload = {"kind": "market-sources", "sources": sources,
+                       "fallback": fallback, "invalid": invalid}
+            if as_json:
+                print(json.dumps(payload, ensure_ascii=False, indent=2))
+                return 0
+            tag = "（默认回落，未配置）" if fallback else ""
+            print(f"  市场源 {len(sources)} 个{tag}:")
+            for s in sources:
+                state = "启用" if s.get("enabled", True) else "停用"
+                url = f" · {s['url']}" if s.get("url") else ""
+                print(f"    - {s['id']}（{s['label']} · {s['type']} · {state}{url}）")
+            for i in invalid:
+                print(f"    ! 无效条目 {i['id']}: {i['reason']}")
+            return 0
+
+        spec = getattr(args, "set_market_source", None)
+        if spec:
+            parts = list(spec)
+            sid = parts[0]
+            kv = " ".join(parts[1:])
+            fields = {}
+            for part in kv.split():
+                if "=" in part:
+                    k, v = part.split("=", 1)
+                    fields[k] = v
+            label = fields.get("label") or sid
+            stype = fields.get("type") or "skills-sh"
+            url = fields.get("url") or ""
+            enabled = fields.get("enabled", "true").lower() not in ("false", "0", "no")
+            result = set_source(sid, label=label, stype=stype, url=url, enabled=enabled)
+            if as_json:
+                print(json.dumps(result, ensure_ascii=False, indent=2))
+                return 0 if result["status"] == "ok" else 2
+            print(f"  ✅ {result['message']}")
+            if result.get("backup"):
+                print(f"  备份: {result['backup']}")
+            return 0
+
+        rid = getattr(args, "remove_market_source", None)
+        if rid:
+            result = remove_source(rid)
+            if as_json:
+                print(json.dumps(result, ensure_ascii=False, indent=2))
+                return 0 if result["status"] in ("ok", "unchanged") else 2
+            mark = "✅" if result["status"] == "ok" else "ℹ️"
+            print(f"  {mark} {result['message']}")
+            if result.get("backup"):
+                print(f"  备份: {result['backup']}")
+            return 0
+    except ValueError as exc:
+        print(json.dumps({"error": str(exc)}, ensure_ascii=False) if as_json
+              else f"  ❌ {exc}")
+        return 2
+    return -1  # 未命中任何命令（不应到达）
 
 
 def _run_market_write(args) -> int:
@@ -1809,7 +1873,24 @@ def build_parser() -> argparse.ArgumentParser:
         "--market", type=str, default=None,
         choices=["sources", "list", "search", "check"],
         help="技能市场（只读）：sources=源可用性 list=已装清单 "
-             "search=搜索（需 --market-query）check=检查更新",
+             "search=搜索（需 --market-query）check=检查更新（版本比对，v0.31.0）",
+    )
+    parser.add_argument(
+        "--list-market-sources", action="store_true",
+        help="列出市场源清单（v0.31.0：可配置源，默认回落 skills.sh）",
+    )
+    parser.add_argument(
+        "--set-market-source", nargs="+", default=None, metavar=("ID", "KEY=VALUE"),
+        help="新增/更新市场源（v0.31.0，upsert）：--set-market-source <id> label=<名> "
+             "type=<skills-sh|github-repo> [url=<仓库>] [enabled=<true|false>]",
+    )
+    parser.add_argument(
+        "--remove-market-source", type=str, default=None, metavar="ID",
+        help="删除市场源（v0.31.0；默认源 skills.sh 也可删）",
+    )
+    parser.add_argument(
+        "--force", action="store_true",
+        help="配合 --market check：跳过缓存强制刷新（v0.31.0）",
     )
     parser.add_argument(
         "--market-query", type=str, default=None,
@@ -2866,6 +2947,13 @@ def main() -> int:
         return _run_export_config(args, config_path)
     if getattr(args, "import_config", None):
         return _run_import_config(args, config_path)
+
+    # 市场源 CRUD（v0.31.0 #4）：独立早返回出口（写 data/market_sources.yaml，
+    # 不跑审计）。
+    if (getattr(args, "list_market_sources", False)
+            or getattr(args, "set_market_source", None)
+            or getattr(args, "remove_market_source", None)):
+        return _run_market_source_cmds(args)
 
     # 变更检测（B 阶段）：只读 + 支持 --format json，GUI 解析整个 stdout，
     # 必须排在通用快照路由之前，否则输出会被快照截走。

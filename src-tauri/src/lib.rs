@@ -577,6 +577,13 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
         "--delete-skill",
         // 技能市场（FEAT-9）：只读出口（sources/list/search/check）。
         "--market",
+        // 市场源 CRUD（v0.31.0 #4）：读写 data/market_sources.yaml（个人配置，
+        // 不碰 trunk config.yaml，非重定向参数）。
+        "--list-market-sources",
+        "--set-market-source",
+        "--remove-market-source",
+        // --market check 的缓存刷新开关（只读语义）。
+        "--force",
         // 市场的安装与升级：写操作，但确实由 GUI 的确认流程经 run_cli 调用
         // （弹窗二次确认后执行）。此前只登记了 --market，导致这两个从界面
         // 一点就被安全边界拦下；两者是独立 flag，不是 --market 的取值。

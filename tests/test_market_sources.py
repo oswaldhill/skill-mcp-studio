@@ -129,3 +129,46 @@ class RemoveSourceTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CliEntryTest(unittest.TestCase):
+    """CLI 三命令端到端（subprocess；写操作用 --config 无关的独立文件，
+    通过 monkeypatch 不可行——CLI 层直接验证真实文件流，但用完即删）。"""
+
+    def _cli(self, *argv):
+        import subprocess
+        return subprocess.run(
+            [sys.executable, str(ROOT / "scan.py"), *argv],
+            capture_output=True, text=True, timeout=60,
+        )
+
+    def test_list_shows_default_fallback(self):
+        r = self._cli("--list-market-sources")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("skills-sh", r.stdout)
+        self.assertIn("默认回落", r.stdout)
+
+    def test_set_then_remove_roundtrip(self):
+        r = self._cli("--set-market-source", "cli-test", "label=CLI测试",
+                      "type=skills-sh")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("已添加", r.stdout)
+        try:
+            r2 = self._cli("--list-market-sources")
+            self.assertIn("cli-test", r2.stdout)
+        finally:
+            r3 = self._cli("--remove-market-source", "cli-test")
+            self.assertEqual(r3.returncode, 0, r3.stdout + r3.stderr)
+            self.assertIn("已删除", r3.stdout)
+        r4 = self._cli("--list-market-sources")
+        self.assertNotIn("cli-test", r4.stdout)
+
+    def test_set_unknown_type_rejected(self):
+        r = self._cli("--set-market-source", "bad", "type=gitlab")
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertIn("未知市场源类型", r.stdout)
+
+    def test_remove_nonexistent_is_info_not_error(self):
+        r = self._cli("--remove-market-source", "ghost-src")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("不存在", r.stdout)
