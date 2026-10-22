@@ -1558,10 +1558,23 @@ class EndpointStatusAllContractTest(unittest.TestCase):
         - **不得**有「变更详情」跳转链接（不引导去单独页面）。
         """
         src = _src()
-        # 一张表：dimsRows 与 epRows 拼进同一 tbody
+        # 一张表：dimsRows 与 epRows 拼进同一 tbody（中间隔分组行）
         self.assertIn(
-            "dimsRows + epRows", src,
+            "dimsRows +", src,
             "4 维度与端点应合并同一张 kv 表（统一 UI）",
+        )
+        self.assertIn(
+            "epRows +", src,
+            "端点行应与 4 维度同表（统一 UI）",
+        )
+        # 两类数据之间必须有分组表头（语义分组，防混排回退）
+        self.assertIn(
+            '<tr class="kv-group"><td colspan="2">变更对比 · 4 维度</td></tr>', src,
+            "4 维度行前缺分组表头（两类数据混排，语义断裂）",
+        )
+        self.assertIn(
+            '<tr class="kv-group"><td colspan="2">端点连通性</td></tr>', src,
+            "端点行前缺分组表头（两类数据混排，语义断裂）",
         )
         # 行内明细：维度行内直接渲染变更条目
         self.assertIn(

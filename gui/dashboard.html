@@ -303,6 +303,16 @@
   .panel > .hd { margin-bottom: var(--sp-5); }
   .panel > .hd h3 { margin: 0; font-family: var(--display); font-size: var(--fs-md); font-weight: 600; letter-spacing: -.015em; }
   .panel > .hd .hint { margin-top: var(--sp-1); }
+  /* #endpoint-status 的 kv 表（v0.30.2 评审修复：table.kv 此前是幽灵用法——
+     kv 的 CSS 定义在 .row .k/.v 结构上，<table class="kv"> 无样式裸渲染，
+     无边框/间距/对齐，即用户反馈的「还是不够协调」）。取值对齐
+     settings-card 的行语言（th 150px 定宽 / 行底分隔线 / --fs-sm），
+     分组表头复用 hook-group-row 的分组语言（mono 大写小字 + --panel-2 底）。 */
+  #endpoint-status table.kv { width: 100%; border-collapse: collapse; margin: var(--sp-3) 0 var(--sp-4); }
+  #endpoint-status table.kv th { text-align: left; font-weight: 500; color: var(--text); font-size: var(--fs-sm); width: 150px; padding: var(--sp-3a) var(--sp-4) var(--sp-3a) 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  #endpoint-status table.kv td { color: var(--muted); font-size: var(--fs-sm); padding: var(--sp-3a) 0; border-bottom: 1px solid var(--line); }
+  #endpoint-status table.kv tr:last-child th, #endpoint-status table.kv tr:last-child td { border-bottom: none; }
+  #endpoint-status table.kv tr.kv-group td { font-family: var(--mono); font-size: var(--fs-2xs); font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); background: var(--panel-2); padding: var(--sp-2) var(--sp-4); border-bottom: 1px solid var(--line); }
   .kpi-num { font-family: var(--display); font-weight: 600; font-size: var(--fs-md); font-variant-numeric: tabular-nums; }
 
   /* ============ cards / rows ============ */
@@ -5152,8 +5162,7 @@ function renderEndpointStatus() {
   if (!el) return;
   const st = ENDPOINT_STATUS;
   const note =
-    '<p class="hint">端点连通性是**运行时**状态，与上面的配置审计互不影响：' +
-    "配置合规不代表端点可达，端点不可达也不影响审计结论。</p>";
+    '<p class="hint">端点连通性为运行时状态，与配置审计互不影响。</p>';
 
   if (!st) {
     el.innerHTML =
@@ -5205,9 +5214,12 @@ function renderEndpointStatus() {
         `<td><span class="tag ${cls}">${label}</span> <span class="mono muted">${ep.elapsed_ms || 0}ms</span>${err}</td></tr>`;
     }).join("");
     el.innerHTML =
-      `<div>${dimsVerdict} <span class="tag ${vCls}">${escapeHtml(verdict)}</span>` +
+      `<div style="margin-bottom:var(--sp-2)">${dimsVerdict} <span class="tag ${vCls}">${escapeHtml(verdict)}</span>` +
       ` <span class="muted">${s.ok}/${s.total} 连通</span></div>` +
-      '<table class="kv"><tbody>' + dimsRows + epRows + "</tbody></table>" +
+      '<table class="kv"><tbody>' +
+      '<tr class="kv-group"><td colspan="2">变更对比 · 4 维度</td></tr>' + dimsRows +
+      '<tr class="kv-group"><td colspan="2">端点连通性</td></tr>' + epRows +
+      "</tbody></table>" +
       '<div class="quickbox">' +
       '<button class="btn-soft" data-action="reprobe">重新全量检查</button>' +
       "</div>" + note;
