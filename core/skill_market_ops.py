@@ -119,13 +119,33 @@ def execute_plan(
     # v0.31.0：npx skills update 可能 exit 0 但实际没升级（实测：上游仓库
     # 迁移时输出「1 skill(s) cannot be checked automatically: find-skills
     # (Private or deleted repo)」——verify 只查目录存在会误报成功，用户
-    # 看到假成功且版本不变）。解析 stdout 的失败标记，诚实报告。
+    # 看到假成功且版本不变）。解析 stdout 的失败标记：
+    # - 有 npx 建议的重装命令 → **自动回退重装**（用户定案 2026-10-22：
+    #   「重装也属于升级的一种，只要是结果是一致的即可」）；
+    # - 无建议命令 → 诚实报告失败。
     if out["ok"] and plan["action"] == "upgrade":
-        failure = _parse_upgrade_failure(out.get("stdout", ""))
-        if failure:
-            out["ok"] = False
-            out["reason"] = "上游无法更新"
-            out["stderr"] = (out["stderr"] or "") + "\n" + failure
+        parsed = _parse_upgrade_failure(out.get("stdout", ""))
+        if parsed["failure"]:
+            fallback_argv = parsed["fallback_argv"]
+            if fallback_argv:
+                try:
+                    res2 = run(fallback_argv, timeout=1800)
+                except Exception as exc:
+                    res2 = {"code": -1, "stdout": "", "stderr": str(exc)}
+                if res2.get("code") == 0:
+                    out["ok"] = True
+                    out["action"] = "upgrade-reinstall"
+                    out["fallback"] = "上游仓库迁移，已按建议自动重装到最新版"
+                    out["stdout"] = (out.get("stdout") or "") + "\n[自动重装] " + (res2.get("stdout") or "")
+                else:
+                    out["ok"] = False
+                    out["reason"] = "上游无法更新且自动重装失败"
+                    out["stderr"] = (out["stderr"] or "") + "\n" + parsed["failure"] + \
+                        "\n自动重装也失败：" + (res2.get("stderr") or "")
+            else:
+                out["ok"] = False
+                out["reason"] = "上游无法更新"
+                out["stderr"] = (out["stderr"] or "") + "\n" + parsed["failure"]
 
     # v0.31.0：安装/升级成功后写版本记录（data/skill_versions.json）——
     # 回滚基准（--skill-rollback 留后续版本）+ 更新检查的本机基准。
@@ -139,8 +159,10 @@ def execute_plan(
     return out
 
 
-def _parse_upgrade_failure(stdout: str) -> str:
-    """解析 npx skills update 的「exit 0 但没升级」输出，返回失败说明（无则空）。
+def _parse_upgrade_failure(stdout: str) -> Dict[str, Any]:
+    """解析 npx skills update 的「exit 0 但没升级」输出。
+
+    返回 ``{"failure": str, "fallback_argv": [str]}``（无失败时 failure 为空）。
 
     实测标记（2026-10-22，find-skills 上游迁移）::
 
@@ -149,21 +171,27 @@ def _parse_upgrade_failure(stdout: str) -> str:
             To update: npx skills add https://github.com/... -g -y
 
     ANSI 色码先剥离再匹配（npx 输出带 38;5;xxx 色码）。
+    fallback_argv 从「To update: npx skills <argv>」提取（自动重装回退用，
+    用户定案 2026-10-22：重装也属于升级，结果一致即可）。
     """
     import re as _re
 
     plain = _re.sub(r"\x1b\[[0-9;]*m", "", stdout or "")
     if "cannot be checked automatically" not in plain:
-        return ""
-    # 提取失败技能与原因行
+        return {"failure": "", "fallback_argv": []}
     lines = [ln.strip() for ln in plain.split("\n") if ln.strip()]
     failed = [ln for ln in lines if _re.match(r"^[•\-*]\s+\S+\s+\(", ln)]
     hint = next((ln for ln in lines if ln.startswith("To update:")), "")
     parts = ["以下技能无法自动更新（上游仓库私有/已迁移/已删除）："]
     parts.extend(f"  {f}" for f in failed)
+    fallback_argv: List[str] = []
     if hint:
+        # "To update: npx skills add <url> -g -y" → ["add", "<url>", "-g", "-y"]
+        m = _re.match(r"To update:\s*npx skills (.+)$", hint)
+        if m:
+            fallback_argv = m.group(1).split()
         parts.append(f"修复建议：{hint.replace('To update: ', '')}")
-    return "\n".join(parts)
+    return {"failure": "\n".join(parts), "fallback_argv": fallback_argv}
 
 
 def _record_versions(plan: Dict[str, Any]) -> int:

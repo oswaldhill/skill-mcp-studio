@@ -611,16 +611,21 @@ class UpgradeFailureDetectionTest(unittest.TestCase):
             "    \x1b[38;5;102mTo update: \x1b[38;5;145mnpx skills add https://github.com/vercel-labs/skills.git -g -y\x1b[0m\n"
         )
         out = _parse_upgrade_failure(stdout)
-        self.assertIn("find-skills", out)
-        self.assertIn("Private or deleted repo", out)
-        self.assertIn("npx skills add", out)  # 修复建议透出
+        self.assertIn("find-skills", out["failure"])
+        self.assertIn("Private or deleted repo", out["failure"])
+        self.assertIn("npx skills add", out["failure"])  # 修复建议透出
+        # fallback_argv 从 To update 提取（自动重装回退用）
+        self.assertEqual(out["fallback_argv"],
+                         ["add", "https://github.com/vercel-labs/skills.git", "-g", "-y"])
 
     def test_parse_upgrade_failure_clean_stdout_is_empty(self):
         from skill_market_ops import _parse_upgrade_failure
-        self.assertEqual(_parse_upgrade_failure("Updating done\nAll skills up to date"), "")
-        self.assertEqual(_parse_upgrade_failure(""), "")
+        self.assertEqual(_parse_upgrade_failure("Updating done\nAll skills up to date"),
+                         {"failure": "", "fallback_argv": []})
+        self.assertEqual(_parse_upgrade_failure(""), {"failure": "", "fallback_argv": []})
 
-    def test_execute_plan_reports_failure_on_migrated_repo(self):
+    def test_execute_plan_auto_reinstalls_on_migrated_repo(self):
+        """上游迁移 → 自动按 npx 建议重装（用户定案：重装也属于升级）。"""
         from skill_market_ops import execute_plan
         fake_stdout = (
             "Updating find-skills…\n"
@@ -628,8 +633,54 @@ class UpgradeFailureDetectionTest(unittest.TestCase):
             "  • find-skills (Private or deleted repo)\n"
             "    To update: npx skills add https://github.com/x/y.git -g -y\n"
         )
+        calls = []
+
+        def runner(argv, timeout):
+            calls.append(argv)
+            if argv[0] == "update":
+                return {"code": 0, "stdout": fake_stdout}
+            return {"code": 0, "stdout": "added find-skills"}  # add 重装成功
+
+        plan = {"ok": True, "action": "upgrade", "names": ["find-skills"],
+                "package": "x/y@find-skills", "argv": ["update", "find-skills"]}
+        res = execute_plan(plan, runner=runner)
+        self.assertTrue(res["ok"], "自动重装成功应报 ok")
+        self.assertEqual(res["action"], "upgrade-reinstall")
+        self.assertIn("自动重装", res.get("fallback", ""))
+        # 第二次调用是重装命令（从 To update 提取）
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[1], ["add", "https://github.com/x/y.git", "-g", "-y"])
+
+    def test_execute_plan_failure_when_reinstall_also_fails(self):
+        """重装也失败 → 诚实报告（含失败清单与重装错误）。"""
+        from skill_market_ops import execute_plan
+        fake_stdout = (
+            "1 skill(s) cannot be checked automatically:\n"
+            "  • find-skills (Private or deleted repo)\n"
+            "    To update: npx skills add https://github.com/x/y.git -g -y\n"
+        )
+
+        def runner(argv, timeout):
+            if argv[0] == "update":
+                return {"code": 0, "stdout": fake_stdout}
+            return {"code": 1, "stdout": "", "stderr": "repo not found"}
+
+        plan = {"ok": True, "action": "upgrade", "names": ["find-skills"],
+                "package": "x/y@find-skills", "argv": ["update", "find-skills"]}
+        res = execute_plan(plan, runner=runner)
+        self.assertFalse(res["ok"])
+        self.assertIn("自动重装也失败", res["stderr"])
+        self.assertIn("repo not found", res["stderr"])
+
+    def test_execute_plan_failure_without_hint(self):
+        """无 To update 建议（无法自动重装）→ 保持失败报告。"""
+        from skill_market_ops import execute_plan
+        fake_stdout = (
+            "1 skill(s) cannot be checked automatically:\n"
+            "  • find-skills (Private or deleted repo)\n"
+        )
         plan = {"ok": True, "action": "upgrade", "names": ["find-skills"],
                 "package": "x/y@find-skills", "argv": ["update", "find-skills"]}
         res = execute_plan(plan, runner=lambda argv, timeout: {"code": 0, "stdout": fake_stdout})
-        self.assertFalse(res["ok"], "上游迁移的 exit-0 假成功必须被识破")
+        self.assertFalse(res["ok"], "无建议命令的假成功必须识破且不自动重装")
         self.assertIn("无法自动更新", res["stderr"])
