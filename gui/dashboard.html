@@ -308,13 +308,19 @@
      无边框/间距/对齐，即用户反馈的「还是不够协调」）。取值对齐
      settings-card 的行语言（th 150px 定宽 / 行底分隔线 / --fs-sm），
      分组表头复用 hook-group-row 的分组语言（mono 大写小字 + --panel-2 底）。 */
-  #endpoint-status table.kv { width: 100%; border-collapse: collapse; margin: var(--sp-5) 0 var(--sp-6); }
-  #endpoint-status table.kv th { text-align: left; font-weight: 500; color: var(--text); font-size: var(--fs-sm); width: 150px; padding: var(--sp-4) var(--sp-4) var(--sp-4) 0; border-bottom: 1px solid var(--line); vertical-align: top; }
-  #endpoint-status table.kv td { color: var(--muted); font-size: var(--fs-sm); padding: var(--sp-4) 0; border-bottom: 1px solid var(--line); }
-  /* 行内变更明细与状态 tag 的竖向分隔（有变更时行内展开的小字） */
-  #endpoint-status table.kv td .note { margin-top: var(--sp-1); }
-  #endpoint-status table.kv tr:last-child th, #endpoint-status table.kv tr:last-child td { border-bottom: none; }
-  #endpoint-status table.kv tr.kv-group td { font-family: var(--mono); font-size: var(--fs-2xs); font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); background: var(--panel-2); padding: var(--sp-2) var(--sp-4); border-bottom: 1px solid var(--line); }
+  /* 全量检查卡片头：标题+说明（左）与动作按钮（右）两端对齐（page-head 同构） */
+  .panel > .hd.fc-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--gap-4); }
+  /* 全量检查主体（v0.30.2 重设计）：两列分组网格 + 状态点行——信息稀疏时
+     表格形式感大于信息量（用户连续反馈后重构）。取值全 token：状态点复用
+     .dot 语义色；分组小标题复用 kv-group 的 mono 大写语言；行底 --line
+     分隔（末行无）；窄屏 auto-fit 单列回退。 */
+  #endpoint-status .fc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--gap-5); margin-top: var(--sp-4); }
+  #endpoint-status .fc-group-title { font-family: var(--mono); font-size: var(--fs-2xs); font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); padding-bottom: var(--sp-2); }
+  #endpoint-status .fc-row { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--gap-2); padding: var(--sp-3) 0; border-bottom: 1px solid var(--line); font-size: var(--fs-sm); }
+  #endpoint-status .fc-row:last-child { border-bottom: none; }
+  #endpoint-status .fc-name { color: var(--text); font-weight: 500; }
+  #endpoint-status .fc-state { margin-left: auto; color: var(--muted); }
+  #endpoint-status .fc-row .note { flex-basis: 100%; margin-top: var(--sp-1); }
   .kpi-num { font-family: var(--display); font-weight: 600; font-size: var(--fs-md); font-variant-numeric: tabular-nums; }
 
   /* ============ cards / rows ============ */
@@ -1843,9 +1849,12 @@
            所以这里是一个**独立区域**，只在用户手动点按钮时才真探活，
            其结果不参与上面审计区的任何颜色判定。 -->
       <div class="panel" id="panel-endpoint-status" style="margin-top:var(--sp-6)">
-        <div class="hd">
-          <h3>全量检查</h3>
-          <div class="hint">4 维度变更对比（与后台巡检同源）+ 端点连通性</div>
+        <div class="hd fc-head">
+          <div>
+            <h3>全量检查</h3>
+            <div class="hint">与后台巡检同源；端点连通性独立于配置审计</div>
+          </div>
+          <button type="button" class="btn-soft" data-action="reprobe">重新全量检查</button>
         </div>
         <div id="endpoint-status"></div>
       </div>
@@ -5163,24 +5172,19 @@ function renderEndpointStatus() {
   const el = $("endpoint-status");
   if (!el) return;
   const st = ENDPOINT_STATUS;
-  const note =
-    '<p class="hint">端点连通性为运行时状态，与配置审计互不影响。</p>';
 
   if (!st) {
     el.innerHTML =
-      (dimsVerdict ? `<div>${dimsVerdict}</div>` : "") +
-      (dimsRows ? '<table class="kv"><tbody>' + dimsRows + "</tbody></table>" : "") +
-      '<div class="empty">尚未检查端点连通性。</div>' +
-      '<div class="quickbox">' +
-      '<button class="btn-soft" data-action="reprobe">全量检查</button>' +
-      "</div>" + note;
+      (dimsVerdict ? `<div style="margin-bottom:var(--sp-2)">${dimsVerdict}</div>` : "") +
+      (dimsRows ? '<div class="fc-grid"><div><div class="fc-group-title">变更对比 · 4 维度</div>' + dimsRows + "</div></div>" : "") +
+      '<div class="empty">尚未检查端点连通性。</div>';
     return;
   }
 
-  // 全量检查统一视图（v0.30.0，用户反馈「直接在原有的内容中显示即可，
-  // 不需要单独展示详情，请统一 ui 展示」）：4 维度 + 端点合并**一张 kv 表**；
-  // 有变更时明细**行内展开**（该维度行下直接列 name: detail），不跳转
-  // 变更详情页。与托盘红点同判据（--snapshot 的 has_changes）。
+  // 全量检查统一视图（v0.30.2 重设计：两列分组网格 + 状态点行——信息稀疏
+  // 时表格形式感大于信息量）。4 维度（变更对比）与端点（连通性）各一组；
+  // 有变更时明细行内展开（该行下 name: detail），不跳转变更详情页。
+  // 与托盘红点同判据（--snapshot 的 has_changes）。
   const DIMS = [["agents", "IDE / Agent"], ["mcp", "MCP"], ["skills", "Skill"], ["hooks", "Hook"]];
   let dimsRows = "";
   let dimsVerdict = "";
@@ -5189,19 +5193,20 @@ function renderEndpointStatus() {
     const s = d.summary || {};
     dimsRows = DIMS.map(([key, label]) => {
       const n = s[key] || 0;
-      const cls = n ? "warn" : "ok";
+      const dotCls = n ? "warn" : "ok";
       const txt = d.is_first ? "基线已保存" : (n ? `${n} 项变更` : "稳定");
-      // 变更明细行内展开：每条一行小字（name: detail），直接跟在该维度行内
+      // 变更明细行内展开：每条一行小字（name: detail），直接跟在该行内
       const items = ((d.dimensions || {})[key] || []).map((c) =>
         `<div class="note">${escapeHtml(String(c.name || "?"))}: ${escapeHtml(String(c.detail || ""))}</div>`
       ).join("");
-      return `<tr><th>${label}</th><td><span class="tag ${cls}">${txt}</span>${items}</td></tr>`;
+      return `<div class="fc-row"><span class="dot ${dotCls}"></span>` +
+        `<span class="fc-name">${label}</span><span class="fc-state">${txt}</span>${items}</div>`;
     }).join("");
     const anyChange = d.has_changes;
     dimsVerdict = `<span class="tag ${anyChange ? "warn" : "ok"}">${d.is_first ? "首次基线" : (anyChange ? "检测到变更" : "全部稳定")}</span>`;
   }
 
-  // 多端点整体检查（v0.30.0，kind=endpoint-status-all）：与 4 维度同表呈现。
+  // 多端点整体检查（kind=endpoint-status-all）：与 4 维度同网格呈现。
   if (st.kind === "endpoint-status-all") {
     const s = st.summary || {};
     const allOk = s.failed === 0 && s.total > 0;
@@ -5209,22 +5214,21 @@ function renderEndpointStatus() {
     const vCls = allOk ? "ok" : "err";
     const epRows = (st.endpoints || []).map((ep) => {
       const state = ep.state || "not_run";
-      const cls = state === "ok" ? "ok" : state === "failed" ? "err" : "";
+      const dotCls = state === "ok" ? "ok" : state === "failed" ? "err" : "warn";
       const label = state === "ok" ? "连通" : state === "failed" ? "不通" : "未检查";
+      const ms = state === "ok" ? ` <span class="mono muted">${ep.elapsed_ms || 0}ms</span>` : "";
       const err = ep.error ? `<div class="note">${escapeHtml(String(ep.error))}</div>` : "";
-      return `<tr><th>${escapeHtml(ep.endpoint?.name || "?")}</th>` +
-        `<td><span class="tag ${cls}">${label}</span> <span class="mono muted">${ep.elapsed_ms || 0}ms</span>${err}</td></tr>`;
+      return `<div class="fc-row"><span class="dot ${dotCls}"></span>` +
+        `<span class="fc-name">${escapeHtml(ep.endpoint?.name || "?")}</span>` +
+        `<span class="fc-state">${label}${ms}</span>${err}</div>`;
     }).join("");
     el.innerHTML =
-      `<div style="margin-bottom:var(--sp-4)">${dimsVerdict} <span class="tag ${vCls}">${escapeHtml(verdict)}</span>` +
+      `<div style="margin-bottom:var(--sp-2)">${dimsVerdict} <span class="tag ${vCls}">${escapeHtml(verdict)}</span>` +
       ` <span class="muted">${s.ok}/${s.total} 连通</span></div>` +
-      '<table class="kv"><tbody>' +
-      '<tr class="kv-group"><td colspan="2">变更对比 · 4 维度</td></tr>' + dimsRows +
-      '<tr class="kv-group"><td colspan="2">端点连通性</td></tr>' + epRows +
-      "</tbody></table>" +
-      '<div class="quickbox">' +
-      '<button class="btn-soft" data-action="reprobe">重新全量检查</button>' +
-      "</div>" + note;
+      '<div class="fc-grid">' +
+      '<div><div class="fc-group-title">变更对比 · 4 维度</div>' + dimsRows + "</div>" +
+      '<div><div class="fc-group-title">端点连通性</div>' + epRows + "</div>" +
+      "</div>";
     return;
   }
 
@@ -5234,13 +5238,9 @@ function renderEndpointStatus() {
   // 看到的是"没测过"，实际是"测不了"）。
   if (st.error && !st.state) {
     el.innerHTML =
-      '<div><span class="tag err">检查执行失败</span></div>' +
-      '<table class="kv"><tbody>' +
-      `<tr><th>错误</th><td>${escapeHtml(String(st.error))}</td></tr>` +
-      "</tbody></table>" +
-      '<div class="quickbox">' +
-      '<button class="btn-soft" data-action="reprobe">重试检查</button>' +
-      "</div>" + note;
+      '<div style="margin-bottom:var(--sp-2)"><span class="tag err">检查执行失败</span></div>' +
+      `<div class="fc-row"><span class="dot err"></span><span class="fc-name">错误</span>` +
+      `<span class="fc-state">${escapeHtml(String(st.error))}</span></div>`;
     return;
   }
 

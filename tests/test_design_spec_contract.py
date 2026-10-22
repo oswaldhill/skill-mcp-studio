@@ -1558,23 +1558,33 @@ class EndpointStatusAllContractTest(unittest.TestCase):
         - **不得**有「变更详情」跳转链接（不引导去单独页面）。
         """
         src = _src()
-        # 一张表：dimsRows 与 epRows 拼进同一 tbody（中间隔分组行）
+        # 两列分组网格（v0.30.2 重设计）：4 维度与端点各一组，同网格呈现
         self.assertIn(
             "dimsRows +", src,
-            "4 维度与端点应合并同一张 kv 表（统一 UI）",
+            "4 维度行应与端点行同网格呈现（统一 UI）",
         )
         self.assertIn(
             "epRows +", src,
-            "端点行应与 4 维度同表（统一 UI）",
+            "端点行应与 4 维度同网格呈现（统一 UI）",
         )
-        # 两类数据之间必须有分组表头（语义分组，防混排回退）
+        # 两组必须有分组小标题（语义分组，防混排回退）
         self.assertIn(
-            '<tr class="kv-group"><td colspan="2">变更对比 · 4 维度</td></tr>', src,
-            "4 维度行前缺分组表头（两类数据混排，语义断裂）",
+            '<div class="fc-group-title">变更对比 · 4 维度</div>', src,
+            "4 维度组缺分组小标题（两类数据混排，语义断裂）",
         )
         self.assertIn(
-            '<tr class="kv-group"><td colspan="2">端点连通性</td></tr>', src,
-            "端点行前缺分组表头（两类数据混排，语义断裂）",
+            '<div class="fc-group-title">端点连通性</div>', src,
+            "端点组缺分组小标题（两类数据混排，语义断裂）",
+        )
+        # 状态点行语言（.dot 语义色 + fc-row）
+        self.assertIn(
+            'class="fc-row"><span class="dot ', src,
+            "状态行应用 .dot 语义色点（§2.5 状态覆盖语言）",
+        )
+        # 动作按钮收进卡片头（不再占底部一整行）
+        self.assertIn(
+            'class="hd fc-head"', src,
+            "卡片头应为 fc-head 两端对齐（动作按钮在标题行右侧）",
         )
         # 行内明细：维度行内直接渲染变更条目
         self.assertIn(
