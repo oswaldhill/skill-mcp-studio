@@ -1641,6 +1641,17 @@ class SkillVersionUiContractTest(unittest.TestCase):
         self.assertIn('aria-label="源 ID"', src, "表单字段缺 aria-label（placeholder 不是标签）")
         self.assertIn('<span class="k">源 ID</span>', src, "表单缺可见 label（.k 行结构）")
 
+    def test_github_token_card_exists(self):
+        """GitHub token 设置卡片（v0.31.0）：状态行 + 保存/清除，读写经 CLI。"""
+        src = _src()
+        self.assertIn('id="github-token-card"', src, "设置页缺 GitHub token 卡片")
+        self.assertIn("loadGithubTokenStatus", src, "缺状态加载函数")
+        self.assertIn("--get-github-token", src, "状态读取应经 CLI")
+        self.assertIn("--set-github-token", src, "保存应经 CLI")
+        # 脱敏显示 + password 输入
+        self.assertIn('type="password" id="gt-input"', src, "token 输入应为 password 型")
+        self.assertIn("data.masked", src, "状态行应脱敏显示（前4后4）")
+
     def test_market_sources_card_exists(self):
         src = _src()
         self.assertIn('id="market-sources-card"', src, "设置页缺市场源卡片")

@@ -4432,6 +4432,14 @@ function renderSettings() {
     <div class="note" style="margin-top:var(--sp-4)">默认源 skills.sh 可删可改；支持添加 GitHub 仓库源（更新检查按 latest release 比对版本）。源配置存本机 data/market_sources.yaml。</div>
   </div>`;
 
+  // 「Skill」：GitHub API Token（v0.31.0）——更新检查的配额提升通道。
+  // 读写经 CLI（--get/set-github-token）；脱敏显示（前4后4）。
+  const githubTokenCard = `<div class="settings-card" id="github-token-card">
+    <h4>GitHub API Token</h4>
+    <div id="github-token-body"><div class="empty">加载中…</div></div>
+    <div class="note" style="margin-top:var(--sp-4)">更新检查走 GitHub API（技能包本体在 GitHub 仓库）：未鉴权 60 次/小时，配置 token 后 5000 次/小时。token 存本机 data/github_token（不进 git）。</div>
+  </div>`;
+
   // 「Hook」独立 tab：管理**要写入哪些生命周期 hook 事件**。
   //
   // 设计取舍（2026-10-11 按用户要求调整）：这个 tab 不列各 IDE/Agent 的接入状态
@@ -4571,7 +4579,7 @@ function renderSettings() {
 
   el.innerHTML =
     `<div class="settings-tab-panel" data-panel="appearance">${appearanceCard}${patrolCard}${configPortCard}${_aboutCard}</div>` +
-    `<div class="settings-tab-panel hidden" data-panel="general">${skillsCard}${usageCard}${marketSourcesCard}</div>` +
+    `<div class="settings-tab-panel hidden" data-panel="general">${skillsCard}${usageCard}${marketSourcesCard}${githubTokenCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="agents">${agentsCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="hooks">${hooksCard}${hookTemplatesCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="mcp">${mcpCard}</div>`;
@@ -4698,7 +4706,7 @@ function switchSettingsTab(tab) {
     p.classList.toggle("hidden", p.dataset.panel !== _settingsTab);
   });
   if (_settingsTab === "hooks") loadHookTemplates();
-  if (_settingsTab === "general") loadMarketSources();
+  if (_settingsTab === "general") { loadMarketSources(); loadGithubTokenStatus(); }
 }
 
 function renderAll() {
@@ -6065,6 +6073,60 @@ function renderEndpointStatus() {
       if (r.url) row.querySelector(".list-title").title = r.url;
       el.appendChild(row);
     });
+  }
+
+  // ── GitHub Token 卡片逻辑（v0.31.0，设置页 Skill tab）────────────────
+  async function loadGithubTokenStatus() {
+    const body = $("github-token-body");
+    if (!body) return;
+    const res = await runCli(["--get-github-token", "--format", "json"]);
+    if (!res || res.code !== 0) {
+      body.innerHTML = '<div class="empty">状态读取失败</div>';
+      return;
+    }
+    try { renderGithubToken(JSON.parse(res.stdout || "{}")); }
+    catch (e) { body.innerHTML = '<div class="empty">解析失败</div>'; }
+  }
+
+  function renderGithubToken(data) {
+    const body = $("github-token-body");
+    if (!body) return;
+    const state = data.configured
+      ? `已设置（${data.source === "env" ? "环境变量" : "本机文件"}通道，<code class="mono">${escapeHtml(data.masked || "****")}</code>）`
+      : "未设置（未鉴权 60 次/小时）";
+    body.innerHTML = `
+      <div class="row"><span class="k">当前状态</span><span class="v">${state}</span></div>
+      <div class="row"><span class="k">设置 Token</span><span class="v" style="display:flex;align-items:center;gap:var(--gap-2);flex-wrap:wrap">
+        <input type="password" id="gt-input" placeholder="github_pat_… 或 ghp_…" aria-label="GitHub token" style="min-width:16rem">
+        <button type="button" class="ghost sm" data-gt-save="1">保存</button>
+        <button type="button" class="ghost sm" data-gt-clear="1">清除</button>
+      </span></div>`;
+    const saveBtn = body.querySelector("[data-gt-save]");
+    if (saveBtn) {
+      saveBtn.onclick = async () => {
+        const val = ($("gt-input") || {}).value || "";
+        if (!val.trim()) { showToast("err", "请先填写 token"); return; }
+        await runTaskModal("保存 GitHub token", async () => {
+          const res = await runCli(["--set-github-token", val.trim()]);
+          if (!res) return { ok: false, message: "工具未能执行" };
+          if (res.code === 0) return { ok: true, message: "token 已保存（下次检查更新按 5000 次/小时）" };
+          return { ok: false, message: "保存失败", detail: cliErrDetail(res) };
+        }, () => loadGithubTokenStatus(), ["写入本机文件"]);
+      };
+    }
+    const clearBtn = body.querySelector("[data-gt-clear]");
+    if (clearBtn) {
+      clearBtn.onclick = async () => {
+        const ok = await confirmModal("清除 token", "确认清除已保存的 GitHub token？", true);
+        if (!ok) return;
+        await runTaskModal("清除 token", async () => {
+          const res = await runCli(["--set-github-token", ""]);
+          if (!res) return { ok: false, message: "工具未能执行" };
+          if (res.code === 0) return { ok: true, message: "token 已清除" };
+          return { ok: false, message: "清除失败", detail: cliErrDetail(res) };
+        }, () => loadGithubTokenStatus(), ["删除本机文件"]);
+      };
+    }
   }
 
   // ── 市场源卡片逻辑（v0.31.0 #4，设置页 Skill tab）────────────────────

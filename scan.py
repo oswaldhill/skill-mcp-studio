@@ -1247,6 +1247,29 @@ def _run_set_github_token(args) -> int:
     """
     import pathlib as _pl
 
+    # 只读状态（--get-github-token）：脱敏显示，供 GUI 状态行
+    if getattr(args, "get_github_token", False):
+        import pathlib as _pl2
+        import os as _os
+        path = _pl2.Path(__file__).resolve().parent / "data" / "github_token"
+        env_set = bool(_os.environ.get("GITHUB_TOKEN"))
+        file_token = ""
+        if path.exists():
+            file_token = path.read_text(encoding="utf-8").strip()
+        masked = (file_token[:4] + "…" + file_token[-4:]) if len(file_token) > 8 else ("****" if file_token else "")
+        payload = {
+            "kind": "github-token-status",
+            "configured": bool(env_set or file_token),
+            "source": "env" if env_set else ("file" if file_token else ""),
+            "masked": masked,
+        }
+        if getattr(args, "format", None) == "json":
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        else:
+            state = f"已设置（{payload['source']} 通道，{masked}）" if payload["configured"] else "未设置"
+            print(f"  GitHub token: {state}")
+        return 0
+
     token = (getattr(args, "set_github_token", "") or "").strip()
     path = _pl.Path(__file__).resolve().parent / "data" / "github_token"
     if not token:
@@ -1920,6 +1943,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--set-github-token", type=str, default=None, metavar="TOKEN",
         help="设置 GitHub API token（v0.31.0：写 data/github_token，GUI/CLI 一致生效；"
              "空字符串=清除）。提升更新检查配额 60→5000 次/小时",
+    )
+    parser.add_argument(
+        "--get-github-token", action="store_true",
+        help="读取 GitHub token 状态（v0.31.0：脱敏显示，只读）",
     )
     parser.add_argument(
         "--force", action="store_true",
@@ -2988,8 +3015,8 @@ def main() -> int:
             or getattr(args, "remove_market_source", None)):
         return _run_market_source_cmds(args)
 
-    # GitHub token（v0.31.0）：独立早返回出口（写 data/github_token）。
-    if getattr(args, "set_github_token", None) is not None:
+    # GitHub token（v0.31.0）：独立早返回出口（读状态/写 data/github_token）。
+    if getattr(args, "set_github_token", None) is not None or getattr(args, "get_github_token", False):
         return _run_set_github_token(args)
 
     # 变更检测（B 阶段）：只读 + 支持 --format json，GUI 解析整个 stdout，

@@ -544,6 +544,9 @@ class GithubTokenChannelTest(unittest.TestCase):
     def setUp(self):
         self._path = ROOT / "data" / "github_token"
         self._orig = self._path.read_text(encoding="utf-8") if self._path.exists() else None
+        # 测试从「无文件」干净态开始（用户真实 token 已备份，tearDown 恢复）
+        if self._path.exists():
+            self._path.unlink()
 
     def tearDown(self):
         if self._orig is not None:
