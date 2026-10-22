@@ -1637,6 +1637,9 @@ class SkillVersionUiContractTest(unittest.TestCase):
         # 可升级筛选段
         self.assertIn('data-seg="updatable">可升级', src, "筛选段缺「可升级」")
         self.assertIn('seg === "updatable"', src, "筛选逻辑缺 updatable 分支")
+        # 升级确认文案：danger 视觉 + 「确认升级」文案（不得误用「确认删除」）
+        self.assertIn('"确认升级"', src, "升级确认按钮文案应为「确认升级」")
+        self.assertIn("confirmText || (danger", src, "confirmModal 应支持自定义确认文案")
         # 市场源添加表单：不用 placeholder 充当 label（taste-skill 4.6）
         self.assertIn('aria-label="源 ID"', src, "表单字段缺 aria-label（placeholder 不是标签）")
         self.assertIn('<span class="k">源 ID</span>', src, "表单缺可见 label（.k 行结构）")

@@ -2127,7 +2127,7 @@ function closeModal() {
  * Custom confirmation dialog — replaces browser window.confirm().
  * Returns a Promise<boolean>. In browser preview mode, falls back to window.confirm().
  */
-function confirmModal(title, message, danger) {
+function confirmModal(title, message, danger, confirmText) {
   return new Promise((resolve) => {
     let settled = false;
     const settle = (val) => { if (!settled) { settled = true; _pendingConfirm = null; resolve(val); } };
@@ -2135,6 +2135,10 @@ function confirmModal(title, message, danger) {
     const iconHtml = danger
       ? '<div class="cfm-icon">!</div>'
       : '';
+    // v0.31.0：danger 只是视觉强调（红色按钮），确认文案可自定义——
+    // 升级是覆盖性写操作该用红色，但按钮写死「确认删除」会误导
+    // （用户截图反馈「升级服务为什么是确认删除」）。
+    const yesText = confirmText || (danger ? "确认删除" : "确认");
     // 走 mountModal 而不是直接写 innerHTML：必须 showModal() 进入 top layer，
     // 否则会被同为 top layer 的结果面板整个盖住（用户看不到确认框）。
     mountModal(`<div class="modal-backdrop"><div class="modal cfm-card" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}" tabindex="-1">
@@ -2143,7 +2147,7 @@ function confirmModal(title, message, danger) {
       <div class="cfm-msg">${escapeHtml(message)}</div>
       <div class="actions">
         <button class="cfm-btn-cancel" id="cfm-no">取消</button>
-        <button class="cfm-btn-danger" id="cfm-yes">${danger ? '确认删除' : '确认'}</button>
+        <button class="cfm-btn-danger" id="cfm-yes">${escapeHtml(yesText)}</button>
       </div>
     </div></div>`);
     $("cfm-no").onclick = () => { settle(false); closeModal(); };
@@ -6292,7 +6296,7 @@ function renderEndpointStatus() {
     const upd = (SKILL_UPDATES || {})[name] || {};
     const ok = await confirmModal("升级技能",
       `将把「${name}」升级到远端最新版（${upd.remote || "?"}）。\n` +
-      `本地内容会被上游覆盖（升级前自动备份）。继续？`, true);
+      `本地内容会被上游覆盖（升级前自动备份）。继续？`, true, "确认升级");
     if (!ok) return;
     await runTaskModal(`升级 ${name}`, async () => {
       const res = await runCli(["--market-upgrade", name, "--yes", "--format", "json"],
