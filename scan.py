@@ -1238,6 +1238,32 @@ def _run_market_source_cmds(args) -> int:
     return -1  # 未命中任何命令（不应到达）
 
 
+def _run_set_github_token(args) -> int:
+    """--set-github-token <token>：写 data/github_token（空=清除）。
+
+    为什么文件而非环境变量：GUI 从 Finder 启动是 launchd 最小环境，读不到
+    shell 的 ~/.zshrc——纯 env 配置对 GUI 无效；文件通道 GUI/CLI 一致。
+    环境变量 GITHUB_TOKEN 仍优先（CI/脚本场景）。
+    """
+    import pathlib as _pl
+
+    token = (getattr(args, "set_github_token", "") or "").strip()
+    path = _pl.Path(__file__).resolve().parent / "data" / "github_token"
+    if not token:
+        if path.exists():
+            path.unlink()
+            print("  ✅ GitHub token 已清除")
+        else:
+            print("  ℹ️ 未设置过 token")
+        return 0
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(token + "\n", encoding="utf-8")
+    masked = token[:4] + "…" + token[-4:] if len(token) > 8 else "****"
+    print(f"  ✅ GitHub token 已保存（{masked}，写入 data/github_token）")
+    print("  下次「检查更新」即按鉴权配额（5000 次/小时）执行")
+    return 0
+
+
 def _run_market_write(args) -> int:
     """市场写操作出口（安装 / 升级）。
 
@@ -1889,6 +1915,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--remove-market-source", type=str, default=None, metavar="ID",
         help="删除市场源（v0.31.0；默认源 skills.sh 也可删）",
+    )
+    parser.add_argument(
+        "--set-github-token", type=str, default=None, metavar="TOKEN",
+        help="设置 GitHub API token（v0.31.0：写 data/github_token，GUI/CLI 一致生效；"
+             "空字符串=清除）。提升更新检查配额 60→5000 次/小时",
     )
     parser.add_argument(
         "--force", action="store_true",
@@ -2956,6 +2987,10 @@ def main() -> int:
             or getattr(args, "set_market_source", None)
             or getattr(args, "remove_market_source", None)):
         return _run_market_source_cmds(args)
+
+    # GitHub token（v0.31.0）：独立早返回出口（写 data/github_token）。
+    if getattr(args, "set_github_token", None) is not None:
+        return _run_set_github_token(args)
 
     # 变更检测（B 阶段）：只读 + 支持 --format json，GUI 解析整个 stdout，
     # 必须排在通用快照路由之前，否则输出会被快照截走。

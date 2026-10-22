@@ -584,6 +584,9 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
         "--remove-market-source",
         // --market check 的缓存刷新开关（只读语义）。
         "--force",
+        // GitHub token（v0.31.0）：写 data/github_token（个人凭据文件，
+        // 不碰 trunk config，非重定向参数）。
+        "--set-github-token",
         // 市场的安装与升级：写操作，但确实由 GUI 的确认流程经 run_cli 调用
         // （弹窗二次确认后执行）。此前只登记了 --market，导致这两个从界面
         // 一点就被安全边界拦下；两者是独立 flag，不是 --market 的取值。

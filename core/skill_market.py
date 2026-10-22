@@ -276,11 +276,28 @@ def parse_github_source(url: Optional[str]):
     return (m.group(1), m.group(2)) if m else None
 
 
+def _github_token() -> str:
+    """GitHub API token：环境变量优先，回落 data/github_token 文件。
+
+    文件通道（v0.31.0）的原因：GUI 从 Finder 启动时是 launchd 最小环境，
+    **读不到 shell 的 ~/.zshrc 环境变量**——纯 env 配置对 GUI 无效。
+    文件（gitignored，同 market_sources 模式）对 GUI/CLI 一致生效。
+    """
+    env = os.environ.get("GITHUB_TOKEN")
+    if env:
+        return env.strip()
+    try:
+        path = Path(__file__).resolve().parents[1] / "data" / "github_token"
+        return path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
 def _http_get_json(url: str, timeout: int = 20):
     """只读 GET。优先用 curl：本机 Python 的 urllib 拿不到根证书（实测
     CERTIFICATE_VERIFY_FAILED），而 curl 走系统钥匙串可用。失败返回 None。
     """
-    token = os.environ.get("GITHUB_TOKEN")
+    token = _github_token()
     headers = ["-H", f"User-Agent: {_UA}", "-H", "Accept: application/vnd.github+json"]
     if token:
         headers += ["-H", f"Authorization: Bearer {token}"]

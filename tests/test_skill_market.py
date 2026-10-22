@@ -531,3 +531,61 @@ class RemoteCommitTimeStatusTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GithubTokenChannelTest(unittest.TestCase):
+    """GitHub token 双通道（v0.31.0）：环境变量优先 + data/github_token 文件回落。
+
+    文件通道的存在理由：GUI 从 Finder 启动是 launchd 最小环境，读不到
+    shell 环境变量——纯 env 配置对 GUI 无效。隔离纪律：备份/恢复真实
+    data/github_token（同 market_sources 测试）。
+    """
+
+    def setUp(self):
+        self._path = ROOT / "data" / "github_token"
+        self._orig = self._path.read_text(encoding="utf-8") if self._path.exists() else None
+
+    def tearDown(self):
+        if self._orig is not None:
+            self._path.write_text(self._orig, encoding="utf-8")
+        elif self._path.exists():
+            self._path.unlink()
+
+    def test_env_takes_priority_over_file(self):
+        import os
+        from skill_market import _github_token
+        self._path.write_text("file-token\n", encoding="utf-8")
+        with mock.patch.dict(os.environ, {"GITHUB_TOKEN": "env-token"}):
+            self.assertEqual(_github_token(), "env-token")
+
+    def test_file_fallback_when_env_absent(self):
+        import os
+        from skill_market import _github_token
+        self._path.write_text("file-token\n", encoding="utf-8")
+        env = {k: v for k, v in os.environ.items() if k != "GITHUB_TOKEN"}
+        with mock.patch.dict(os.environ, env, clear=True):
+            self.assertEqual(_github_token(), "file-token")
+
+    def test_empty_when_neither_set(self):
+        import os
+        from skill_market import _github_token
+        env = {k: v for k, v in os.environ.items() if k != "GITHUB_TOKEN"}
+        with mock.patch.dict(os.environ, env, clear=True):
+            self.assertEqual(_github_token(), "")
+
+    def test_cli_set_and_clear_roundtrip(self):
+        import subprocess
+        import sys
+        r = subprocess.run(
+            [sys.executable, str(ROOT / "scan.py"), "--set-github-token", "ghp_test1234"],
+            capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("已保存", r.stdout)
+        self.assertIn("ghp_…1234", r.stdout)  # 脱敏显示
+        self.assertEqual(self._path.read_text(encoding="utf-8").strip(), "ghp_test1234")
+        r2 = subprocess.run(
+            [sys.executable, str(ROOT / "scan.py"), "--set-github-token", ""],
+            capture_output=True, text=True, timeout=60)
+        self.assertEqual(r2.returncode, 0)
+        self.assertIn("已清除", r2.stdout)
+        self.assertFalse(self._path.exists())
