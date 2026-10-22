@@ -1548,3 +1548,28 @@ class EndpointStatusAllContractTest(unittest.TestCase):
         self.assertIn("SNAPSHOT_DIFF_CACHE", src, "缺 4 维度 diff 渲染缓存")
         self.assertIn('"检测到变更"', src, "缺 4 维度汇总 verdict 文案")
         self.assertIn('"全部稳定"', src, "缺 4 维度稳定态文案")
+
+    def test_full_check_unified_table_inline_details(self):
+        """统一 UI（2026-10-22 用户反馈「直接在原有的内容中显示即可，
+        不需要单独展示详情，请统一 ui 展示」）：
+
+        - 4 维度 + 端点合并**一张 kv 表**（dimsRows + epRows 同一 tbody）；
+        - 变更明细**行内展开**（维度行内直接列 name: detail）；
+        - **不得**有「变更详情」跳转链接（不引导去单独页面）。
+        """
+        src = _src()
+        # 一张表：dimsRows 与 epRows 拼进同一 tbody
+        self.assertIn(
+            "dimsRows + epRows", src,
+            "4 维度与端点应合并同一张 kv 表（统一 UI）",
+        )
+        # 行内明细：维度行内直接渲染变更条目
+        self.assertIn(
+            "c.name", src,
+            "变更明细应行内展开（维度行内直接列 name: detail）",
+        )
+        # 不得有跳转链接
+        self.assertNotIn(
+            'data-goto="changes" class="muted">变更详情', src,
+            "全量检查区不得有「变更详情」跳转链接（用户要求直接显示，不单独展示）",
+        )

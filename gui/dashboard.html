@@ -5149,7 +5149,8 @@ function renderEndpointStatus() {
 
   if (!st) {
     el.innerHTML =
-      dimsHtml +
+      (dimsVerdict ? `<div>${dimsVerdict}</div>` : "") +
+      (dimsRows ? '<table class="kv"><tbody>' + dimsRows + "</tbody></table>" : "") +
       '<div class="empty">尚未检查端点连通性。</div>' +
       '<div class="quickbox">' +
       '<button class="btn-soft" data-action="reprobe">全量检查</button>' +
@@ -5157,35 +5158,37 @@ function renderEndpointStatus() {
     return;
   }
 
-  // 4 维度变更对比（v0.30.0 全量检查，与托盘巡检同源）：每维度一行，
-  // 有变更 → 黄色 tag + 计数 + 跳转变更详情页；无变更 → 绿色「稳定」。
-  // 与托盘红点同判据（--snapshot 的 has_changes），两处显示永远一致。
+  // 全量检查统一视图（v0.30.0，用户反馈「直接在原有的内容中显示即可，
+  // 不需要单独展示详情，请统一 ui 展示」）：4 维度 + 端点合并**一张 kv 表**；
+  // 有变更时明细**行内展开**（该维度行下直接列 name: detail），不跳转
+  // 变更详情页。与托盘红点同判据（--snapshot 的 has_changes）。
   const DIMS = [["agents", "IDE / Agent"], ["mcp", "MCP"], ["skills", "Skill"], ["hooks", "Hook"]];
-  let dimsHtml = "";
+  let dimsRows = "";
+  let dimsVerdict = "";
   if (SNAPSHOT_DIFF_CACHE) {
     const d = SNAPSHOT_DIFF_CACHE;
     const s = d.summary || {};
-    const rows = DIMS.map(([key, label]) => {
+    dimsRows = DIMS.map(([key, label]) => {
       const n = s[key] || 0;
       const cls = n ? "warn" : "ok";
       const txt = d.is_first ? "基线已保存" : (n ? `${n} 项变更` : "稳定");
-      return `<tr><th>${label}</th><td><span class="tag ${cls}">${txt}</span></td></tr>`;
+      // 变更明细行内展开：每条一行小字（name: detail），直接跟在该维度行内
+      const items = ((d.dimensions || {})[key] || []).map((c) =>
+        `<div class="note">${escapeHtml(String(c.name || "?"))}: ${escapeHtml(String(c.detail || ""))}</div>`
+      ).join("");
+      return `<tr><th>${label}</th><td><span class="tag ${cls}">${txt}</span>${items}</td></tr>`;
     }).join("");
     const anyChange = d.has_changes;
-    dimsHtml =
-      `<div><span class="tag ${anyChange ? "warn" : "ok"}">${d.is_first ? "首次基线" : (anyChange ? "检测到变更" : "全部稳定")}</span>` +
-      ` <a href="#" data-goto="changes" class="muted">变更详情</a></div>` +
-      '<table class="kv"><tbody>' + rows + "</tbody></table>";
+    dimsVerdict = `<span class="tag ${anyChange ? "warn" : "ok"}">${d.is_first ? "首次基线" : (anyChange ? "检测到变更" : "全部稳定")}</span>`;
   }
 
-  // 多端点整体检查（v0.30.0，kind=endpoint-status-all）：汇总 verdict +
-  // 每端点一行（名称 / 状态 / 耗时 / 错误）。
+  // 多端点整体检查（v0.30.0，kind=endpoint-status-all）：与 4 维度同表呈现。
   if (st.kind === "endpoint-status-all") {
     const s = st.summary || {};
     const allOk = s.failed === 0 && s.total > 0;
     const verdict = allOk ? "全部连通" : (s.ok ? "部分不通" : "全部不通");
     const vCls = allOk ? "ok" : "err";
-    const rows = (st.endpoints || []).map((ep) => {
+    const epRows = (st.endpoints || []).map((ep) => {
       const state = ep.state || "not_run";
       const cls = state === "ok" ? "ok" : state === "failed" ? "err" : "";
       const label = state === "ok" ? "连通" : state === "failed" ? "不通" : "未检查";
@@ -5194,10 +5197,9 @@ function renderEndpointStatus() {
         `<td><span class="tag ${cls}">${label}</span> <span class="mono muted">${ep.elapsed_ms || 0}ms</span>${err}</td></tr>`;
     }).join("");
     el.innerHTML =
-      dimsHtml +
-      `<div><span class="tag ${vCls}">${escapeHtml(verdict)}</span>` +
+      `<div>${dimsVerdict} <span class="tag ${vCls}">${escapeHtml(verdict)}</span>` +
       ` <span class="muted">${s.ok}/${s.total} 连通</span></div>` +
-      '<table class="kv"><tbody>' + rows + "</tbody></table>" +
+      '<table class="kv"><tbody>' + dimsRows + epRows + "</tbody></table>" +
       '<div class="quickbox">' +
       '<button class="btn-soft" data-action="reprobe">重新全量检查</button>' +
       "</div>" + note;

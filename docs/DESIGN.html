@@ -1142,6 +1142,9 @@
       两处同源：概览页显示「检测到变更」⇔ 托盘红点（同一 <code>has_changes</code> 判据）。
       2026-10-22 用户反馈：「首页的检查应该显示后台全量检查的内容，和状态栏的功能统一」。</p>
       <ul>
+        <li><strong>统一 UI（2026-10-22 用户反馈）</strong>：变更明细<strong>行内展开</strong>在该维度行内
+          （<code>.note</code> 小字，每条 <code>name: detail</code>），<strong>不设「变更详情」跳转链接</strong>；
+          4 维度与端点合并<strong>同一张 kv 表</strong>。</li>
         <li>verdict 三态：全部连通（ok 绿）/ 部分不通（err 红）/ 全部不通（err 红）；
           每端点行用 <code>.tag.ok</code> / <code>.tag.err</code>（有 CSS 定义，勿用幽灵类 endpoint-verdict）。</li>
         <li>单端点错误以 <code>.note</code> 缩在该端点行内（不弹页面级 banner——banner 只留给
