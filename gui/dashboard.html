@@ -308,9 +308,11 @@
      无边框/间距/对齐，即用户反馈的「还是不够协调」）。取值对齐
      settings-card 的行语言（th 150px 定宽 / 行底分隔线 / --fs-sm），
      分组表头复用 hook-group-row 的分组语言（mono 大写小字 + --panel-2 底）。 */
-  #endpoint-status table.kv { width: 100%; border-collapse: collapse; margin: var(--sp-3) 0 var(--sp-4); }
-  #endpoint-status table.kv th { text-align: left; font-weight: 500; color: var(--text); font-size: var(--fs-sm); width: 150px; padding: var(--sp-3a) var(--sp-4) var(--sp-3a) 0; border-bottom: 1px solid var(--line); vertical-align: top; }
-  #endpoint-status table.kv td { color: var(--muted); font-size: var(--fs-sm); padding: var(--sp-3a) 0; border-bottom: 1px solid var(--line); }
+  #endpoint-status table.kv { width: 100%; border-collapse: collapse; margin: var(--sp-5) 0 var(--sp-6); }
+  #endpoint-status table.kv th { text-align: left; font-weight: 500; color: var(--text); font-size: var(--fs-sm); width: 150px; padding: var(--sp-4) var(--sp-4) var(--sp-4) 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  #endpoint-status table.kv td { color: var(--muted); font-size: var(--fs-sm); padding: var(--sp-4) 0; border-bottom: 1px solid var(--line); }
+  /* 行内变更明细与状态 tag 的竖向分隔（有变更时行内展开的小字） */
+  #endpoint-status table.kv td .note { margin-top: var(--sp-1); }
   #endpoint-status table.kv tr:last-child th, #endpoint-status table.kv tr:last-child td { border-bottom: none; }
   #endpoint-status table.kv tr.kv-group td { font-family: var(--mono); font-size: var(--fs-2xs); font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); background: var(--panel-2); padding: var(--sp-2) var(--sp-4); border-bottom: 1px solid var(--line); }
   .kpi-num { font-family: var(--display); font-weight: 600; font-size: var(--fs-md); font-variant-numeric: tabular-nums; }
@@ -5214,7 +5216,7 @@ function renderEndpointStatus() {
         `<td><span class="tag ${cls}">${label}</span> <span class="mono muted">${ep.elapsed_ms || 0}ms</span>${err}</td></tr>`;
     }).join("");
     el.innerHTML =
-      `<div style="margin-bottom:var(--sp-2)">${dimsVerdict} <span class="tag ${vCls}">${escapeHtml(verdict)}</span>` +
+      `<div style="margin-bottom:var(--sp-4)">${dimsVerdict} <span class="tag ${vCls}">${escapeHtml(verdict)}</span>` +
       ` <span class="muted">${s.ok}/${s.total} 连通</span></div>` +
       '<table class="kv"><tbody>' +
       '<tr class="kv-group"><td colspan="2">变更对比 · 4 维度</td></tr>' + dimsRows +
