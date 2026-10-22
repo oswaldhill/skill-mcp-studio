@@ -98,9 +98,9 @@ def _read_frontmatter(repo: str, rel_path: str) -> Dict[str, str]:
     try:
         import yaml
     except ImportError:  # pragma: no cover - yaml is a declared dependency
-        return {"name": "", "description": "", "homepage": ""}
+        return {"name": "", "description": "", "homepage": "", "version": ""}
 
-    out: Dict[str, str] = {"name": "", "description": "", "homepage": ""}
+    out: Dict[str, str] = {"name": "", "description": "", "homepage": "", "version": ""}
     try:
         with open(os.path.join(repo, rel_path, "SKILL.md"), encoding="utf-8") as fh:
             head = fh.read(8192)
@@ -121,6 +121,11 @@ def _read_frontmatter(repo: str, rel_path: str) -> Dict[str, str]:
     fname = data.get("name") or data.get("title") or ""
     if isinstance(fname, str):
         out["name"] = fname.strip()
+    # v0.31.0：version 原样透出（字符串；数值型 YAML 会被 safe_load 解析成
+    # float——1.0 会变 1.0——统一 str() 归一，避免类型漂移进 JSON 快照）
+    fver = data.get("version")
+    if fver is not None:
+        out["version"] = str(fver).strip()
     desc = data.get("description") or ""
     md = data.get("metadata")
     if not desc and isinstance(md, dict):
@@ -137,11 +142,14 @@ def _read_frontmatter(repo: str, rel_path: str) -> Dict[str, str]:
 def read_skill_meta(unified_dir: str, skill_names: List[str]) -> Dict[str, Dict[str, str]]:
     """Read one-line metadata per skill from its ``SKILL.md`` frontmatter.
 
-    Returns ``{skill_name: {"name": ..., "description": ..., "homepage": ...}}``.
+    Returns ``{skill_name: {"name": ..., "description": ..., "homepage": ...,
+    "version": ...}}``.
     Purely read-only and best-effort: a missing file, unparseable frontmatter,
     or absent ``description`` / ``homepage`` keys degrades to an empty value
     rather than failing the snapshot (the skills manager UI renders both as
     optional one-liners; ``homepage`` powers the "官网" affordance when present).
+    ``version``（v0.31.0）：SKILL.md frontmatter 的 ``version:`` 字符串原样
+    透出，缺失为 ``None``——**不虚构版本**（实测 75 个技能已有该字段）。
     """
     repo = os.path.expanduser(unified_dir)
     meta: Dict[str, Dict[str, str]] = {}
@@ -151,6 +159,7 @@ def read_skill_meta(unified_dir: str, skill_names: List[str]) -> Dict[str, Dict[
             "name": fm.get("name") or name,
             "description": fm.get("description") or "",
             "homepage": fm.get("homepage") or "",
+            "version": fm.get("version") or None,
         }
     return meta
 

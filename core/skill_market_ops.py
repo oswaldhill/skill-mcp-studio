@@ -115,4 +115,52 @@ def execute_plan(
     if out["ok"] and not out["verify"]["ok"]:
         out["ok"] = False
         out["stderr"] = (out["stderr"] or "") + "\n命令成功但统一库中未找到安装结果"
+
+    # v0.31.0：安装/升级成功后写版本记录（data/skill_versions.json）——
+    # 回滚基准（--skill-rollback 留后续版本）+ 更新检查的本机基准。
+    # 版本取安装后 SKILL.md frontmatter 的 version（刚落盘，读它最准）。
+    if out["ok"]:
+        try:
+            out["versions_written"] = _record_versions(plan)
+        except Exception:
+            # 记录失败不阻断安装结果（best-effort；主流程已成功）
+            out["versions_written"] = 0
     return out
+
+
+def _record_versions(plan: Dict[str, Any]) -> int:
+    """把本次安装/升级的技能版本写进 data/skill_versions.json，返回写入条数。"""
+    import json
+    from datetime import datetime
+
+    names = ([plan["package"].split("@")[-1]] if plan["action"] == "install"
+             else list(plan.get("names") or []))
+    if not names:
+        return 0
+    from skill_state import read_skill_meta
+    meta = read_skill_meta(str(_skills_dir()), names)
+    vpath = Path(__file__).resolve().parents[1] / "data" / "skill_versions.json"
+    records: Dict[str, Any] = {}
+    if vpath.is_file():
+        try:
+            records = json.loads(vpath.read_text(encoding="utf-8")) or {}
+        except (OSError, ValueError):
+            records = {}
+    now = datetime.now().astimezone().isoformat(timespec="seconds")
+    written = 0
+    for name in names:
+        ver = (meta.get(name) or {}).get("version")
+        if not ver:
+            continue
+        prev = records.get(name) or {}
+        records[name] = {
+            "version": ver,
+            "source": plan.get("package") if plan["action"] == "install" else prev.get("source"),
+            "installed_at": prev.get("installed_at") if plan["action"] == "upgrade" else now,
+            "updated_at": now,
+        }
+        written += 1
+    if written:
+        vpath.parent.mkdir(parents=True, exist_ok=True)
+        vpath.write_text(json.dumps(records, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return written
