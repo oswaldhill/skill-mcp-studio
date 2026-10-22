@@ -1500,3 +1500,35 @@ class RunTaskModalWrapperContractTest(unittest.TestCase):
             bare, [],
             "runTaskModal 回调裸传 runCli（{code,stdout,stderr} 无 ok 字段，成功也显示失败）",
         )
+
+
+class EndpointStatusAllContractTest(unittest.TestCase):
+    """概览页「端点状态」多端点整体渲染契约（v0.30.0 用户反馈落地）。
+
+    用户反馈「首页的整体检查不应该具体到某个具体的端点」→
+    ``--endpoint-status`` 无 ``--profile`` 检查端点库全部端点
+    （kind=endpoint-status-all），GUI 渲染汇总 verdict + 每端点一行。
+    本断言守住渲染分支与汇总语义不被回退成单端点绑定。
+    """
+
+    def test_all_endpoints_render_branch_exists(self):
+        src = _src()
+        self.assertIn(
+            'st.kind === "endpoint-status-all"', src,
+            "缺少多端点渲染分支（回退成只渲染单活动端点会违背整体检查语义）",
+        )
+        self.assertIn('"全部连通"', src, "缺少汇总 verdict 文案（全部连通）")
+        self.assertIn('"部分不通"', src, "缺少汇总 verdict 文案（部分不通）")
+        self.assertIn("重新检查连通性", src, "多端点视图缺少重试入口")
+
+    def test_reprobe_does_not_pass_profile(self):
+        """整体检查不得带 --profile（带了对单端点，违背用户反馈）。"""
+        src = _src()
+        self.assertIn(
+            'runCli(["--endpoint-status", "--format", "json"])', src,
+            "reprobe 应调用无 --profile 的整体检查",
+        )
+        self.assertNotIn(
+            'runCli(["--endpoint-status", "--profile"', src,
+            "reprobe 不得绑定 --profile（整体检查语义回退）",
+        )

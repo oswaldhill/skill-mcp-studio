@@ -124,6 +124,57 @@ def build_endpoint_status(
     }
 
 
+def build_all_endpoints_status(config: Dict[str, Any]) -> Dict[str, Any]:
+    """对端点库**全部端点**逐个真探活，返回汇总视图（v0.30.0 产品反馈落地）。
+
+    背景：概览页「检查端点连通性」此前只探**活动端点**（单个）——用户反馈
+    「首页的整体检查不应该具体到某个具体的端点」。改为默认检查端点库全集
+    （合并视图的全部 profiles，过滤 null 软删除），逐端点呈现。
+
+    串行探活（每端点独立超时，互不影响）；单端点异常**不中断**其余端点，
+    记入该端点的 error 字段。返回结构::
+
+        {
+          "kind": "endpoint-status-all",
+          "checked_at": "...",
+          "endpoints": [ <build_endpoint_status 的单端点结构>, ... ],
+          "summary": {"total": N, "ok": N, "failed": N},
+        }
+    """
+    profiles = config.get("profiles") or {}
+    names = sorted(k for k, v in profiles.items() if v is not None)  # 过滤软删除
+    results = []
+    for name in names:
+        try:
+            results.append(build_endpoint_status(config, endpoint_key=name))
+        except Exception as exc:  # 单端点解析失败不中断其余端点
+            results.append({
+                "checked_at": datetime.now(timezone.utc).isoformat(),
+                "endpoint": {"name": name, "url": "", "transport": ""},
+                "state": "failed",
+                "initialize_ok": False,
+                "tools_list_ok": False,
+                "tool_count": 0,
+                "tool_names": [],
+                "elapsed_ms": 0,
+                "error": str(exc),
+            })
+    ok = sum(1 for r in results if r.get("state") == "ok")
+    failed = len(results) - ok
+    return {
+        "kind": "endpoint-status-all",
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "endpoints": results,
+        "summary": {"total": len(results), "ok": ok, "failed": failed},
+    }
+
+
+def all_endpoints_exit_code(status: Dict[str, Any]) -> int:
+    """多端点汇总的退出码：全部 ok → 0；有 failed → 1（与单端点语义对齐）。"""
+    summary = status.get("summary") or {}
+    return 1 if summary.get("failed") else 0
+
+
 def not_run_endpoint_status(
     config: Dict[str, Any],
     *,

@@ -5096,6 +5096,7 @@ async function reprobeEndpoints(btnEl) {
   showToast("info", "正在检查端点连通性…", { loading: true });
   let ok = false;
   try {
+    // v0.30.0（用户反馈）：整体检查端点库全部端点，不绑定活动端点
     const res = await runCli(["--endpoint-status", "--format", "json"]);
     if (res && res.code === 0) {
       ENDPOINT_STATUS = JSON.parse(res.stdout);
@@ -5142,6 +5143,31 @@ function renderEndpointStatus() {
       '<div class="empty">尚未检查端点连通性。</div>' +
       '<div class="quickbox">' +
       '<button class="btn-soft" data-action="reprobe">检查端点连通性</button>' +
+      "</div>" + note;
+    return;
+  }
+
+  // 多端点整体检查（v0.30.0，kind=endpoint-status-all）：汇总 verdict +
+  // 每端点一行（名称 / 状态 / 耗时 / 错误）。
+  if (st.kind === "endpoint-status-all") {
+    const s = st.summary || {};
+    const allOk = s.failed === 0 && s.total > 0;
+    const verdict = allOk ? "全部连通" : (s.ok ? "部分不通" : "全部不通");
+    const vCls = allOk ? "ok" : "err";
+    const rows = (st.endpoints || []).map((ep) => {
+      const state = ep.state || "not_run";
+      const cls = state === "ok" ? "ok" : state === "failed" ? "err" : "";
+      const label = state === "ok" ? "连通" : state === "failed" ? "不通" : "未检查";
+      const err = ep.error ? `<div class="note">${escapeHtml(String(ep.error))}</div>` : "";
+      return `<tr><th>${escapeHtml(ep.endpoint?.name || "?")}</th>` +
+        `<td><span class="tag ${cls}">${label}</span> <span class="mono muted">${ep.elapsed_ms || 0}ms</span>${err}</td></tr>`;
+    }).join("");
+    el.innerHTML =
+      `<div><span class="tag ${vCls}">${escapeHtml(verdict)}</span>` +
+      ` <span class="muted">${s.ok}/${s.total} 连通</span></div>` +
+      '<table class="kv"><tbody>' + rows + "</tbody></table>" +
+      '<div class="quickbox">' +
+      '<button class="btn-soft" data-action="reprobe">重新检查连通性</button>' +
       "</div>" + note;
     return;
   }

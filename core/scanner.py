@@ -91,9 +91,11 @@ def load_config(config_path: str = None) -> Dict[str, Any]:
     config = config or {}
 
     # profile_sources 本地覆盖：真实端点等个人拓扑放仓库外，主干保持零个人拓扑。
+    # config_path 传入以支持相对路径按 config 目录解析（v0.30.0 fix：GUI 子进程
+    # cwd ≠ 仓库根时相对 overlay 条目曾整体静默失效）。
     from profile_loader import apply_profile_sources
 
-    return apply_profile_sources(config)
+    return apply_profile_sources(config, config_path=config_path)
 
 
 def load_discovered_tools() -> List[Dict[str, Any]]:

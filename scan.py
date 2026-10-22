@@ -386,11 +386,36 @@ def _run_endpoint_status(args, config, config_path) -> int:
     支持 ``--format json``（默认 table），``--profile`` 指定端点。
     """
     from mcp_endpoint_status import (
+        all_endpoints_exit_code,
+        build_all_endpoints_status,
         build_endpoint_status,
         endpoint_exit_code,
         status_lines,
         status_summary,
     )
+
+    # v0.30.0（用户产品反馈）：无 --profile 时检查**端点库全部端点**——
+    # 概览页的「整体检查」不应具体到某个活动端点；--profile 保留单端点模式。
+    if not getattr(args, "profile", None):
+        try:
+            status = build_all_endpoints_status(config)
+        except Exception as exc:
+            print(json.dumps(
+                {"kind": "endpoint-status-all", "error": str(exc)}, ensure_ascii=False,
+            ) if getattr(args, "format", None) == "json"
+                else f"端点状态检查失败: {exc}")
+            return 2
+        if getattr(args, "format", None) == "json":
+            print(json.dumps(status, ensure_ascii=False, indent=2))
+        else:
+            s = status["summary"]
+            print(f"端点库整体检查：{s['total']} 个端点，{s['ok']} 个连通，{s['failed']} 个不通")
+            for ep in status["endpoints"]:
+                state = ep.get("state")
+                mark = "✓" if state == "ok" else "✗"
+                err = f"（{ep.get('error')}）" if ep.get("error") else ""
+                print(f"  {mark} {ep['endpoint']['name']}: {state} {ep.get('elapsed_ms', 0)}ms{err}")
+        return all_endpoints_exit_code(status)
 
     try:
         status = build_endpoint_status(config, endpoint_key=getattr(args, "profile", None))

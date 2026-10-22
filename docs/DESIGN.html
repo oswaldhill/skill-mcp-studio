@@ -449,7 +449,8 @@
     <a href="#s2-6" class="sub">2.6 工具条</a>
     <a href="#s2-7" class="sub">2.7 变更卡片</a>
     <a href="#s2-8" class="sub">2.8 托盘弹框</a>
-    <a href="#s3">3. 排版与间距</a>
+    <a href="#s2-11">2.11 概览页「端点状态」区</a>
+        <a href="#s3">3. 排版与间距</a>
     <a href="#s3b">3b. 可访问性</a>
     <a href="#s4">4. 落地页配方（不采用）</a>
     <a href="#s5">5. 检查清单</a>
@@ -1129,6 +1130,24 @@
             或回落 <code>template</code> 键），<strong>不是</strong>由能力全集推导 —— 否则 Claude Code 会把
             29 个「支持但本次没打算写」的事件全报成缺失（假警报）。</li>
         <li>只增不减：客户端已有的非 ai-memory hook 必须原样保留。</li>
+      </ul>
+    </section>
+
+    <!-- ═══ 2.11 ═══ -->
+    <section id="s2-11">
+      <h3 id="s2-11">2.11 概览页「端点状态」区（多端点整体检查，v0.30.0）<a class="anchor" href="#s2-11" aria-label="锚点">#</a></h3>
+      <p>概览页的「检查端点连通性」是<strong>整体检查</strong>：对端点库全部端点（合并视图，
+      过滤 null 软删除）逐个真探活，<strong>不绑定活动端点</strong>（2026-10-22 用户反馈
+      「首页的整体检查不应该具体到某个具体的端点」）。CLI 侧 <code>--endpoint-status</code>
+      无 <code>--profile</code> 即整体模式（<code>kind: endpoint-status-all</code>）；
+      <code>--profile</code> 保留单端点模式。</p>
+      <ul>
+        <li>verdict 三态：全部连通（ok 绿）/ 部分不通（err 红）/ 全部不通（err 红）；
+          每端点行用 <code>.tag.ok</code> / <code>.tag.err</code>（有 CSS 定义，勿用幽灵类 endpoint-verdict）。</li>
+        <li>单端点错误以 <code>.note</code> 缩在该端点行内（不弹页面级 banner——banner 只留给
+          <strong>执行失败</strong>，且新一轮检查开始时清除旧 banner）。</li>
+        <li>状态覆盖：执行失败（error JSON 无 state）→ 红色「检查执行失败」+ 详情；
+          未检查 → 中性灰「尚未检查」。</li>
       </ul>
     </section>
 

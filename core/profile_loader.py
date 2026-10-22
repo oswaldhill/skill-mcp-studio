@@ -31,7 +31,10 @@ class ProfileError(ValueError):
 LEGACY_AUTH_TOKEN_ENV = "HERMES_MCP_AUTH_TOKEN"
 
 
-def apply_profile_sources(config: Dict[str, Any]) -> Dict[str, Any]:
+def apply_profile_sources(
+    config: Dict[str, Any],
+    config_path: Optional[str] = None,
+) -> Dict[str, Any]:
     """Merge external ``profile_sources`` overlay files into ``config`` in place.
 
     Stage-4 follow-up (local topology isolation): the trunk ``config.yaml`` stays
@@ -40,16 +43,27 @@ def apply_profile_sources(config: Dict[str, Any]) -> Dict[str, Any]:
     values — later sources win, and every source wins over the inline config.
     A missing file is skipped silently (it simply exists on another machine);
     an unreadable or malformed one fails through ``ProfileError`` (exit code 2).
+
+    v0.30.0 fix（2026-10-22 GUI 实测发现）：**相对路径按 config 所在目录解析**，
+    不再按进程 cwd。此前 ``data/local_overrides.yaml`` 这类相对条目在 cwd ≠
+    仓库根时（Tauri GUI 子进程的常态）解析到不存在的地方 → **overlay 整体
+    静默失效**（active_profile / disabled_tools / unified_skills_dir 全部
+    丢失）——GUI 端点检查报「profile 'generic-http' not found」即此链条
+    （trunk 默认活动端点 + 端点库软删除 + overlay 的清除值没生效）。
     """
     sources = config.get("profile_sources") or []
     if not isinstance(sources, list):
         raise ProfileError("'profile_sources' must be a list of file paths")
+    base_dir = os.path.dirname(os.path.abspath(config_path)) if config_path else None
     for raw_path in sources:
         if not isinstance(raw_path, str) or not raw_path.strip():
             raise ProfileError(
                 f"profile_sources entries must be path strings, got {raw_path!r}"
             )
         path = os.path.expanduser(raw_path)
+        if not os.path.isabs(path) and base_dir:
+            # 相对路径相对 config.yaml 所在目录（trunk 里写的 data/... 即此语义）
+            path = os.path.join(base_dir, path)
         if not os.path.isfile(path):
             continue
         try:

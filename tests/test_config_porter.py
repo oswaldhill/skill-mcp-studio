@@ -352,6 +352,10 @@ class CliEntryTest(unittest.TestCase):
 
     def test_export_then_import_roundtrip(self):
         env = self._env()
+        # 隔离基线：记录真实 overlay 的当前内容（具体值随用户合法配置漂移，
+        # 断言「前后不变」而不是断言某个具体值——硬编码值会在用户改配置后误报）。
+        real_overlay = ROOT / "data" / "local_overrides.yaml"
+        baseline = real_overlay.read_text(encoding="utf-8") if real_overlay.exists() else None
         out = env.dir / "export.json"
         # 导出（--skip-discovered：不读真实 discovered 文件）
         r = self._cli("--config", str(env.trunk), "--export-config", str(out),
@@ -375,12 +379,10 @@ class CliEntryTest(unittest.TestCase):
         import yaml
         ov2 = yaml.safe_load(overlay2.read_text(encoding="utf-8"))
         self.assertEqual(ov2["active_profile"], "k8s-uat")  # 导出包的生效值
-        # 仓库真实 overlay 未被触碰（隔离断言）
+        # 仓库真实 overlay 未被触碰（隔离断言：内容与基线逐字节一致）
         real = ROOT / "data" / "local_overrides.yaml"
-        if real.exists():
-            real_ov = yaml.safe_load(real.read_text(encoding="utf-8"))
-            self.assertEqual(real_ov.get("active_profile"), "k8s-uat")
-            self.assertEqual(real_ov.get("disabled_tools"), ["ZZProbeAgent", "FooAgent"])
+        now = real.read_text(encoding="utf-8") if real.exists() else None
+        self.assertEqual(now, baseline, "仓库真实 data/local_overrides.yaml 被测试写入污染")
 
     def test_import_dry_run_via_cli(self):
         env = self._env()
