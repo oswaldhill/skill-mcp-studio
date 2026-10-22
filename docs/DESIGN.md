@@ -446,6 +446,12 @@ Agent 卡片里有两组「标签 + 值」行：**路径区**（APP / CLI / CONF
 （刷新页面后需重查）。工具栏「检查更新」按钮（`skill-check-updates`）
 异步跑检查并 toast 三态汇总。
 
+**更新列的升级操作（v0.31.0）**：outdated 行的 tag 与「升级」按钮
+（`ghost sm`，`data-skill-upgrade`）包在 inline-flex 容器内（`--gap-2`
+间距 + `flex-wrap`），列宽 12%（tag+按钮并排所需）；点击走
+confirmModal（说明覆盖语义）→ runTaskModal（`--market-upgrade <name>
+--yes`）→ 成功后刷新技能清单并重查更新。
+
 ### 2.4 元信息与数字
 - 数字、包名、路径、版本号一律 `--mono` + `--faint` 或 `--muted`。
 - 数量单位用中文（"3.6 万次安装"），不直接透出上游英文原文。

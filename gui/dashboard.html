@@ -1495,7 +1495,7 @@
   .skill-table th.st-cat { width: 10%; }
   .skill-table th.st-ver { width: 8%; }
   .skill-table th.st-usage { width: auto; }
-  .skill-table th.st-upd { width: 9%; }
+  .skill-table th.st-upd { width: 12%; }
   .skill-table th.st-status { width: 11%; text-align: right; }
   .skill-table th.st-ops { width: 4%; text-align: right; }
   .skill-table td.st-ver { font-family: var(--mono); color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
@@ -3310,7 +3310,9 @@ function renderSkillList() {
       const upd = SKILL_UPDATES ? (SKILL_UPDATES[s] || null) : null;
       const updCell = upd
         ? (upd.state === "outdated"
-            ? `<span class="tag warn" title="本地 ${upd.local || "?"} → 远端 ${upd.remote || "?"}">有更新</span>`
+            ? `<span style="display:inline-flex;align-items:center;gap:var(--gap-2);flex-wrap:wrap">` +
+              `<span class="tag warn" title="本地 ${upd.local || "?"} → 远端 ${upd.remote || "?"}">有更新</span>` +
+              `<button type="button" class="ghost sm" data-skill-upgrade="${escapeHtml(s)}" title="升级到远端最新版（本地内容会被覆盖，先备份）">升级</button></span>`
             : upd.state === "current"
               ? '<span class="tag ok" title="与远端一致">最新</span>'
               : `<span class="tag" title="${escapeHtml(upd.note || "无来源信息")}">未知</span>`)
@@ -6086,12 +6088,22 @@ function renderEndpointStatus() {
         <button type="button" class="ghost sm" data-ms-remove="${escapeHtml(s.id)}">删除</button>
       </span></div>`;
     }).join("");
-    const addForm = `<div class="row"><span class="k">添加源</span><span class="v" style="display:flex;align-items:center;gap:var(--gap-2);flex-wrap:wrap">
-      <input type="text" id="ms-add-id" placeholder="id（如 my-hub）" style="min-width:8rem">
-      <input type="text" id="ms-add-label" placeholder="名称" style="min-width:8rem">
-      <select id="ms-add-type"><option value="skills-sh">skills.sh</option><option value="github-repo">GitHub 仓库</option></select>
-      <input type="text" id="ms-add-url" placeholder="https://github.com/owner/repo（github-repo 必填）" style="min-width:16rem">
-      <button type="button" class="ghost sm" data-ms-add="1">添加</button>
+    // 添加表单：竖排 .row（.k 作 label），不用 placeholder 充当 label
+    // （taste-skill 4.6 / 表单可访问性：placeholder 是提示不是标签）
+    const addForm = `<div class="row"><span class="k">源 ID</span><span class="v" style="display:flex;align-items:center;gap:var(--gap-2);flex-wrap:wrap">
+      <input type="text" id="ms-add-id" placeholder="my-hub" aria-label="源 ID" style="min-width:8rem">
+    </span></div>
+    <div class="row"><span class="k">名称</span><span class="v" style="display:flex;align-items:center;gap:var(--gap-2);flex-wrap:wrap">
+      <input type="text" id="ms-add-label" placeholder="显示名称" aria-label="源名称" style="min-width:8rem">
+    </span></div>
+    <div class="row"><span class="k">类型</span><span class="v" style="display:flex;align-items:center;gap:var(--gap-2);flex-wrap:wrap">
+      <select id="ms-add-type" aria-label="源类型"><option value="skills-sh">skills.sh</option><option value="github-repo">GitHub 仓库</option></select>
+    </span></div>
+    <div class="row"><span class="k">仓库 URL</span><span class="v" style="display:flex;align-items:center;gap:var(--gap-2);flex-wrap:wrap">
+      <input type="text" id="ms-add-url" placeholder="https://github.com/owner/repo" aria-label="仓库 URL（github-repo 类型必填）" style="min-width:16rem">
+    </span></div>
+    <div class="row"><span class="k"></span><span class="v">
+      <button type="button" class="ghost sm" data-ms-add="1">添加源</button>
     </span></div>`;
     const fallbackNote = _marketSourcesData.fallback
       ? '<div class="note">当前为默认源（未自定义配置）。</div>' : "";
@@ -6183,6 +6195,32 @@ function renderEndpointStatus() {
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = "检查更新"; }
     }
+  }
+
+  // v0.31.0：技能行「升级」：对 outdated 技能跑 --market-upgrade（写操作：
+  // 拉上游最新版覆盖本地，先备份）。确认弹窗说明覆盖语义；成功后刷新技能
+  // 清单并重查更新状态。
+  async function runSkillUpgrade(name) {
+    const upd = (SKILL_UPDATES || {})[name] || {};
+    const ok = await confirmModal("升级技能",
+      `将把「${name}」升级到远端最新版（${upd.remote || "?"}）。\n` +
+      `本地内容会被上游覆盖（升级前自动备份）。继续？`, true);
+    if (!ok) return;
+    await runTaskModal(`升级 ${name}`, async () => {
+      const res = await runCli(["--market-upgrade", name, "--yes", "--format", "json"],
+        `升级 ${name}：拉取上游最新版`);
+      if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
+      let payload = null;
+      try { payload = JSON.parse(res.stdout || "{}"); } catch (e) { payload = null; }
+      if (res.code === 0 && payload && payload.ok !== false) {
+        return { ok: true, message: `${name} 已升级到 ${upd.remote || "最新版"}` };
+      }
+      return { ok: false, message: "升级失败",
+               detail: (payload && payload.stderr) || cliFailLines(res) || cliErrDetail(res) };
+    }, async () => {
+      await refreshBlocks(["skills"]);
+      await runSkillCheckUpdates(null);
+    }, ["备份本地", "拉取上游", "校验安装", "刷新状态"]);
   }
 
   async function runMarketCheck(btn) {
@@ -7385,6 +7423,8 @@ document.addEventListener("click", (e) => {
   // 只能在这里判 id，不能给遮罩挂 data-action —— 那样卡片内部的普通点击
   // 也会 closest 到遮罩，导致"点哪都关"。
   if (e.target.id === "insight-panel") { toggleInsightPanel(false); return; }
+  const upgBtn = e.target.closest("[data-skill-upgrade]");
+  if (upgBtn) { runSkillUpgrade(upgBtn.dataset.skillUpgrade); return; }
   const goto = e.target.closest("[data-goto]");
   if (goto) { switchPage(goto.dataset.goto); return; }
   const act = e.target.closest("[data-action]");

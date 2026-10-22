@@ -1618,6 +1618,17 @@ class SkillVersionUiContractTest(unittest.TestCase):
         self.assertIn("有更新", src)
         self.assertIn("最新", src)
 
+    def test_skill_upgrade_button_and_flow(self):
+        """outdated 行的升级按钮 + 确认流 + 表单 label（评审修复锚）。"""
+        src = _src()
+        self.assertIn('data-skill-upgrade=', src, "outdated 行缺升级按钮")
+        self.assertIn("runSkillUpgrade", src, "缺升级处理函数")
+        self.assertIn('--market-upgrade", name, "--yes"', src,
+                      "升级应走 --market-upgrade --yes（写操作带确认）")
+        # 市场源添加表单：不用 placeholder 充当 label（taste-skill 4.6）
+        self.assertIn('aria-label="源 ID"', src, "表单字段缺 aria-label（placeholder 不是标签）")
+        self.assertIn('<span class="k">源 ID</span>', src, "表单缺可见 label（.k 行结构）")
+
     def test_market_sources_card_exists(self):
         src = _src()
         self.assertIn('id="market-sources-card"', src, "设置页缺市场源卡片")
