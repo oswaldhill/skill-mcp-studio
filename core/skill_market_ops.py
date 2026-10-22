@@ -116,6 +116,17 @@ def execute_plan(
         out["ok"] = False
         out["stderr"] = (out["stderr"] or "") + "\n命令成功但统一库中未找到安装结果"
 
+    # v0.31.0：npx skills update 可能 exit 0 但实际没升级（实测：上游仓库
+    # 迁移时输出「1 skill(s) cannot be checked automatically: find-skills
+    # (Private or deleted repo)」——verify 只查目录存在会误报成功，用户
+    # 看到假成功且版本不变）。解析 stdout 的失败标记，诚实报告。
+    if out["ok"] and plan["action"] == "upgrade":
+        failure = _parse_upgrade_failure(out.get("stdout", ""))
+        if failure:
+            out["ok"] = False
+            out["reason"] = "上游无法更新"
+            out["stderr"] = (out["stderr"] or "") + "\n" + failure
+
     # v0.31.0：安装/升级成功后写版本记录（data/skill_versions.json）——
     # 回滚基准（--skill-rollback 留后续版本）+ 更新检查的本机基准。
     # 版本取安装后 SKILL.md frontmatter 的 version（刚落盘，读它最准）。
@@ -126,6 +137,33 @@ def execute_plan(
             # 记录失败不阻断安装结果（best-effort；主流程已成功）
             out["versions_written"] = 0
     return out
+
+
+def _parse_upgrade_failure(stdout: str) -> str:
+    """解析 npx skills update 的「exit 0 但没升级」输出，返回失败说明（无则空）。
+
+    实测标记（2026-10-22，find-skills 上游迁移）::
+
+        1 skill(s) cannot be checked automatically:
+          • find-skills (Private or deleted repo)
+            To update: npx skills add https://github.com/... -g -y
+
+    ANSI 色码先剥离再匹配（npx 输出带 38;5;xxx 色码）。
+    """
+    import re as _re
+
+    plain = _re.sub(r"\x1b\[[0-9;]*m", "", stdout or "")
+    if "cannot be checked automatically" not in plain:
+        return ""
+    # 提取失败技能与原因行
+    lines = [ln.strip() for ln in plain.split("\n") if ln.strip()]
+    failed = [ln for ln in lines if _re.match(r"^[•\-*]\s+\S+\s+\(", ln)]
+    hint = next((ln for ln in lines if ln.startswith("To update:")), "")
+    parts = ["以下技能无法自动更新（上游仓库私有/已迁移/已删除）："]
+    parts.extend(f"  {f}" for f in failed)
+    if hint:
+        parts.append(f"修复建议：{hint.replace('To update: ', '')}")
+    return "\n".join(parts)
 
 
 def _record_versions(plan: Dict[str, Any]) -> int:

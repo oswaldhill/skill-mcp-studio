@@ -592,3 +592,44 @@ class GithubTokenChannelTest(unittest.TestCase):
         self.assertEqual(r2.returncode, 0)
         self.assertIn("已清除", r2.stdout)
         self.assertFalse(self._path.exists())
+
+
+class UpgradeFailureDetectionTest(unittest.TestCase):
+    """npx update「exit 0 但没升级」的失败检测（v0.31.0，实测教训）。
+
+    find-skills 上游迁移（vercel-labs/skills → api/vercel-labs）时
+    npx 输出「cannot be checked automatically」但 exit 0——verify 只查
+    目录存在会误报成功（用户升级后版本不变，反馈「应该自动更新」）。
+    """
+
+    def test_parse_upgrade_failure_detects_migrated_repo(self):
+        from skill_market_ops import _parse_upgrade_failure
+        stdout = (
+            "\x1b[38;5;145mUpdating find-skills…\x1b[0m\n\n"
+            "\x1b[38;5;102m1 skill(s) cannot be checked automatically:\x1b[0m\n"
+            "  \x1b[38;5;145m•\x1b[0m find-skills \x1b[38;5;102m(Private or deleted repo)\x1b[0m\n"
+            "    \x1b[38;5;102mTo update: \x1b[38;5;145mnpx skills add https://github.com/vercel-labs/skills.git -g -y\x1b[0m\n"
+        )
+        out = _parse_upgrade_failure(stdout)
+        self.assertIn("find-skills", out)
+        self.assertIn("Private or deleted repo", out)
+        self.assertIn("npx skills add", out)  # 修复建议透出
+
+    def test_parse_upgrade_failure_clean_stdout_is_empty(self):
+        from skill_market_ops import _parse_upgrade_failure
+        self.assertEqual(_parse_upgrade_failure("Updating done\nAll skills up to date"), "")
+        self.assertEqual(_parse_upgrade_failure(""), "")
+
+    def test_execute_plan_reports_failure_on_migrated_repo(self):
+        from skill_market_ops import execute_plan
+        fake_stdout = (
+            "Updating find-skills…\n"
+            "1 skill(s) cannot be checked automatically:\n"
+            "  • find-skills (Private or deleted repo)\n"
+            "    To update: npx skills add https://github.com/x/y.git -g -y\n"
+        )
+        plan = {"ok": True, "action": "upgrade", "names": ["find-skills"],
+                "package": "x/y@find-skills", "argv": ["update", "find-skills"]}
+        res = execute_plan(plan, runner=lambda argv, timeout: {"code": 0, "stdout": fake_stdout})
+        self.assertFalse(res["ok"], "上游迁移的 exit-0 假成功必须被识破")
+        self.assertIn("无法自动更新", res["stderr"])
