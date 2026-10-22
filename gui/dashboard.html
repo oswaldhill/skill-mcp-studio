@@ -5086,6 +5086,10 @@ async function refreshWithBtn(btnEl) {
 async function reprobeEndpoints(btnEl) {
   if (LOADING) return;
   LOADING = true;
+  // 新一轮检查开始：清掉上一轮的错误横幅。showBanner 无自动消失机制，
+  // 不清会永久残留——用户修好配置后旧横幅还挂着「端点检查失败」，看起来
+  // 像问题还在（实测误导，2026-10-22 用户反馈「好像还是存在」即此）。
+  clearBanner();
   const btn = btnEl;
   const orig = btn ? btn.textContent : "";
   if (btn) { btn.disabled = true; btn.textContent = "检查中…"; }
@@ -5106,7 +5110,9 @@ async function reprobeEndpoints(btnEl) {
       renderEndpointStatus();
       ok = true;
     } else if (res) {
-      showBanner("err", "端点检查失败：" + res.stderr);
+      // stderr 可能为空（如纯退出码失败）——空时回退到 stdout 详情或退出码，
+      // 不拼出「端点检查失败:」这种无信息横幅。
+      showBanner("err", "端点检查失败：" + (res.stderr || cliErrDetail(res) || `退出码 ${res.code}`));
     }
   } catch (err) {
     showBanner("err", "端点检查失败（非审计结论）：" + err);
