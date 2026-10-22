@@ -55,7 +55,7 @@ class MarketCliTest(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         data = json.loads(proc.stdout)
         self.assertIn("sources", data)
-        self.assertIn("skills.sh", data["sources"])
+        self.assertIn("skills-sh", [s["id"] for s in data["sources"]])
 
     def test_list_returns_installed(self):
         """隔离技能库里的 fixture 必须被 list 列出。

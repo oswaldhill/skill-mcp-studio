@@ -528,5 +528,3 @@ def _remote_latest_version(owner: str, repo: str, timeout: int = 20):
     if isinstance(data, list) and data and data[0].get("name"):
         return str(data[0]["name"]), "ok"
     return None, "unavailable"
-
-

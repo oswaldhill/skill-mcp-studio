@@ -1596,3 +1596,34 @@ class EndpointStatusAllContractTest(unittest.TestCase):
             'data-goto="changes" class="muted">变更详情', src,
             "全量检查区不得有「变更详情」跳转链接（用户要求直接显示，不单独展示）",
         )
+
+
+class SkillVersionUiContractTest(unittest.TestCase):
+    """Skills 页版本/更新展示 + 设置页市场源卡片契约（v0.31.0 #4 双轨测试轨）。"""
+
+    def test_skill_table_has_version_and_update_columns(self):
+        src = _src()
+        self.assertIn('<th class="st-ver">版本</th>', src, "技能表缺版本列")
+        self.assertIn('<th class="st-upd">更新</th>', src, "技能表缺更新列")
+        self.assertIn("st-ver", _css(), "缺 .st-ver 列样式（mono 字号）")
+
+    def test_check_updates_button_and_data_flow(self):
+        src = _src()
+        self.assertIn('data-action="skill-check-updates"', src, "缺「检查更新」按钮")
+        self.assertIn("runSkillCheckUpdates", src, "缺检查更新处理函数")
+        self.assertIn('runCli(["--market", "check", "--format", "json"]', src,
+                      "检查更新应走 --market check（版本比对）")
+        self.assertIn("SKILL_UPDATES", src, "缺更新结果缓存变量")
+        # 三态 tag 文案
+        self.assertIn("有更新", src)
+        self.assertIn("最新", src)
+
+    def test_market_sources_card_exists(self):
+        src = _src()
+        self.assertIn('id="market-sources-card"', src, "设置页缺市场源卡片")
+        self.assertIn("loadMarketSources", src, "缺市场源加载函数")
+        self.assertIn("--list-market-sources", src, "市场源卡片应经 CLI 读写")
+        self.assertIn("--set-market-source", src)
+        self.assertIn("--remove-market-source", src)
+        # 默认源可删改的说明
+        self.assertIn("可删可改", src)

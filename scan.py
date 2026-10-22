@@ -1289,11 +1289,13 @@ def _print_market(payload: dict, kind: str) -> None:
         print(f"  ❌ {payload['error']}")
         return
     if kind == "sources":
-        for _sid, s in (payload.get("sources") or {}).items():
-            mark = "可用" if s["available"] else "不可用"
-            line = f"  {s['label']}: {mark}"
-            if s["reason"]:
-                line += f" —— {s['reason']}"
+        # v0.31.0：sources 从 dict 改为可配置源列表（market_sources 模型）
+        for s in payload.get("sources") or []:
+            mark = "可用" if s.get("available") else "不可用"
+            state = "启用" if s.get("enabled", True) else "停用"
+            line = f"  {s['label']}: {mark} · {state}"
+            if s.get("reason"):
+                line += f"（{s['reason']}）"
             print(line)
     elif kind == "list":
         rows = payload.get("installed") or []

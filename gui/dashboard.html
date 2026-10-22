@@ -1492,10 +1492,13 @@
     color: var(--faint); font-weight: 600; padding: var(--sp-3a) var(--sp-5); border-bottom: 1px solid var(--line-strong); white-space: nowrap;
   }
   .skill-table th.st-name { width: 18%; padding-left: var(--sp-9e); }
-  .skill-table th.st-cat { width: 12%; }
+  .skill-table th.st-cat { width: 10%; }
+  .skill-table th.st-ver { width: 8%; }
   .skill-table th.st-usage { width: auto; }
-  .skill-table th.st-status { width: 13%; text-align: right; }
+  .skill-table th.st-upd { width: 9%; }
+  .skill-table th.st-status { width: 11%; text-align: right; }
   .skill-table th.st-ops { width: 4%; text-align: right; }
+  .skill-table td.st-ver { font-family: var(--mono); color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
   .skill-table td { padding: var(--sp-2) var(--sp-5); border-bottom: 1px solid var(--line); vertical-align: middle; }
   .skill-table tbody tr:last-child td { border-bottom: none; }
   .skill-table tbody tr { cursor: pointer; }
@@ -1882,6 +1885,7 @@
           <button class="btn-soft" data-action="open-insight">使用分析</button>
           <button class="btn-soft" data-action="open-market">技能市场</button>
           <button class="btn-soft" data-action="refresh-skills">刷新技能</button>
+          <button class="btn-soft" data-action="skill-check-updates" title="只读检查：本地版本 vs 远端最新版（不修改任何技能）">检查更新</button>
           <button class="btn-soft" data-action="merge" title="仅重建各客户端 skills 链接，不合并重复技能">修复链接</button>
         </div>
       </div>
@@ -2049,6 +2053,8 @@ let SNAP = null;
 let ENDPOINT_STATUS = null;
 // 全量检查缓存的 4 维度 diff（--snapshot 输出，与托盘巡检同源；v0.30.0）
 let SNAPSHOT_DIFF_CACHE = null;
+// 技能更新检查结果（--market check；v0.31.0）：{skill: {state, local, remote, note}}
+let SKILL_UPDATES = null;
 let ENDPOINT_CHECKED_AT = 0;
 
 // ---------------- theme（Light / Dark / System，参考 skills-manager 设置页） ----------------
@@ -3282,7 +3288,9 @@ function renderSkillList() {
         <thead><tr>
           <th class="st-name">名称</th>
           <th class="st-cat">分类</th>
+          <th class="st-ver">版本</th>
           <th class="st-usage">用途</th>
+          <th class="st-upd">更新</th>
           <th class="st-status">启用</th>
           <th class="st-ops">操作</th>
         </tr></thead>
@@ -3292,15 +3300,27 @@ function renderSkillList() {
         + `<span class="st-name-text" title="${escapeHtml(s)}">${escapeHtml(skillDisplayName(s))}</span>`
         + (r.isContainer ? nestCountBadge(r.children.length) : "");
       const nestRow = r.isContainer
-        ? `<tr class="nest-tr" data-nest-of="${escapeHtml(s)}" hidden><td colspan="5"><div class="nest-list">${nestHtml(s)}</div></td></tr>`
+        ? `<tr class="nest-tr" data-nest-of="${escapeHtml(s)}" hidden><td colspan="7"><div class="nest-list">${nestHtml(s)}</div></td></tr>`
         : "";
       // S6：不在 <tr> 上写 role="button" —— 那会把行从表格语义里摘出去，
       // 读屏丢失「第几行/对应哪个表头」的行列关联（该表 5 列）。
       // 保留 tabindex 与 Enter/Space 键盘补丁，可聚焦性不变。
+      // v0.31.0：版本列（SKILL.md frontmatter）+ 更新列（检查后三态 tag）
+      const ver = (meta[s] && meta[s].version) || "";
+      const upd = SKILL_UPDATES ? (SKILL_UPDATES[s] || null) : null;
+      const updCell = upd
+        ? (upd.state === "outdated"
+            ? `<span class="tag warn" title="本地 ${upd.local || "?"} → 远端 ${upd.remote || "?"}">有更新</span>`
+            : upd.state === "current"
+              ? '<span class="tag ok" title="与远端一致">最新</span>'
+              : `<span class="tag" title="${escapeHtml(upd.note || "无来源信息")}">未知</span>`)
+        : '<span class="muted">-</span>';
       return `<tr class="skill-row" data-skill="${escapeHtml(s)}" tabindex="0" aria-label="查看 ${escapeHtml(s)} 详情" title="查看详情">
         <td class="st-name"><div class="st-name-cell">${nameCell}</div></td>
         <td class="st-cat"><span class="sk-cat">${escapeHtml(r.cat)}</span></td>
+        <td class="st-ver" title="${escapeHtml(ver)}">${escapeHtml(ver || "-")}</td>
         <td class="st-usage ${r.home ? "has-home" : "wrap"}" title="${escapeHtml((meta[s] && meta[s].description) || "")}">${usageCell(s, r)}</td>
+        <td class="st-upd">${updCell}</td>
         <td class="st-status"><span class="st-count ${r.countCls}" title="${r.enabled} / ${r.total} 个客户端已启用">${r.enabled}/${r.total} 启用</span></td>
         <td class="st-ops">${skillKebab(s)}</td>
       </tr>${nestRow}`;
@@ -4394,6 +4414,14 @@ function renderSettings() {
     <div class="note" style="margin-top:var(--sp-4)">统计会通读全部会话日志（约 30 秒），在后台静默进行，打开弹窗时直接看最近一次结果，不会弹出"正在计算"。选「关闭」后只有手动点「重新统计」才执行。</div>
   </div>`;
 
+  // 「Skill」：市场源（v0.31.0 #4）——可配置源列表（默认 skills.sh 可删改）。
+  // 读写一律经 CLI（--list/set/remove-market-source）；异步加载渲染。
+  const marketSourcesCard = `<div class="settings-card" id="market-sources-card">
+    <h4>市场源</h4>
+    <div id="market-sources-body"><div class="empty">加载中…</div></div>
+    <div class="note" style="margin-top:var(--sp-4)">默认源 skills.sh 可删可改；支持添加 GitHub 仓库源（更新检查按 latest release 比对版本）。源配置存本机 data/market_sources.yaml。</div>
+  </div>`;
+
   // 「Hook」独立 tab：管理**要写入哪些生命周期 hook 事件**。
   //
   // 设计取舍（2026-10-11 按用户要求调整）：这个 tab 不列各 IDE/Agent 的接入状态
@@ -4533,7 +4561,7 @@ function renderSettings() {
 
   el.innerHTML =
     `<div class="settings-tab-panel" data-panel="appearance">${appearanceCard}${patrolCard}${configPortCard}${_aboutCard}</div>` +
-    `<div class="settings-tab-panel hidden" data-panel="general">${skillsCard}${usageCard}</div>` +
+    `<div class="settings-tab-panel hidden" data-panel="general">${skillsCard}${usageCard}${marketSourcesCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="agents">${agentsCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="hooks">${hooksCard}${hookTemplatesCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="mcp">${mcpCard}</div>`;
@@ -4660,6 +4688,7 @@ function switchSettingsTab(tab) {
     p.classList.toggle("hidden", p.dataset.panel !== _settingsTab);
   });
   if (_settingsTab === "hooks") loadHookTemplates();
+  if (_settingsTab === "general") loadMarketSources();
 }
 
 function renderAll() {
@@ -6028,6 +6057,134 @@ function renderEndpointStatus() {
     });
   }
 
+  // ── 市场源卡片逻辑（v0.31.0 #4，设置页 Skill tab）────────────────────
+  // 异步加载 --list-market-sources 渲染；增删改经 CLI 后重载。
+  let _marketSourcesData = null;
+  async function loadMarketSources() {
+    const body = $("market-sources-body");
+    if (!body) return;
+    const res = await runCli(["--list-market-sources", "--format", "json"]);
+    if (!res || res.code !== 0) {
+      body.innerHTML = '<div class="empty">加载失败</div>';
+      return;
+    }
+    try { _marketSourcesData = JSON.parse(res.stdout || "{}"); }
+    catch (e) { body.innerHTML = '<div class="empty">解析失败</div>'; return; }
+    renderMarketSources();
+  }
+
+  function renderMarketSources() {
+    const body = $("market-sources-body");
+    if (!body || !_marketSourcesData) return;
+    const sources = _marketSourcesData.sources || [];
+    const rows = sources.map((s) => {
+      const state = s.enabled ? "启用" : "停用";
+      const url = s.url ? ` <span class="mono muted" title="${escapeHtml(s.url)}">${escapeHtml(s.url)}</span>` : "";
+      return `<div class="row"><span class="k">${escapeHtml(s.label)}</span><span class="v" style="display:flex;align-items:center;gap:var(--gap-2);flex-wrap:wrap">
+        <span class="tag">${escapeHtml(s.type)}</span><span class="muted">${state}</span>${url}
+        <button type="button" class="ghost sm" data-ms-toggle="${escapeHtml(s.id)}" data-ms-enabled="${s.enabled ? "true" : "false"}">${s.enabled ? "停用" : "启用"}</button>
+        <button type="button" class="ghost sm" data-ms-remove="${escapeHtml(s.id)}">删除</button>
+      </span></div>`;
+    }).join("");
+    const addForm = `<div class="row"><span class="k">添加源</span><span class="v" style="display:flex;align-items:center;gap:var(--gap-2);flex-wrap:wrap">
+      <input type="text" id="ms-add-id" placeholder="id（如 my-hub）" style="min-width:8rem">
+      <input type="text" id="ms-add-label" placeholder="名称" style="min-width:8rem">
+      <select id="ms-add-type"><option value="skills-sh">skills.sh</option><option value="github-repo">GitHub 仓库</option></select>
+      <input type="text" id="ms-add-url" placeholder="https://github.com/owner/repo（github-repo 必填）" style="min-width:16rem">
+      <button type="button" class="ghost sm" data-ms-add="1">添加</button>
+    </span></div>`;
+    const fallbackNote = _marketSourcesData.fallback
+      ? '<div class="note">当前为默认源（未自定义配置）。</div>' : "";
+    const invalidNote = (_marketSourcesData.invalid || []).length
+      ? `<div class="note">无效条目：${_marketSourcesData.invalid.map((i) => escapeHtml(i.id)).join("、")}</div>` : "";
+    body.innerHTML = (rows || '<div class="empty">无市场源（检查更新将提示配置源）</div>')
+      + addForm + fallbackNote + invalidNote;
+    bindMarketSourcesActions();
+  }
+
+  function bindMarketSourcesActions() {
+    const body = $("market-sources-body");
+    if (!body) return;
+    body.querySelectorAll("[data-ms-remove]").forEach((b) => {
+      b.onclick = async () => {
+        const id = b.dataset.msRemove;
+        const ok = await confirmModal("删除市场源", `确认删除源「${id}」？`, true);
+        if (!ok) return;
+        await runTaskModal(`删除源 ${id}`, async () => {
+          const res = await runCli(["--remove-market-source", id]);
+          if (!res) return { ok: false, message: "工具未能执行" };
+          if (res.code === 0) return { ok: true, message: `源 ${id} 已删除` };
+          return { ok: false, message: "删除失败", detail: cliErrDetail(res) };
+        }, () => loadMarketSources(), ["删除并备份"]);
+      };
+    });
+    body.querySelectorAll("[data-ms-toggle]").forEach((b) => {
+      b.onclick = async () => {
+        const id = b.dataset.msToggle;
+        const enable = b.dataset.msEnabled !== "true";
+        const src = (_marketSourcesData && _marketSourcesData.sources || []).find((s) => s.id === id) || {};
+        await runTaskModal(`${enable ? "启用" : "停用"}源 ${id}`, async () => {
+          const args = ["--set-market-source", id, `label=${src.label || id}`,
+                        `type=${src.type || "skills-sh"}`, `enabled=${enable}`];
+          if (src.url) args.push(`url=${src.url}`);
+          const res = await runCli(args);
+          if (!res) return { ok: false, message: "工具未能执行" };
+          if (res.code === 0) return { ok: true, message: `源 ${id} 已${enable ? "启用" : "停用"}` };
+          return { ok: false, message: "操作失败", detail: cliErrDetail(res) };
+        }, () => loadMarketSources(), ["写入配置"]);
+      };
+    });
+    const addBtn = body.querySelector("[data-ms-add]");
+    if (addBtn) {
+      addBtn.onclick = async () => {
+        const id = ($("ms-add-id") || {}).value || "";
+        const label = ($("ms-add-label") || {}).value || "";
+        const type = ($("ms-add-type") || {}).value || "skills-sh";
+        const url = ($("ms-add-url") || {}).value || "";
+        if (!id.trim()) { showToast("err", "请填写源 id"); return; }
+        if (type === "github-repo" && !url.trim()) { showToast("err", "github-repo 源需要填写仓库 URL"); return; }
+        await runTaskModal(`添加源 ${id}`, async () => {
+          const args = ["--set-market-source", id.trim(), `label=${label.trim() || id.trim()}`, `type=${type}`];
+          if (url.trim()) args.push(`url=${url.trim()}`);
+          const res = await runCli(args);
+          if (!res) return { ok: false, message: "工具未能执行" };
+          if (res.code === 0) return { ok: true, message: `源 ${id} 已添加` };
+          return { ok: false, message: "添加失败", detail: cliErrDetail(res) };
+        }, () => loadMarketSources(), ["校验并写入"]);
+      };
+    }
+  }
+
+  // v0.31.0：Skills 页「检查更新」：跑 --market check（版本比对，只读），
+  // 结果存 SKILL_UPDATES 供技能行「更新」列渲染；toast 汇总三态计数。
+  async function runSkillCheckUpdates(btn) {
+    if (btn) { btn.disabled = true; btn.textContent = "检查中…"; }
+    try {
+      const res = await runCli(["--market", "check", "--format", "json"],
+        "检查技能更新：本地版本 vs 远端最新版（只读）");
+      if (!res || res.code !== 0) {
+        showToast("err", "检查更新失败：" + ((res && cliErrDetail(res)) || "未知错误"));
+        return;
+      }
+      const data = JSON.parse(res.stdout || "{}");
+      const map = {};
+      for (const row of data.updates || []) {
+        map[row.name] = { state: row.state, local: row.local_version,
+                          remote: row.remote_version, note: row.note || "" };
+      }
+      SKILL_UPDATES = map;
+      renderSkillList();
+      const s = data.summary || {};
+      const cached = data.cache_hit ? "（缓存）" : "";
+      showToast(s.outdated ? "warn" : "ok",
+        `检查完成${cached}：有更新 ${s.outdated || 0} · 最新 ${s.current || 0} · 未知 ${s.unknown || 0}`);
+    } catch (e) {
+      showToast("err", "检查返回无法解析：" + e);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = "检查更新"; }
+    }
+  }
+
   async function runMarketCheck(btn) {
     if (btn) { btn.disabled = true; btn.textContent = "检查中…"; }
     renderMarketProgress([{ text: "正在检查更新（只读，不会修改任何技能）", kind: "info" }]);
@@ -7279,6 +7436,7 @@ document.addEventListener("click", (e) => {
     else if (a === "market-close") toggleMarketPanel(false);
     else if (a === "market-search") runMarketSearch(act);
     else if (a === "market-check") runMarketCheck(act);
+    else if (a === "skill-check-updates") runSkillCheckUpdates(act);
     else if (a === "market-install") confirmMarketInstall(act.dataset.pkg);
     else if (a === "market-upgrade") confirmMarketUpgrade(act.dataset.name);
     else if (a === "reprobe") reprobeEndpoints(act);

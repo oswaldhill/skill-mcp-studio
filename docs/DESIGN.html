@@ -898,6 +898,19 @@
       <p><strong>分层作用域徽标 <code>.al-scope</code></strong>：跟在状态标签后，形如 <code>4 档</code>，
         <code>title</code> 给出"分层作用域 N 档"；与 <code>.al-metric</code> 同族但更弱
         （<code>--faint</code> 字色 + 虚线边框 + 透明底、不做 accent 高亮、不加 hover），因为它是元信息而非可点计数。</p>
+    </section>
+
+    <!-- ═══ 2.3e ═══ -->
+    <section id="s2-3e">
+      <h3 id="s2-3e">2.3e 技能表列（<code>.skill-table</code>，v0.31.0 增两列）<a class="anchor" href="#s2-3e" aria-label="锚点">#</a></h3>
+      <p>七列：名称 / 分类 / <strong>版本</strong>（<code>st-ver</code>，8%，mono，<code>skill_meta.version</code>，
+      无版本显示 <code>-</code>）/ 用途 / <strong>更新</strong>（<code>st-upd</code>，9%，检查后三态 tag：
+      有更新 <code>tag warn</code>（title 含本地→远端版本）/ 最新 <code>tag ok</code> / 未知中性 <code>tag</code>，
+      未检查显示 <code>-</code>）/ 启用 / 操作。嵌套展开行 <code>colspan="7"</code>。更新数据来自
+      <code>--market check</code>（版本比对，只读），结果缓存于前端 <code>SKILL_UPDATES</code>。</p>
+    </section>
+
+    <section id="s2-4">
       <h3 id="s2-4">2.4 元信息与数字<a class="anchor" href="#s2-4" aria-label="锚点">#</a></h3>
       <ul>
         <li>数字、包名、路径、版本号一律 <code>--mono</code> + <code>--faint</code> 或 <code>--muted</code>。</li>

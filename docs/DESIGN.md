@@ -436,6 +436,16 @@ Agent 卡片里有两组「标签 + 值」行：**路径区**（APP / CLI / CONF
 但**更弱**：`--faint` 字色 + 虚线边框 + 透明底、**不做 accent 高亮、不加 hover** ——
 它是元信息（该客户端的 Hook 配置分几档），不是可点的计数徽标。
 
+### 2.3e 技能表列（`.skill-table`，v0.31.0 增两列）
+
+七列：名称 / 分类 / **版本**（`st-ver`，8%，mono，`skill_meta.version`，
+无版本显示 `-`）/ 用途 / **更新**（`st-upd`，9%，检查后三态 tag：有更新
+`tag warn`（title 含本地→远端版本）/ 最新 `tag ok` / 未知中性 `tag`，
+未检查显示 `-`）/ 启用 / 操作。嵌套展开行 `colspan="7"`。更新数据来自
+`--market check`（版本比对，只读），结果缓存于前端 `SKILL_UPDATES`
+（刷新页面后需重查）。工具栏「检查更新」按钮（`skill-check-updates`）
+异步跑检查并 toast 三态汇总。
+
 ### 2.4 元信息与数字
 - 数字、包名、路径、版本号一律 `--mono` + `--faint` 或 `--muted`。
 - 数量单位用中文（"3.6 万次安装"），不直接透出上游英文原文。
@@ -620,7 +630,7 @@ Agent 卡片里有两组「标签 + 值」行：**路径区**（APP / CLI / CONF
 | tab | 卡片 |
 |---|---|
 | 通用 `appearance` | 外观（主题 / 缩放）、**后台巡检（定时检查）**、Skills 统一目录、**配置导入 / 导出**（v0.30.0）、关于 |
-| Skill `general` | 技能使用统计（自动统计间隔）、**市场源**（默认 skills.sh 可删改 + 自定义远端源，v0.31.0） |
+| Skill `general` | 技能使用统计（自动统计间隔）、**市场源**（默认 skills.sh 可删改 + 自定义远端源，v0.31.0：`#market-sources-card`，源行 + 添加表单，读写经 CLI） |
 | IDE / Agent `agents` | IDE / Agent 默认路径；**卡片/列表上的能力摘要**（Skills / MCP / Hook 三行，无需点开详情）；客户端详情内的「Hook 配置」 |
 | **Hook `hooks`** | 要写入的 Hook 事件（勾选，按分类分组） |
 | MCP `mcp` | **活动端点**（下拉切换）、**自动发现**（开关 + 扫描路径只读）、MCP 端点库 |

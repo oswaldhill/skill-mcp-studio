@@ -94,7 +94,21 @@ class DetectBackendTest(unittest.TestCase):
 
 class ReadSourcesTest(unittest.TestCase):
     """v0.31.0 新源模型：QwenWork/企业 MCP 移除（用户定案：不是市场源）；
-    skills.sh 默认回落；可配置源透出。"""
+    skills.sh 默认回落；可配置源透出。
+
+    隔离：默认回落断言依赖 data/market_sources.yaml 不存在——setUp/tearDown
+    备份恢复（CLI 测试会写该文件，不隔离会漂移）。
+    """
+
+    def setUp(self):
+        self._path = ROOT / "data" / "market_sources.yaml"
+        self._orig = self._path.read_text(encoding="utf-8") if self._path.exists() else None
+
+    def tearDown(self):
+        if self._orig is not None:
+            self._path.write_text(self._orig, encoding="utf-8")
+        elif self._path.exists():
+            self._path.unlink()
 
     def test_default_fallback_is_skills_sh_only(self):
         """未配置时回落默认源 skills.sh（且不再有 qwenwork/enterprise）。"""

@@ -132,8 +132,22 @@ if __name__ == "__main__":
 
 
 class CliEntryTest(unittest.TestCase):
-    """CLI 三命令端到端（subprocess；写操作用 --config 无关的独立文件，
-    通过 monkeypatch 不可行——CLI 层直接验证真实文件流，但用完即删）。"""
+    """CLI 三命令端到端（subprocess）。
+
+    隔离纪律：CLI 写真实 data/market_sources.yaml——setUp 备份原内容、
+    tearDown 恢复（roundtrip 测试会增删源，不恢复会污染用户配置并让
+    fallback 断言漂移——实测踩过）。
+    """
+
+    def setUp(self):
+        self._path = ROOT / "data" / "market_sources.yaml"
+        self._orig = self._path.read_text(encoding="utf-8") if self._path.exists() else None
+
+    def tearDown(self):
+        if self._orig is not None:
+            self._path.write_text(self._orig, encoding="utf-8")
+        elif self._path.exists():
+            self._path.unlink()
 
     def _cli(self, *argv):
         import subprocess

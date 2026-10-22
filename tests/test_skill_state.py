@@ -43,11 +43,11 @@ class ReadSkillMetaTest(unittest.TestCase):
             self.assertEqual(meta["alpha"]["description"], "Does alpha things.")
             self.assertEqual(meta["alpha"]["homepage"], "")
             self.assertEqual(meta["beta"]["description"], "Short beta blurb.")
-            self.assertEqual(meta["gamma"], {"name": "gamma", "description": "", "homepage": ""})
+            self.assertEqual(meta["gamma"], {"name": "gamma", "description": "", "homepage": "", "version": None})
 
     def test_missing_dir_yields_empty_entries(self):
         meta = read_skill_meta("/no/such/repo", ["foo", "bar"])
-        self.assertEqual(meta, {"foo": {"name": "foo", "description": "", "homepage": ""}, "bar": {"name": "bar", "description": "", "homepage": ""}})
+        self.assertEqual(meta, {"foo": {"name": "foo", "description": "", "homepage": "", "version": None}, "bar": {"name": "bar", "description": "", "homepage": "", "version": None}})
 
     def test_reads_frontmatter_homepage(self):
         with tempfile.TemporaryDirectory() as tmp:
