@@ -295,6 +295,14 @@
   .stat-card .lbl { color: var(--muted); font-size: var(--fs-xs); margin-top: var(--sp-1a); }
   .quickbox { display: flex; align-items: center; gap: var(--gap-3); flex-wrap: wrap; padding: var(--sp-5) var(--sp-6); background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--r-card); }
   .quickbox-label { color: var(--faint); font-size: var(--fs-xs); margin-right: var(--sp-0b); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+  /* .panel：区块面板（v0.30.2 补真样式——此前是幽灵类，概览页「全量检查」
+     区无容器直接裸贴页面背景，与上方 stat-card / quickbox 的卡片语言断裂，
+     即用户反馈的「上下部分衔接不协调」）。取值与 stat-card 同源（--panel
+     底 / --line 边 / --r-card 圆角 / --shadow-card 阴影），不新造视觉。 */
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-card); padding: var(--sp-7); box-shadow: var(--shadow-card); }
+  .panel > .hd { margin-bottom: var(--sp-5); }
+  .panel > .hd h3 { margin: 0; font-family: var(--display); font-size: var(--fs-md); font-weight: 600; letter-spacing: -.015em; }
+  .panel > .hd .hint { margin-top: var(--sp-1); }
   .kpi-num { font-family: var(--display); font-weight: 600; font-size: var(--fs-md); font-variant-numeric: tabular-nums; }
 
   /* ============ cards / rows ============ */
@@ -1822,7 +1830,7 @@
            用户明确要求：审计只判配置是否正确，端口是否正常要单独看。
            所以这里是一个**独立区域**，只在用户手动点按钮时才真探活，
            其结果不参与上面审计区的任何颜色判定。 -->
-      <div class="panel" id="panel-endpoint-status" style="margin-top:var(--sp-7)">
+      <div class="panel" id="panel-endpoint-status" style="margin-top:var(--sp-6)">
         <div class="hd">
           <h3>全量检查</h3>
           <div class="hint">4 维度变更对比（与后台巡检同源）+ 端点连通性</div>
