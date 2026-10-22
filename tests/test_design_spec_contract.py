@@ -1532,3 +1532,19 @@ class EndpointStatusAllContractTest(unittest.TestCase):
             'runCli(["--endpoint-status", "--profile"', src,
             "reprobe 不得绑定 --profile（整体检查语义回退）",
         )
+
+    def test_full_check_runs_snapshot_and_endpoint(self):
+        """全量检查 = --snapshot（与托盘巡检同源）+ --endpoint-status 双命令。
+
+        用户反馈（2026-10-22）：「首页的检查应该显示后台全量检查的内容，
+        和状态栏的功能统一」——概览页检查必须跑与托盘巡检同一条
+        --snapshot（4 维度对比），缺任一命令即语义回退。
+        """
+        src = _src()
+        self.assertIn(
+            'runCli(["--snapshot", "--format", "json"])', src,
+            "全量检查缺 --snapshot（4 维度对比，与托盘巡检同源）",
+        )
+        self.assertIn("SNAPSHOT_DIFF_CACHE", src, "缺 4 维度 diff 渲染缓存")
+        self.assertIn('"检测到变更"', src, "缺 4 维度汇总 verdict 文案")
+        self.assertIn('"全部稳定"', src, "缺 4 维度稳定态文案")

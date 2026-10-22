@@ -1824,8 +1824,8 @@
            其结果不参与上面审计区的任何颜色判定。 -->
       <div class="panel" id="panel-endpoint-status" style="margin-top:var(--sp-7)">
         <div class="hd">
-          <h3>端点状态</h3>
-          <div class="hint">端口连通性检查，与配置审计互不影响</div>
+          <h3>全量检查</h3>
+          <div class="hint">4 维度变更对比（与后台巡检同源）+ 端点连通性</div>
         </div>
         <div id="endpoint-status"></div>
       </div>
@@ -2018,6 +2018,8 @@ let SNAP = null;
 // 审计只判配置（不探活），端点通断只由用户手动点「检查端点连通性」触发，
 // 结果暂存在这里，不写回 SNAP，免得端点状态又渗回审计区的颜色。
 let ENDPOINT_STATUS = null;
+// 全量检查缓存的 4 维度 diff（--snapshot 输出，与托盘巡检同源；v0.30.0）
+let SNAPSHOT_DIFF_CACHE = null;
 let ENDPOINT_CHECKED_AT = 0;
 
 // ---------------- theme（Light / Dark / System，参考 skills-manager 设置页） ----------------
@@ -2521,7 +2523,7 @@ function renderOverview() {
     '<div class="quickbox"><span class="quickbox-label">快捷操作</span>' +
     '<button class="btn-soft" data-action="add-agent">添加 IDE / API</button>' +
     '<button class="btn-soft" data-action="merge">修复链接</button>' +
-    '<button class="btn-soft" data-action="endpoint-check">检查端点连通性</button>' +
+    '<button class="btn-soft" data-action="endpoint-check">全量检查</button>' +
     '<button class="btn-soft" data-goto="settings">管理 MCP 端点</button>' +
     "</div>";
 }
@@ -5082,7 +5084,10 @@ async function refreshWithBtn(btnEl) {
 // 它才是真正发起 initialize + tools/list 的那条路径。
 //
 // 结果只更新 ENDPOINT_STATUS 并重绘**端点状态区**，不触碰审计区的颜色：
-// 端点通断与配置是否正确是两件独立的事。
+// 全量检查（v0.30.0，用户反馈「首页的检查应该显示后台全量检查的内容，
+// 和状态栏的功能统一」）：跑与托盘后台巡检**同一条** --snapshot 命令
+// （4 维度变更对比，结果天然同源——概览页显示的变更 ⇔ 托盘红点），
+// 再加端点库整体探活。端点通断与配置审计仍是两件独立的事（互不影响）。
 async function reprobeEndpoints(btnEl) {
   if (LOADING) return;
   LOADING = true;
@@ -5093,35 +5098,39 @@ async function reprobeEndpoints(btnEl) {
   const btn = btnEl;
   const orig = btn ? btn.textContent : "";
   if (btn) { btn.disabled = true; btn.textContent = "检查中…"; }
-  showToast("info", "正在检查端点连通性…", { loading: true });
+  showToast("info", "正在全量检查（4 维度对比 + 端点探活）…", { loading: true });
   let ok = false;
   try {
-    // v0.30.0（用户反馈）：整体检查端点库全部端点，不绑定活动端点
+    // 1. 4 维度快照对比（与托盘巡检同一条命令；退出码 0=执行成功，
+    //    has_changes 字段才是「有无变更」的判据——与托盘 snapshot_has_changes 同源）
+    const snapRes = await runCli(["--snapshot", "--format", "json"]);
+    let diff = null;
+    if (snapRes && snapRes.code === 0) {
+      diff = JSON.parse(snapRes.stdout);
+    } else if (snapRes) {
+      showBanner("err", "快照对比失败：" + (snapRes.stderr || cliErrDetail(snapRes) || `退出码 ${snapRes.code}`));
+    }
+    // 2. 端点库整体探活。退出码 1 = 探活了但端点不通。**这是有效结论而非执行失败**：
+    //    把结果照样呈现出来，让用户看到具体错误（与托盘巡检的退出码语义一致）。
     const res = await runCli(["--endpoint-status", "--format", "json"]);
-    if (res && res.code === 0) {
+    if (res && (res.code === 0 || res.code === 1)) {
       ENDPOINT_STATUS = JSON.parse(res.stdout);
       ENDPOINT_CHECKED_AT = Date.now();
+      SNAPSHOT_DIFF_CACHE = diff;
       renderEndpointStatus();
-      ok = true;
-    } else if (res && res.code === 1) {
-      // 退出码 1 = 探活了但端点不通。**这是有效结论而非执行失败**：
-      // 把结果照样呈现出来，让用户看到具体错误。
-      ENDPOINT_STATUS = JSON.parse(res.stdout);
-      ENDPOINT_CHECKED_AT = Date.now();
-      renderEndpointStatus();
-      ok = true;
+      ok = !!diff;   // 快照对比失败（diff=null）不算整体成功
     } else if (res) {
       // stderr 可能为空（如纯退出码失败）——空时回退到 stdout 详情或退出码，
-      // 不拼出「端点检查失败:」这种无信息横幅。
+      // 不拼出「检查失败:」这种无信息横幅。
       showBanner("err", "端点检查失败：" + (res.stderr || cliErrDetail(res) || `退出码 ${res.code}`));
     }
   } catch (err) {
-    showBanner("err", "端点检查失败（非审计结论）：" + err);
+    showBanner("err", "全量检查失败（非审计结论）：" + err);
   } finally {
     LOADING = false;
     if (btn) { btn.disabled = false; btn.textContent = orig; }
   }
-  showToast(ok ? "ok" : "err", ok ? "端点检查完成" : "端点检查失败");
+  showToast(ok ? "ok" : "err", ok ? "全量检查完成" : "全量检查失败");
 }
 
 // 渲染「端点状态」区。**只画端点连通性**，不碰审计区的任何元素。
@@ -5140,11 +5149,33 @@ function renderEndpointStatus() {
 
   if (!st) {
     el.innerHTML =
+      dimsHtml +
       '<div class="empty">尚未检查端点连通性。</div>' +
       '<div class="quickbox">' +
-      '<button class="btn-soft" data-action="reprobe">检查端点连通性</button>' +
+      '<button class="btn-soft" data-action="reprobe">全量检查</button>' +
       "</div>" + note;
     return;
+  }
+
+  // 4 维度变更对比（v0.30.0 全量检查，与托盘巡检同源）：每维度一行，
+  // 有变更 → 黄色 tag + 计数 + 跳转变更详情页；无变更 → 绿色「稳定」。
+  // 与托盘红点同判据（--snapshot 的 has_changes），两处显示永远一致。
+  const DIMS = [["agents", "IDE / Agent"], ["mcp", "MCP"], ["skills", "Skill"], ["hooks", "Hook"]];
+  let dimsHtml = "";
+  if (SNAPSHOT_DIFF_CACHE) {
+    const d = SNAPSHOT_DIFF_CACHE;
+    const s = d.summary || {};
+    const rows = DIMS.map(([key, label]) => {
+      const n = s[key] || 0;
+      const cls = n ? "warn" : "ok";
+      const txt = d.is_first ? "基线已保存" : (n ? `${n} 项变更` : "稳定");
+      return `<tr><th>${label}</th><td><span class="tag ${cls}">${txt}</span></td></tr>`;
+    }).join("");
+    const anyChange = d.has_changes;
+    dimsHtml =
+      `<div><span class="tag ${anyChange ? "warn" : "ok"}">${d.is_first ? "首次基线" : (anyChange ? "检测到变更" : "全部稳定")}</span>` +
+      ` <a href="#" data-goto="changes" class="muted">变更详情</a></div>` +
+      '<table class="kv"><tbody>' + rows + "</tbody></table>";
   }
 
   // 多端点整体检查（v0.30.0，kind=endpoint-status-all）：汇总 verdict +
@@ -5163,11 +5194,12 @@ function renderEndpointStatus() {
         `<td><span class="tag ${cls}">${label}</span> <span class="mono muted">${ep.elapsed_ms || 0}ms</span>${err}</td></tr>`;
     }).join("");
     el.innerHTML =
+      dimsHtml +
       `<div><span class="tag ${vCls}">${escapeHtml(verdict)}</span>` +
       ` <span class="muted">${s.ok}/${s.total} 连通</span></div>` +
       '<table class="kv"><tbody>' + rows + "</tbody></table>" +
       '<div class="quickbox">' +
-      '<button class="btn-soft" data-action="reprobe">重新检查连通性</button>' +
+      '<button class="btn-soft" data-action="reprobe">重新全量检查</button>' +
       "</div>" + note;
     return;
   }

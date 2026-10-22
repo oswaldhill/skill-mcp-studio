@@ -54,10 +54,11 @@ class ScopeRegressionTest(unittest.TestCase):
 
     def test_reprobe_tail_closes_before_panel_blocks(self):
         s = _script()
-        # 锚点 = reprobeEndpoints 的收尾 toast 文案。v0.24.0 起该函数改调独立出口
-        # ``--endpoint-status``，文案随之从「探活完成/失败」改为「端点检查完成/失败」；
+        # 锚点 = reprobeEndpoints 的收尾 toast 文案。v0.24.0 改调独立出口
+        # ``--endpoint-status``（「端点检查完成/失败」）；v0.30.0 升级为全量检查
+        # （--snapshot + --endpoint-status，「全量检查完成/失败」）。
         # 本用例的**意图未变**：函数必须在 FEAT-10 面板代码之前闭合。
-        tail = s.index('ok ? "端点检查完成" : "端点检查失败"')
+        tail = s.index('ok ? "全量检查完成" : "全量检查失败"')
         marker = s.index("// ---------------- 技能使用统计（FEAT-10）")
         self.assertLess(
             tail, marker,
