@@ -360,6 +360,38 @@ class CheckUpdatesTest(unittest.TestCase):
         self.assertEqual(out["summary"]["unknown"], 2)
         self.assertTrue(out["summary"].get("rate_limited"))
 
+    def test_rate_limited_result_not_cached(self):
+        """限流结果不写缓存（防固化：配额恢复后重查即恢复，实测教训）。"""
+        saved = []
+        with mock.patch("skill_market.list_installed", return_value=self._installed()), \
+             mock.patch("skill_market._remote_latest_version",
+                        return_value=(None, "rate_limited")), \
+             mock.patch("skill_market._load_check_cache", return_value=None), \
+             mock.patch("skill_market._save_check_cache",
+                        side_effect=lambda p: saved.append(p)), \
+             mock.patch("skill_state.read_skill_meta", return_value=self._local_versions()), \
+             mock.patch("market_sources.list_sources",
+                        return_value=([], False, [])):
+            out = check_updates()
+        self.assertTrue(out["summary"].get("rate_limited"))
+        self.assertEqual(saved, [], "限流结果不得写缓存（会固化全 unknown 一小时）")
+
+    def test_normal_result_is_cached(self):
+        """正常结果写缓存（对照：非限流时缓存生效）。"""
+        saved = []
+        with mock.patch("skill_market.list_installed", return_value=self._installed()), \
+             mock.patch("skill_market._remote_latest_version",
+                        return_value=("1.1.0", "ok")), \
+             mock.patch("skill_market._load_check_cache", return_value=None), \
+             mock.patch("skill_market._save_check_cache",
+                        side_effect=lambda p: saved.append(p)), \
+             mock.patch("skill_state.read_skill_meta", return_value=self._local_versions()), \
+             mock.patch("market_sources.list_sources",
+                        return_value=([], False, [])):
+            out = check_updates()
+        self.assertFalse(out["summary"].get("rate_limited"))
+        self.assertEqual(len(saved), 1, "正常结果应写缓存")
+
     def test_counts_reported(self):
         out = self._run((None, "unavailable"))
         self.assertEqual(out["summary"]["total"], 2)

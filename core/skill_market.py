@@ -446,7 +446,13 @@ def check_updates(only: Optional[List[str]] = None, force: bool = False) -> Dict
         "updates": rows,
         "summary": summary,
     }
-    _save_check_cache(payload)
+    # 限流结果不写缓存：限流是暂时状态（配额每小时重置），固化 1 小时
+    # 会让用户在配额恢复后仍看到全 unknown（实测踩过：两轮检查烧光配额，
+    # 第三轮 GUI 读到缓存的限流结果，误以为「没有可升级的技能」）。
+    if not rate_limited:
+        _save_check_cache(payload)
+    else:
+        payload["cache_ttl_note"] = "限流结果不缓存；配额每小时重置后重查即可"
     return payload
 
 

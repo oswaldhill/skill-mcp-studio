@@ -6196,8 +6196,12 @@ function renderEndpointStatus() {
       renderSkillList();
       const s = data.summary || {};
       const cached = data.cache_hit ? "（缓存）" : "";
-      showToast(s.outdated ? "warn" : "ok",
-        `检查完成${cached}：有更新 ${s.outdated || 0} · 最新 ${s.current || 0} · 未知 ${s.unknown || 0}`);
+      if (s.rate_limited) {
+        showToast("warn", `GitHub 配额已用尽（每小时 ${s.total || 0} 次重置）：本轮部分技能未检查，稍后重试或设 GITHUB_TOKEN`);
+      } else {
+        showToast(s.outdated ? "warn" : "ok",
+          `检查完成${cached}：有更新 ${s.outdated || 0} · 最新 ${s.current || 0} · 未知 ${s.unknown || 0}`);
+      }
     } catch (e) {
       showToast("err", "检查返回无法解析：" + e);
     } finally {
