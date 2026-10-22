@@ -446,11 +446,14 @@ Agent 卡片里有两组「标签 + 值」行：**路径区**（APP / CLI / CONF
 （刷新页面后需重查）。工具栏「检查更新」按钮（`skill-check-updates`）
 异步跑检查并 toast 三态汇总。
 
-**更新列的升级操作（v0.31.0）**：outdated 行的 tag 与「升级」按钮
-（`ghost sm`，`data-skill-upgrade`）包在 inline-flex 容器内（`--gap-2`
-间距 + `flex-wrap`），列宽 12%（tag+按钮并排所需）；点击走
-confirmModal（说明覆盖语义）→ runTaskModal（`--market-upgrade <name>
---yes`）→ 成功后刷新技能清单并重查更新。
+**更新列的升级入口（v0.31.0 用户定案）**：**不设独立升级按钮**——
+「有更新」tag 本身可点击（`.tag-upgradable`：`cursor:pointer` + hover
+边框反馈 + focus ring；`role="button"` + `tabindex="0"`），点击弹升级
+确认；升级操作另融入行尾 kebab 菜单（outdated 技能显示「升级到最新版」
+项）。确认流：confirmModal（说明覆盖语义）→ runTaskModal
+（`--market-upgrade <name> --yes`）→ 成功后刷新技能清单并重查更新。
+**筛选段**含「可升级」（`data-seg="updatable"`：SKILL_UPDATES 中
+outdated 的技能；未检查时该段为空）。
 
 ### 2.4 元信息与数字
 - 数字、包名、路径、版本号一律 `--mono` + `--faint` 或 `--muted`。

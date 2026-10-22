@@ -1618,13 +1618,25 @@ class SkillVersionUiContractTest(unittest.TestCase):
         self.assertIn("有更新", src)
         self.assertIn("最新", src)
 
-    def test_skill_upgrade_button_and_flow(self):
-        """outdated 行的升级按钮 + 确认流 + 表单 label（评审修复锚）。"""
+    def test_skill_upgrade_entry_points_and_flow(self):
+        """升级入口（v0.31.0 用户反馈定案）：tag 可点击 + kebab 菜单项，
+        **不得有独立升级按钮**；确认流走 --market-upgrade --yes。"""
         src = _src()
-        self.assertIn('data-skill-upgrade=', src, "outdated 行缺升级按钮")
+        # 入口一：可点击 tag（role=button + data 属性）
+        self.assertIn('class="tag warn tag-upgradable" data-skill-upgrade=', src,
+                      "「有更新」tag 应可点击（tag-upgradable + data-skill-upgrade）")
+        # 入口二：kebab 菜单项（outdated 时）
+        self.assertIn('data-spm="upgrade"', src, "kebab 菜单缺「升级」项")
+        self.assertIn('升级到最新版', src)
+        # 不得有独立升级按钮（用户明确反馈去掉）
+        self.assertNotIn('class="ghost sm" data-skill-upgrade=', src,
+                         "不得有独立升级按钮（tag 即入口，用户定案）")
         self.assertIn("runSkillUpgrade", src, "缺升级处理函数")
         self.assertIn('--market-upgrade", name, "--yes"', src,
                       "升级应走 --market-upgrade --yes（写操作带确认）")
+        # 可升级筛选段
+        self.assertIn('data-seg="updatable">可升级', src, "筛选段缺「可升级」")
+        self.assertIn('seg === "updatable"', src, "筛选逻辑缺 updatable 分支")
         # 市场源添加表单：不用 placeholder 充当 label（taste-skill 4.6）
         self.assertIn('aria-label="源 ID"', src, "表单字段缺 aria-label（placeholder 不是标签）")
         self.assertIn('<span class="k">源 ID</span>', src, "表单缺可见 label（.k 行结构）")

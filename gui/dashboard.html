@@ -1499,6 +1499,10 @@
   .skill-table th.st-status { width: 11%; text-align: right; }
   .skill-table th.st-ops { width: 4%; text-align: right; }
   .skill-table td.st-ver { font-family: var(--mono); color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+  /* 可升级 tag：可点击（v0.31.0 用户反馈——tag 即升级入口） */
+  .skill-table .tag-upgradable { cursor: pointer; }
+  .skill-table .tag-upgradable:hover { border-color: var(--warn-border); filter: brightness(1.05); }
+  .skill-table .tag-upgradable:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .skill-table td { padding: var(--sp-2) var(--sp-5); border-bottom: 1px solid var(--line); vertical-align: middle; }
   .skill-table tbody tr:last-child td { border-bottom: none; }
   .skill-table tbody tr { cursor: pointer; }
@@ -1943,6 +1947,7 @@
           <button type="button" class="seg-btn" data-seg="on">已启用</button>
           <button type="button" class="seg-btn" data-seg="partial">部分启用</button>
           <button type="button" class="seg-btn" data-seg="off">未启用</button>
+          <button type="button" class="seg-btn" data-seg="updatable">可升级</button>
         </span>
         <span class="skill-cat-chips" id="skill-cat-chips" role="group" aria-label="按分类筛选"></span>
         <span class="view-toggle" role="group" aria-label="视图切换">
@@ -3208,6 +3213,8 @@ function renderSkillList() {
     if (seg === "on") return enabled === total && total > 0;
     if (seg === "partial") return enabled > 0 && enabled < total;
     if (seg === "off") return enabled === 0;
+    // v0.31.0：可升级筛选（检查更新后 outdated 的技能；未检查时该段为空）
+    if (seg === "updatable") return !!(SKILL_UPDATES && (SKILL_UPDATES[s] || {}).state === "outdated");
     return true;
   };
   const matchCat = (s) => cat === "all" || skillCategory(s) === cat;
@@ -3308,11 +3315,12 @@ function renderSkillList() {
       // v0.31.0：版本列（SKILL.md frontmatter）+ 更新列（检查后三态 tag）
       const ver = (meta[s] && meta[s].version) || "";
       const upd = SKILL_UPDATES ? (SKILL_UPDATES[s] || null) : null;
+      // v0.31.0（用户反馈）：不设独立升级按钮——「有更新」tag 本身可点击
+      // （cursor:pointer + data-skill-upgrade），点击弹升级确认；升级操作
+      // 另融入行尾 kebab 菜单（见 toggleSkillMenu）。
       const updCell = upd
         ? (upd.state === "outdated"
-            ? `<span style="display:inline-flex;align-items:center;gap:var(--gap-2);flex-wrap:wrap">` +
-              `<span class="tag warn" title="本地 ${upd.local || "?"} → 远端 ${upd.remote || "?"}">有更新</span>` +
-              `<button type="button" class="ghost sm" data-skill-upgrade="${escapeHtml(s)}" title="升级到远端最新版（本地内容会被覆盖，先备份）">升级</button></span>`
+            ? `<span class="tag warn tag-upgradable" data-skill-upgrade="${escapeHtml(s)}" role="button" tabindex="0" title="本地 ${upd.local || "?"} → 远端 ${upd.remote || "?"}，点击升级">有更新</span>`
             : upd.state === "current"
               ? '<span class="tag ok" title="与远端一致">最新</span>'
               : `<span class="tag" title="${escapeHtml(upd.note || "无来源信息")}">未知</span>`)
@@ -7580,8 +7588,15 @@ function toggleSkillMenu(btnEl, skill) {
   const rect = btnEl ? btnEl.getBoundingClientRect() : null;
   const left = rect ? Math.max(12, rect.right - 176) : window.innerWidth - 200;
   const top = rect ? rect.bottom + 6 : 120;
+  // v0.31.0：outdated 技能的 kebab 加「升级」项（升级入口之二；入口之一是
+  // 更新列的可点击 tag——用户反馈「升级按钮融合到扩展按钮中」）
+  const upgradable = SKILL_UPDATES && (SKILL_UPDATES[skill] || {}).state === "outdated";
+  const upgradeItem = upgradable
+    ? `<button class="pm-item" data-spm="upgrade" data-skill="${escapeHtml(skill)}">${ICONS.refresh}<span>升级到最新版</span></button>`
+    : "";
   root.innerHTML = `<div class="pop-menu" style="left:${left}px;top:${top}px">
     <button class="pm-item" data-spm="detail" data-skill="${escapeHtml(skill)}">${ICONS.info}<span>查看详情</span></button>
+    ${upgradeItem}
     <button class="pm-item" data-spm="backup" data-skill="${escapeHtml(skill)}">${ICONS.box}<span>备份</span></button>
     <button class="pm-item" data-spm="export" data-skill="${escapeHtml(skill)}">${ICONS.download}<span>导出 zip</span></button>
     <button class="pm-item" data-spm="rename" data-skill="${escapeHtml(skill)}">${ICONS.edit}<span>编辑名称 / 描述</span></button>
@@ -7594,6 +7609,7 @@ function toggleSkillMenu(btnEl, skill) {
 function runSkillMenu(pm, skill) {
   closePop();
   if (pm === "detail") showSkillDetail(skill);
+  else if (pm === "upgrade") runSkillUpgrade(skill);
   else if (pm === "backup") backupSkill(skill);
   else if (pm === "export") exportSkill(skill);
   else if (pm === "rename") openRenameSkillModal(skill);
