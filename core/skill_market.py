@@ -425,8 +425,39 @@ def check_updates(only: Optional[List[str]] = None, force: bool = False) -> Dict
         local = (local_versions.get(name) or {}).get("version")
         owner_repo = parse_github_source(row.get("source_url"))
         remote, reason = None, ""
+        # v0.31.0：无本地 version 的技能回退「时间比对」——上游该技能路径
+        # （skillPath）的最新 commit 时间 vs 本地 lock 的 updatedAt/installedAt。
+        # 语义弱于版本号（commit 了但内容可能没变），note 必须标注判定依据。
+        # 内容哈希（skillFolderHash）不比对：远端无对应 hash 可查（GitHub
+        # API 不提供目录 hash 对比；raw 拉文件需多次请求且要处理 ref）。
+        local_time = row.get("updated_at") or row.get("installed_at")
+        skill_path = row.get("skill_path")
+        if local is None and owner_repo and local_time and skill_path:
+            state = "unknown"
+            if rate_limited:
+                reason = "GitHub API 配额已用尽，本轮跳过（可设 GITHUB_TOKEN 提升配额）"
+            else:
+                remote_time, status = _remote_commit_time(
+                    owner_repo[0], owner_repo[1], skill_path)
+                if status == "rate_limited":
+                    rate_limited = True
+                    reason = "GitHub API 配额已用尽（可设 GITHUB_TOKEN 提升配额）"
+                elif remote_time and _iso_lt(local_time, remote_time):
+                    state = "outdated"
+                    reason = "按上游提交时间判定（本地无版本号）：该技能路径有新提交"
+                elif remote_time:
+                    state = "current"
+                    reason = "按上游提交时间判定（本地无版本号）：该技能路径无新提交"
+                else:
+                    state = "unknown"
+                    reason = "上游该路径无提交记录或查询失败"
+            counts[state] += 1
+            rows.append(dict(row, state=state, local_version=local,
+                             remote_version=None, note=reason))
+            continue
+
         if local is None:
-            reason = "本地无版本号（SKILL.md 缺 version 字段）"
+            reason = "本地无版本号且无安装时间/路径信息，无法比对"
         elif not owner_repo:
             reason = "无 GitHub 来源信息，无法比对"
         elif rate_limited:

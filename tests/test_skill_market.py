@@ -684,3 +684,61 @@ class UpgradeFailureDetectionTest(unittest.TestCase):
         res = execute_plan(plan, runner=lambda argv, timeout: {"code": 0, "stdout": fake_stdout})
         self.assertFalse(res["ok"], "无建议命令的假成功必须识破且不自动重装")
         self.assertIn("无法自动更新", res["stderr"])
+
+
+class TimeFallbackCheckTest(unittest.TestCase):
+    """无 version 技能的时间比对回退（v0.31.0）。
+
+    数据基础：lock 的 updatedAt/installedAt + skillPath + sourceUrl；
+    查询：_remote_commit_time（路径过滤——只看该技能路径的提交）。
+    语义弱于版本号，note 必须标注「按上游提交时间判定」。
+    """
+
+    def _installed(self):
+        return {"installed": [
+            # 无 version + 有时间/路径 → 走时间比对
+            {"name": "a", "source_url": "https://github.com/o/r.git",
+             "skill_path": "skills/a/SKILL.md",
+             "updated_at": "2026-01-01T00:00:00.000Z", "registered": True},
+            # 无 version + 无时间 → unknown
+            {"name": "b", "source_url": "https://github.com/o/r.git",
+             "skill_path": "skills/b/SKILL.md", "updated_at": None,
+             "registered": True},
+        ]}
+
+    def _run(self, commit_time, status="ok"):
+        with mock.patch("skill_market.list_installed", return_value=self._installed()), \
+             mock.patch("skill_market._remote_commit_time",
+                        return_value=(commit_time, status)), \
+             mock.patch("skill_market._remote_latest_version",
+                        return_value=(None, "unavailable")), \
+             mock.patch("skill_market._load_check_cache", return_value=None), \
+             mock.patch("skill_market._save_check_cache", lambda p: None), \
+             mock.patch("skill_state.read_skill_meta",
+                        return_value={"a": {"version": None}, "b": {"version": None}}), \
+             mock.patch("market_sources.list_sources",
+                        return_value=([], False, [])):
+            return check_updates()
+
+    def test_newer_commit_means_outdated(self):
+        out = self._run("2026-09-01T00:00:00Z")
+        by = {r["name"]: r for r in out["updates"]}
+        self.assertEqual(by["a"]["state"], "outdated")
+        self.assertIn("按上游提交时间判定", by["a"]["note"])
+
+    def test_older_commit_means_current(self):
+        out = self._run("2025-12-01T00:00:00Z")
+        by = {r["name"]: r for r in out["updates"]}
+        self.assertEqual(by["a"]["state"], "current")
+
+    def test_no_time_no_fallback(self):
+        out = self._run("2026-09-01T00:00:00Z")
+        by = {r["name"]: r for r in out["updates"]}
+        self.assertEqual(by["b"]["state"], "unknown")
+        self.assertIn("无安装时间", by["b"]["note"])
+
+    def test_rate_limited_falls_to_unknown(self):
+        out = self._run(None, "rate_limited")
+        by = {r["name"]: r for r in out["updates"]}
+        self.assertEqual(by["a"]["state"], "unknown")
+        self.assertTrue(out["summary"].get("rate_limited"))
