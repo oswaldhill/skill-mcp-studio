@@ -3236,7 +3236,15 @@ function renderSkillList() {
   const pageItems = shown.slice(pageStart, pageStart + SKILL_PAGE_SIZE);
 
   if (!shown.length) {
-    lel.innerHTML = '<div class="empty">无匹配技能<div class="empty-cta"><button class="primary sm" data-action="merge">修复链接</button></div></div>';
+    // v0.31.0：「可升级」段的空态要区分两种（否则误导）：
+    // 未检查 → 引导先检查；检查过但无 outdated → 明确说没有
+    if (skillSeg() === "updatable" && !SKILL_UPDATES) {
+      lel.innerHTML = '<div class="empty">尚未检查更新：点工具栏「检查更新」后，此处显示可升级的技能</div>';
+      return;
+    }
+    lel.innerHTML = '<div class="empty">' + (skillSeg() === "updatable" && SKILL_UPDATES
+      ? '没有可升级的技能（检查结果均为最新或未知）'
+      : '无匹配技能') + '<div class="empty-cta"><button class="primary sm" data-action="merge">修复链接</button></div></div>';
     renderSkillPager(0, 0, 0);
     return;
   }
@@ -3393,6 +3401,12 @@ function initSkillToolbar() {
         SKILL_SEG = b.dataset.seg; saveStore("skill-seg", SKILL_SEG);
         seg.querySelectorAll("[data-seg]").forEach((x) => x.classList.toggle("active", x.dataset.seg === SKILL_SEG));
         renderSkillList();
+        // v0.31.0：切到「可升级」但从未检查过（SKILL_UPDATES=null，重开
+        // 应用即归零）→ 自动触发检查更新——否则该段恒空，用户误以为
+        // 「没有可升级的」（实测踩过：CLI 23 outdated，GUI 空列表）。
+        if (SKILL_SEG === "updatable" && !SKILL_UPDATES) {
+          runSkillCheckUpdates(null);
+        }
       });
     });
   }
