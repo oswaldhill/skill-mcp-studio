@@ -5173,14 +5173,6 @@ function renderEndpointStatus() {
   if (!el) return;
   const st = ENDPOINT_STATUS;
 
-  if (!st) {
-    el.innerHTML =
-      (dimsVerdict ? `<div style="margin-bottom:var(--sp-2)">${dimsVerdict}</div>` : "") +
-      (dimsRows ? '<div class="fc-grid"><div><div class="fc-group-title">变更对比 · 4 维度</div>' + dimsRows + "</div></div>" : "") +
-      '<div class="empty">尚未检查端点连通性。</div>';
-    return;
-  }
-
   // 全量检查统一视图（v0.30.2 重设计：两列分组网格 + 状态点行——信息稀疏
   // 时表格形式感大于信息量）。4 维度（变更对比）与端点（连通性）各一组；
   // 有变更时明细行内展开（该行下 name: detail），不跳转变更详情页。
@@ -5206,6 +5198,17 @@ function renderEndpointStatus() {
     dimsVerdict = `<span class="tag ${anyChange ? "warn" : "ok"}">${d.is_first ? "首次基线" : (anyChange ? "检测到变更" : "全部稳定")}</span>`;
   }
 
+  // 未检查（页面加载即渲染）：先判空再走后续分支——判空必须独立于
+  // SNAPSHOT_DIFF_CACHE 块（曾因声明块前移残留孤立右花括号被误包进
+  // 块内，st=null 时落到 st.kind 抛 TypeError，2026-10-22 实测）。
+  if (!st) {
+    el.innerHTML =
+      (dimsVerdict ? `<div style="margin-bottom:var(--sp-2)">${dimsVerdict}</div>` : "") +
+      (dimsRows ? '<div class="fc-grid"><div><div class="fc-group-title">变更对比 · 4 维度</div>' + dimsRows + "</div></div>" : "") +
+      '<div class="empty">尚未检查端点连通性。</div>';
+    return;
+  }
+
   // 多端点整体检查（kind=endpoint-status-all）：与 4 维度同网格呈现。
   if (st.kind === "endpoint-status-all") {
     const s = st.summary || {};
@@ -5214,7 +5217,9 @@ function renderEndpointStatus() {
     const vCls = allOk ? "ok" : "err";
     const epRows = (st.endpoints || []).map((ep) => {
       const state = ep.state || "not_run";
-      const dotCls = state === "ok" ? "ok" : state === "failed" ? "err" : "warn";
+      // 未检查（not_run）用中性空 class——「没测过」既不是通过也不是故障，
+      // 用警告色会让人误以为端点有问题（§2.5 状态覆盖原则，同旧版口径）。
+      const dotCls = state === "ok" ? "ok" : state === "failed" ? "err" : "";
       const label = state === "ok" ? "连通" : state === "failed" ? "不通" : "未检查";
       const ms = state === "ok" ? ` <span class="mono muted">${ep.elapsed_ms || 0}ms</span>` : "";
       const err = ep.error ? `<div class="note">${escapeHtml(String(ep.error))}</div>` : "";
@@ -5244,44 +5249,6 @@ function renderEndpointStatus() {
     return;
   }
 
-  const state = st.state || "not_run";
-  // 未检查必须是**中性色**（""），不能是 warn —— 沿用原总览护栏的口径：
-  // 「没测过」既不是通过也不是故障，用警告色会让人误以为端点有问题。
-  const cls = state === "ok" ? "ok" : state === "failed" ? "err" : "";
-  const label =
-    state === "ok" ? "连通正常" : state === "failed" ? "不通" : "尚未检查";
-  const ep = st.endpoint || {};
-  const rows = [
-    ["状态", label],
-    ["名称", ep.name || "hermes"],
-    ["地址", ep.url || ""],
-    ["传输", ep.transport || "streamable-http"],
-  ];
-  if (state !== "not_run") {
-    rows.push(["initialize", st.initialize_ok ? "成功" : "失败"]);
-    rows.push(["tools/list", st.tools_list_ok ? "成功" : "失败"]);
-    rows.push(["工具数", String(st.tool_count || 0)]);
-    rows.push(["耗时", `${st.elapsed_ms || 0}ms`]);
-  }
-  if (st.checked_at) rows.push(["检查时间", st.checked_at]);
-  if (st.error) rows.push(["错误", st.error]);
-
-  const table =
-    '<table class="kv"><tbody>' +
-    rows
-      .map(
-        ([k, v]) =>
-          `<tr><th>${escapeHtml(k)}</th><td>${escapeHtml(String(v))}</td></tr>`
-      )
-      .join("") +
-    "</tbody></table>";
-
-  el.innerHTML =
-    `<div class="endpoint-verdict ${cls}">${escapeHtml(label)}</div>` +
-    table +
-    '<div class="quickbox">' +
-    '<button class="btn-soft" data-action="reprobe">重新检查连通性</button>' +
-    "</div>" + note;
 }
 
 

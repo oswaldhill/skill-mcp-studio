@@ -136,9 +136,9 @@ class EndpointStatusWiringTest(unittest.TestCase):
         新落点：``renderEndpointStatus`` 的三态 class 组装。
         """
         self.assertIn(
-            'const cls = state === "ok" ? "ok" : state === "failed" ? "err" : "";',
+            '<div class="empty">尚未检查端点连通性。</div>',
             self.src,
-            "未检查必须落到中性色（空 class），不能是 warn/err",
+            "未检查必须落到中性 .empty（不是 warn/err 色的行）",
         )
 
     def test_failure_shows_endpoint_and_reason(self):
@@ -146,9 +146,10 @@ class EndpointStatusWiringTest(unittest.TestCase):
 
         失败时必须能看到是哪个端点、为什么不通 —— 只报「失败」用户无从下手。
         """
-        self.assertIn('rows.push(["错误", st.error]);', self.src)
-        self.assertIn('["地址", ep.url || ""]', self.src)
-        self.assertIn('["状态", label]', self.src)
+        # v0.30.2 重设计后的锚点：端点名渲染 + 错误行内 note
+        self.assertIn('ep.endpoint?.name || "?"', self.src)
+        self.assertIn('ep.error ? `<div class="note">', self.src)
+        self.assertIn('st.error))}</span></div>', self.src)
 
     def test_endpoint_status_section_exists(self):
         """独立区域与容器必须真的存在，否则渲染函数会静默 return。"""
@@ -170,6 +171,83 @@ class EndpointStatusWiringTest(unittest.TestCase):
         """源代码里必须写清「退出码 1 = 探活了但不通 → 是有效结论」。"""
         self.assertIn("ENDPOINT_STATUS = JSON.parse(res.stdout);", self.src)
         self.assertIn("退出码 1 = 探活了但端点不通", self.src)
+
+
+class RenderEndpointStatusExecTest(unittest.TestCase):
+    """node 真实执行 renderEndpointStatus（防 TDZ 回归，2026-10-22 实测教训）。
+
+    v0.30.2 重设计时 dimsVerdict/dimsRows 的 let 声明被放在 ``if (!st)``
+    分支**之后**，而该分支引用了它们——页面加载（ENDPOINT_STATUS=null）
+    即抛 ``ReferenceError: Cannot access 'dimsVerdict' before initialization``。
+    渲染护栏此前只做静态断言没执行该函数，TDZ 漏网。本用例在 node 里
+    真实执行三条路径（未检查 / 多端点 / 执行失败），任何路径抛错即失败。
+    """
+
+    def _exec(self, endpoint_status, snapshot_diff):
+        import tempfile
+        src = _src()
+        esc = re.search(r'const escapeHtml = \(v\) =>.*?&#39;"\);', src, re.S).group(0)
+        # 提取函数体（到下一个顶格 function 或注释块）
+        i = src.index("function renderEndpointStatus(")
+        j = src.index("\n}\n", i) + 3
+        fn = src[i:j]
+        js = "\n".join([
+            "let ENDPOINT_STATUS = " + json.dumps(endpoint_status) + ";",
+            "let SNAPSHOT_DIFF_CACHE = " + json.dumps(snapshot_diff) + ";",
+            esc,
+            'const holder = { _v: "", set innerHTML(v) { this._v = v; }, get innerHTML() { return this._v; } };',
+            'const $ = (id) => (id === "endpoint-status" ? holder : null);',
+            fn,
+            "renderEndpointStatus();",
+            "process.stdout.write(holder._v);",
+        ])
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "render.js"
+            path.write_text(js, encoding="utf-8")
+            proc = subprocess.run([NODE, str(path)], capture_output=True, text=True, timeout=30)
+        self.assertEqual(proc.returncode, 0, "renderEndpointStatus 抛错（TDZ/引用错误）: " + proc.stderr[:300])
+        return proc.stdout
+
+    def test_unchecked_path_no_tdz(self):
+        """st=null（页面加载即渲染）不得抛 TDZ——v0.30.2 实测缺陷的回归锚。"""
+        if not NODE:
+            self.skipTest("node 不可用")
+        html = self._exec(None, None)
+        self.assertIn("尚未检查", html)
+
+    def test_all_endpoints_path_renders_grid(self):
+        """多端点路径：渲染两列网格 + 分组小标题 + 状态点行。"""
+        if not NODE:
+            self.skipTest("node 不可用")
+        st = {
+            "kind": "endpoint-status-all",
+            "summary": {"total": 2, "ok": 2, "failed": 0},
+            "endpoints": [
+                {"state": "ok", "endpoint": {"name": "a", "url": "u", "transport": "t"},
+                 "elapsed_ms": 12, "initialize_ok": True, "tools_list_ok": True},
+                {"state": "failed", "endpoint": {"name": "b", "url": "u2", "transport": "t"},
+                 "elapsed_ms": 0, "error": "boom"},
+            ],
+        }
+        diff = {"has_changes": False, "is_first": False,
+                "summary": {"agents": 0, "mcp": 0, "skills": 0, "hooks": 0},
+                "dimensions": {}}
+        html = self._exec(st, diff)
+        self.assertIn("fc-grid", html)
+        self.assertIn("变更对比 · 4 维度", html)
+        self.assertIn("端点连通性", html)
+        self.assertIn("dot ok", html)
+        self.assertIn("dot err", html)
+        self.assertIn("boom", html)
+
+    def test_exec_failure_path_renders_error(self):
+        """执行失败路径（error 无 state）：红色错误行，不落「尚未检查」。"""
+        if not NODE:
+            self.skipTest("node 不可用")
+        html = self._exec({"error": "profile not found"}, None)
+        self.assertIn("检查执行失败", html)
+        self.assertIn("profile not found", html)
+        self.assertNotIn("尚未检查", html)
 
 
 class McpPanelVerdictSourceTest(unittest.TestCase):

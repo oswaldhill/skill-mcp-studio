@@ -1519,7 +1519,7 @@ class EndpointStatusAllContractTest(unittest.TestCase):
         )
         self.assertIn('"全部连通"', src, "缺少汇总 verdict 文案（全部连通）")
         self.assertIn('"部分不通"', src, "缺少汇总 verdict 文案（部分不通）")
-        self.assertIn("重新检查连通性", src, "多端点视图缺少重试入口")
+        self.assertIn("重新全量检查", src, "多端点视图缺少重试入口（卡片头 fc-head）")
 
     def test_reprobe_does_not_pass_profile(self):
         """整体检查不得带 --profile（带了对单端点，违背用户反馈）。"""
