@@ -93,16 +93,32 @@ class DetectBackendTest(unittest.TestCase):
 
 
 class ReadSourcesTest(unittest.TestCase):
-    def test_three_sources_always_present(self):
-        """三个源恒在清单中，缺失的标 unavailable 而非省略。"""
-        srcs = read_sources()
-        self.assertEqual(set(srcs["sources"]), {"skills.sh", "qwenwork", "enterprise"})
+    """v0.31.0 新源模型：QwenWork/企业 MCP 移除（用户定案：不是市场源）；
+    skills.sh 默认回落；可配置源透出。"""
 
-    def test_unavailable_sources_carry_reason(self):
+    def test_default_fallback_is_skills_sh_only(self):
+        """未配置时回落默认源 skills.sh（且不再有 qwenwork/enterprise）。"""
         srcs = read_sources()
-        for s in srcs["sources"].values():
-            if not s["available"]:
-                self.assertTrue(s["reason"], f"{s['id']} 不可用但未给原因")
+        ids = [s["id"] for s in srcs["sources"]]
+        self.assertEqual(ids, ["skills-sh"])
+        self.assertNotIn("qwenwork", ids)
+        self.assertNotIn("enterprise", ids)
+        self.assertTrue(srcs["fallback"])
+
+    def test_configured_sources_passthrough(self):
+        import tempfile
+        import os
+        from market_sources import set_source, list_sources
+        with tempfile.TemporaryDirectory() as td:
+            path = os.path.join(td, "market_sources.yaml")
+            set_source("hub", label="H", stype="github-repo",
+                       url="https://github.com/o/r", path=path)
+            with mock.patch("market_sources.list_sources",
+                            return_value=list_sources(path)):
+                srcs = read_sources()
+            ids = [s["id"] for s in srcs["sources"]]
+            self.assertIn("hub", ids)
+            self.assertFalse(srcs["fallback"])
 
 
 class ListInstalledTest(unittest.TestCase):
@@ -279,6 +295,12 @@ class ParseGithubSourceTest(unittest.TestCase):
 
 
 class CheckUpdatesTest(unittest.TestCase):
+    """v0.31.0 版本比对语义：本地 version vs 远端 latest release tag。
+
+    mock：_remote_latest_version（远端版本）+ read_skill_meta（本地版本）+
+    缓存读写（隔离到 no-op，防污染仓库 data/）。
+    """
+
     def _installed(self):
         return {"installed": [
             {"name": "a", "source_url": "https://github.com/o/r.git",
@@ -288,54 +310,67 @@ class CheckUpdatesTest(unittest.TestCase):
              "updated_at": None, "registered": True},
         ]}
 
-    def test_three_states(self):
+    def _local_versions(self):
+        return {"a": {"version": "1.0.0"}, "b": {"version": None}}
+
+    def _run(self, remote, only=None, force=False):
         with mock.patch("skill_market.list_installed", return_value=self._installed()), \
-             mock.patch("skill_market._remote_commit_time",
-                        return_value=("2026-09-01T00:00:00Z", "ok")):
-            out = check_updates()
+             mock.patch("skill_market._remote_latest_version", return_value=remote), \
+             mock.patch("skill_market._load_check_cache", return_value=None), \
+             mock.patch("skill_market._save_check_cache", lambda p: None), \
+             mock.patch("skill_state.read_skill_meta", return_value=self._local_versions()), \
+             mock.patch("market_sources.list_sources",
+                        return_value=([{"id": "s", "label": "s", "type": "skills-sh",
+                                        "enabled": True}], False, [])):
+            return check_updates(only=only, force=force)
+
+    def test_three_states(self):
+        out = self._run(("1.1.0", "ok"))
         by = {r["name"]: r["state"] for r in out["updates"]}
-        self.assertEqual(by["a"], "outdated")
-        self.assertEqual(by["b"], "unknown")
+        self.assertEqual(by["a"], "outdated")   # 1.0.0 < 1.1.0
+        self.assertEqual(by["b"], "unknown")    # 无来源
 
     def test_up_to_date_state(self):
-        with mock.patch("skill_market.list_installed", return_value=self._installed()), \
-             mock.patch("skill_market._remote_commit_time",
-                        return_value=("2025-12-01T00:00:00Z", "ok")):
-            out = check_updates()
+        out = self._run(("1.0.0", "ok"))
         by = {r["name"]: r["state"] for r in out["updates"]}
         self.assertEqual(by["a"], "current")
 
     def test_remote_failure_is_unknown_not_error(self):
-        with mock.patch("skill_market.list_installed", return_value=self._installed()), \
-             mock.patch("skill_market._remote_commit_time",
-                        return_value=(None, "unavailable")):
-            out = check_updates()
+        out = self._run((None, "unavailable"))
         by = {r["name"]: r["state"] for r in out["updates"]}
         self.assertEqual(by["a"], "unknown")
         self.assertTrue(next(r for r in out["updates"] if r["name"] == "a")["note"])
 
+    def test_rate_limited_is_unknown_with_hint(self):
+        out = self._run((None, "rate_limited"))
+        self.assertEqual(out["summary"]["unknown"], 2)
+        self.assertTrue(out["summary"].get("rate_limited"))
+
     def test_counts_reported(self):
-        with mock.patch("skill_market.list_installed", return_value=self._installed()), \
-             mock.patch("skill_market._remote_commit_time",
-                        return_value=(None, "unavailable")):
-            out = check_updates()
+        out = self._run((None, "unavailable"))
         self.assertEqual(out["summary"]["total"], 2)
         self.assertEqual(out["summary"]["unknown"], 2)
 
     def test_only_filters_to_requested_names(self):
-        with mock.patch("skill_market.list_installed", return_value=self._installed()), \
-             mock.patch("skill_market._remote_commit_time",
-                        return_value=(None, "unavailable")):
-            out = check_updates(only=["b"])
+        out = self._run((None, "unavailable"), only=["b"])
         self.assertEqual([r["name"] for r in out["updates"]], ["b"])
 
     def test_unregistered_skills_are_skipped(self):
-        """没有来源登记就无法比对版本，不进更新清单。"""
         payload = {"installed": [{"name": "z", "registered": False,
                                   "source_url": None, "updated_at": None}]}
-        with mock.patch("skill_market.list_installed", return_value=payload):
+        with mock.patch("skill_market.list_installed", return_value=payload), \
+             mock.patch("skill_market._load_check_cache", return_value=None), \
+             mock.patch("skill_market._save_check_cache", lambda p: None), \
+             mock.patch("market_sources.list_sources",
+                        return_value=([], False, [])):
             out = check_updates()
         self.assertEqual(out["updates"], [])
+
+    def test_local_version_in_row(self):
+        out = self._run(("2.0.0", "ok"))
+        row_a = next(r for r in out["updates"] if r["name"] == "a")
+        self.assertEqual(row_a["local_version"], "1.0.0")
+        self.assertEqual(row_a["remote_version"], "2.0.0")
 
 
 class NoDestructiveCommandTest(unittest.TestCase):

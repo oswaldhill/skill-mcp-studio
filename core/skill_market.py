@@ -105,26 +105,33 @@ def detect_backend() -> Dict[str, Any]:
 
 
 def read_sources() -> Dict[str, Any]:
-    """三个市场源的可用性汇总。缺失源带 reason，不抛异常。"""
+    """市场源清单（v0.31.0 重构：走 market_sources 可配置模型）。
+
+    用户定案（2026-10-22）：QwenWork / 企业 MCP **不是市场源**（它们是特定
+    会话工具集成，概念错位）——从源列表移除。skills.sh 为默认源（可删改）；
+    支持自定义 github-repo 源。skills-sh 类型的可用性取决于 npx 后端。
+    """
+    from market_sources import list_sources
+
     backend = detect_backend()
-    sources: Dict[str, Any] = {}
-    for sid, label, _ in _SOURCE_SPECS:
-        if sid == "skills.sh":
-            sources[sid] = {
-                "id": sid, "label": label,
-                "available": backend["available"],
-                "reason": "" if backend["available"] else backend["reason"],
-            }
+    configured, fallback, invalid = list_sources()
+    out: List[Dict[str, Any]] = []
+    for s in configured:
+        entry = dict(s)
+        if s["type"] == "skills-sh":
+            entry["available"] = backend["available"]
+            entry["reason"] = "" if backend["available"] else backend["reason"]
         else:
-            sources[sid] = {
-                "id": sid, "label": label, "available": False,
-                "reason": (
-                    "需要 QwenWork 客户端的 mcp__qw-builtin__ 工具；当前会话未检测到"
-                    if sid == "qwenwork"
-                    else "未检测到提供 searchSkills 能力的企业 MCP 服务"
-                ),
-            }
-    return {"backend": backend, "sources": sources}
+            # github-repo：可用性在更新检查时逐源验证（此处不预发请求）
+            entry["available"] = True
+            entry["reason"] = ""
+        out.append(entry)
+    return {
+        "backend": backend,
+        "sources": out,
+        "fallback": fallback,
+        "invalid": invalid,
+    }
 
 
 # 路径不在此处求值：模块级 ``Path.home()`` 常量会在 import 时定死、运行期
@@ -350,51 +357,176 @@ def _iso_lt(a: Optional[str], b: Optional[str]) -> bool:
     return bool(a and b and a < b)
 
 
-def check_updates(only: Optional[List[str]] = None) -> Dict[str, Any]:
-    """只读更新检测。三态：outdated / current / unknown。
+def check_updates(only: Optional[List[str]] = None, force: bool = False) -> Dict[str, Any]:
+    """只读更新检测（v0.31.0 重构：版本号比对 + 缓存 + 新源模型）。
 
-    **绝不调用 `npx skills check` 或 `npx skills update`** —— 前者名为检查、
-    实为升级（实测一次调用即更新 41 个技能，且未出现在 `--help` 中）。
-    本函数只发起 HTTP GET，不写盘、不改动技能库。
+    三态：outdated / current / unknown。**绝不调用 `npx skills check` 或
+    `npx skills update`** —— 前者名为检查、实为升级（实测一次调用即更新
+    41 个技能）。本函数只发 HTTP GET，不写技能库（缓存文件除外）。
+
+    比对基准（v0.31.0 变更）：**本地版本（SKILL.md frontmatter version:）
+    vs 远端版本（GitHub latest release tag）**——此前用安装时间 vs 远端
+    commit 时间，既不直观也不可靠。无来源信息的技能 → unknown（带 reason）。
+
+    缓存：data/market_check_cache.json，TTL 1 小时；force=True 跳过。
     """
+    # 缓存命中（非 force 且未过期）直接返回
+    cached = _load_check_cache()
+    if cached is not None and not force:
+        payload = cached
+        payload["cache_hit"] = True
+        if only:
+            wanted = set(only)
+            payload["updates"] = [r for r in payload.get("updates", [])
+                                  if r.get("name") in wanted]
+            payload["summary"] = _recount(payload["updates"])
+        return payload
+
+    from market_sources import list_sources
+    sources, _fb, _inv = list_sources()
+    enabled = [s for s in sources if s.get("enabled", True)]
+    github_sources = [s for s in enabled if s["type"] == "github-repo"]
+
     listing = list_installed()
     judged = [r for r in listing["installed"] if r.get("registered")]
     if only:
         wanted = set(only)
         judged = [r for r in judged if r["name"] in wanted]
 
+    # 本地版本（SKILL.md frontmatter；D2 轨解析）
+    from paths import skills_dir as _sd
+    from skill_state import read_skill_meta
+    local_versions = read_skill_meta(str(_sd()), [r["name"] for r in judged])
+
     counts = {"outdated": 0, "current": 0, "unknown": 0}
     rows: List[Dict[str, Any]] = []
     rate_limited = False
+    no_source_hint = not github_sources and not any(
+        parse_github_source(r.get("source_url")) for r in judged)
     for row in judged:
+        name = row["name"]
+        local = (local_versions.get(name) or {}).get("version")
         owner_repo = parse_github_source(row.get("source_url"))
         remote, reason = None, ""
-        if not owner_repo:
-            reason = "非 GitHub 来源或缺少来源信息，无法比对"
+        if local is None:
+            reason = "本地无版本号（SKILL.md 缺 version 字段）"
+        elif not owner_repo:
+            reason = "无 GitHub 来源信息，无法比对"
         elif rate_limited:
-            # 已确认限流就不再逐条重试：未鉴权时每小时仅 60 次，
-            # 继续请求只会把剩余配额也烧掉并拖慢整轮检查。
             reason = "GitHub API 配额已用尽，本轮跳过（可设 GITHUB_TOKEN 提升配额）"
         else:
-            remote, status = _remote_commit_time(
-                owner_repo[0], owner_repo[1], row.get("skill_path"))
+            remote, status = _remote_latest_version(owner_repo[0], owner_repo[1])
             if status == "rate_limited":
                 rate_limited = True
                 reason = "GitHub API 配额已用尽（可设 GITHUB_TOKEN 提升配额）"
             elif remote is None:
-                reason = "远端查询失败（私有或已删除仓库）"
+                reason = "远端查询失败（私有仓库或无 release/tag）"
 
-        if remote is None:
+        if remote is None or local is None:
             state = "unknown"
-        elif _iso_lt(row.get("updated_at"), remote):
+        elif _version_lt(local, remote):
             state = "outdated"
         else:
             state = "current"
         counts[state] += 1
-        rows.append(dict(row, state=state, remote_commit=remote, note=reason))
+        rows.append(dict(row, state=state, local_version=local,
+                         remote_version=remote, note=reason))
 
     summary = {"total": len(rows), **counts}
     if rate_limited:
         summary["rate_limited"] = True
         summary["hint"] = "GitHub 未鉴权查询每小时 60 次；设 GITHUB_TOKEN 可提升配额"
-    return {"updates": rows, "summary": summary}
+    if no_source_hint and not rows:
+        summary["hint"] = "无可用市场源且技能无来源信息；可在设置页配置市场源"
+    payload = {
+        "kind": "market-check",
+        "checked_at": __import__("datetime").datetime.now(
+            __import__("datetime").timezone.utc).isoformat(),
+        "cache_hit": False,
+        "updates": rows,
+        "summary": summary,
+    }
+    _save_check_cache(payload)
+    return payload
+
+
+def _recount(rows: List[Dict[str, Any]]) -> Dict[str, int]:
+    counts = {"outdated": 0, "current": 0, "unknown": 0}
+    for r in rows:
+        counts[r.get("state", "unknown")] += 1
+    return {"total": len(rows), **counts}
+
+
+def _check_cache_path() -> "Path":
+    # 缓存与 skill_versions.json 同目录（仓库 data/，gitignored）
+    return Path(__file__).resolve().parents[1] / "data" / "market_check_cache.json"
+
+
+def _load_check_cache() -> Optional[Dict[str, Any]]:
+    """TTL 1 小时；过期/损坏/缺失返回 None。"""
+    import time as _time
+    try:
+        raw = _check_cache_path().read_text(encoding="utf-8")
+        data = json.loads(raw)
+        checked = data.get("checked_at") or ""
+        ts = __import__("datetime").datetime.fromisoformat(checked).timestamp()
+        if _time.time() - ts > 3600:
+            return None
+        return data
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def _save_check_cache(payload: Dict[str, Any]) -> None:
+    try:
+        path = _check_cache_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+                        encoding="utf-8")
+    except OSError:
+        pass  # 缓存写失败不影响检查结果
+
+
+def _version_lt(a: str, b: str) -> bool:
+    """语义化版本比较：a < b？解析失败退化为字符串不等比对。
+
+    ``1.0`` vs ``1.0.1`` → True；``1.2.0`` vs ``1.10.0`` → True（数值比较，
+    非字典序）；``v1.0`` 前缀容忍；非语义化（如 commit hash）退化为
+    ``a != b`` 即视为有更新。
+    """
+    def _parse(v: str) -> Optional[tuple]:
+        v = v.strip().lstrip("vV")
+        parts = v.split(".")
+        try:
+            return tuple(int(x) for x in parts)
+        except ValueError:
+            return None
+    pa, pb = _parse(a), _parse(b)
+    if pa is not None and pb is not None:
+        # 元组比较：1.0 < 1.0.1（长度不等时短的前缀小）——Python 元组序天然如此
+        return pa < pb
+    return a.strip() != b.strip()
+
+
+def _remote_latest_version(owner: str, repo: str, timeout: int = 20):
+    """GitHub latest release tag（v0.31.0：版本号比对取代 commit 时间）。
+
+    优先 /releases/latest 的 tag_name；无 release 回落 /tags 首个。
+    返回 (tag 或 None, 状态 ok / rate_limited / unavailable)。
+    """
+    data, status = _http_get_json(
+        f"https://api.github.com/repos/{owner}/{repo}/releases/latest", timeout)
+    if status in (403, 429):
+        return None, "rate_limited"
+    if isinstance(data, dict) and data.get("tag_name"):
+        return str(data["tag_name"]), "ok"
+    # 无 release：回落 tags（可能为空）
+    data, status = _http_get_json(
+        f"https://api.github.com/repos/{owner}/{repo}/tags?per_page=1", timeout)
+    if status in (403, 429):
+        return None, "rate_limited"
+    if isinstance(data, list) and data and data[0].get("name"):
+        return str(data[0]["name"]), "ok"
+    return None, "unavailable"
+
+
