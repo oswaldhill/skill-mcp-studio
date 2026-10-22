@@ -6,6 +6,7 @@
 | v1.1 | 2026-09-07 | 新增 §1「应用范围」：跨平台（Windows / macOS / Linux）三环境支持，三类路径三平台化（决策 A）；配套调研见《跨平台路径矩阵-Windows-Linux.md》 |
 | v1.2 | 2026-09-18 | 版本时点字段改「另见 CHANGELOG」，不再散落快照号（`version.json` 单源真相）；§8 缺口看板标注关闭版本 |
 | v1.3 | 2026-10-21 | 页面结构勘正：五页 → **七页**（Hook 页、变更详情页自 v0.25.0 起已存在，本文此前未回写）；§5.1/§5.3/§10/§11 同步 |
+| v1.4 | 2026-10-22 | §6.2 新增技能版本管理需求（市场源可配置 / 版本展示 / 更新检查，v0.31.0 #4 前半）；市场源定案：QwenWork / 企业 MCP **不是市场源**（移除），skills.sh 为默认源且可删改 |
 
 > **版本口径**：本文**不再内嵌「当前版本 = vX.Y.Z」快照**——版本号以仓库 `version.json`（及 `CHANGELOG.md`）为单一真相，本文只描述产品能力而不随版本号漂移。
 
@@ -183,6 +184,9 @@ skill-mcp-studio 是一台面向开发者的**管理型桌面应用**（Tauri 2 
 | 查看单技能详情（描述 + 每客户端启用状态） | 读 | 右侧 Sheet |
 | 每客户端技能启停（ToggleSwitch） | 写 | `--enable-skill <s> --client <c>` / `--disable-skill ...`（见 §8 缺口） |
 | 一键合并（dry-run 预览 → 确认实写） | 写 | `--fix-skills --dry-run` → `--fix-skills` |
+| 技能清单展示版本（本地 `SKILL.md` frontmatter `version:`） | 读 | 快照 `skills.skill_meta[].version`（v0.31.0） |
+| 更新检查（远端最新版比对，三态：有更新 / 最新 / 未知） | 读 | `--market-check`（v0.31.0：结果缓存 + 限流保护；Skills 页「检查更新」按钮触发） |
+| 市场源管理（默认 skills.sh，**可删改**；支持自定义远端源） | 写（通用） | `--set-market-source` / `--remove-market-source`（设置页 Skill tab「市场源」卡片，v0.31.0） |
 | 设置统一技能目录 | 写（通用） | `--set-unified-dir`（设置页） |
 
 ### 6.3 MCP
