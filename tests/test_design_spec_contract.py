@@ -1648,6 +1648,17 @@ class SkillVersionUiContractTest(unittest.TestCase):
                       "outdated tag 应直接显示远端版本号/时间（无远端信息才回退「有更新」文字）")
         # 确认框带远端信息
         self.assertIn("upg-ver-num", src, "升级确认框应有版本对比条（当前 → 远端）")
+        # 升级确认表：列宽治理 + 取值纪律（2026-10-23 用户反馈「UI 问题」）
+        self.assertIn("table-layout: fixed", src, "升级表应定宽布局（防列宽随内容漂移）")
+        self.assertIn('<colgroup><col class="c-name">', src, "升级表应显式声明列宽")
+        self.assertIn("col.c-arrow", src, "箭头列应独立定宽（不应与技能名争空间）")
+        # 版本列不放判定说明文字（长文案会撑破固定列宽且语义错位）
+        self.assertNotIn('"（按时间判定）"', src,
+                         "版本列不得放「按时间判定」说明文字（应进 title）")
+        self.assertIn("const verTip =", src, "应有 verTip() 提供完整取值说明")
+        # 警告行必须保留 flex 布局三项（删掉会退化为 block，文案出现单字孤行）
+        self.assertIn(".upg-warn { display: flex;", src, "警告行应为 flex 行内布局")
+        self.assertIn("text-wrap: pretty", src, "警告行应声明 text-wrap: pretty 防孤字")
         # 升级模态排版（2026-10-23 优化）：进度条 + 状态词 + 汇总统计块
         self.assertIn("upg-bar-fill", src, "升级模态缺进度条")
         self.assertIn("upg-state-word", src, "升级行缺状态词（成功/失败/升级中）")

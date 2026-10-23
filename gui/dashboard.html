@@ -1519,18 +1519,24 @@
   .upg-ver-num.to { color: var(--accent); }
   .upg-ver-num, .upg-ver-label { text-align: center; }
   .upg-ver-arrow { color: var(--muted); flex: none; font-size: var(--fs-md); }
-  .upg-warn .w-ic { color: var(--warn); flex: none; }
+  .upg-warn { display: flex; align-items: flex-start; gap: var(--gap-2); color: var(--muted); font-size: var(--fs-xs); margin-top: var(--sp-4); text-wrap: pretty; }
+  .upg-warn .w-ic { color: var(--warn); flex: none; line-height: 1.5; }
   .upg-warn .w-ic svg { width: 13px; height: 13px; flex: none; }
   /* 确认表格（2026-10-23 用户定案：完整显示所有技能 + 版本对比 + 分页） */
-  .upg-table { width: 100%; border-collapse: collapse; margin-top: var(--sp-2); }
+  .upg-table { width: 100%; border-collapse: collapse; margin-top: var(--sp-2); table-layout: fixed; }
   .upg-table th { text-align: left; font-size: var(--fs-xs); font-weight: 500; color: var(--muted); padding: var(--sp-1a) var(--sp-2); border-bottom: 1px solid var(--line); }
   .upg-table td { font-size: var(--fs-sm); padding: var(--sp-1a) var(--sp-2); border-bottom: 1px solid var(--line); }
   .upg-table tr:last-child td { border-bottom: none; }
-  .upg-table .t-name { font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 14rem; }
-  .upg-table .t-ver { font-family: var(--mono); color: var(--muted); white-space: nowrap; }
+  /* 列宽固定：技能列吃剩余宽度（长名优先完整显示），版本列等宽便于纵向比对，
+   * 箭头列仅容纳符号（原先 2rem 偏宽，与截断的技能名争空间） */
+  .upg-table col.c-name { width: auto; }
+  .upg-table col.c-ver { width: 22%; }
+  .upg-table col.c-arrow { width: 1.75rem; }
+  .upg-table .t-name { font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .upg-table .t-ver { font-family: var(--mono); color: var(--muted); white-space: nowrap; text-align: right; overflow: hidden; text-overflow: ellipsis; }
   .upg-table .t-ver.to { color: var(--accent); }
-  .upg-table .t-arrow { color: var(--muted); text-align: center; width: 2rem; }
-  .upg-pager { display: flex; align-items: center; justify-content: center; gap: var(--gap-3); margin-top: var(--sp-3); }
+  .upg-table .t-arrow { color: var(--muted); text-align: center; padding-left: 0; padding-right: 0; }
+  .upg-pager { display: flex; align-items: center; justify-content: center; gap: var(--gap-3); margin-top: var(--sp-4); }
   .upg-pager .pg-info { font-size: var(--fs-xs); color: var(--muted); }
   .upg-warn { margin-top: var(--sp-4); }
   .upg-modal .actions { margin-top: var(--sp-4); padding-top: var(--sp-3); border-top: 1px solid var(--line); }
@@ -6401,16 +6407,26 @@ function renderEndpointStatus() {
     const PAGE_SIZE = 8;
     let upgPage = 0;
     const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    // 版本列只放「版本号或日期」，不放判定说明（说明进 title），否则长文案
+    // 会撑歪固定列宽，且「当前」列出现「（按时间判定）」属语义错位。
     const verOf = (name, which) => {
       const u = (SKILL_UPDATES || {})[name] || {};
-      if (which === "local") return u.local || (u.remoteTime ? "（按时间判定）" : "-");
+      if (which === "local") return u.local || "-";
       return u.remote || (u.remoteTime
         ? new Date(u.remoteTime).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" }) : "最新");
+    };
+    const verTip = (name) => {
+      const u = (SKILL_UPDATES || {})[name] || {};
+      const parts = [`本地 ${u.local || "无版本号"}`];
+      if (u.remote) parts.push(`远端 ${u.remote}`);
+      else if (u.remoteTime) parts.push(`远端提交 ${new Date(u.remoteTime).toLocaleDateString("zh-CN")}`);
+      if (u.note) parts.push(u.note);
+      return parts.join(" · ");
     };
     const renderConfirmTable = () => {
       const start = upgPage * PAGE_SIZE;
       const items = list.slice(start, start + PAGE_SIZE);
-      const rows = items.map((n) => `<tr>
+      const rows = items.map((n) => `<tr title="${escapeHtml(verTip(n))}">
         <td class="t-name" title="${escapeHtml(n)}">${escapeHtml(n)}</td>
         <td class="t-ver">${escapeHtml(String(verOf(n, "local")))}</td>
         <td class="t-arrow">→</td>
@@ -6421,9 +6437,11 @@ function renderEndpointStatus() {
         <span class="pg-info">第 ${upgPage + 1} / ${pageCount} 页 · 共 ${total} 个</span>
         <button type="button" class="pg-btn ${upgPage >= pageCount - 1 ? "disabled" : ""}" data-upg-pg="next" ${upgPage >= pageCount - 1 ? "disabled" : ""}>下一页 <span class="pg-arrow">›</span></button>
       </div>` : "";
-      return `<table class="upg-table"><thead><tr>
-        <th>技能</th><th>当前</th><th></th><th>远端</th>
-      </tr></thead><tbody>${rows}</tbody></table>${pager}`;
+      return `<table class="upg-table">
+        <colgroup><col class="c-name"><col class="c-ver"><col class="c-arrow"><col class="c-ver"></colgroup>
+        <thead><tr>
+          <th>技能</th><th class="t-ver">当前</th><th></th><th class="t-ver to">远端</th>
+        </tr></thead><tbody>${rows}</tbody></table>${pager}`;
     };
     const confirmHtml = total > 1
       ? `<div class="modal-backdrop"><div class="modal cfm-card task-card upg-modal">
@@ -6433,7 +6451,7 @@ function renderEndpointStatus() {
           <span class="upg-count-label">个技能待升级 · 按顺序逐个 · 每个先备份</span>
         </div>
         <div id="upg-confirm-body">${renderConfirmTable()}</div>
-        <div class="upg-warn"><span class="w-ic">${ICONS.info}</span><span>本地内容会被上游覆盖；上游仓库迁移时自动重装（结果一致）</span></div>
+        <div class="upg-warn"><span class="w-ic">${ICONS.info}</span><span>本地内容会被上游覆盖，每个升级前自动备份；上游仓库迁移时按建议自动重装。</span></div>
         <div class="actions">
           <button class="cfm-btn-cancel close-push" id="upg-cancel">取消</button>
           <button class="cfm-btn-danger" id="upg-confirm">确认升级</button>

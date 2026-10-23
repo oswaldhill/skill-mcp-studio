@@ -466,11 +466,22 @@ outdated 的技能；未检查时该段为空）。
 `.upg-ver-label` 小标签；中间 `.upg-ver-arrow` 箭头）。
 批量走 `.upg-count-row` 大数字锚点（`.upg-count-num` display
 fs-xl 粗体 tabular-nums + `.upg-count-label` muted 说明）+
-`.upg-table` **版本对比表格**（四列：技能 `.t-name` mono 截断 /
-当前 `.t-ver` muted / 箭头 `.t-arrow` / 远端 `.t-ver.to` accent；
-每页 8 行，>8 时 `.upg-pager` 分页器——复用 pg-btn/pg-info 语言，
-「第 i / N 页 · 共 M 个」）。`.upg-warn` 覆盖警告行（ICONS.info
-warn 色图标，margin-top sp-4）。操作按钮 `upg-cancel` /
+`.upg-table` **版本对比表格**（`table-layout: fixed` + `colgroup`
+定列宽：技能 `col.c-name` 取剩余宽度 / 版本 `col.c-ver` 各 22% /
+箭头 `col.c-arrow` 1.75rem 仅容符号；四列：技能 `.t-name` mono
+单行省略 / 当前 `.t-ver` muted 右对齐 / 箭头 `.t-arrow` 居中 /
+远端 `.t-ver.to` accent；每页 8 行，>8 时 `.upg-pager` 分页器
+复用 pg-btn/pg-info 语言「第 i / N 页 · 共 M 个」，`margin-top`
+取 `sp-4`）。
+
+**表格取值纪律（2026-10-23 修订）**：版本列只放「版本号或日期」，
+不放判定说明文字（无本地版本显 `-`，无远端 tag 显提交日期）；
+「按上游提交时间判定」这类说明一律进行的 `title`（由 `verTip()`
+拼装：本地版本 · 远端版本或提交日 · note），因为长说明会撑破固定
+列宽，且让「当前」列出现说明文字属语义错位。`.upg-warn` 覆盖警告行（flex 行内布局、`align-items:
+flex-start` + `gap-2`、`text-wrap: pretty` 防孤字；ICONS.info
+warn 色 13px 图标；`margin-top` sp-4。**不得删掉 flex/color/
+font-size 三项**，退化为 block 会让文案硬换行出现单字孤行）。操作按钮 `upg-cancel` /
 `upg-confirm`（actions 区上边线分隔 + sp-4/sp-3 间距）。
 
 **进度阶段**：`.upg-progress` 两端对齐计数（左「**i** / N」右「P%」，
