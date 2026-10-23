@@ -26,6 +26,7 @@ DESIGN.md 的「§2.9 组件硬数字」表声明了各弹窗/开关/间距的�
 
 from __future__ import annotations
 
+import html as html_mod
 import re
 import unittest
 from pathlib import Path
@@ -734,6 +735,55 @@ class HtmlMdReverseMirrorTest(unittest.TestCase):
             missing[:20],
             [],
             "以下 HTML 章节在 DESIGN.md 的标题里找不到（HTML 单方面新增/未同步）：%r"
+            % missing[:20],
+        )
+
+    # ── 反方向：MD → HTML ────────────────────────────────────────────────
+    # 2026-10-23 补：DESIGN.md「附：双轨强制机制」原文写着「本文件与 HTML 可读版的
+    # 章节由门禁**双向**比对 —— 两侧都不许单方面新增章节」，但此前只实现了
+    # HTML→MD 一条。于是 §2.3d（图例放置与对齐）只在 MD 里存在、HTML 里整节缺失，
+    # 门禁全绿 —— 正是 implements-only-one-direction 的沉默失败。
+    @staticmethod
+    def _section_core(raw: str) -> str:
+        """把标题行归一到「核心词」：去标签/反引号/行首编号/括号说明/锚点井号。"""
+        txt = re.sub(r"<[^>]+>", " ", raw)
+        txt = html_mod.unescape(txt)
+        txt = txt.replace("`", "").replace("#", "").strip()
+        txt = txt.split("（")[0].strip()
+        txt = re.sub(r"^[0-9]+[a-z]?\.?\s*", "", txt).strip()
+        txt = txt.lstrip("附：").strip()
+        return re.sub(r"\s+", "", txt)
+
+    def test_every_md_section_appears_in_html(self):
+        """MD 的每个章节标题（核心词）也必须在 HTML 里作为一个标题出现。
+
+        取 HTML 的 ``h1``–``h4``：``h1`` 是文档标题，``h2``/``h3`` 是章节，``h4`` 是
+        §5 检查清单的四个分组（MD 里是 ``###``，HTML 里折叠成 ``h4``）—— 只取 h2/h3
+        会把这四个当成「缺失」，产生误报。
+        """
+        md = SPEC.read_text(encoding="utf-8")
+        md_cores = [
+            self._section_core(line.lstrip("#"))
+            for line in md.splitlines()
+            if re.match(r"^#{2,3}\s", line)
+        ]
+        md_cores = [c for c in md_cores if c]
+
+        raw_html = SPEC_HTML.read_text(encoding="utf-8")
+        html_cores = [
+            self._section_core(m)
+            for m in re.findall(r"<h[1-4][^>]*>(.*?)</h[1-4]>", raw_html, re.S)
+        ]
+        html_cores = [c for c in html_cores if c]
+
+        missing = [
+            c for c in md_cores
+            if not any(c in h or h in c for h in html_cores)
+        ]
+        self.assertEqual(
+            missing[:20],
+            [],
+            "以下 MD 章节在 DESIGN.html 的标题里找不到（MD 单方面新增/未同步）：%r"
             % missing[:20],
         )
 

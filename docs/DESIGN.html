@@ -439,6 +439,10 @@
     <a href="#s2-1" class="sub">2.1 按钮</a>
     <a href="#s2-2" class="sub">2.2 列表行</a>
     <a href="#s2-3" class="sub">2.3 卡片</a>
+    <a href="#s2-3b" class="sub">2.3b 卡片标签列对齐</a>
+    <a href="#s2-3c" class="sub">2.3c IDE / Agent 列表视图</a>
+    <a href="#s2-3d" class="sub">2.3d 图例的放置与对齐</a>
+    <a href="#s2-3e" class="sub">2.3e 技能表列</a>
     <a href="#s2-4" class="sub">2.4 元信息与数字</a>
     <a href="#s2-5" class="sub">2.5 状态覆盖</a>
     <a href="#s2-5b" class="sub">2.5b 弹窗容器</a>
@@ -449,8 +453,10 @@
     <a href="#s2-6" class="sub">2.6 工具条</a>
     <a href="#s2-7" class="sub">2.7 变更卡片</a>
     <a href="#s2-8" class="sub">2.8 托盘弹框</a>
-    <a href="#s2-11">2.11 概览页「端点状态」区</a>
-        <a href="#s3">3. 排版与间距</a>
+    <a href="#s2-9" class="sub">2.9 组件硬数字</a>
+    <a href="#s2-10" class="sub">2.10 设置页</a>
+    <a href="#s2-11" class="sub">2.11 概览页「全量检查」区</a>
+    <a href="#s3">3. 排版与间距</a>
     <a href="#s3b">3b. 可访问性</a>
     <a href="#s4">4. 落地页配方（不采用）</a>
     <a href="#s5">5. 检查清单</a>
@@ -467,9 +473,9 @@
         新增界面时先在这里找现成组件，找不到再补，并把补的那条写回来。
       </p>
       <div class="meta-row">
-        <span class="meta-pill"><b>7</b> 章节</span>
-        <span class="meta-pill"><b>18</b> 检查项</span>
-        <span class="meta-pill"><b>28</b> 项测试兜底</span>
+        <span class="meta-pill"><b>9</b> 章节</span>
+        <span class="meta-pill"><b>22</b> 检查项</span>
+        <span class="meta-pill"><b>3</b> 个门禁文件</span>
         <span class="meta-pill">来源 <code>docs/DESIGN.md</code></span>
         <button class="theme-btn" id="theme-toggle" type="button" aria-label="切换深浅主题">切换主题</button>
       </div>
@@ -883,14 +889,51 @@
       <p>列表视图列序固定为：<code>名称 | 类型 | 安装 | APP | CLI | CONFIG | 技能目录 | MCP | Hook | 操作</code>。
         每个状态列都必须配一条同名图例（<code>.skill-legend</code>），四态与列内取值一一对应：
         两者都复用既有的 <code>.skill-legend</code>（<code>.legend-label</code> / <code>.legend-item</code> / <code>.legend-swatch</code> / <code>.legend-note</code>）。</p>
+    </section>
+
+    <!-- ═══ 2.3d ═══ -->
+    <section id="s2-3d">
+      <h3 id="s2-3d">2.3d 图例（<code>.skill-legend</code>）的放置与对齐<a class="anchor" href="#s2-3d" aria-label="锚点">#</a></h3>
+      <p><strong>位置：一律放在所说明内容的「上方」</strong>（2026-10-14 用户定案）。页面级图例涉及
+        Skills 页、IDE/Agent 页（MCP + Hook 两条）、MCP 页、一键合并预览弹窗，共 5 处。</p>
+      <blockquote>
+        <p>走过一次弯路：曾把这 5 处全移到内容最下方（理由是「图例是读数据之后的对照说明」），
+        用户看到实际渲染后判定「还是放在上面好看」，于是全部回退。教训：这类「放上还是放下」的取舍，
+        语义上两边都讲得通，<strong>必须看实际渲染再定</strong>。不变量由
+        <code>LegendPlacementAndAlignmentTest.test_legends_come_before_their_content</code> 钉住。</p>
+      </blockquote>
+      <p><strong>标签列必须定宽</strong>：<code>.skill-legend .legend-label { min-width: calc(var(--sp-9) + var(--sp-3a)) }</code>（31px）。
+        同一页会叠放多条图例，标签名字长短不一（<code>MCP</code> 3 字符 vs <code>Hook</code> 4 字符），
+        不定宽时各自第一个色点<strong>错开 2px</strong>（实测）；定宽后严格对齐。与 §2.3b 的 58px 同一思路。</p>
+      <p><strong>每条 <code>.legend-swatch</code> 都必须带语义 class</strong>：</p>
       <div class="table-wrap"><table>
-        <thead><tr><th>情形</th><th>Hook 列显示</th></tr></thead>
+        <thead><tr><th>class</th><th>颜色 token</th><th>用于</th></tr></thead>
         <tbody>
-          <tr><td>已登记且全部写入</td><td><code>N/M</code>（<code>.tag.ok</code>）</td></tr>
-          <tr><td>已登记且部分写入</td><td><code>N/M</code>（中性 <code>.tag</code>，绿色表示已就绪）</td></tr>
-          <tr><td>已登记但未写入</td><td><code>未写入</code>（<code>.tag.warn</code>）</td></tr>
-          <tr><td>已登记但插件型</td><td><code>仅审计</code></td></tr>
-          <tr><td><strong>未登记 Hook 配置路径</strong></td><td><strong><code>未收录</code></strong>（<strong>不是</strong>「不支持」）</td></tr>
+          <tr><td><code>.ok</code></td><td><code>--ok</code></td><td>全部就绪</td></tr>
+          <tr><td><code>.warn</code></td><td><code>--warn</code></td><td>缺失 / 未配置</td></tr>
+          <tr><td><code>.err</code></td><td><code>--err</code></td><td>未设置 / 不可用</td></tr>
+          <tr><td><code>.na</code></td><td><code>--faint</code></td><td>不适用（未收录 / 仅审计 / 跳过）</td></tr>
+          <tr><td><code>.neutral</code></td><td><code>--muted</code></td><td>中间态（部分已配置）——既非就绪也非缺失</td></tr>
+        </tbody></table></div>
+      <blockquote>
+        <p><strong>漏 class 是个隐蔽陷阱</strong>：<code>&lt;span class="legend-swatch"&gt;&lt;/span&gt;</code>
+        仍会命中基类拿到 9px 宽高，但没有 background 规则 → 渲染成<strong>看不见的占位</strong>；
+        同时零宽度的它会把<strong>后面的条目整体左移</strong>，造成同页两条图例错位（实测踩过）。
+        不变量由 <code>LegendPlacementAndAlignmentTest</code> 守住：色点必须有语义 class、各变体必须有
+        background、标签列必须定宽、图例必须排在内容之前。</p>
+      </blockquote>
+      <p><strong>Hook 列判据：只看有没有配置，不看配置内容</strong>（2026-10-13 用户要求）。某事件下只要存在任意
+        hook 条目即算「已配置」——命令内容、是否第三方工具，一概不参与判定；「缺关键事件」同理 = 该客户端支持
+        但完全没有配置的事件。此前只统计「命中特定工具命令签名」的事件，于是同一事件被别的工具占着时报「未配置」，
+        而客户端其实配了。</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>情形</th><th>Hook 列显示</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>已登记且全部配置</td><td><code>N/M</code>（<code>.tag.ok</code>）</td><td>N=已配置事件数，M=支持事件数</td></tr>
+          <tr><td>已登记且部分配置</td><td><code>N/M</code>（<strong>中性</strong> <code>.tag</code>）</td><td>绿色表示「已就绪」，部分配置不是就绪</td></tr>
+          <tr><td>已登记但未配置</td><td><code>未配置</code>（<code>.tag.warn</code>）</td><td></td></tr>
+          <tr><td>已登记但插件型（<code>fix_supported=false</code>）</td><td><code>仅审计</code></td><td>不支持模板注入</td></tr>
+          <tr><td><strong>未登记 Hook 配置路径</strong></td><td><strong><code>未收录</code></strong>（<strong>不是</strong>「不支持」）</td><td>尚未收录其 Hook 配置路径</td></tr>
         </tbody></table></div>
       <p><strong>「未收录」与「不支持」必须分开</strong>：未登记只表示还没收录它的 Hook 配置路径，不等于
         该客户端没有 Hook 能力。实测 22 个已安装客户端里只有 6 个登记了 <code>hooks.clients</code>，
@@ -944,7 +987,9 @@
         一次操作的结果（保存设置 / 修复 Skills / 写入 Hook）走 <strong>弹框</strong>（<code>runTaskModal</code> 的
         <code>.task-card</code>，含 <code>.task-result</code> ok/err 与 <code>.task-fold</code> 折叠详情）。
         把 CLI 整段 stdout 铺成页面级 <code>.banner</code> 会变成一大片文本（实测保存设置失败时贴了 1600 字符扫描报告）；
-        <code>.banner</code> 只留给非阻塞的页面级告知（如自动发现新客户端）。</p>
+        <code>.banner</code> 只留给非阻塞的页面级告知（如自动发现新客户端）。
+        错误详情一律先过 <code>cliFailLines</code>（挑失败行）或 <code>cliErrDetail</code>（去 ANSI、截断），
+        不要把原始 stdout 直接抛给用户。</p>
       <h3 id="s2-5b">2.5b 弹窗容器（<code>.modal</code> / <code>.cfm-card</code> / <code>.sheet</code>）<a class="anchor" href="#s2-5b" aria-label="锚点">#</a></h3>
       <div class="table-wrap">
         <table>
@@ -1058,17 +1103,18 @@
             <tr><td><code>.sheet</code></td><td><code>z-index</code></td><td><code>51</code></td></tr>
             <tr><td><code>.palette</code></td><td><code>z-index</code></td><td><code>60</code></td></tr>
             <tr><td><code>dialog.busy-backdrop</code></td><td><code>z-index</code></td><td><code>70</code></td></tr>
-            <tr><td><code>.switch</code></td><td><code>width</code> / <code>height</code></td><td><code>34px</code> / <code>20px</code></td></tr>
+            <tr><td><code>.switch</code></td><td><code>width</code></td><td><code>34px</code></td></tr>
+            <tr><td><code>.switch</code></td><td><code>height</code></td><td><code>20px</code></td></tr>
             <tr><td><code>.switch .sw-knob</code></td><td><code>width</code></td><td><code>16px</code></td></tr>
             <tr><td><code>.switch[aria-checked="true"] .sw-track</code></td><td><code>background</code></td><td><code>var(--accent-strong)</code></td></tr>
-            <tr><td><code>main</code></td><td><code>padding</code></td><td><code>var(--sp-9) 28px 64px</code></td></tr>
+            <tr><td><code>main</code></td><td><code>padding</code></td><td><code>var(--sp-9) var(--sp-9a) var(--sp-9f)</code></td></tr>
             <tr><td><code>.card</code></td><td><code>padding</code></td><td><code>var(--sp-7)</code></td></tr>
-            <tr><td><code>.list-row</code></td><td><code>padding</code></td><td><code>var(--sp-4) 14px</code></td></tr>
-            <tr><td><code>.pagination button</code></td><td><code>padding</code></td><td><code>var(--sp-1) 9px</code></td></tr>
-            <tr><td><code>.path-field-row button</code></td><td><code>padding</code></td><td><code>var(--sp-1) 8px</code></td></tr>
+            <tr><td><code>.list-row</code></td><td><code>padding</code></td><td><code>var(--sp-4) var(--sp-6)</code></td></tr>
+            <tr><td><code>.pagination button</code></td><td><code>padding</code></td><td><code>var(--sp-1) var(--sp-3b)</code></td></tr>
+            <tr><td><code>.path-field-row button</code></td><td><code>padding</code></td><td><code>var(--sp-1) var(--sp-3)</code></td></tr>
             <tr><td><code>.chg-btn</code></td><td><code>min-height</code></td><td><code>32px</code></td></tr>
             <tr><td><code>.insight-dialog</code></td><td><code>width</code></td><td><code>min(1040px, 100%)</code></td></tr>
-            <tr><td><code>.ad-modal</code></td><td><code>width</code></td><td><code>min(880px, 94vw)</code></td></tr>
+            <tr><td><code>.ad-modal</code></td><td><code>--modal-w</code></td><td><code>min(880px, 94vw)</code></td></tr>
             <tr><td><code>.agent-card .ac-path-row</code> / <code>.agent-card .ac-meta-row</code></td><td><code>grid-template-columns</code></td><td><code>58px minmax(0, 1fr)</code></td></tr>
           </tbody>
         </table>
@@ -1242,8 +1288,11 @@
             <li><span class="cl-box" aria-hidden="true"></span>颜色/字号/圆角/阴影全部取自 token，无字面值</li>
             <li><span class="cl-box" aria-hidden="true"></span>强调色只有一个</li>
             <li><span class="cl-box" aria-hidden="true"></span>圆角只用四档且用法一致（小徽标用 <code>--r-hair</code>）</li>
-            <li><span class="cl-box" aria-hidden="true"></span>按钮对比度达标，一屏一个 primary</li>
+            <li><span class="cl-box" aria-hidden="true"></span>间距走 <code>--gap-*</code> / <code>--sp-*</code>（含扩展档），<strong>零字面值</strong>
+              （<code>&lt;style&gt;</code> 块与内联 <code>style=</code> 都算，由 <code>NoLiteralSpacingTest</code> 强制）</li>
+            <li><span class="cl-box" aria-hidden="true"></span>按钮对比度达标，<strong>同一操作区</strong>一个 primary</li>
             <li><span class="cl-box" aria-hidden="true"></span>数字/包名用 mono，单位已中文化</li>
+            <li><span class="cl-box" aria-hidden="true"></span>若动了 2.9 的硬数字，规范表与代码已同步</li>
           </ul>
         </div>
         <div class="cl-group">
@@ -1253,7 +1302,8 @@
             <li><span class="cl-box" aria-hidden="true"></span>加载 / 空 / 错误三态齐备</li>
             <li><span class="cl-box" aria-hidden="true"></span><strong>空态也要有信息量</strong>：不要出现「一排全 0」而无说明的界面</li>
             <li><span class="cl-box" aria-hidden="true"></span>无重复渲染（同一信息不在同屏出现两次）</li>
-            <li><span class="cl-box" aria-hidden="true"></span>无 em-dash</li>
+            <li><span class="cl-box" aria-hidden="true"></span>无 em-dash（正文、标题、标签、按钮文案）</li>
+            <li><span class="cl-box" aria-hidden="true"></span>图标用 SVG（<code>viewBox="0 0 24 24"</code>），<strong>不用 emoji 当 UI 图标</strong></li>
           </ul>
         </div>
         <div class="cl-group">
@@ -1264,13 +1314,14 @@
             <li><span class="cl-box" aria-hidden="true"></span>动效在 <code>prefers-reduced-motion</code> 下关闭</li>
             <li><span class="cl-box" aria-hidden="true"></span>状态不只靠颜色表达</li>
             <li><span class="cl-box" aria-hidden="true"></span>弹层能自然关闭（失焦收起 / Esc）</li>
+            <li><span class="cl-box" aria-hidden="true"></span>弹层内动作按钮 <code>min-height: 32px</code>（触达目标）</li>
           </ul>
         </div>
         <div class="cl-group">
           <h4>主题与验证</h4>
           <ul>
             <li><span class="cl-box" aria-hidden="true"></span>深浅两套主题都过一遍</li>
-            <li><span class="cl-box" aria-hidden="true"></span>跑 <code>python3 -m unittest tests.test_design_spec tests.test_dashboard_design_tokens</code></li>
+            <li><span class="cl-box" aria-hidden="true"></span>跑 <code>python3 -m unittest tests.test_design_spec tests.test_dashboard_design_tokens tests.test_design_spec_contract</code></li>
             <li><span class="cl-box" aria-hidden="true"></span>若新增组件或变体，已回写本文件对应章节</li>
           </ul>
         </div>
