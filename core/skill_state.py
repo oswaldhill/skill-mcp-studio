@@ -86,30 +86,20 @@ def invalidate_repo_skill_names() -> None:
     _repo_skill_names_cached.cache_clear()
 
 
-def _read_frontmatter(repo: str, rel_path: str) -> Dict[str, str]:
-    """Best-effort read of one SKILL.md's ``name``/``description``/``homepage``.
+def parse_frontmatter_text(head: str) -> Dict[str, str]:
+    """解析 SKILL.md 文本头部的 YAML frontmatter（纯文本版，供远端内容复用）。
 
-    ``rel_path`` is directory-relative to ``repo`` (``""`` for a top-level skill
-    or ``apple/apple-notes`` for a nested one). Missing file, bad YAML, or a
-    non-dict frontmatter all degrade to empty strings; the caller applies its
-    own display-name fallback. Capped to 8 KiB so a huge skill body is never
-    slurped into memory for a one-line description.
+    与 :func:`_read_frontmatter` 同语义：取 name/description/homepage/version；
+    无 frontmatter、YAML 非法、非 dict 一律退化为空串，由调用方兜底。
     """
     import re
     try:
         import yaml
     except ImportError:  # pragma: no cover - yaml is a declared dependency
         return {"name": "", "description": "", "homepage": "", "version": ""}
-
     out: Dict[str, str] = {"name": "", "description": "", "homepage": "", "version": ""}
-    try:
-        with open(os.path.join(repo, rel_path, "SKILL.md"), encoding="utf-8") as fh:
-            head = fh.read(8192)
-    except OSError:
-        return out
-    # frontmatter only ever lives at the top of SKILL.md
     prefix_re = re.compile(r"\A---\s*\n(.*?)\n---\s*\n", re.S)
-    m = prefix_re.match(head)
+    m = prefix_re.match(head or "")
     if not m:
         return out
     try:
@@ -118,12 +108,12 @@ def _read_frontmatter(repo: str, rel_path: str) -> Dict[str, str]:
         return out
     if not isinstance(data, dict):
         return out
-    # 显示名优先取 frontmatter 的 name（其次 title），否则回退目录名。
+    # 显示名优先取 frontmatter 的 name（其次 title），否则留空由调用方回退目录名。
     fname = data.get("name") or data.get("title") or ""
     if isinstance(fname, str):
         out["name"] = fname.strip()
-    # v0.31.0：version 原样透出（字符串；数值型 YAML 会被 safe_load 解析成
-    # float——1.0 会变 1.0——统一 str() 归一，避免类型漂移进 JSON 快照）
+    # v0.31.0：version 原样透出（数值型 YAML 被 safe_load 解析成 float 时
+    # 统一 str() 归一，避免类型漂移进 JSON 快照）
     fver = data.get("version")
     if fver is not None:
         out["version"] = str(fver).strip()
@@ -138,6 +128,23 @@ def _read_frontmatter(repo: str, rel_path: str) -> Dict[str, str]:
     if isinstance(home, str):
         out["homepage"] = home.strip()
     return out
+
+
+def _read_frontmatter(repo: str, rel_path: str) -> Dict[str, str]:
+    """Best-effort read of one SKILL.md's ``name``/``description``/``homepage``.
+
+    ``rel_path`` is directory-relative to ``repo`` (``""`` for a top-level skill
+    or ``apple/apple-notes`` for a nested one). Missing file, bad YAML, or a
+    non-dict frontmatter all degrade to empty strings; the caller applies its
+    own display-name fallback. Capped to 8 KiB so a huge skill body is never
+    slurped into memory for a one-line description.
+    """
+    try:
+        with open(os.path.join(repo, rel_path, "SKILL.md"), encoding="utf-8") as fh:
+            head = fh.read(8192)
+    except OSError:
+        return {"name": "", "description": "", "homepage": "", "version": ""}
+    return parse_frontmatter_text(head)
 
 
 def read_skill_meta(unified_dir: str, skill_names: List[str]) -> Dict[str, Dict[str, str]]:

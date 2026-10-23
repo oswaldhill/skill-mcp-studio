@@ -744,3 +744,82 @@ class TimeFallbackCheckTest(unittest.TestCase):
         by = {r["name"]: r for r in out["updates"]}
         self.assertEqual(by["a"]["state"], "unknown")
         self.assertTrue(out["summary"].get("rate_limited"))
+
+
+class RemoteSkillVersionTest(unittest.TestCase):
+    """远端技能包版本读取（v0.31.0 修复，2026-10-23 用户实测）。
+
+    背景（真实 bug）：多技能 monorepo（larksuite/cli）的 repo tag 是**工具**
+    版本（v1.0.98），技能包 SKILL.md 的 version 长期是 1.0.0。旧逻辑拿 tag
+    比技能版本 → 27 个 lark-* 技能永久误报「有更新」，用户升级多次仍不消失
+    （npx skills update 明确回 "All global skills are up to date"）。
+    """
+
+    def _mock_text(self, body, status=200):
+        return mock.patch("skill_market._http_get_text", return_value=(body, status))
+
+    def test_reads_version_from_remote_skill_md(self):
+        from skill_market import _remote_skill_version
+        body = "---\nname: lark-apps\nversion: 1.0.0\ndescription: x\n---\n\n# body\n"
+        with self._mock_text(body):
+            ver, state = _remote_skill_version("larksuite", "cli", "skills/lark-apps/SKILL.md")
+        self.assertEqual(ver, "1.0.0")
+        self.assertEqual(state, "ok")
+
+    def test_missing_version_field_returns_notfound(self):
+        from skill_market import _remote_skill_version
+        body = "---\nname: x\ndescription: y\n---\n"
+        with self._mock_text(body):
+            ver, state = _remote_skill_version("o", "r", "skills/x/SKILL.md")
+        self.assertIsNone(ver)
+        self.assertEqual(state, "notfound")
+
+    def test_404_returns_notfound(self):
+        from skill_market import _remote_skill_version
+        with self._mock_text(None, 404):
+            ver, state = _remote_skill_version("o", "r", "skills/gone/SKILL.md")
+        self.assertIsNone(ver)
+        self.assertEqual(state, "notfound")
+
+    def test_no_skill_path_returns_notfound(self):
+        from skill_market import _remote_skill_version
+        ver, state = _remote_skill_version("o", "r", None)
+        self.assertIsNone(ver)
+        self.assertEqual(state, "notfound")
+
+    def test_numeric_version_is_stringified(self):
+        """数值型 YAML version（1.0）必须归一成字符串，否则比对会类型漂移。"""
+        from skill_market import _remote_skill_version
+        body = "---\nname: x\nversion: 1.0\n---\n"
+        with self._mock_text(body):
+            ver, _ = _remote_skill_version("o", "r", "skills/x/SKILL.md")
+        self.assertEqual(ver, "1.0")
+
+    def test_monorepo_skill_version_wins_over_repo_tag(self):
+        """多技能仓库：技能包版本优先，不得被 repo tag 覆盖。
+
+        复现真实场景：repo tag v1.0.98 + 本地/远端 SKILL.md 均 1.0.0
+        → 判定必须是 current（旧逻辑判 outdated）。
+        """
+        from skill_market import check_updates
+        installed = {"installed": [{
+            "name": "lark-apps", "source_url": "https://github.com/larksuite/cli.git",
+            "skill_path": "skills/lark-apps/SKILL.md",
+            "updated_at": "2026-09-23T00:00:00Z", "registered": True,
+        }]}
+        with mock.patch("skill_market.list_installed", return_value=installed), \
+             mock.patch("skill_market._remote_skill_version",
+                        return_value=("1.0.0", "ok")), \
+             mock.patch("skill_market._remote_latest_version",
+                        return_value=("v1.0.98", "ok")), \
+             mock.patch("skill_market._load_check_cache", return_value=None), \
+             mock.patch("skill_market._save_check_cache", lambda p: None), \
+             mock.patch("skill_state.read_skill_meta",
+                        return_value={"lark-apps": {"version": "1.0.0"}}), \
+             mock.patch("market_sources.list_sources",
+                        return_value=([], False, [])):
+            out = check_updates()
+        row = out["updates"][0]
+        self.assertEqual(row["state"], "current",
+                         "技能包版本相同即 current，repo tag 不得造成误报")
+        self.assertEqual(row["remote_version"], "1.0.0")

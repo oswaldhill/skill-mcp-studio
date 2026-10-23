@@ -340,6 +340,70 @@ def _http_get_json(url: str, timeout: int = 20):
         return None, 0
 
 
+def _http_get_text(url: str, timeout: int = 20):
+    """只读 GET 纯文本（raw.githubusercontent 返回 markdown 而非 JSON）。
+
+    与 _http_get_json 同样优先 curl（系统证书可用）。返回 (text, status)。
+    raw.githubusercontent 不计入 GitHub API 配额（实测 2026-10-23）。
+    """
+    token = _github_token()
+    headers = ["-H", f"User-Agent: {_UA}"]
+    if token:
+        headers += ["-H", f"Authorization: Bearer {token}"]
+    curl = shutil.which("curl")
+    if not curl:
+        return None, 0
+    try:
+        proc = subprocess.run(
+            [curl, "-sSL", "-w", "\n%{http_code}", "--max-time", str(timeout),
+             *headers, url],
+            capture_output=True, text=True, timeout=timeout + 10,
+        )
+        body, _, code = proc.stdout.rpartition("\n")
+        try:
+            status = int(code.strip())
+        except ValueError:
+            status = 0
+        if proc.returncode == 0 and status == 200:
+            return body, status
+        return None, status
+    except (subprocess.TimeoutExpired, OSError):
+        return None, 0
+
+
+def _remote_skill_version(owner: str, repo: str,
+                          skill_path: Optional[str],
+                          timeout: int = 20):
+    """远端**技能包自身**的版本：拉该技能 SKILL.md 解析 frontmatter version。
+
+    v0.31.0 修复（2026-10-23 用户实测）：多技能 monorepo（如
+    larksuite/cli）的 repo tag 是**工具/仓库**版本（v1.0.98），不是技能包
+    版本（SKILL.md 里 version: 1.0.0 长期不变）。拿 tag 比技能版本会
+    永久误报「有更新」，且升级后仍不消失。
+
+    返回 (version 或 None, 状态 ok / notfound / unavailable)。
+    """
+    if not skill_path:
+        return None, "notfound"
+    path = skill_path.lstrip("/")
+    # HEAD 指向默认分支，避免硬编码 main/master
+    url = f"https://raw.githubusercontent.com/{owner}/{repo}/HEAD/{path}"
+    text, status = _http_get_text(url, timeout)
+    if status in (403, 429):
+        return None, "unavailable"
+    if text is None:
+        return None, "notfound" if status == 404 else "unavailable"
+    try:
+        from skill_state import parse_frontmatter_text  # 复用 frontmatter 解析
+        fm = parse_frontmatter_text(text)
+        ver = fm.get("version")
+        if ver is None or str(ver).strip() == "":
+            return None, "notfound"
+        return str(ver).strip(), "ok"
+    except (ImportError, AttributeError, ValueError):
+        return None, "unavailable"
+
+
 def _remote_commit_time(owner: str, repo: str, path: Optional[str],
                         timeout: int = 20) -> Optional[str]:
     """主通道：GitHub API 取该路径最新提交时间。
@@ -466,12 +530,26 @@ def check_updates(only: Optional[List[str]] = None, force: bool = False) -> Dict
         elif rate_limited:
             reason = "GitHub API 配额已用尽，本轮跳过（可设 GITHUB_TOKEN 提升配额）"
         else:
-            remote, status = _remote_latest_version(owner_repo[0], owner_repo[1])
-            if status == "rate_limited":
-                rate_limited = True
-                reason = "GitHub API 配额已用尽（可设 GITHUB_TOKEN 提升配额）"
-            elif remote is None:
-                reason = "远端查询失败（私有仓库或无 release/tag）"
+            # v0.31.0 修复（2026-10-23 用户实测「升级多次仍显示有更新」）：
+            # ① 先拉**远端该技能 SKILL.md 的 version**（同源比对）。多技能
+            #    monorepo（如 larksuite/cli）的 repo tag 是工具版本（v1.0.98），
+            #    技能包自身版本长期是 1.0.0——拿 tag 比技能版本会永久误报。
+            # ② 远端 SKILL.md 无 version 字段时回退 repo tag（单技能仓库
+            #    用 tag 标版本的场景）。
+            # ③ 都没有则保持 unknown，由上方时间比对分支兜底（本地无版本时）。
+            remote, skill_ver_state = _remote_skill_version(
+                owner_repo[0], owner_repo[1], skill_path)
+            if remote is not None:
+                reason = ""  # 技能包级版本，语义与本地 version 同源
+            else:
+                remote, status = _remote_latest_version(owner_repo[0], owner_repo[1])
+                if status == "rate_limited":
+                    rate_limited = True
+                    reason = "GitHub API 配额已用尽（可设 GITHUB_TOKEN 提升配额）"
+                elif remote is None:
+                    reason = "远端无技能版本号、无 release/tag"
+                else:
+                    reason = "按仓库 tag 判定（远端技能无 version 字段）"
 
         if remote is None or local is None:
             state = "unknown"
