@@ -135,11 +135,12 @@ class EndpointStatusWiringTest(unittest.TestCase):
         未检查既不是通过也不是故障；用警告色会让人以为端点有问题。
         新落点：``renderEndpointStatus`` 的三态 class 组装。
         """
-        self.assertIn(
-            '<div class="empty">尚未检查端点连通性。</div>',
-            self.src,
-            "未检查必须落到中性 .empty（不是 warn/err 色的行）",
-        )
+        # 2026-10-23 评审修复：空态文案改为覆盖「全量检查」范围（4 维度 +
+        # 端点），不再只提端点；但中性 .empty 容器这一约束不变。
+        self.assertIn('<div class="empty">尚未检查', self.src,
+                      "未检查必须落到中性 .empty（不是 warn/err 色的行）")
+        self.assertIn("4 维度配置审计与端点连通性结果", self.src,
+                      "空态应说明全量检查覆盖范围（不只端点）")
 
     def test_failure_shows_endpoint_and_reason(self):
         """迁移自 ``test_failure_tip_names_endpoint_and_reason``。

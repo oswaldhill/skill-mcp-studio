@@ -7,6 +7,80 @@
 
 ## [Unreleased]
 
+## [v0.31.0] - 2026-10-23
+
+当前发布版本（build 127）。路线图 P0 #4 前半：**技能版本管理 + 市场源可配置**，
+外加 GitHub Token 配置通道、一键升级、概览页全量检查，以及 12 轮 UI 迭代与
+多项计划外修复。
+
+### 新增
+
+- **技能版本管理**（`core/skill_state.py` / `core/skill_market.py`）：
+  - 解析 SKILL.md frontmatter 的 `version`（本地与远端共用
+    `parse_frontmatter_text`，含 `metadata.short-description` / `metadata.homepage`
+    兜底，数值型 YAML 归一为字符串）
+  - 升级成功后写 `data/skill_versions.json`（为后续回滚铺路）
+  - 更新检查支持三态（有更新 / 最新 / 未知）+ 1h 缓存，**限流结果不写缓存**
+  - 无版本号技能回退「上游 commit 时间 vs 本地安装时间」比对（按 `skillPath`
+    过滤，不受同仓库其他技能提交干扰）
+- **市场源可配置**（`core/market_sources.py`）：`skills-sh` / `github-repo` 两类源，
+  默认回落 `[skills-sh]`，可增删改（`data/market_sources.yaml`，带备份）。
+  按用户定案，QwenWork 与企业 MCP 不视为市场源。CLI：`--list-market-sources` /
+  `--set-market-source` / `--remove-market-source`。
+- **GitHub Token 配置通道**（`data/github_token` + `--set-github-token` /
+  `--get-github-token`）：环境变量优先、文件回落（解决 GUI 从 launchd 启动读不到
+  shell 环境变量的问题），配额 60 → 5000 次/小时。设置页 Skill tab 新增卡片，
+  脱敏显示（前 4 后 4）+ password 输入 + 保存/清除。
+- **技能升级**（`core/skill_market_ops.py` `plan_upgrade` / `execute_plan` +
+  `--market-upgrade`）：单个升级（更新列 tag 可点击 / kebab 菜单）与**一键升级**
+  （工具栏按钮，按顺序逐个）。
+- **升级过程单一弹框三阶段**（确认 → 进度 → 完成）：批量确认用版本对比表格
+  （四列定宽 + 分页），单个确认用版本对比条；进度阶段有进度条 + 逐技能状态行；
+  完成阶段展示**版本变迁**（从什么版本到什么版本）与**失败原因**（换行缩进）。
+- **概览页全量检查**：与托盘后台巡检同源（`--snapshot` + `--endpoint-status`），
+  4 维度配置审计与端点连通性分组呈现。
+
+### 修复
+
+- **版本比对基准错误**（架构级）：原先拿 repo release tag 比技能 SKILL.md 版本。
+  多技能 monorepo（如 `larksuite/cli`）的 tag 是**工具**版本（v1.0.98），技能包
+  版本长期是 1.0.0，导致 27 个 lark-* 技能永久误报「有更新」——`npx skills
+  update` 明确回 "All global skills are up to date" 而界面仍显示 22 个有更新。
+  修复后比对链改为「远端 SKILL.md version → repo tag → commit 时间」，
+  真机 outdated 22 → 1。
+- **升级「exit 0 假成功」**：`npx skills update` 对上游迁移的仓库会输出
+  "cannot be checked automatically" 却 exit 0，旧逻辑只校验目录存在 → 假成功。
+  现在解析输出诚实报告；若上游在输出里给了重装命令，则**自动回退重装**
+  （用户定案：重装也属于升级，结果一致即可）。
+- 「可升级」筛选在未检查过时自动触发检查，并区分「尚未检查」与「确实没有」两种空态。
+- 升级确认按钮文案「确认删除」→「确认升级」（danger 样式保留，文案可自定义）。
+- 升级流程的 CLI 调用不再触发全局 busy 遮罩（会遮挡升级进度模态）。
+- 版本列/更新列在无版本号时显示最后更新时间（三层兜底：lock `updatedAt` →
+  SKILL.md mtime → `-`）。
+- `profile_sources` 相对路径按 config.yaml 所在目录解析（此前按 cwd，GUI 子进程
+  下 overlay 整体失效）。
+- `renderEndpointStatus` 运行时错误（TDZ / 结构残留）。
+
+### 变更
+
+- 更新列 tag 直接显示远端版本号或日期（去掉「有更新 / 最新」文字前缀，语义移入
+  `title`）。
+- 技能表列名语义化：「版本 / 更新」→「**本地 / 远端**」（两列都可能显示 MM-DD
+  日期，必须点明归属方）。
+- 表格密度统一（升级确认表与主技能表同档 `sp-2`）。
+- 升级模态 `min-width` 改用 `--modal-w` 变量体系。
+- 补齐 `prefers-reduced-motion` 覆盖（进度条填充、行状态、弹框按钮过渡）。
+- 装饰性内联 SVG 统一加 `aria-hidden="true"`（避免读屏器当独立节点播报）。
+- 全量检查空态文案改为覆盖 4 维度 + 端点的完整表述。
+
+### 已知限制
+
+- 无版本号技能的时间比对是概率性判断（上游有提交不代表内容变更），note 已标注
+  「按上游提交时间判定」。
+- 技能升级依赖 `npx skills`（外部 CLI）；上游仓库迁移/删除时无法升级，仅能按
+  npx 建议重装。
+- `--skill-rollback` 回滚尚未实现（`data/skill_versions.json` 已就绪）。
+
 ## [v0.30.0] - 2026-10-21
 
 当前发布版本（build 126）。Hook 命令变量插值补齐（v0.29.0 设计承诺）+ 配置导入/导出

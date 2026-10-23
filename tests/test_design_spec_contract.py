@@ -1603,8 +1603,25 @@ class SkillVersionUiContractTest(unittest.TestCase):
 
     def test_skill_table_has_version_and_update_columns(self):
         src = _src()
-        self.assertIn('<th class="st-ver">版本</th>', src, "技能表缺版本列")
-        self.assertIn('<th class="st-upd">更新</th>', src, "技能表缺更新列")
+        # 列名语义化（2026-10-23 评审修复）：两列都可能显示日期，
+        # 用「本地 / 远端」区隔，避免用户分不清哪个日期是本地
+        self.assertIn('<th class="st-ver">本地</th>', src, "技能表缺本地版本列")
+        self.assertIn('<th class="st-upd">远端</th>', src, "技能表缺远端更新列")
+        # 评审修复六项的可机检约束（2026-10-23）
+        css = _css()
+        self.assertIn(".upg-bar-fill { transition: none !important; }", css,
+                      "reduced-motion 未覆盖升级进度条（用户开启减少动效后仍在动）")
+        self.assertIn("--modal-w: min(440px, 92vw)", css,
+                      "升级模态宽度应走 --modal-w 变量体系")
+        # 表格密度统一：升级确认表与主技能表同档 sp-2
+        self.assertIn(".upg-table td { font-size: var(--fs-sm); padding: var(--sp-2) var(--sp-2)", css,
+                      "升级确认表行内边距应与主技能表同档（sp-2）")
+        # 装饰性图标 aria-hidden（ICONS 全体）
+        self.assertIn('aria-hidden="true" viewBox=', src,
+                      "内联 SVG 图标应统一 aria-hidden，避免读屏器播报")
+        # 全量检查空态覆盖 4 维度 + 端点，不只端点
+        self.assertIn("尚未检查：点右上「重新全量检查」", src,
+                      "全量检查空态文案应覆盖整个检查范围，不只端点连通性")
         self.assertIn("st-ver", _css(), "缺 .st-ver 列样式（mono 字号）")
 
     def test_check_updates_button_and_data_flow(self):
