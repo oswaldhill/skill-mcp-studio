@@ -460,7 +460,10 @@ outdated 的技能；未检查时该段为空）。
 
 **确认阶段**（数量自适应）：单个走 `.upg-hero` 锚点分支——
 `.upg-hero-name` 技能名（display 字体）+ `.upg-hero-sub` 说明
-（muted）+ `.upg-kv` 远端信息行（label muted + value mono）。
+（muted）+ `.upg-ver` **版本对比条**（panel-2 底 r-control 卡片：
+`.upg-ver-side` 两侧竖排——`.upg-ver-num.from` 当前版本 muted /
+`.upg-ver-num.to` 远端版本 accent（mono fs-md 粗体）+
+`.upg-ver-label` 小标签；中间 `.upg-ver-arrow` 箭头）。
 批量走 `.upg-count-row` 大数字锚点（`.upg-count-num` display
 fs-xl 粗体 tabular-nums + `.upg-count-label` muted 说明）+
 `.upg-table` **版本对比表格**（四列：技能 `.t-name` mono 截断 /

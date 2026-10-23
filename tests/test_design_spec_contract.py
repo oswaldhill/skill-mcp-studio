@@ -1647,7 +1647,7 @@ class SkillVersionUiContractTest(unittest.TestCase):
         self.assertIn('escapeHtml(remoteLabel || "有更新")', src,
                       "outdated tag 应直接显示远端版本号/时间（无远端信息才回退「有更新」文字）")
         # 确认框带远端信息
-        self.assertIn("remoteLine", src, "升级确认框应带远端版本号/提交时间（独立行）")
+        self.assertIn("upg-ver-num", src, "升级确认框应有版本对比条（当前 → 远端）")
         # 升级模态排版（2026-10-23 优化）：进度条 + 状态词 + 汇总统计块
         self.assertIn("upg-bar-fill", src, "升级模态缺进度条")
         self.assertIn("upg-state-word", src, "升级行缺状态词（成功/失败/升级中）")

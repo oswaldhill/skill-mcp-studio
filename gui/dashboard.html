@@ -1511,9 +1511,15 @@
   .upg-count-row { display: flex; align-items: baseline; gap: var(--gap-3); padding: var(--sp-1a) 0 var(--sp-1a); }
   .upg-count-num { font-family: var(--display); font-size: var(--fs-xl); font-weight: 700; line-height: 1; color: var(--text); font-variant-numeric: tabular-nums; }
   .upg-count-label { color: var(--muted); font-size: var(--fs-sm); }
-  .upg-kv { display: flex; gap: var(--gap-3); font-size: var(--fs-sm); margin-top: var(--sp-3); }
-  .upg-kv .k { color: var(--muted); flex: none; }
-  .upg-kv .v { font-family: var(--mono); }
+  /* 单个确认：版本对比条（视觉主体——当前 muted → 远端 accent 大号） */
+  .upg-ver { display: flex; align-items: center; gap: var(--gap-4); background: var(--panel-2); border-radius: var(--r-control); padding: var(--sp-3) var(--sp-4); margin-top: var(--sp-3); }
+  .upg-ver-side { display: flex; flex-direction: column; gap: var(--gap-1); flex: 1 1 0; min-width: 0; }
+  .upg-ver-num { font-family: var(--mono); font-size: var(--fs-md); font-weight: 600; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .upg-ver-num.from { color: var(--muted); }
+  .upg-ver-num.to { color: var(--accent); text-align: right; }
+  .upg-ver-label { font-size: var(--fs-xs); color: var(--muted); }
+  .upg-ver-label.to { text-align: right; }
+  .upg-ver-arrow { color: var(--muted); flex: none; font-size: var(--fs-md); }
   .upg-warn .w-ic { color: var(--warn); flex: none; }
   /* 确认表格（2026-10-23 用户定案：完整显示所有技能 + 版本对比 + 分页） */
   .upg-table { width: 100%; border-collapse: collapse; margin-top: var(--sp-2); }
@@ -6386,14 +6392,7 @@ function renderEndpointStatus() {
     // v0.31.0（用户反馈「前面弹框遮挡后面弹框，只允许一个弹框」）：
     // 确认与进度合并为单一弹框三阶段（确认 → 进度 → 完成），不再
     // 叠加 confirmModal。确认阶段内嵌技能预览 + 远端信息 + 覆盖警告。
-    const firstUpd = total === 1 ? ((SKILL_UPDATES || {})[list[0]] || {}) : null;
-    const remoteLine = firstUpd
-      ? (firstUpd.remote
-          ? `远端版本：${firstUpd.remote}`
-          : (firstUpd.remoteTime
-              ? `上游最新提交：${new Date(firstUpd.remoteTime).toLocaleDateString("zh-CN")}`
-              : ""))
-      : "";
+
     // 阶段一：确认（taste-skill 重设计：技能名/数字做视觉锚点，说明分层，
     // 预览卡片化，覆盖警告独立行带图标）
     // 表格 + 分页（2026-10-23 用户定案：完整显示所有技能、版本对比、
@@ -6446,7 +6445,17 @@ function renderEndpointStatus() {
           <div class="upg-hero-name">${escapeHtml(list[0])}</div>
           <div class="upg-hero-sub">将升级到远端最新版</div>
         </div>
-        ${remoteLine ? `<div class="upg-kv"><span class="k">${remoteLine.split("：")[0]}</span><span class="v">${escapeHtml(remoteLine.split("：")[1] || "")}</span></div>` : ""}
+        <div class="upg-ver">
+          <div class="upg-ver-side">
+            <span class="upg-ver-num from">${escapeHtml(String(verOf(list[0], "local")))}</span>
+            <span class="upg-ver-label">当前</span>
+          </div>
+          <span class="upg-ver-arrow">→</span>
+          <div class="upg-ver-side">
+            <span class="upg-ver-num to">${escapeHtml(String(verOf(list[0], "remote")))}</span>
+            <span class="upg-ver-label to">远端</span>
+          </div>
+        </div>
         <div class="upg-warn"><span class="w-ic">${ICONS.info}</span><span>本地内容会被上游覆盖，升级前自动备份</span></div>
         <div class="actions">
           <button class="btn-cancel close-push" id="upg-cancel">取消</button>
