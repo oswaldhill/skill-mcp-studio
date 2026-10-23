@@ -6341,18 +6341,19 @@ function renderEndpointStatus() {
     const preview = total > 1
       ? list.slice(0, 5).join("、") + (total > 5 ? ` 等 ${total} 个技能` : "")
       : list[0];
-    // 单个升级时带远端版本号/提交时间（用户需求「最新版是否应该告知
-    // 是什么版本或者是什么时间」）
+    // 单个升级时带远端版本号/提交时间（v0.31.0 排版优化：远端信息拆
+    // 独立 mono 行，不嵌长句，用户反馈「这个排版不好看」）
     const firstUpd = total === 1 ? ((SKILL_UPDATES || {})[list[0]] || {}) : null;
-    const remoteInfo = firstUpd
+    const remoteLine = firstUpd
       ? (firstUpd.remote
-          ? `（${firstUpd.remote}）`
+          ? `远端版本：${firstUpd.remote}`
           : (firstUpd.remoteTime
-              ? `（上游最新提交 ${new Date(firstUpd.remoteTime).toLocaleDateString("zh-CN")}）`
+              ? `上游最新提交：${new Date(firstUpd.remoteTime).toLocaleDateString("zh-CN")}`
               : ""))
       : "";
     const ok = await confirmModal("升级技能",
-      `将${total > 1 ? "按顺序逐个升级" : "把"}「${preview}」${total > 1 ? "" : `升级到远端最新版${remoteInfo}`}。\n` +
+      `将${total > 1 ? "按顺序逐个升级" : "把"}「${preview}」${total > 1 ? "" : "升级到远端最新版"}。\n` +
+      (remoteLine ? `\n${remoteLine}\n` : "") +
       `本地内容会被上游覆盖（每个升级前自动备份）。继续？`, true, "确认升级");
     if (!ok) return;
 

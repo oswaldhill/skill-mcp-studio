@@ -1647,7 +1647,7 @@ class SkillVersionUiContractTest(unittest.TestCase):
         self.assertIn('escapeHtml(remoteLabel || "有更新")', src,
                       "outdated tag 应直接显示远端版本号/时间（无远端信息才回退「有更新」文字）")
         # 确认框带远端信息
-        self.assertIn("remoteInfo", src, "升级确认框应带远端版本号/提交时间")
+        self.assertIn("remoteLine", src, "升级确认框应带远端版本号/提交时间（独立行）")
         # 市场源添加表单：不用 placeholder 充当 label（taste-skill 4.6）
         self.assertIn('aria-label="源 ID"', src, "表单字段缺 aria-label（placeholder 不是标签）")
         self.assertIn('<span class="k">源 ID</span>', src, "表单缺可见 label（.k 行结构）")
