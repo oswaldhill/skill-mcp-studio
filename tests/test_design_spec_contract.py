@@ -431,7 +431,7 @@ class HardNumbersContractTest(unittest.TestCase):
         (".path-field-row button", "padding", "var(--sp-1) var(--sp-3)"),
         (".chg-btn", "min-height", "32px"),
         (".insight-dialog", "width", "min(1040px, 100%)"),
-        (".ad-modal", "width", "min(880px, 94vw)"),
+        (".ad-modal", "--modal-w", "min(880px, 94vw)"),
         (".agent-card .ac-path-row", "grid-template-columns", "58px minmax(0, 1fr)"),
     ]
 
@@ -1665,6 +1665,17 @@ class SkillVersionUiContractTest(unittest.TestCase):
                       "outdated tag 应直接显示远端版本号/时间（无远端信息才回退「有更新」文字）")
         # 确认框带远端信息
         self.assertIn("upg-ver-num", src, "升级确认框应有版本对比条（当前 → 远端）")
+        # 弹框宽度治理（v0.31.0 收敛）：所有弹框走 --modal-w 变量，
+        # 禁止再出现「用 !important 覆盖自身 width」的写法。
+        css = _css()
+        self.assertIn("width: var(--modal-w, min(560px, 92vw))", css,
+                      ".modal 应通过 --modal-w 消费宽度")
+        self.assertNotIn("--modal-w: min(440px, 92vw); min-width", css,
+                         "升级模态不应再用 min-width 硬写（应改 --modal-w）")
+        self.assertIn(".ad-modal { --modal-w: min(880px, 94vw)", css,
+                      "宽详情弹框应走变量体系")
+        self.assertIn("text-align: left", css,
+                      "ad-modal 应显式左对齐（详情排版，不是确认框居中）")
         # 升级弹框承诺「升级前自动备份」——代码里必须真有备份调用，
         # 否则就是 UI 对用户说谎（2026-10-23 评审发现的空承诺）。
         ops = (ROOT / "core" / "skill_market_ops.py").read_text(encoding="utf-8")

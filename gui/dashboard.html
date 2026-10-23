@@ -802,7 +802,9 @@
     font-size: var(--fs-xs); color: var(--muted); margin: 0 0 var(--sp-6); line-height: 1.4;
   }
   /* 详情弹窗（agent detail） */
-  .ad-modal { width: min(880px, 94vw); padding: 0; overflow: hidden; }
+  /* 宽详情弹框（Agent/MCP 详情）。与 task-card / upg-modal 同用 --modal-w
+   * 变量体系，不再各自写 width —— 归并后统一由 .modal 的 width 消费。 */
+  .ad-modal { --modal-w: min(880px, 94vw); padding: 0; overflow: hidden; text-align: left; }
   .ad-head { padding: var(--sp-9) var(--sp-9a) var(--sp-8); border-bottom: 1px solid var(--line); }
   .ad-head-top { display: flex; align-items: center; gap: var(--gap-3); margin-bottom: var(--sp-4); }
   .ad-type {
@@ -1502,7 +1504,7 @@
   /* 统一升级模态（v0.31.0 三阶段：确认 → 进度 → 完成；2026-10-23
    * taste-skill 重设计——视觉锚点（display 字体技能名/大数字）+ 层次
    * 分层（主句 text / 次要 muted）+ 留白节奏，取值全 token） */
-  .upg-modal { --modal-w: min(440px, 92vw); min-width: var(--modal-w); }
+  .upg-modal { --modal-w: min(440px, 92vw); }
   /* 确认阶段（2026-10-23 二次重设计：大数字锚点 + 双列 chip 网格，
    * 数量自适应：1 个走锚点分支；2-16 双列全显；>16 显示 14 + +N 徽标） */
   .upg-hero { padding: var(--sp-1a) 0 var(--sp-3); }

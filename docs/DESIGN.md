@@ -508,6 +508,24 @@ width .3s）+ `.upg-list` 逐技能行（`.upg-row`：状态类驱动样式—�
 入口：更新列可点击 tag（单个）/ kebab「升级到最新版」（单个）/
 工具栏「一键升级」按钮（`skill-upgrade-all`，批量按顺序逐个）。
 
+**弹框家族与宽度治理（v0.31.0 收敛）**：宽度一律走 `--modal-w` 变量，
+`.modal` 只声明 `width: var(--modal-w, min(560px, 92vw))`，具体弹框在
+自身类上赋值变量即可，**禁止再写 `width: ... !important`**。
+
+家族现状（2 类 + 3 修饰）：
+
+| 类 | 角色 | 宽度变量 |
+|---|---|---|
+| `.cfm-card` | 确认/结果类（居中排版） | `min(400px, 94vw)` |
+| `.modal-form` | 表单/详情类（左对齐排版） | 默认值 |
+| `.task-card` | 修饰 `.cfm-card`：任务进度 | `min(420px, 94vw)` |
+| `.upg-modal` | 修饰 `.cfm-card .task-card`：升级三阶段 | `min(440px, 92vw)` |
+| `.ad-modal` | 修饰 `.modal`：宽详情（左对齐） | `min(880px, 94vw)` |
+
+**不要给 `.ad-modal` 叠加 `.cfm-card`**：后者带 `text-align:center` 与
+确认框专用 padding，会污染详情排版（实测验证后放弃该归并）。两个家族
+的差异是**排版语义**（居中确认 vs 左对齐内容），不是重复定义。
+
 ### 2.4 元信息与数字
 - 数字、包名、路径、版本号一律 `--mono` + `--faint` 或 `--muted`。
 - 数量单位用中文（"3.6 万次安装"），不直接透出上游英文原文。
@@ -677,7 +695,7 @@ width .3s）+ `.upg-list` 逐技能行（`.upg-row`：状态类驱动样式—�
 | `.path-field-row button` | `padding` | `var(--sp-1) var(--sp-3)` |
 | `.chg-btn` | `min-height` | `32px` |
 | `.insight-dialog` | `width` | `min(1040px, 100%)` |
-| `.ad-modal` | `width` | `min(880px, 94vw)` |
+| `.ad-modal` | `--modal-w` | `min(880px, 94vw)` |
 | `.agent-card .ac-path-row` / `.agent-card .ac-meta-row` | `grid-template-columns` | `58px minmax(0, 1fr)` |
 
 **触达目标（弹层内动作按钮）**：`.cfm-card .actions button`、`.modal-form .form-actions button`、
