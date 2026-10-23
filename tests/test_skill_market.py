@@ -643,7 +643,12 @@ class UpgradeFailureDetectionTest(unittest.TestCase):
 
         plan = {"ok": True, "action": "upgrade", "names": ["find-skills"],
                 "package": "x/y@find-skills", "argv": ["update", "find-skills"]}
-        res = execute_plan(plan, runner=runner)
+        # verify_installed 读真实文件系统：干净 CI 环境没有该技能目录会让
+        # 它提前返回「未找到安装结果」，测不到本次要验的重装回退逻辑。
+        with mock.patch("skill_market_ops.verify_installed",
+                        return_value={"ok": True, "present": ["find-skills"],
+                                      "missing": [], "root": "/tmp"}):
+            res = execute_plan(plan, runner=runner)
         self.assertTrue(res["ok"], "自动重装成功应报 ok")
         self.assertEqual(res["action"], "upgrade-reinstall")
         self.assertIn("自动重装", res.get("fallback", ""))
@@ -667,7 +672,10 @@ class UpgradeFailureDetectionTest(unittest.TestCase):
 
         plan = {"ok": True, "action": "upgrade", "names": ["find-skills"],
                 "package": "x/y@find-skills", "argv": ["update", "find-skills"]}
-        res = execute_plan(plan, runner=runner)
+        with mock.patch("skill_market_ops.verify_installed",
+                        return_value={"ok": True, "present": ["find-skills"],
+                                      "missing": [], "root": "/tmp"}):
+            res = execute_plan(plan, runner=runner)
         self.assertFalse(res["ok"])
         self.assertIn("自动重装也失败", res["stderr"])
         self.assertIn("repo not found", res["stderr"])
@@ -681,7 +689,10 @@ class UpgradeFailureDetectionTest(unittest.TestCase):
         )
         plan = {"ok": True, "action": "upgrade", "names": ["find-skills"],
                 "package": "x/y@find-skills", "argv": ["update", "find-skills"]}
-        res = execute_plan(plan, runner=lambda argv, timeout: {"code": 0, "stdout": fake_stdout})
+        with mock.patch("skill_market_ops.verify_installed",
+                        return_value={"ok": True, "present": ["find-skills"],
+                                      "missing": [], "root": "/tmp"}):
+            res = execute_plan(plan, runner=lambda argv, timeout: {"code": 0, "stdout": fake_stdout})
         self.assertFalse(res["ok"], "无建议命令的假成功必须识破且不自动重装")
         self.assertIn("无法自动更新", res["stderr"])
 

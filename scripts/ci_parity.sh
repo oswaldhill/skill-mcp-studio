@@ -481,4 +481,25 @@ else
   fi
 fi
 
+note ""
+# 1h) 干净环境自检 —— 抓「本地过、CI 挂」的测试。
+#     2026-10-23 实际发生：3 个 execute_plan 测试依赖本机真实存在的
+#     ~/.skills-manager/skills/<name> 目录（execute_plan 会调 verify_installed
+#     读文件系统），本地有目录所以全绿，CI 干净环境直接挂。
+#     这类缺陷在「本机跑全量」时永远看不见，必须换空 HOME 才暴露。
+note "== 干净环境自检（模拟 CI 无用户数据环境）=="
+if [ -x scripts/ci_clean_env_check.sh ]; then
+  if bash scripts/ci_clean_env_check.sh > /tmp/ci_clean_env.log 2>&1; then
+    note "  ✓ 空 HOME 环境下单元测试同样通过（无本机数据依赖）"
+  else
+    note ""
+    grep -E '^(FAIL|ERROR):' /tmp/ci_clean_env.log | head -10 || true
+    note "  ✗ 存在依赖本机用户数据的测试：本地过、CI 会挂"
+    note "     修法：在该用例里 mock 掉读文件系统的函数（如 verify_installed）"
+    record_failure "干净环境自检（测试依赖本机用户数据）"
+  fi
+else
+  note "  · scripts/ci_clean_env_check.sh 不存在，跳过"
+fi
+
 print_summary_and_exit
