@@ -337,6 +337,17 @@ def build_management_snapshot(
         skill_meta = read_skill_meta(unified_dir, skills)
         skill_nesting = scan_skill_nesting(unified_dir)
         nested_meta = read_nested_meta(unified_dir, skill_nesting)
+        # v0.31.0：合并 lock 的 updatedAt 进 skill_meta（版本列无 version 时
+        # 显示最后更新时间——用户需求「对于没有版本的请显示最后的更新时间」）。
+        # best-effort：lock 读不到/条目缺失不影响快照。
+        try:
+            from skill_market import list_installed as _li
+            for row in (_li().get("installed") or []):
+                name = row.get("name")
+                if name and name in skill_meta and row.get("updated_at"):
+                    skill_meta[name]["updated_at"] = row["updated_at"]
+        except Exception:
+            pass
     except (ImportError, OSError, ValueError, TypeError) as exc:
         # 此前是裸 `except Exception` + 静默降级：四步共用一个兜底，失败即返回
         # 「统一库 0 个技能」而 status 照常 —— 前端无法区分「空库」与「读取失败」。

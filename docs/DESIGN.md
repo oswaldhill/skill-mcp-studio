@@ -455,6 +455,16 @@ Agent 卡片里有两组「标签 + 值」行：**路径区**（APP / CLI / CONF
 **筛选段**含「可升级」（`data-seg="updatable"`：SKILL_UPDATES 中
 outdated 的技能；未检查时该段为空）。
 
+**统一升级模态（v0.31.0，`.upg-modal`）**：单个与批量共用（用户定案
+「中间过程保持统一，要明确能看出是更新一个还是更新多个」）。结构：
+标题带计数（`升级技能` / `升级技能（共 N 个）`）+ 总进度行
+（`.upg-progress`「第 i / N 个」）+ 逐技能行（`.upg-row`：状态图标
+`.upg-ic`（ICONS.check/cross SVG + task-spinner）+ 名称 `.upg-name`
+（mono）+ 失败原因 `.upg-note`）+ 完成态汇总（`.upg-summary`
+「成功 N · 失败 N」）。列表区 `.upg-list` 限高 320px 可滚动。入口：
+更新列可点击 tag（单个）/ kebab「升级到最新版」（单个）/ 工具栏
+「一键升级」按钮（`skill-upgrade-all`，批量按顺序逐个）。
+
 ### 2.4 元信息与数字
 - 数字、包名、路径、版本号一律 `--mono` + `--faint` 或 `--muted`。
 - 数量单位用中文（"3.6 万次安装"），不直接透出上游英文原文。

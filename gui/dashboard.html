@@ -1499,6 +1499,21 @@
   .skill-table th.st-status { width: 11%; text-align: right; }
   .skill-table th.st-ops { width: 4%; text-align: right; }
   .skill-table td.st-ver { font-family: var(--mono); color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+  /* 统一升级模态（v0.31.0：单个/批量共用，逐技能进度行） */
+  .upg-modal { min-width: min(480px, 92vw); }
+  .upg-progress { color: var(--muted); font-size: var(--fs-xs); margin: var(--sp-2) 0 var(--sp-3); }
+  .upg-list { max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: var(--gap-2); }
+  .upg-row { display: flex; align-items: center; gap: var(--gap-2); font-size: var(--fs-sm); padding: var(--sp-1a) 0; border-bottom: 1px solid var(--line); }
+  .upg-row:last-child { border-bottom: none; }
+  .upg-ic { width: 16px; text-align: center; flex: none; }
+  .upg-ic.ok { color: var(--ok); }
+  .upg-ic.err { color: var(--err); }
+  .upg-ic.run { color: var(--accent); }
+  .upg-name { flex: 0 0 auto; max-width: 40%; overflow: hidden; text-overflow: ellipsis; }
+  .upg-note { flex: 1 1 auto; color: var(--muted); font-size: var(--fs-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .upg-note.err { color: var(--err); }
+  .upg-summary { color: var(--text); font-size: var(--fs-sm); margin: var(--sp-2) 0 var(--sp-3); }
+
   /* 可升级 tag：可点击（v0.31.0 用户反馈——tag 即升级入口） */
   .skill-table .tag-upgradable { cursor: pointer; }
   .skill-table .tag-upgradable:hover { border-color: var(--warn-border); filter: brightness(1.05); }
@@ -1890,6 +1905,7 @@
           <button class="btn-soft" data-action="open-market">技能市场</button>
           <button class="btn-soft" data-action="refresh-skills">刷新技能</button>
           <button class="btn-soft" data-action="skill-check-updates" title="只读检查：本地版本 vs 远端最新版（不修改任何技能）">检查更新</button>
+          <button class="btn-soft" data-action="skill-upgrade-all" title="按顺序逐个升级全部「有更新」的技能（每个先备份）">一键升级</button>
           <button class="btn-soft" data-action="merge" title="仅重建各客户端 skills 链接，不合并重复技能">修复链接</button>
         </div>
       </div>
@@ -3325,7 +3341,12 @@ function renderSkillList() {
       // 读屏丢失「第几行/对应哪个表头」的行列关联（该表 5 列）。
       // 保留 tabindex 与 Enter/Space 键盘补丁，可聚焦性不变。
       // v0.31.0：版本列（SKILL.md frontmatter）+ 更新列（检查后三态 tag）
-      const ver = (meta[s] && meta[s].version) || "";
+      // v0.31.0：无 version 显示最后更新时间（lock 的 updatedAt，MM-DD 短格式，
+      // title 悬停全时间）——用户需求「对于没有版本的请显示最后的更新时间」
+      const m = (meta[s] || {});
+      const ver = m.version || (m.updated_at
+        ? new Date(m.updated_at).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })
+        : "");
       const upd = SKILL_UPDATES ? (SKILL_UPDATES[s] || null) : null;
       // v0.31.0（用户反馈）：不设独立升级按钮——「有更新」tag 本身可点击
       // （cursor:pointer + data-skill-upgrade），点击弹升级确认；升级操作
@@ -3340,7 +3361,7 @@ function renderSkillList() {
       return `<tr class="skill-row" data-skill="${escapeHtml(s)}" tabindex="0" aria-label="查看 ${escapeHtml(s)} 详情" title="查看详情">
         <td class="st-name"><div class="st-name-cell">${nameCell}</div></td>
         <td class="st-cat"><span class="sk-cat">${escapeHtml(r.cat)}</span></td>
-        <td class="st-ver" title="${escapeHtml(ver)}">${escapeHtml(ver || "-")}</td>
+        <td class="st-ver" title="${escapeHtml(m.version ? ("版本 " + m.version) : (m.updated_at ? ("最后更新 " + m.updated_at) : "无版本与更新时间"))}">${escapeHtml(ver || "-")}</td>
         <td class="st-usage ${r.home ? "has-home" : "wrap"}" title="${escapeHtml((meta[s] && meta[s].description) || "")}">${usageCell(s, r)}</td>
         <td class="st-upd">${updCell}</td>
         <td class="st-status"><span class="st-count ${r.countCls}" title="${r.enabled} / ${r.total} 个客户端已启用">${r.enabled}/${r.total} 启用</span></td>
@@ -6289,30 +6310,101 @@ function renderEndpointStatus() {
     }
   }
 
-  // v0.31.0：技能行「升级」：对 outdated 技能跑 --market-upgrade（写操作：
-  // 拉上游最新版覆盖本地，先备份）。确认弹窗说明覆盖语义；成功后刷新技能
-  // 清单并重查更新状态。
-  async function runSkillUpgrade(name) {
-    const upd = (SKILL_UPDATES || {})[name] || {};
+  // v0.31.0：统一升级模态（单个与批量共用，用户需求「中间过程保持统一，
+  // 要明确能看出是更新一个还是更新多个」）。逐个顺序升级，每技能一行进度：
+  // 待升级 / 进行中 / 成功 / 失败（含原因）。标题带计数（1 个 / N 个）。
+  async function runSkillUpgradeModal(names) {
+    const list = Array.isArray(names) ? names : [names];
+    const total = list.length;
+    const plural = total > 1 ? `（共 ${total} 个）` : "";
+    // 确认：覆盖语义 + 数量明确
+    const preview = total > 1
+      ? list.slice(0, 5).join("、") + (total > 5 ? ` 等 ${total} 个技能` : "")
+      : list[0];
     const ok = await confirmModal("升级技能",
-      `将把「${name}」升级到远端最新版（${upd.remote || "?"}）。\n` +
-      `本地内容会被上游覆盖（升级前自动备份）。继续？`, true, "确认升级");
+      `将${total > 1 ? "按顺序逐个升级" : "把"}「${preview}」${total > 1 ? "" : "升级到远端最新版"}。\n` +
+      `本地内容会被上游覆盖（每个升级前自动备份）。继续？`, true, "确认升级");
     if (!ok) return;
-    await runTaskModal(`升级 ${name}`, async () => {
-      const res = await runCli(["--market-upgrade", name, "--yes", "--format", "json"],
-        `升级 ${name}：拉取上游最新版`);
-      if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
-      let payload = null;
-      try { payload = JSON.parse(res.stdout || "{}"); } catch (e) { payload = null; }
-      if (res.code === 0 && payload && payload.ok !== false) {
-        return { ok: true, message: `${name} 已升级到 ${upd.remote || "最新版"}` };
+
+    // 进度模态：逐技能行 + 总进度
+    const rowHtml = (name, state, note) => {
+      const icon = state === "done" ? ICONS.check : state === "failed" ? ICONS.cross
+        : state === "running" ? '<span class="task-spinner" style="width:12px;height:12px"></span>' : "·";
+      const cls = state === "done" ? "ok" : state === "failed" ? "err" : state === "running" ? "run" : "muted";
+      return `<div class="upg-row"><span class="upg-ic ${cls}">${icon}</span>` +
+        `<span class="upg-name mono">${escapeHtml(name)}</span>` +
+        `<span class="upg-note ${cls}">${escapeHtml(note || "")}</span></div>`;
+    };
+    const render = (states, currentIdx) => {
+      mountModal(`<div class="modal-backdrop"><div class="modal cfm-card task-card upg-modal">
+        <div class="cfm-title">升级技能${plural}</div>
+        <div class="upg-progress">第 ${Math.min(currentIdx + 1, total)} / ${total} 个</div>
+        <div class="upg-list">${list.map((n, i) => rowHtml(n, states[i], "")).join("")}</div>
+      </div></div>`);
+    };
+    const states = list.map(() => "pending");
+    render(states, 0);
+    let succeeded = 0, failed = 0;
+    for (let i = 0; i < list.length; i++) {
+      const name = list[i];
+      states[i] = "running";
+      render(states, i);
+      try {
+        const res = await runCli(["--market-upgrade", name, "--yes", "--format", "json"],
+          `升级 ${name}：拉取上游最新版`);
+        let payload = null;
+        try { payload = JSON.parse(res.stdout || "{}"); } catch (e) { payload = null; }
+        if (res && res.code === 0 && payload && payload.ok !== false) {
+          states[i] = "done"; succeeded++;
+        } else {
+          states[i] = "failed"; failed++;
+          const reason = (payload && payload.stderr) || (res && cliFailLines(res)) || (res && cliErrDetail(res)) || "未知错误";
+          // 失败原因写进该行 note（重渲染时带上）
+          mountModal(`<div class="modal-backdrop"><div class="modal cfm-card task-card upg-modal">
+            <div class="cfm-title">升级技能${plural}</div>
+            <div class="upg-progress">第 ${Math.min(i + 1, total)} / ${total} 个</div>
+            <div class="upg-list">${list.map((n, j) => rowHtml(n, states[j], j === i ? String(reason).split("\n")[0] : "")).join("")}</div>
+          </div></div>`);
+        }
+      } catch (e) {
+        states[i] = "failed"; failed++;
       }
-      return { ok: false, message: "升级失败",
-               detail: (payload && payload.stderr) || cliFailLines(res) || cliErrDetail(res) };
-    }, async () => {
-      await refreshBlocks(["skills"]);
-      await runSkillCheckUpdates(null);
-    }, ["备份本地", "拉取上游", "校验安装", "刷新状态"]);
+    }
+    // 完成态：汇总 + 关闭按钮
+    mountModal(`<div class="modal-backdrop"><div class="modal cfm-card task-card upg-modal">
+      <div class="cfm-title">升级完成${plural}</div>
+      <div class="upg-summary">成功 ${succeeded} · 失败 ${failed}</div>
+      <div class="upg-list">${list.map((n, i) => rowHtml(n, states[i], "")).join("")}</div>
+      <div class="actions"><button class="btn-cancel close-push" id="upg-close">关闭</button></div>
+    </div></div>`);
+    const closeBtn = $("upg-close");
+    if (closeBtn) closeBtn.onclick = closeModal;
+    // 刷新技能清单 + 重查更新状态
+    await refreshBlocks(["skills"]);
+    await runSkillCheckUpdates(null);
+    showToast(failed ? "warn" : "ok",
+      `升级完成：成功 ${succeeded}${failed ? ` · 失败 ${failed}` : ""}`);
+  }
+
+  // 单个升级（tag 点击 / kebab 菜单）：走统一模态（N=1）
+  async function runSkillUpgrade(name) {
+    await runSkillUpgradeModal([name]);
+  }
+
+  // 一键升级全部（v0.31.0：用户需求「一键升级全部 + 按顺序逐个 + 过程展示」）
+  async function runSkillUpgradeAll() {
+    if (!SKILL_UPDATES) {
+      showToast("info", "请先点「检查更新」");
+      return;
+    }
+    const outdated = Object.entries(SKILL_UPDATES)
+      .filter(([, v]) => v.state === "outdated")
+      .map(([n]) => n);
+    if (!outdated.length) {
+      showToast("ok", "没有可升级的技能（均为最新或未知）");
+      return;
+    }
+    await runSkillUpgradeModal(outdated);
   }
 
   async function runMarketCheck(btn) {
@@ -7569,6 +7661,7 @@ document.addEventListener("click", (e) => {
     else if (a === "market-search") runMarketSearch(act);
     else if (a === "market-check") runMarketCheck(act);
     else if (a === "skill-check-updates") runSkillCheckUpdates(act);
+    else if (a === "skill-upgrade-all") runSkillUpgradeAll();
     else if (a === "market-install") confirmMarketInstall(act.dataset.pkg);
     else if (a === "market-upgrade") confirmMarketUpgrade(act.dataset.name);
     else if (a === "reprobe") reprobeEndpoints(act);
