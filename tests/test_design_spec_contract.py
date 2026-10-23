@@ -1638,7 +1638,7 @@ class SkillVersionUiContractTest(unittest.TestCase):
         self.assertIn('data-seg="updatable">可升级', src, "筛选段缺「可升级」")
         self.assertIn('seg === "updatable"', src, "筛选逻辑缺 updatable 分支")
         # 升级确认文案：danger 视觉 + 「确认升级」文案（不得误用「确认删除」）
-        self.assertIn('"确认升级"', src, "升级确认按钮文案应为「确认升级」")
+        self.assertIn(">确认升级</button>", src, "升级确认按钮文案应为「确认升级」")
         self.assertIn("confirmText || (danger", src, "confirmModal 应支持自定义确认文案")
         # 「最新」/「有更新」tag 都显示远端版本号或提交时间（用户需求）
         self.assertIn("remoteTime", src, "检查结果缺 remoteTime（远端提交时间）")
@@ -1653,6 +1653,16 @@ class SkillVersionUiContractTest(unittest.TestCase):
         self.assertIn("upg-state-word", src, "升级行缺状态词（成功/失败/升级中）")
         self.assertIn("upg-stat-num", src, "完成态缺汇总统计块（语义色数字）")
         self.assertIn("STATE_WORD", src, "缺状态词映射")
+        # 单一弹框（2026-10-23 用户反馈「弹框遮挡」）：确认内嵌 upg-modal，
+        # 不再叠加 confirmModal
+        self.assertIn('id="upg-confirm"', src, "确认阶段应内嵌升级模态（单一弹框）")
+        self.assertIn('id="upg-cancel"', src, "确认阶段内嵌取消按钮")
+        # 升级流程内不得再调 confirmModal（防回退到双弹框）
+        upg_start = src.index("async function runSkillUpgradeModal")
+        upg_end = src.index("async function runSkillUpgradeAll")
+        upg_body = src[upg_start:upg_end]
+        self.assertNotIn("await confirmModal(", upg_body,
+                         "升级流程不得叠加 confirmModal（用户定案单一弹框）")
         # 市场源添加表单：不用 placeholder 充当 label（taste-skill 4.6）
         self.assertIn('aria-label="源 ID"', src, "表单字段缺 aria-label（placeholder 不是标签）")
         self.assertIn('<span class="k">源 ID</span>', src, "表单缺可见 label（.k 行结构）")

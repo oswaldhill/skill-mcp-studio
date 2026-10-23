@@ -466,7 +466,11 @@ task-spinner）+ 名称 `.upg-name`（mono）+ 失败原因 `.upg-note`
 失败 err 红 / 升级中 accent））+ 完成态**汇总统计块**（`.upg-stats`：
 `.upg-stat` 数字块——`.upg-stat-num` display 字体 tabular-nums 语义色
 + `.upg-stat-label` 标签；失败为 0 时只显示成功块）。列表区
-`.upg-list` 限高 320px 可滚动。入口：更新列可点击 tag（单个）/
+`.upg-list` 限高 320px 可滚动。**确认阶段内嵌同一弹框**（用户定案
+2026-10-23「只允许一个弹框」：`.upg-confirm-list` 预览列表限高
+200px，>8 个截断显示 `.upg-more`「… 其余 N 个」；操作按钮
+`upg-cancel` 取消 / `upg-confirm` 确认升级——不再叠加
+confirmModal）。入口：更新列可点击 tag（单个）/
 kebab「升级到最新版」（单个）/ 工具栏「一键升级」按钮
 （`skill-upgrade-all`，批量按顺序逐个）。
 
