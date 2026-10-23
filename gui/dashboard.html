@@ -3351,9 +3351,17 @@ function renderSkillList() {
       // v0.31.0（用户反馈）：不设独立升级按钮——「有更新」tag 本身可点击
       // （cursor:pointer + data-skill-upgrade），点击弹升级确认；升级操作
       // 另融入行尾 kebab 菜单（见 toggleSkillMenu）。
+      // v0.31.0（用户反馈）：outdated/current tag 都显示远端版本号或提交
+      // 时间（「可更新的标签可以修改成时间或者版本号」）。
+      const remoteLabel = upd
+        ? (upd.remote
+            || (upd.remoteTime
+                ? new Date(upd.remoteTime).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })
+                : ""))
+        : "";
       const updCell = upd
         ? (upd.state === "outdated"
-            ? `<span class="tag warn tag-upgradable" data-skill-upgrade="${escapeHtml(s)}" role="button" tabindex="0" title="本地 ${upd.local || "?"} → 远端 ${upd.remote || "?"}，点击升级">有更新</span>`
+            ? `<span class="tag warn tag-upgradable" data-skill-upgrade="${escapeHtml(s)}" role="button" tabindex="0" title="本地 ${upd.local || "?"} → 远端 ${upd.remote || (upd.remoteTime || "?")}，点击升级">有更新${remoteLabel ? " " + escapeHtml(remoteLabel) : ""}</span>`
             : upd.state === "current"
               ? (() => {
                   // v0.31.0：「最新」显示远端版本号或提交时间（用户需求
@@ -6333,8 +6341,18 @@ function renderEndpointStatus() {
     const preview = total > 1
       ? list.slice(0, 5).join("、") + (total > 5 ? ` 等 ${total} 个技能` : "")
       : list[0];
+    // 单个升级时带远端版本号/提交时间（用户需求「最新版是否应该告知
+    // 是什么版本或者是什么时间」）
+    const firstUpd = total === 1 ? ((SKILL_UPDATES || {})[list[0]] || {}) : null;
+    const remoteInfo = firstUpd
+      ? (firstUpd.remote
+          ? `（${firstUpd.remote}）`
+          : (firstUpd.remoteTime
+              ? `（上游最新提交 ${new Date(firstUpd.remoteTime).toLocaleDateString("zh-CN")}）`
+              : ""))
+      : "";
     const ok = await confirmModal("升级技能",
-      `将${total > 1 ? "按顺序逐个升级" : "把"}「${preview}」${total > 1 ? "" : "升级到远端最新版"}。\n` +
+      `将${total > 1 ? "按顺序逐个升级" : "把"}「${preview}」${total > 1 ? "" : `升级到远端最新版${remoteInfo}`}。\n` +
       `本地内容会被上游覆盖（每个升级前自动备份）。继续？`, true, "确认升级");
     if (!ok) return;
 
