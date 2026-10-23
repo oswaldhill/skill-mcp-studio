@@ -1514,11 +1514,20 @@
   .upg-kv { display: flex; gap: var(--gap-3); font-size: var(--fs-sm); margin-top: var(--sp-3); }
   .upg-kv .k { color: var(--muted); flex: none; }
   .upg-kv .v { font-family: var(--mono); }
-  .upg-warn { display: flex; align-items: flex-start; gap: var(--gap-2); color: var(--muted); font-size: var(--fs-xs); margin-top: var(--sp-3); padding-top: var(--sp-3); border-top: 1px solid var(--line); }
   .upg-warn .w-ic { color: var(--warn); flex: none; }
-  .upg-chips { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap-2); margin-top: var(--sp-2); }
-  .upg-chip { background: var(--panel-2); border-radius: var(--r-control); padding: var(--sp-1a) var(--sp-2); font-family: var(--mono); font-size: var(--fs-xs); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .upg-chip-more { background: var(--accent-bg); color: var(--accent); font-weight: 600; text-align: center; }
+  /* 确认表格（2026-10-23 用户定案：完整显示所有技能 + 版本对比 + 分页） */
+  .upg-table { width: 100%; border-collapse: collapse; margin-top: var(--sp-2); }
+  .upg-table th { text-align: left; font-size: var(--fs-xs); font-weight: 500; color: var(--muted); padding: var(--sp-1a) var(--sp-2); border-bottom: 1px solid var(--line); }
+  .upg-table td { font-size: var(--fs-sm); padding: var(--sp-1a) var(--sp-2); border-bottom: 1px solid var(--line); }
+  .upg-table tr:last-child td { border-bottom: none; }
+  .upg-table .t-name { font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 14rem; }
+  .upg-table .t-ver { font-family: var(--mono); color: var(--muted); white-space: nowrap; }
+  .upg-table .t-ver.to { color: var(--accent); }
+  .upg-table .t-arrow { color: var(--muted); text-align: center; width: 2rem; }
+  .upg-pager { display: flex; align-items: center; justify-content: center; gap: var(--gap-3); margin-top: var(--sp-3); }
+  .upg-pager .pg-info { font-size: var(--fs-xs); color: var(--muted); }
+  .upg-warn { margin-top: var(--sp-4); }
+  .upg-modal .actions { margin-top: var(--sp-4); padding-top: var(--sp-3); border-top: 1px solid var(--line); }
   /* 进度阶段：两端对齐计数 + 进度条 + 当前行高亮 */
   .upg-progress { display: flex; justify-content: space-between; align-items: baseline; color: var(--muted); font-size: var(--fs-xs); margin: var(--sp-1a) 0 var(--sp-2); font-variant-numeric: tabular-nums; }
   .upg-progress b { color: var(--text); font-weight: 600; }
@@ -6387,10 +6396,36 @@ function renderEndpointStatus() {
       : "";
     // 阶段一：确认（taste-skill 重设计：技能名/数字做视觉锚点，说明分层，
     // 预览卡片化，覆盖警告独立行带图标）
-    // 数量自适应：≤16 双列全显；>16 显示 14 个 chip + 「+N」徽标格
-    const MAX_CHIPS = 14;
-    const shown = total <= MAX_CHIPS + 2 ? total : MAX_CHIPS;
-    const rest = total - shown;
+    // 表格 + 分页（2026-10-23 用户定案：完整显示所有技能、版本对比、
+    // 内容多时分页）。每页 8 行；版本取 SKILL_UPDATES（local/remote/
+    // remoteTime，无版本显示日期，都没有显示 -）。
+    const PAGE_SIZE = 8;
+    let upgPage = 0;
+    const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    const verOf = (name, which) => {
+      const u = (SKILL_UPDATES || {})[name] || {};
+      if (which === "local") return u.local || (u.remoteTime ? "（按时间判定）" : "-");
+      return u.remote || (u.remoteTime
+        ? new Date(u.remoteTime).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" }) : "最新");
+    };
+    const renderConfirmTable = () => {
+      const start = upgPage * PAGE_SIZE;
+      const items = list.slice(start, start + PAGE_SIZE);
+      const rows = items.map((n) => `<tr>
+        <td class="t-name" title="${escapeHtml(n)}">${escapeHtml(n)}</td>
+        <td class="t-ver">${escapeHtml(String(verOf(n, "local")))}</td>
+        <td class="t-arrow">→</td>
+        <td class="t-ver to">${escapeHtml(String(verOf(n, "remote")))}</td>
+      </tr>`).join("");
+      const pager = pageCount > 1 ? `<div class="upg-pager">
+        <button type="button" class="pg-btn ${upgPage <= 0 ? "disabled" : ""}" data-upg-pg="prev" ${upgPage <= 0 ? "disabled" : ""}><span class="pg-arrow">‹</span> 上一页</button>
+        <span class="pg-info">第 ${upgPage + 1} / ${pageCount} 页 · 共 ${total} 个</span>
+        <button type="button" class="pg-btn ${upgPage >= pageCount - 1 ? "disabled" : ""}" data-upg-pg="next" ${upgPage >= pageCount - 1 ? "disabled" : ""}>下一页 <span class="pg-arrow">›</span></button>
+      </div>` : "";
+      return `<table class="upg-table"><thead><tr>
+        <th>技能</th><th>当前</th><th></th><th>远端</th>
+      </tr></thead><tbody>${rows}</tbody></table>${pager}`;
+    };
     const confirmHtml = total > 1
       ? `<div class="modal-backdrop"><div class="modal cfm-card task-card upg-modal">
         <div class="cfm-title">升级技能</div>
@@ -6398,9 +6433,7 @@ function renderEndpointStatus() {
           <span class="upg-count-num">${total}</span>
           <span class="upg-count-label">个技能待升级 · 按顺序逐个 · 每个先备份</span>
         </div>
-        <div class="upg-chips">${list.slice(0, shown).map((n) =>
-          `<div class="upg-chip" title="${escapeHtml(n)}">${escapeHtml(n)}</div>`).join("")}
-          ${rest > 0 ? `<div class="upg-chip upg-chip-more">+${rest}</div>` : ""}</div>
+        <div id="upg-confirm-body">${renderConfirmTable()}</div>
         <div class="upg-warn"><span class="w-ic">${ICONS.info}</span><span>本地内容会被上游覆盖；上游仓库迁移时自动重装（结果一致）</span></div>
         <div class="actions">
           <button class="btn-cancel close-push" id="upg-cancel">取消</button>
@@ -6421,6 +6454,20 @@ function renderEndpointStatus() {
         </div>
       </div></div>`;
     mountModal(confirmHtml);
+    // 分页点击（重渲染表格区，不动弹框其他部分）
+    const bindPager = () => {
+      document.querySelectorAll("[data-upg-pg]").forEach((b) => {
+        b.onclick = () => {
+          if (b.disabled) return;
+          upgPage = b.dataset.upgPg === "next"
+            ? Math.min(pageCount - 1, upgPage + 1) : Math.max(0, upgPage - 1);
+          const body = $("upg-confirm-body");
+          if (body) body.innerHTML = renderConfirmTable();
+          bindPager();
+        };
+      });
+    };
+    bindPager();
     const goOn = await new Promise((resolve) => {
       const c = $("upg-confirm");
       const x = $("upg-cancel");

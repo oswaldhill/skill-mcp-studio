@@ -463,11 +463,12 @@ outdated 的技能；未检查时该段为空）。
 （muted）+ `.upg-kv` 远端信息行（label muted + value mono）。
 批量走 `.upg-count-row` 大数字锚点（`.upg-count-num` display
 fs-xl 粗体 tabular-nums + `.upg-count-label` muted 说明）+
-`.upg-chips` **双列 chip 网格**（`.upg-chip` panel-2 底 r-control
-圆角 mono 截断行；数量自适应：≤16 全显，>16 显示 14 个 +
-`.upg-chip-more`「+N」徽标格 accent-bg/accent）。`.upg-warn`
-覆盖警告行（上边线分隔 + ICONS.info warn 色图标）。操作按钮
-`upg-cancel` / `upg-confirm`。
+`.upg-table` **版本对比表格**（四列：技能 `.t-name` mono 截断 /
+当前 `.t-ver` muted / 箭头 `.t-arrow` / 远端 `.t-ver.to` accent；
+每页 8 行，>8 时 `.upg-pager` 分页器——复用 pg-btn/pg-info 语言，
+「第 i / N 页 · 共 M 个」）。`.upg-warn` 覆盖警告行（ICONS.info
+warn 色图标，margin-top sp-4）。操作按钮 `upg-cancel` /
+`upg-confirm`（actions 区上边线分隔 + sp-4/sp-3 间距）。
 
 **进度阶段**：`.upg-progress` 两端对齐计数（左「**i** / N」右「P%」，
 tabular-nums）+ `.upg-bar` 3px 进度条（`.upg-bar-fill` accent，
