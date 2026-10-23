@@ -1642,7 +1642,8 @@ class SkillVersionUiContractTest(unittest.TestCase):
         self.assertIn("confirmText || (danger", src, "confirmModal 应支持自定义确认文案")
         # 「最新」/「有更新」tag 都显示远端版本号或提交时间（用户需求）
         self.assertIn("remoteTime", src, "检查结果缺 remoteTime（远端提交时间）")
-        self.assertIn("最新${remote", src, "「最新」tag 应显示远端版本号/时间")
+        self.assertIn('escapeHtml(remote || "最新")', src,
+                      "「最新」tag 应直接显示远端版本号/时间（无信息才回退「最新」）")
         self.assertIn('escapeHtml(remoteLabel || "有更新")', src,
                       "outdated tag 应直接显示远端版本号/时间（无远端信息才回退「有更新」文字）")
         # 确认框带远端信息
