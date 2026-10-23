@@ -1516,9 +1516,8 @@
   .upg-ver-side { display: flex; flex-direction: column; gap: var(--gap-1); flex: 1 1 0; min-width: 0; }
   .upg-ver-num { font-family: var(--mono); font-size: var(--fs-md); font-weight: 600; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .upg-ver-num.from { color: var(--muted); }
-  .upg-ver-num.to { color: var(--accent); text-align: right; }
-  .upg-ver-label { font-size: var(--fs-xs); color: var(--muted); }
-  .upg-ver-label.to { text-align: right; }
+  .upg-ver-num.to { color: var(--accent); }
+  .upg-ver-num, .upg-ver-label { text-align: center; }
   .upg-ver-arrow { color: var(--muted); flex: none; font-size: var(--fs-md); }
   .upg-warn .w-ic { color: var(--warn); flex: none; }
   .upg-warn .w-ic svg { width: 13px; height: 13px; flex: none; }
@@ -6436,7 +6435,7 @@ function renderEndpointStatus() {
         <div id="upg-confirm-body">${renderConfirmTable()}</div>
         <div class="upg-warn"><span class="w-ic">${ICONS.info}</span><span>本地内容会被上游覆盖；上游仓库迁移时自动重装（结果一致）</span></div>
         <div class="actions">
-          <button class="btn-cancel close-push" id="upg-cancel">取消</button>
+          <button class="cfm-btn-cancel close-push" id="upg-cancel">取消</button>
           <button class="cfm-btn-danger" id="upg-confirm">确认升级</button>
         </div>
       </div></div>`
@@ -6459,7 +6458,7 @@ function renderEndpointStatus() {
         </div>
         <div class="upg-warn"><span class="w-ic">${ICONS.info}</span><span>本地内容会被上游覆盖，升级前自动备份</span></div>
         <div class="actions">
-          <button class="btn-cancel close-push" id="upg-cancel">取消</button>
+          <button class="cfm-btn-cancel close-push" id="upg-cancel">取消</button>
           <button class="cfm-btn-danger" id="upg-confirm">确认升级</button>
         </div>
       </div></div>`;
