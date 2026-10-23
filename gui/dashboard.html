@@ -1503,18 +1503,22 @@
    * taste-skill 重设计——视觉锚点（display 字体技能名/大数字）+ 层次
    * 分层（主句 text / 次要 muted）+ 留白节奏，取值全 token） */
   .upg-modal { min-width: min(440px, 92vw); }
-  /* 确认阶段：锚点 + 分层说明 + 卡片化预览 */
+  /* 确认阶段（2026-10-23 二次重设计：大数字锚点 + 双列 chip 网格，
+   * 数量自适应：1 个走锚点分支；2-16 双列全显；>16 显示 14 + +N 徽标） */
   .upg-hero { padding: var(--sp-1a) 0 var(--sp-3); }
   .upg-hero-name { font-family: var(--display); font-size: var(--fs-md); font-weight: 600; line-height: 1.2; word-break: break-all; }
   .upg-hero-sub { color: var(--muted); font-size: var(--fs-sm); margin-top: var(--sp-1a); }
+  .upg-count-row { display: flex; align-items: baseline; gap: var(--gap-3); padding: var(--sp-1a) 0 var(--sp-1a); }
+  .upg-count-num { font-family: var(--display); font-size: var(--fs-xl); font-weight: 700; line-height: 1; color: var(--text); font-variant-numeric: tabular-nums; }
+  .upg-count-label { color: var(--muted); font-size: var(--fs-sm); }
   .upg-kv { display: flex; gap: var(--gap-3); font-size: var(--fs-sm); margin-top: var(--sp-3); }
   .upg-kv .k { color: var(--muted); flex: none; }
   .upg-kv .v { font-family: var(--mono); }
   .upg-warn { display: flex; align-items: flex-start; gap: var(--gap-2); color: var(--muted); font-size: var(--fs-xs); margin-top: var(--sp-3); padding-top: var(--sp-3); border-top: 1px solid var(--line); }
   .upg-warn .w-ic { color: var(--warn); flex: none; }
-  .upg-preview { background: var(--panel-2); border-radius: var(--r-control); padding: var(--sp-2) var(--sp-3); margin-top: var(--sp-3); max-height: 180px; overflow-y: auto; }
-  .upg-preview-row { font-family: var(--mono); font-size: var(--fs-xs); color: var(--text); padding: var(--sp-0b) 0; line-height: 1.6; }
-  .upg-preview-more { font-size: var(--fs-xs); color: var(--muted); padding: var(--sp-1a) 0 0; }
+  .upg-chips { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap-2); margin-top: var(--sp-2); }
+  .upg-chip { background: var(--panel-2); border-radius: var(--r-control); padding: var(--sp-1a) var(--sp-2); font-family: var(--mono); font-size: var(--fs-xs); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .upg-chip-more { background: var(--accent-bg); color: var(--accent); font-weight: 600; text-align: center; }
   /* 进度阶段：两端对齐计数 + 进度条 + 当前行高亮 */
   .upg-progress { display: flex; justify-content: space-between; align-items: baseline; color: var(--muted); font-size: var(--fs-xs); margin: var(--sp-1a) 0 var(--sp-2); font-variant-numeric: tabular-nums; }
   .upg-progress b { color: var(--text); font-weight: 600; }
@@ -6383,16 +6387,20 @@ function renderEndpointStatus() {
       : "";
     // 阶段一：确认（taste-skill 重设计：技能名/数字做视觉锚点，说明分层，
     // 预览卡片化，覆盖警告独立行带图标）
+    // 数量自适应：≤16 双列全显；>16 显示 14 个 chip + 「+N」徽标格
+    const MAX_CHIPS = 14;
+    const shown = total <= MAX_CHIPS + 2 ? total : MAX_CHIPS;
+    const rest = total - shown;
     const confirmHtml = total > 1
       ? `<div class="modal-backdrop"><div class="modal cfm-card task-card upg-modal">
         <div class="cfm-title">升级技能</div>
-        <div class="upg-hero">
-          <div class="upg-hero-name">${total} 个技能待升级</div>
-          <div class="upg-hero-sub">按顺序逐个升级，每个升级前自动备份</div>
+        <div class="upg-count-row">
+          <span class="upg-count-num">${total}</span>
+          <span class="upg-count-label">个技能待升级 · 按顺序逐个 · 每个先备份</span>
         </div>
-        <div class="upg-preview">${list.slice(0, 8).map((n) =>
-          `<div class="upg-preview-row">${escapeHtml(n)}</div>`).join("")}
-          ${total > 8 ? `<div class="upg-preview-more">… 其余 ${total - 8} 个</div>` : ""}</div>
+        <div class="upg-chips">${list.slice(0, shown).map((n) =>
+          `<div class="upg-chip" title="${escapeHtml(n)}">${escapeHtml(n)}</div>`).join("")}
+          ${rest > 0 ? `<div class="upg-chip upg-chip-more">+${rest}</div>` : ""}</div>
         <div class="upg-warn"><span class="w-ic">${ICONS.info}</span><span>本地内容会被上游覆盖；上游仓库迁移时自动重装（结果一致）</span></div>
         <div class="actions">
           <button class="btn-cancel close-push" id="upg-cancel">取消</button>

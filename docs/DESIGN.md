@@ -458,13 +458,16 @@ outdated 的技能；未检查时该段为空）。
 **统一升级模态（v0.31.0，`.upg-modal`，2026-10-23 taste-skill 重设计）**：
 单个与批量共用三阶段（确认 → 进度 → 完成），同一弹框内重渲染。
 
-**确认阶段**：`.upg-hero` 锚点区——单个时 `.upg-hero-name` 技能名
-（display 字体）+ `.upg-hero-sub` 说明（muted）；批量时锚点为
-「N 个技能待升级」。单个带 `.upg-kv` 远端信息行（label muted +
-value mono）。批量带 `.upg-preview` 卡片化预览（panel-2 底 +
-r-control 圆角，`.upg-preview-row` mono 行，>8 个截断
-`.upg-preview-more`）。`.upg-warn` 覆盖警告行（上边线分隔 +
-ICONS.info warn 色图标）。操作按钮 `upg-cancel` / `upg-confirm`。
+**确认阶段**（数量自适应）：单个走 `.upg-hero` 锚点分支——
+`.upg-hero-name` 技能名（display 字体）+ `.upg-hero-sub` 说明
+（muted）+ `.upg-kv` 远端信息行（label muted + value mono）。
+批量走 `.upg-count-row` 大数字锚点（`.upg-count-num` display
+fs-xl 粗体 tabular-nums + `.upg-count-label` muted 说明）+
+`.upg-chips` **双列 chip 网格**（`.upg-chip` panel-2 底 r-control
+圆角 mono 截断行；数量自适应：≤16 全显，>16 显示 14 个 +
+`.upg-chip-more`「+N」徽标格 accent-bg/accent）。`.upg-warn`
+覆盖警告行（上边线分隔 + ICONS.info warn 色图标）。操作按钮
+`upg-cancel` / `upg-confirm`。
 
 **进度阶段**：`.upg-progress` 两端对齐计数（左「**i** / N」右「P%」，
 tabular-nums）+ `.upg-bar` 3px 进度条（`.upg-bar-fill` accent，
