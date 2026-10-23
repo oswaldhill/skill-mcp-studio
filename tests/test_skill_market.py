@@ -730,6 +730,8 @@ class TimeFallbackCheckTest(unittest.TestCase):
         out = self._run("2025-12-01T00:00:00Z")
         by = {r["name"]: r for r in out["updates"]}
         self.assertEqual(by["a"]["state"], "current")
+        # remote_time 透传（GUI「最新」tag 显示远端提交时间用）
+        self.assertEqual(by["a"].get("remote_time"), "2025-12-01T00:00:00Z")
 
     def test_no_time_no_fallback(self):
         out = self._run("2026-09-01T00:00:00Z")

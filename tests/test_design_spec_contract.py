@@ -1640,6 +1640,9 @@ class SkillVersionUiContractTest(unittest.TestCase):
         # 升级确认文案：danger 视觉 + 「确认升级」文案（不得误用「确认删除」）
         self.assertIn('"确认升级"', src, "升级确认按钮文案应为「确认升级」")
         self.assertIn("confirmText || (danger", src, "confirmModal 应支持自定义确认文案")
+        # 「最新」tag 显示远端版本号或提交时间（用户需求）
+        self.assertIn("remoteTime", src, "检查结果缺 remoteTime（远端提交时间）")
+        self.assertIn("最新${remote", src, "「最新」tag 应显示远端版本号/时间")
         # 市场源添加表单：不用 placeholder 充当 label（taste-skill 4.6）
         self.assertIn('aria-label="源 ID"', src, "表单字段缺 aria-label（placeholder 不是标签）")
         self.assertIn('<span class="k">源 ID</span>', src, "表单缺可见 label（.k 行结构）")

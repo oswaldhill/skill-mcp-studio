@@ -452,8 +452,11 @@ def check_updates(only: Optional[List[str]] = None, force: bool = False) -> Dict
                     state = "unknown"
                     reason = "上游该路径无提交记录或查询失败"
             counts[state] += 1
+            # remote_time 透传（v0.31.0：GUI「最新」tag 显示远端版本号或
+            # 提交时间——用户需求「最新版需要显示最新版本是什么时间或者版本号」）
             rows.append(dict(row, state=state, local_version=local,
-                             remote_version=None, note=reason))
+                             remote_version=None, remote_time=remote_time,
+                             note=reason))
             continue
 
         if local is None:
