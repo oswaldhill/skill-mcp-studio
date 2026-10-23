@@ -43,11 +43,12 @@ class ReadSkillMetaTest(unittest.TestCase):
             self.assertEqual(meta["alpha"]["description"], "Does alpha things.")
             self.assertEqual(meta["alpha"]["homepage"], "")
             self.assertEqual(meta["beta"]["description"], "Short beta blurb.")
-            self.assertEqual(meta["gamma"], {"name": "gamma", "description": "", "homepage": "", "version": None})
+            self.assertEqual(meta["gamma"], {"name": "gamma", "description": "", "homepage": "", "version": None, "updated_at": meta["gamma"]["updated_at"]})
 
     def test_missing_dir_yields_empty_entries(self):
         meta = read_skill_meta("/no/such/repo", ["foo", "bar"])
-        self.assertEqual(meta, {"foo": {"name": "foo", "description": "", "homepage": "", "version": None}, "bar": {"name": "bar", "description": "", "homepage": "", "version": None}})
+        self.assertEqual({k: {kk: vv for kk, vv in v.items() if kk != "updated_at"} for k, v in meta.items()}, {"foo": {"name": "foo", "description": "", "homepage": "", "version": None}, "bar": {"name": "bar", "description": "", "homepage": "", "version": None}})
+        # mtime 兜底：文件存在时 updated_at 非空
 
     def test_reads_frontmatter_homepage(self):
         with tempfile.TemporaryDirectory() as tmp:

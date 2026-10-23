@@ -23,6 +23,7 @@ The same fields feed ``combined_checker.result_ok`` (optional, only under
 from __future__ import annotations
 
 import os
+from datetime import datetime
 from functools import lru_cache
 from typing import Dict, List, Tuple
 
@@ -155,11 +156,23 @@ def read_skill_meta(unified_dir: str, skill_names: List[str]) -> Dict[str, Dict[
     meta: Dict[str, Dict[str, str]] = {}
     for name in skill_names:
         fm = _read_frontmatter(repo, name)
+        # v0.31.0：updated_at 兜底链——lock 的 updatedAt（management_snapshot
+        # 合并，优先）→ SKILL.md 文件 mtime（此处兜底：手动放进统一库、不在
+        # lock 登记的技能至少能看到文件最后修改时间——用户需求「没有版本号
+        # 的话都应该显示时间」）。
+        updated_at = None
+        try:
+            updated_at = datetime.fromtimestamp(
+                os.path.getmtime(os.path.join(repo, name, "SKILL.md"))
+            ).isoformat(timespec="seconds")
+        except (OSError, ValueError, OverflowError):
+            pass
         meta[name] = {
             "name": fm.get("name") or name,
             "description": fm.get("description") or "",
             "homepage": fm.get("homepage") or "",
             "version": fm.get("version") or None,
+            "updated_at": updated_at,
         }
     return meta
 
