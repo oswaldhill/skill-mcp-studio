@@ -6514,8 +6514,10 @@ function renderEndpointStatus() {
       states[i] = "running";
       render(states, i);
       try {
-        const res = await runCli(["--market-upgrade", name, "--yes", "--format", "json"],
-          `升级 ${name}：拉取上游最新版`);
+        // 不传 progress 参数：runCli 的 showBusy 全局遮罩会遮挡 upg-modal
+        // （用户反馈「前面这个还是遮挡后面的」），进度由 upg-modal 自己
+        // 展示（当前行 spinner + 状态词），CLI 调用静默执行。
+        const res = await runCli(["--market-upgrade", name, "--yes", "--format", "json"]);
         let payload = null;
         try { payload = JSON.parse(res.stdout || "{}"); } catch (e) { payload = null; }
         if (res && res.code === 0 && payload && payload.ok !== false) {
