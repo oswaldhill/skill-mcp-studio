@@ -23,12 +23,19 @@ CI_PATTERN='test_*.py'
 # CI 基线：CI 上稳定出现的 skip 数。
 # 允许用环境变量覆盖 —— CI 侧若新增/移除可选依赖，skip 数会变化，
 # 硬编码会让本脚本对「正确的结果」误报不一致，退化成噪音源。
-# Q2-2：基线 2 对应下面这两条「与环境耦合」的可选用例（避免后人看到 skipped=3 无从判断）：
+# Q2-2：基线 3 对应下面这三条「与环境耦合」的可选用例（避免后人看到 skipped≠基线 无从判断）：
 #   1) test_combined_checker.CombinedCheckerTest.test_dsh_installed_via_config_evidence
 #      —— 本机无 ~/.dsh 配置证据时跳过（T-6 环境耦合）
-#   2) test_stdio_probe 中依赖外部 MCP stdio 可执行文件的用例
+#   2) test_config_porter.ResolvePathTest 中 icloud 别名的一对互补用例
+#      （test_icloud_alias_on_macos / test_icloud_alias_rejected_off_macos）
+#      —— 按 sys.platform 恰好跳一条：macOS 跳 off_macos，Linux 跳 on_macos，
+#         故该对用例对 skip 总数的贡献恒为 1，与平台无关。
+#   3) test_merge_exec.MergeExecRealAdviceTest.test_real_scan_rejects_bogus_group
+#      —— 需 SMS_SLOW_TESTS=1 才跑（慢用例，默认跳过）
+# 注：基线 2 → 3 是 2026-10-21 新增 test_config_porter.py（#2 那对互补用例）后
+# 未同步更新所致；本条经实测三点核实（1319 tests / skipped=3），非环境异常。
 # 若你机器上实际 skipped 与此不同，先确认是不是新增了环境耦合用例，再改这个值。
-CI_BASELINE_SKIPPED="${CI_BASELINE_SKIPPED:-2}"
+CI_BASELINE_SKIPPED="${CI_BASELINE_SKIPPED:-3}"
 
 PY="${PYTHON:-python3}"
 
