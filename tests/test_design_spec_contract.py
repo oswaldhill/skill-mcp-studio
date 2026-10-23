@@ -1665,6 +1665,30 @@ class SkillVersionUiContractTest(unittest.TestCase):
                       "outdated tag 应直接显示远端版本号/时间（无远端信息才回退「有更新」文字）")
         # 确认框带远端信息
         self.assertIn("upg-ver-num", src, "升级确认框应有版本对比条（当前 → 远端）")
+        # GUI 入口（v0.31.1）：回滚与远程同步必须有可达的界面，
+        # 不能只留 CLI（用户是不可见 CLI 的）。
+        self.assertIn('data-spm="rollback"', src, "技能 kebab 缺「回滚到升级前」")
+        self.assertIn("runSkillRollback", src, "缺回滚流程函数")
+        self.assertIn("--list-skill-backups", src, "回滚前应探测是否存在备份")
+        self.assertIn("before-restore-", src, "回滚确认文案应说明当前版本会另存")
+        self.assertIn('id="webdav-sync-card"', src, "设置页缺 WebDAV 远程同步卡片")
+        self.assertIn("loadWebdavStatus", src, "缺 WebDAV 状态加载")
+        self.assertIn("initWebdavActions", src, "缺 WebDAV 动作绑定")
+        self.assertIn("--sync-webdav-push", src, "缺推送动作")
+        self.assertIn("--sync-webdav-pull", src, "缺拉取动作")
+        self.assertIn('type="password"', src, "凭据输入应为 password 类型")
+        # GUI 入口（v0.31.1）：回滚与远程同步必须有可达的界面，
+        # 不能只留 CLI（用户看不到 CLI）。
+        self.assertIn('data-spm="rollback"', src, "技能 kebab 缺「回滚到升级前」")
+        self.assertIn("runSkillRollback", src, "缺回滚流程函数")
+        self.assertIn("--list-skill-backups", src, "回滚前应探测是否存在备份")
+        self.assertIn("before-restore-", src, "回滚确认文案应说明当前版本会另存")
+        self.assertIn('id="webdav-sync-card"', src, "设置页缺 WebDAV 远程同步卡片")
+        self.assertIn("loadWebdavStatus", src, "缺 WebDAV 状态加载")
+        self.assertIn("initWebdavActions", src, "缺 WebDAV 动作绑定")
+        self.assertIn("--sync-webdav-push", src, "缺推送动作")
+        self.assertIn("--sync-webdav-pull", src, "缺拉取动作")
+        self.assertIn('type="password"', src, "凭据输入应为 password 类型（不回显明文）")
         # WebDAV 同步范围纪律（v0.31.1）：凭据/技能包永不进同步清单。
         wd = (ROOT / "core" / "webdav_sync.py").read_text(encoding="utf-8")
         scope = wd[wd.index("SYNC_FILES"):wd.index("CONFIG_NAME")]

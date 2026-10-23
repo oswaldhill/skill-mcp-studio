@@ -4568,6 +4568,37 @@ function renderSettings() {
     <div class="note" style="margin-top:var(--sp-4)">更新检查走 GitHub API（技能包本体在 GitHub 仓库）：未鉴权 60 次/小时，配置 token 后 5000 次/小时。token 存本机 data/github_token（不进 git）。</div>
   </div>`;
 
+  // 远程同步（WebDAV，v0.31.1）：个人配置跨设备同步。
+  //
+  // 安全纪律：同步范围固定为个人配置层（local_overrides / market_sources /
+  // discovered_tools / skill_versions），**凭据与技能包本体永不同步**。
+  // 凭据走文件通道（与 github_token 同因：GUI 从 launchd 启动读不到 shell env），
+  // 界面只显示脱敏状态，不回显明文。
+  const webdavCard = `<div class="settings-card" id="webdav-sync-card">
+    <h4>远程同步（WebDAV）</h4>
+    <div id="webdav-body"><div class="empty">加载中…</div></div>
+    <div id="webdav-form" class="hidden">
+      <div class="rows" style="font-size:var(--fs-sm);margin-top:var(--sp-4)">
+        <div class="row"><span class="k"><label for="webdav-url">远端 URL</label></span>
+          <span class="v"><input id="webdav-url" type="text" aria-label="WebDAV 远端 URL"
+            placeholder="https://dav.example.com/remote.php/dav/files/me/studio"></span></div>
+        <div class="row"><span class="k"><label for="webdav-cred">凭据</label></span>
+          <span class="v"><input id="webdav-cred" type="password" aria-label="WebDAV 凭据（user:pass）"
+            placeholder="user:password" autocomplete="off"></span></div>
+      </div>
+      <div class="form-actions" style="margin-top:var(--sp-4)">
+        <button class="btn-soft" id="webdav-save">保存</button>
+        <button class="btn-soft" id="webdav-clear">清除配置</button>
+      </div>
+    </div>
+    <div class="form-actions" style="margin-top:var(--sp-4)">
+      <button class="btn-soft" id="webdav-push">推送到远端</button>
+      <button class="btn-soft" id="webdav-pull">从远端拉取</button>
+      <button class="btn-soft" id="webdav-toggle-form">编辑配置</button>
+    </div>
+    <div class="note" style="margin-top:var(--sp-4)">同步范围：个人覆盖配置、市场源、自动发现清单、技能版本基准。凭据与技能包本体不同步。推/拉均为覆盖语义，但两端旧值各自留档（.remote- / .bak- 时间戳），冲突时可手工比对后重推重拉。</div>
+  </div>`;
+
   // 「Hook」独立 tab：管理**要写入哪些生命周期 hook 事件**。
   //
   // 设计取舍（2026-10-11 按用户要求调整）：这个 tab 不列各 IDE/Agent 的接入状态
@@ -4707,7 +4738,7 @@ function renderSettings() {
 
   el.innerHTML =
     `<div class="settings-tab-panel" data-panel="appearance">${appearanceCard}${patrolCard}${configPortCard}${_aboutCard}</div>` +
-    `<div class="settings-tab-panel hidden" data-panel="general">${skillsCard}${usageCard}${marketSourcesCard}${githubTokenCard}</div>` +
+    `<div class="settings-tab-panel hidden" data-panel="general">${skillsCard}${usageCard}${marketSourcesCard}${githubTokenCard}${webdavCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="agents">${agentsCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="hooks">${hooksCard}${hookTemplatesCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="mcp">${mcpCard}</div>`;
@@ -4834,7 +4865,8 @@ function switchSettingsTab(tab) {
     p.classList.toggle("hidden", p.dataset.panel !== _settingsTab);
   });
   if (_settingsTab === "hooks") loadHookTemplates();
-  if (_settingsTab === "general") { loadMarketSources(); loadGithubTokenStatus(); }
+  if (_settingsTab === "general") { loadMarketSources(); loadGithubTokenStatus(); loadWebdavStatus(); }
+  initWebdavActions();
 }
 
 function renderAll() {
@@ -6204,6 +6236,115 @@ function renderEndpointStatus() {
   }
 
   // ── GitHub Token 卡片逻辑（v0.31.0，设置页 Skill tab）────────────────
+  // ── WebDAV 远程同步（v0.31.1）──────────────────────────────────
+  async function loadWebdavStatus() {
+    const body = $("webdav-body");
+    if (!body) return;
+    const res = await runCli(["--webdav-status", "--format", "json"]);
+    if (!res || res.code !== 0) {
+      // code 1 也可能是「已配置但远端不可用」，仍要渲染已读到的状态
+      let payload = null;
+      try { payload = JSON.parse((res && res.stdout) || "{}"); } catch (_) { payload = null; }
+      if (payload && payload.kind) { renderWebdav(payload); return; }
+      body.innerHTML = '<div class="empty">状态读取失败</div>';
+      return;
+    }
+    try { renderWebdav(JSON.parse(res.stdout || "{}")); }
+    catch (e) { body.innerHTML = '<div class="empty">解析失败</div>'; }
+  }
+
+  function renderWebdav(d) {
+    const body = $("webdav-body");
+    if (!body) return;
+    if (!d.configured) {
+      body.innerHTML = `<div class="empty">未配置。点「编辑配置」填写远端 URL 与凭据后即可跨设备同步个人配置。</div>`;
+    } else {
+      const remote = d.remote || {};
+      const remoteText = remote.ok
+        ? `<span class="ok">远端连通（HTTP ${remote.http_status}）</span>`
+        : `<span class="err">远端不可用：${escapeHtml(remote.reason || "未知")}</span>`;
+      body.innerHTML = `
+        <div class="rows" style="font-size:var(--fs-sm)">
+          <div class="row"><span class="k">远端地址</span><span class="v mono">${escapeHtml(d.url || "")}</span></div>
+          <div class="row"><span class="k">凭据</span><span class="v mono">${escapeHtml(d.credential || "未配置")}</span></div>
+          <div class="row"><span class="k">状态</span><span class="v">${remoteText}</span></div>
+          <div class="row"><span class="k">可同步文件</span><span class="v">${(d.files || []).length} 个${(d.missing || []).length ? `（缺 ${(d.missing || []).length} 个）` : ""}</span></div>
+        </div>`;
+    }
+    const form = $("webdav-form");
+    if (form) form.classList.add("hidden");
+    const urlInput = $("webdav-url");
+    if (urlInput) urlInput.value = d.url || "";
+    const credInput = $("webdav-cred");
+    if (credInput) credInput.value = "";
+  }
+
+  function initWebdavActions() {
+    const toggle = $("webdav-toggle-form");
+    if (toggle) toggle.onclick = () => {
+      const form = $("webdav-form");
+      if (form) form.classList.toggle("hidden");
+    };
+    const save = $("webdav-save");
+    if (save) save.onclick = async () => {
+      const url = (($("webdav-url") || {}).value || "").trim();
+      const cred = (($("webdav-cred") || {}).value || "").trim();
+      if (!url) { showToast("err", "请填写远端 URL"); return; }
+      const r1 = await runCli(["--set-webdav-url", url, "--format", "json"]);
+      if (!r1 || r1.code !== 0) {
+        let why = "";
+        try { why = (JSON.parse(r1.stdout || "{}").reason) || ""; } catch (_) { why = ""; }
+        showToast("err", `URL 保存失败：${why || "未知错误"}`);
+        return;
+      }
+      if (cred) {
+        const r2 = await runCli(["--set-webdav-credential", cred, "--format", "json"]);
+        if (!r2 || r2.code !== 0) {
+          let why = "";
+          try { why = (JSON.parse(r2.stdout || "{}").reason) || ""; } catch (_) { why = ""; }
+          showToast("err", `凭据保存失败：${why || "格式应为 user:pass"}`);
+          return;
+        }
+      }
+      showToast("ok", "WebDAV 配置已保存");
+      await loadWebdavStatus();
+    };
+    const clear = $("webdav-clear");
+    if (clear) clear.onclick = async () => {
+      confirmModal("清除 WebDAV 配置？", "远端 URL 与凭据都会从本机删除，已同步数据不受影响。", async () => {
+        await runCli(["--set-webdav-url", "", "--format", "json"]);
+        await runCli(["--set-webdav-credential", "", "--format", "json"]);
+        showToast("ok", "WebDAV 配置已清除");
+        await loadWebdavStatus();
+      }, "清除");
+    };
+    const push = $("webdav-push");
+    if (push) push.onclick = () => runWebdavSync("push");
+    const pull = $("webdav-pull");
+    if (pull) pull.onclick = () => runWebdavSync("pull");
+  }
+
+  async function runWebdavSync(dir) {
+    const word = dir === "push" ? "推送" : "拉取";
+    const detail = dir === "push"
+      ? "把本机个人配置覆盖到远端（远端旧值会先留档）"
+      : "把远端个人配置覆盖到本机（本机旧值会先留档）";
+    confirmModal(`${word}到${dir === "push" ? "远端" : "本机"}？`, `${detail}。`, async () => {
+      const flag = dir === "push" ? "--sync-webdav-push" : "--sync-webdav-pull";
+      const res = await runCli([flag, "--yes", "--format", "json"]);
+      let payload = {};
+      try { payload = JSON.parse((res && res.stdout) || "{}"); } catch (_) { payload = {}; }
+      const done = (payload.results || []).filter((r) => r.action === "uploaded" || r.action === "downloaded").length;
+      const failed = (payload.results || []).filter((r) => r.action === "failed");
+      if (payload.ok) {
+        showToast("ok", `${word}完成：${done} 个文件`);
+      } else {
+        showToast("err", `${word}未全部成功${failed.length ? `：${failed.length} 个失败` : ""}（${payload.reason || ""}）`);
+      }
+      await loadWebdavStatus();
+    }, word);
+  }
+
   async function loadGithubTokenStatus() {
     const body = $("github-token-body");
     if (!body) return;
@@ -8009,6 +8150,7 @@ function toggleSkillMenu(btnEl, skill) {
     <button class="pm-item" data-spm="detail" data-skill="${escapeHtml(skill)}">${ICONS.info}<span>查看详情</span></button>
     ${upgradeItem}
     <button class="pm-item" data-spm="backup" data-skill="${escapeHtml(skill)}">${ICONS.box}<span>备份</span></button>
+    <button class="pm-item" data-spm="rollback" data-skill="${escapeHtml(skill)}">${ICONS.refresh}<span>回滚到升级前</span></button>
     <button class="pm-item" data-spm="export" data-skill="${escapeHtml(skill)}">${ICONS.download}<span>导出 zip</span></button>
     <button class="pm-item" data-spm="rename" data-skill="${escapeHtml(skill)}">${ICONS.edit}<span>编辑名称 / 描述</span></button>
     <div class="pm-sep"></div>
@@ -8017,11 +8159,60 @@ function toggleSkillMenu(btnEl, skill) {
   setupMenuA11y(root);
 }
 
+// 技能回滚（v0.31.1 GUI 入口）。数据层是 --list-skill-backups /
+// --skill-rollback；界面按「有备份才可回滚」给反馈，不留死路。
+// 与升级流程共用 cfm-card 家族的确认语义（danger 按钮 + 明确代价说明）。
+async function runSkillRollback(name) {
+  const res = await runCli(["--list-skill-backups", name, "--format", "json"]);
+  let backups = [];
+  if (res && res.code === 0) {
+    try { backups = (JSON.parse(res.stdout || "{}").backups) || []; } catch (_) { backups = []; }
+  }
+  if (!backups.length) {
+    mountModal(`<div class="modal-backdrop"><div class="modal cfm-card">
+      <div class="cfm-title">无可回滚的备份</div>
+      <div class="cfm-msg">${escapeHtml(name)} 没有升级前备份。备份只在升级时自动生成；若该技能从未升级过，或备份已清理，就没有可回滚的版本。</div>
+      <div class="actions"><button class="cfm-btn-cancel" id="rb-close">关闭</button></div>
+    </div></div>`);
+    const c = $("rb-close");
+    if (c) c.onclick = closeModal;
+    return;
+  }
+
+  const latest = backups[0];
+  const when = latest.mtime_text || latest.name || "最近一次";
+  const sizeText = latest.size ? `${Math.max(1, Math.round(latest.size / 1024))} KB` : "";
+  mountModal(`<div class="modal-backdrop"><div class="modal cfm-card">
+    <div class="cfm-title">回滚到升级前？</div>
+    <div class="cfm-msg">将把 ${escapeHtml(name)} 替换为备份版本（${escapeHtml(when)}${sizeText ? ` · ${sizeText}` : ""}）。
+当前版本会先另存为 ${escapeHtml(name)}.before-restore-&lt;时间戳&gt;，回滚本身也可撤销。</div>
+    <div class="actions">
+      <button class="cfm-btn-cancel" id="rb-cancel">取消</button>
+      <button class="cfm-btn-danger" id="rb-ok">回滚</button>
+    </div>
+  </div></div>`);
+
+  $("rb-cancel").onclick = closeModal;
+  $("rb-ok").onclick = async () => {
+    const btn = $("rb-ok");
+    if (btn) { btn.disabled = true; btn.textContent = "回滚中…"; }
+    const r = await runCli(["--skill-rollback", name, "--yes", "--format", "json"]);
+    let payload = {};
+    try { payload = JSON.parse((r && r.stdout) || "{}"); } catch (_) { payload = {}; }
+    const ok = r && r.code === 0 && payload.ok;
+    closeModal();
+    showToast(ok ? "ok" : "err",
+      ok ? `已回滚 ${name} 到升级前版本` : `回滚失败：${payload.reason || (r && r.stderr) || "未知错误"}`);
+    if (ok) await refreshBlocks(["skills"]);
+  };
+}
+
 function runSkillMenu(pm, skill) {
   closePop();
   if (pm === "detail") showSkillDetail(skill);
   else if (pm === "upgrade") runSkillUpgrade(skill);
   else if (pm === "backup") backupSkill(skill);
+  else if (pm === "rollback") runSkillRollback(skill);
   else if (pm === "export") exportSkill(skill);
   else if (pm === "rename") openRenameSkillModal(skill);
   else if (pm === "delete") confirmDeleteSkill(skill);
