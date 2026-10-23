@@ -455,24 +455,29 @@ Agent 卡片里有两组「标签 + 值」行：**路径区**（APP / CLI / CONF
 **筛选段**含「可升级」（`data-seg="updatable"`：SKILL_UPDATES 中
 outdated 的技能；未检查时该段为空）。
 
-**统一升级模态（v0.31.0，`.upg-modal`）**：单个与批量共用（用户定案
-「中间过程保持统一，要明确能看出是更新一个还是更新多个」）。结构：
-标题带计数（`升级技能` / `升级技能（共 N 个）`）+ 总进度行
-（`.upg-progress`「第 i / N 个 · P%」）+ **进度条**（`.upg-bar` 3px
-细线 + `.upg-bar-fill` accent 填充，`width .3s` 过渡）+ 逐技能行
-（`.upg-row`：状态图标 `.upg-ic`（ICONS.check/cross SVG +
-task-spinner）+ 名称 `.upg-name`（mono）+ 失败原因 `.upg-note`
-（title 悬停全文）+ **状态词** `.upg-state-word` 右对齐（成功 ok 绿 /
-失败 err 红 / 升级中 accent））+ 完成态**汇总统计块**（`.upg-stats`：
-`.upg-stat` 数字块——`.upg-stat-num` display 字体 tabular-nums 语义色
-+ `.upg-stat-label` 标签；失败为 0 时只显示成功块）。列表区
-`.upg-list` 限高 320px 可滚动。**确认阶段内嵌同一弹框**（用户定案
-2026-10-23「只允许一个弹框」：`.upg-confirm-list` 预览列表限高
-200px，>8 个截断显示 `.upg-more`「… 其余 N 个」；操作按钮
-`upg-cancel` 取消 / `upg-confirm` 确认升级——不再叠加
-confirmModal）。入口：更新列可点击 tag（单个）/
-kebab「升级到最新版」（单个）/ 工具栏「一键升级」按钮
-（`skill-upgrade-all`，批量按顺序逐个）。
+**统一升级模态（v0.31.0，`.upg-modal`，2026-10-23 taste-skill 重设计）**：
+单个与批量共用三阶段（确认 → 进度 → 完成），同一弹框内重渲染。
+
+**确认阶段**：`.upg-hero` 锚点区——单个时 `.upg-hero-name` 技能名
+（display 字体）+ `.upg-hero-sub` 说明（muted）；批量时锚点为
+「N 个技能待升级」。单个带 `.upg-kv` 远端信息行（label muted +
+value mono）。批量带 `.upg-preview` 卡片化预览（panel-2 底 +
+r-control 圆角，`.upg-preview-row` mono 行，>8 个截断
+`.upg-preview-more`）。`.upg-warn` 覆盖警告行（上边线分隔 +
+ICONS.info warn 色图标）。操作按钮 `upg-cancel` / `upg-confirm`。
+
+**进度阶段**：`.upg-progress` 两端对齐计数（左「**i** / N」右「P%」，
+tabular-nums）+ `.upg-bar` 3px 进度条（`.upg-bar-fill` accent，
+width .3s）+ `.upg-list` 逐技能行（`.upg-row`：状态类驱动样式——
+`.running` panel-2 高亮 / `.done` 半透明淡出；`.upg-ic` 状态图标 +
+`.upg-name` mono + `.upg-note` 失败原因 + `.upg-state-word` 状态词）。
+
+**完成阶段**：`.upg-stats` 大数字统计（`.upg-stat` 竖排——
+`.upg-stat-num` display 字体 fs-lg 语义色 + `.upg-stat-label` 标签；
+失败为 0 时只显示成功块）+ 列表 + 关闭按钮。
+
+入口：更新列可点击 tag（单个）/ kebab「升级到最新版」（单个）/
+工具栏「一键升级」按钮（`skill-upgrade-all`，批量按顺序逐个）。
 
 ### 2.4 元信息与数字
 - 数字、包名、路径、版本号一律 `--mono` + `--faint` 或 `--muted`。

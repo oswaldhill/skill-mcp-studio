@@ -1499,35 +1499,49 @@
   .skill-table th.st-status { width: 11%; text-align: right; }
   .skill-table th.st-ops { width: 4%; text-align: right; }
   .skill-table td.st-ver { font-family: var(--mono); color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
-  /* 统一升级模态（v0.31.0：单个/批量共用，逐技能进度行；排版优化
-   * 2026-10-23 用户反馈「升级结果的反馈太丑」——汇总统计块 + 状态词
-   * + 进度条，取值全 token） */
-  .upg-modal { min-width: min(480px, 92vw); }
-  .upg-progress { color: var(--muted); font-size: var(--fs-xs); margin: var(--sp-2) 0 var(--sp-3); }
-  .upg-bar { height: 3px; border-radius: var(--r-hair); background: var(--panel-2); margin: var(--sp-2) 0 var(--sp-4); overflow: hidden; }
+  /* 统一升级模态（v0.31.0 三阶段：确认 → 进度 → 完成；2026-10-23
+   * taste-skill 重设计——视觉锚点（display 字体技能名/大数字）+ 层次
+   * 分层（主句 text / 次要 muted）+ 留白节奏，取值全 token） */
+  .upg-modal { min-width: min(440px, 92vw); }
+  /* 确认阶段：锚点 + 分层说明 + 卡片化预览 */
+  .upg-hero { padding: var(--sp-1a) 0 var(--sp-3); }
+  .upg-hero-name { font-family: var(--display); font-size: var(--fs-md); font-weight: 600; line-height: 1.2; word-break: break-all; }
+  .upg-hero-sub { color: var(--muted); font-size: var(--fs-sm); margin-top: var(--sp-1a); }
+  .upg-kv { display: flex; gap: var(--gap-3); font-size: var(--fs-sm); margin-top: var(--sp-3); }
+  .upg-kv .k { color: var(--muted); flex: none; }
+  .upg-kv .v { font-family: var(--mono); }
+  .upg-warn { display: flex; align-items: flex-start; gap: var(--gap-2); color: var(--muted); font-size: var(--fs-xs); margin-top: var(--sp-3); padding-top: var(--sp-3); border-top: 1px solid var(--line); }
+  .upg-warn .w-ic { color: var(--warn); flex: none; }
+  .upg-preview { background: var(--panel-2); border-radius: var(--r-control); padding: var(--sp-2) var(--sp-3); margin-top: var(--sp-3); max-height: 180px; overflow-y: auto; }
+  .upg-preview-row { font-family: var(--mono); font-size: var(--fs-xs); color: var(--text); padding: var(--sp-0b) 0; line-height: 1.6; }
+  .upg-preview-more { font-size: var(--fs-xs); color: var(--muted); padding: var(--sp-1a) 0 0; }
+  /* 进度阶段：两端对齐计数 + 进度条 + 当前行高亮 */
+  .upg-progress { display: flex; justify-content: space-between; align-items: baseline; color: var(--muted); font-size: var(--fs-xs); margin: var(--sp-1a) 0 var(--sp-2); font-variant-numeric: tabular-nums; }
+  .upg-progress b { color: var(--text); font-weight: 600; }
+  .upg-bar { height: 3px; border-radius: var(--r-hair); background: var(--panel-2); margin: 0 0 var(--sp-4); overflow: hidden; }
   .upg-bar-fill { height: 100%; background: var(--accent); border-radius: var(--r-hair); transition: width .3s var(--ease); }
-  .upg-stats { display: flex; gap: var(--gap-5); margin: var(--sp-3) 0 var(--sp-4); }
-  .upg-stat { display: flex; align-items: baseline; gap: var(--gap-2); }
-  .upg-stat-num { font-family: var(--display); font-size: var(--fs-md); font-weight: 600; font-variant-numeric: tabular-nums; }
-  .upg-stat-num.ok { color: var(--ok); }
-  .upg-stat-num.err { color: var(--err); }
-  .upg-stat-label { color: var(--muted); font-size: var(--fs-xs); }
-  .upg-list { max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; }
-  .upg-row { display: flex; align-items: center; gap: var(--gap-2); font-size: var(--fs-sm); padding: var(--sp-2) 0; border-bottom: 1px solid var(--line); }
-  .upg-row:last-child { border-bottom: none; }
+  .upg-list { max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; }
+  .upg-row { display: flex; align-items: center; gap: var(--gap-2); font-size: var(--fs-sm); padding: var(--sp-1a) var(--sp-1a); border-radius: var(--r-hair); }
+  .upg-row.running { background: var(--panel-2); }
+  .upg-row.done .upg-name, .upg-row.done .upg-ic { opacity: .55; }
   .upg-ic { width: 16px; text-align: center; flex: none; }
   .upg-ic.ok { color: var(--ok); }
   .upg-ic.err { color: var(--err); }
   .upg-ic.run { color: var(--accent); }
-  .upg-name { flex: 0 0 auto; max-width: 40%; overflow: hidden; text-overflow: ellipsis; }
-  .upg-state-word { flex: 0 0 auto; margin-left: auto; font-size: var(--fs-xs); color: var(--muted); }
+  .upg-name { flex: 0 0 auto; max-width: 45%; overflow: hidden; text-overflow: ellipsis; }
+  .upg-note { flex: 1 1 auto; color: var(--muted); font-size: var(--fs-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .upg-note.err { color: var(--err); }
+  .upg-state-word { flex: none; margin-left: auto; font-size: var(--fs-xs); color: var(--muted); }
   .upg-state-word.ok { color: var(--ok); }
   .upg-state-word.err { color: var(--err); }
   .upg-state-word.run { color: var(--accent); }
-  .upg-note { flex: 1 1 auto; color: var(--muted); font-size: var(--fs-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .upg-note.err { color: var(--err); }
-  .upg-confirm-list { max-height: 200px; margin: var(--sp-3) 0; }
-  .upg-more { font-size: var(--fs-xs); padding: var(--sp-1a) 0; }
+  /* 完成阶段：大数字统计 */
+  .upg-stats { display: flex; gap: var(--gap-6); padding: var(--sp-2) 0 var(--sp-4); }
+  .upg-stat { display: flex; flex-direction: column; gap: var(--gap-1); }
+  .upg-stat-num { font-family: var(--display); font-size: var(--fs-lg); font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
+  .upg-stat-num.ok { color: var(--ok); }
+  .upg-stat-num.err { color: var(--err); }
+  .upg-stat-label { color: var(--muted); font-size: var(--fs-xs); }
 
   /* 可升级 tag：可点击（v0.31.0 用户反馈——tag 即升级入口） */
   .skill-table .tag-upgradable { cursor: pointer; }
@@ -6367,17 +6381,37 @@ function renderEndpointStatus() {
               ? `上游最新提交：${new Date(firstUpd.remoteTime).toLocaleDateString("zh-CN")}`
               : ""))
       : "";
-    // 阶段一：确认（同一弹框内，含预览列表与操作按钮）
-    const confirmHtml = `<div class="modal-backdrop"><div class="modal cfm-card task-card upg-modal">
-      <div class="cfm-title">升级技能${plural}</div>
-      <div class="cfm-msg">将${total > 1 ? "按顺序逐个升级" : "把"}「${escapeHtml(preview)}」${total > 1 ? "" : "升级到远端最新版"}。${remoteLine ? "\n" + escapeHtml(remoteLine) : ""}\n本地内容会被上游覆盖（每个升级前自动备份）。</div>
-      ${total > 1 ? `<div class="upg-list upg-confirm-list">${list.slice(0, 8).map((n) =>
-        `<div class="upg-row"><span class="upg-ic muted">·</span><span class="upg-name mono">${escapeHtml(n)}</span></div>`).join("")}${total > 8 ? `<div class="upg-more muted">… 其余 ${total - 8} 个</div>` : ""}</div>` : ""}
-      <div class="actions">
-        <button class="btn-cancel close-push" id="upg-cancel">取消</button>
-        <button class="cfm-btn-danger" id="upg-confirm">确认升级</button>
-      </div>
-    </div></div>`;
+    // 阶段一：确认（taste-skill 重设计：技能名/数字做视觉锚点，说明分层，
+    // 预览卡片化，覆盖警告独立行带图标）
+    const confirmHtml = total > 1
+      ? `<div class="modal-backdrop"><div class="modal cfm-card task-card upg-modal">
+        <div class="cfm-title">升级技能</div>
+        <div class="upg-hero">
+          <div class="upg-hero-name">${total} 个技能待升级</div>
+          <div class="upg-hero-sub">按顺序逐个升级，每个升级前自动备份</div>
+        </div>
+        <div class="upg-preview">${list.slice(0, 8).map((n) =>
+          `<div class="upg-preview-row">${escapeHtml(n)}</div>`).join("")}
+          ${total > 8 ? `<div class="upg-preview-more">… 其余 ${total - 8} 个</div>` : ""}</div>
+        <div class="upg-warn"><span class="w-ic">${ICONS.info}</span><span>本地内容会被上游覆盖；上游仓库迁移时自动重装（结果一致）</span></div>
+        <div class="actions">
+          <button class="btn-cancel close-push" id="upg-cancel">取消</button>
+          <button class="cfm-btn-danger" id="upg-confirm">确认升级</button>
+        </div>
+      </div></div>`
+      : `<div class="modal-backdrop"><div class="modal cfm-card task-card upg-modal">
+        <div class="cfm-title">升级技能</div>
+        <div class="upg-hero">
+          <div class="upg-hero-name">${escapeHtml(list[0])}</div>
+          <div class="upg-hero-sub">将升级到远端最新版</div>
+        </div>
+        ${remoteLine ? `<div class="upg-kv"><span class="k">${remoteLine.split("：")[0]}</span><span class="v">${escapeHtml(remoteLine.split("：")[1] || "")}</span></div>` : ""}
+        <div class="upg-warn"><span class="w-ic">${ICONS.info}</span><span>本地内容会被上游覆盖，升级前自动备份</span></div>
+        <div class="actions">
+          <button class="btn-cancel close-push" id="upg-cancel">取消</button>
+          <button class="cfm-btn-danger" id="upg-confirm">确认升级</button>
+        </div>
+      </div></div>`;
     mountModal(confirmHtml);
     const goOn = await new Promise((resolve) => {
       const c = $("upg-confirm");
@@ -6393,7 +6427,7 @@ function renderEndpointStatus() {
       const icon = state === "done" ? ICONS.check : state === "failed" ? ICONS.cross
         : state === "running" ? '<span class="task-spinner" style="width:12px;height:12px"></span>' : "·";
       const cls = state === "done" ? "ok" : state === "failed" ? "err" : state === "running" ? "run" : "muted";
-      return `<div class="upg-row"><span class="upg-ic ${cls}">${icon}</span>` +
+      return `<div class="upg-row ${state}"><span class="upg-ic ${cls}">${icon}</span>` +
         `<span class="upg-name mono">${escapeHtml(name)}</span>` +
         (note ? `<span class="upg-note ${cls}" title="${escapeHtml(note)}">${escapeHtml(note)}</span>` : "") +
         `<span class="upg-state-word ${cls}">${STATE_WORD[state] || ""}</span></div>`;
@@ -6403,7 +6437,7 @@ function renderEndpointStatus() {
       const pct = total ? Math.round((doneCount / total) * 100) : 0;
       mountModal(`<div class="modal-backdrop"><div class="modal cfm-card task-card upg-modal">
         <div class="cfm-title">升级技能${plural}</div>
-        <div class="upg-progress">第 ${Math.min(currentIdx + 1, total)} / ${total} 个 · ${pct}%</div>
+        <div class="upg-progress"><span><b>${Math.min(currentIdx + 1, total)}</b> / ${total}</span><span>${pct}%</span></div>
         <div class="upg-bar"><div class="upg-bar-fill" style="width:${pct}%"></div></div>
         <div class="upg-list">${list.map((n, i) => rowHtml(n, states[i], "")).join("")}</div>
       </div></div>`);
@@ -6430,7 +6464,7 @@ function renderEndpointStatus() {
           const pct2 = total ? Math.round((doneCount2 / total) * 100) : 0;
           mountModal(`<div class="modal-backdrop"><div class="modal cfm-card task-card upg-modal">
             <div class="cfm-title">升级技能${plural}</div>
-            <div class="upg-progress">第 ${Math.min(i + 1, total)} / ${total} 个 · ${pct2}%</div>
+            <div class="upg-progress"><span><b>${Math.min(i + 1, total)}</b> / ${total}</span><span>${pct2}%</span></div>
             <div class="upg-bar"><div class="upg-bar-fill" style="width:${pct2}%"></div></div>
             <div class="upg-list">${list.map((n, j) => rowHtml(n, states[j], j === i ? String(reason).split("\n")[0] : "")).join("")}</div>
           </div></div>`);
