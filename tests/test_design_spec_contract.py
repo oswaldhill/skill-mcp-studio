@@ -1665,6 +1665,16 @@ class SkillVersionUiContractTest(unittest.TestCase):
                       "outdated tag 应直接显示远端版本号/时间（无远端信息才回退「有更新」文字）")
         # 确认框带远端信息
         self.assertIn("upg-ver-num", src, "升级确认框应有版本对比条（当前 → 远端）")
+        # 升级弹框承诺「升级前自动备份」——代码里必须真有备份调用，
+        # 否则就是 UI 对用户说谎（2026-10-23 评审发现的空承诺）。
+        ops = (ROOT / "core" / "skill_market_ops.py").read_text(encoding="utf-8")
+        self.assertIn("backup_skill(name)", ops,
+                      "升级流程必须真的备份（弹框承诺「升级前自动备份」）")
+        self.assertIn('"backups": backups', ops,
+                      "备份路径必须随执行结果返回（否则用户不知道去哪回滚）")
+        self.assertIn("def restore_skill_backup", ops, "缺回滚实现")
+        self.assertIn(".before-restore-", ops,
+                      "回滚前必须另存当前版本（回滚本身也要可撤销）")
         # 完成态必须展示版本变迁与失败原因（2026-10-23 用户需求）。
         # 断言必须落在「渲染逻辑」而非类名定义上，否则删掉渲染代码
         # 仍会因 CSS 里残留选择器而误通过（反向验证已证实这点）。

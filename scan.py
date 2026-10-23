@@ -1332,6 +1332,62 @@ def _run_market_write(args) -> int:
     return 0 if result["ok"] else 1
 
 
+def _run_skill_rollback(args) -> int:
+    """技能回滚出口（只读列表 / 写回滚）。
+
+    回滚只认**本工具自己产生的备份**（data/skill_backups/<技能名>/<时间戳>），
+    不猜、不去别处找——避免把用户手动放的目录当成备份还原。
+    """
+    from skill_market_ops import list_skill_backups, restore_skill_backup
+
+    name = args.skill_rollback
+    want_json = getattr(args, "format", None) == "json"
+
+    # 只读：列出备份
+    if getattr(args, "list_skill_backups", None):
+        name = args.list_skill_backups
+        backups = list_skill_backups(name)
+        if want_json:
+            print(json.dumps({"kind": "skill-backups", "name": name,
+                              "backups": backups}, ensure_ascii=False, indent=2))
+        else:
+            if not backups:
+                print(f"  {name}：暂无升级前备份")
+            else:
+                print(f"  {name} 的升级前备份（{len(backups)} 份，新到旧）：")
+                for b in backups:
+                    print(f"    {b['mtime_text']}  {b['size']} B  {b['path']}")
+        return 0
+
+    target = getattr(args, "rollback_to", None)
+    if not target:
+        backups = list_skill_backups(name)
+        if not backups:
+            print(f"  ❌ {name} 没有可回滚的备份（升级前未备份或已清理）")
+            return 1
+        target = backups[0]["path"]
+        if not want_json:
+            print(f"  使用最近一次备份：{target}")
+
+    if not getattr(args, "yes", False):
+        print(f"  待执行：把 {name} 回滚到 {target}")
+        print("  这是写操作（会先用当前版本另存一份），确认后请加 --yes 重跑。")
+        return 2
+
+    result = restore_skill_backup(name, target)
+    if want_json:
+        print(json.dumps({"kind": "skill-rollback", "name": name, **result},
+                         ensure_ascii=False, indent=2))
+    else:
+        if result["ok"]:
+            print(f"  {name} 已回滚到备份版本")
+            if result.get("previous_saved_at"):
+                print(f"  回滚前的版本已另存：{result['previous_saved_at']}")
+        else:
+            print(f"  ❌ 回滚失败：{result.get('reason')}")
+    return 0 if result["ok"] else 1
+
+
 def _print_market(payload: dict, kind: str) -> None:
     """人读输出。与 --format json 同源，避免两套口径。"""
     if payload.get("error"):
@@ -1966,7 +2022,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--yes", action="store_true",
-        help="配合 --market-install/--market-upgrade：确认执行写操作",
+        help="配合 --market-install/--market-upgrade/--skill-rollback：确认执行写操作",
+    )
+    # === 技能回滚（v0.31.0 #4 后半）===
+    parser.add_argument(
+        "--list-skill-backups", type=str, default=None, metavar="NAME",
+        help="列出某技能的升级前备份（只读）",
+    )
+    parser.add_argument(
+        "--skill-rollback", type=str, default=None, metavar="NAME",
+        help="把技能回滚到最近一次升级前的备份（写操作，需 --yes）",
+    )
+    parser.add_argument(
+        "--rollback-to", type=str, default=None, metavar="PATH",
+        help="配合 --skill-rollback：指定备份路径（默认取最近一次）",
     )
     # === 技能使用统计（FEAT-10，只读、零侵入）===
     parser.add_argument(
@@ -2930,6 +2999,11 @@ def main() -> int:
         return _run_market(args)
     if getattr(args, "market_install", None) or getattr(args, "market_upgrade", None):
         return _run_market_write(args)
+
+    # 技能回滚（v0.31.0 #4 后半）：只读列表与写回滚共用出口，必须排在
+    # 通用快照路由之前（否则 --format json 会被快照截走）。
+    if getattr(args, "skill_rollback", None) or getattr(args, "list_skill_backups", None):
+        return _run_skill_rollback(args)
 
     # 技能使用统计（FEAT-10）同上：只读，且带 --format json 供 GUI 直接
     # JSON.parse，必须排在通用快照路由之前。
