@@ -7,9 +7,71 @@
 
 ## [Unreleased]
 
+## [v0.31.1] - 2026-10-23
+
+当前发布版本（build 128）。路线图 P0 #3 后半：**WebDAV 远程同步**，补上 v0.31.0
+弹框承诺却从未实现的「升级前自动备份」，并把回滚与远程同步接出 GUI 入口；
+另含两处门禁失真修复与设计规范的双轨同步。
+
+### 新增
+
+- **WebDAV 远程同步**（`core/webdav_sync.py`）：个人配置在多设备间同步。
+  同步范围只含 `data/local_overrides.yaml`（端点拓扑）、`data/market_sources.yaml`
+  （市场源偏好）、`data/skill_versions.json`（版本基准）；**不同步** `github_token`
+  与技能包本体，`config.yaml` 的只读纪律不变（同步走 overlay 层）。
+  冲突**不做自动合并**：push 先把远端旧值存 `<file>.remote-<时间戳>`、pull 先把本地
+  旧值存 `<file>.bak-<时间戳>`，两端都改时不替你选，但两边的旧值都留着。
+  凭据沿用 `data/github_token` 的文件通道模式（GUI 从 launchd 启动读不到 shell 环境
+  变量）：`--set-webdav-url` / `--set-webdav-credential`（0600）/ `--webdav-status`
+  （脱敏，只读）/ `--sync-webdav-push` / `--sync-webdav-pull`（写操作需 `--yes`）。
+- **升级前自动备份**（`core/skill_market_ops.backup_skill`）：升级弹框一直承诺
+  「本地内容会被上游覆盖，升级前自动备份」，但 `execute_plan` 此前只跑 `npx` 与
+  安装后校验、**从未备份**。现在升级（install 无旧内容可留，故不备份）逐个技能整目录
+  复制到 `data/skill_backups/<技能>/<时间戳>/`；备份失败不阻断升级，但会在结果里
+  如实体现（调用方不得当作「已备份」）。
+- **技能回滚**（`--list-skill-backups` / `--skill-rollback` / `--rollback-to`）：
+  把技能回滚到最近一次升级前的备份，或指定某个备份路径。
+- **GUI 入口**：技能 kebab 菜单「回滚到升级前」（无备份时给出可解释的空态，而不是
+  一条点了没反应的路）；设置页通用 tab 新增「WebDAV 同步」卡片（远端 URL、凭据、
+  状态、push / pull）。
+
+### 修复
+
+- **CI 单元测试失败（本地全绿、CI 挂）**：3 个 `execute_plan` 用例依赖本机真实存在的
+  `~/.skills-manager/skills/<name>` 目录（`execute_plan` 内会调 `verify_installed`
+  读文件系统），本机有目录所以通过、CI 干净环境没有所以失败。改为在测试内自建夹具，
+  并新增 `scripts/ci_clean_env_check.sh`（临时 HOME 跑全量单测，显式保留原
+  site-packages 搜索路径，否则连 PyYAML 都会因 HOME 变化 import 失败）接入门禁。
+- **本地门禁误报 `skipped=3 ≠ CI 基线 2`**：10-21 新增 `tests/test_config_porter.py`
+  引入一对 icloud 别名的互补用例（`on_macos` / `rejected_off_macos`，按 `sys.platform`
+  恰好跳 1 条），skip 总数由 2 变 3，但 `CI_BASELINE_SKIPPED` 仍停在旧值，导致干净
+  工作区上门禁变红。三个 skip 均为设计上的环境耦合（无 `~/.dsh`、icloud 平台互补、
+  `SMS_SLOW_TESTS` 慢用例），非覆盖缺口；基线改为 3（Linux 与 macOS 下该总数恒为 3）。
+
+### 重构
+
+- **弹框宽度统一到 `--modal-w`**：此前五套弹框（`cfm-card` / `modal-form` /
+  `task-card` / `ad-modal` / `upg-modal`）各自写死宽度，长期维护面大。改为统一走
+  `--modal-w` 变量 + 修饰类覆写（§2.9 登记，改代码必须同步改规范表）。类名归并的
+  可行性结论记录在 HANDOFF §3a。
+
+### 文档
+
+- HANDOFF v0.31.0（交付内容 + 版本比对教训 + 「本地过、CI 挂」防复发）、
+  评审清单补 v0.31.0 十项修复的验收记录。
+- **设计规范双轨同步**：`docs/DESIGN.html` 此前明显落后于 `DESIGN.md`（MD 改过 46 次、
+  HTML 仅 14 次，最近 5 次 MD 改动一次都没同步）。本次补回缺失的 §2.3d（图例放置与
+  对齐）、修正 §2.9 中 `.ad-modal` 属性记成 `width`（实际为 `--modal-w`）的事实错误
+  与四处「token 写成已解析字面值」的隐患、§5 检查清单补 5 条、TOC 补 6 条锚点，
+  并修正头部过期的章节/检查项计数。
+- **补上承诺已久的反向门禁**：规范附录写着「两侧都不许单方面新增章节、由门禁双向
+  比对」，但代码只实现了 HTML→MD 一条，于是 §2.3d 这种「MD 单方面新增整节」的情形
+  门禁全绿。新增 `HtmlMdReverseMirrorTest.test_every_md_section_appears_in_html`，
+  并做了反向验证（删掉章节标题后测试确实报错）。
+
 ## [v0.31.0] - 2026-10-23
 
-当前发布版本（build 127）。路线图 P0 #4 前半：**技能版本管理 + 市场源可配置**，
+（build 127）。路线图 P0 #4 前半：**技能版本管理 + 市场源可配置**，
 外加 GitHub Token 配置通道、一键升级、概览页全量检查，以及 12 轮 UI 迭代与
 多项计划外修复。
 
@@ -1754,7 +1816,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.30.0...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.31.1...HEAD
+[v0.31.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.31.1
 [v0.30.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.30.0
 [v0.29.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.29.2
 [v0.29.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.29.1
