@@ -1560,6 +1560,14 @@
   .upg-state-word.ok { color: var(--ok); }
   .upg-state-word.err { color: var(--err); }
   .upg-state-word.run { color: var(--accent); }
+  /* 完成阶段：逐技能结果（版本变迁 + 失败原因） */
+  .upg-done-item { padding: var(--sp-1a) 0; border-bottom: 1px solid var(--line); }
+  .upg-done-item:last-child { border-bottom: none; }
+  .upg-done-row { display: flex; align-items: center; gap: var(--gap-2); font-size: var(--fs-sm); }
+  .upg-done-row .upg-name { flex: 0 1 auto; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .upg-done-ver { font-family: var(--mono); font-size: var(--fs-xs); color: var(--muted); flex: 0 0 auto; }
+  .upg-done-reason { font-size: var(--fs-xs); color: var(--err); margin: var(--sp-0b) 0 0 var(--sp-9); line-height: 1.5; }
+  .upg-done-row .upg-state-word { margin-left: auto; }
   /* 完成阶段：大数字统计 */
   .upg-stats { display: flex; gap: var(--gap-6); padding: var(--sp-2) 0 var(--sp-4); }
   .upg-stat { display: flex; flex-direction: column; gap: var(--gap-1); }
@@ -6525,6 +6533,9 @@ function renderEndpointStatus() {
       </div></div>`);
     };
     const states = list.map(() => "pending");
+    // 逐技能结果详情（完成态要展示「从什么版本到版本」与失败原因，
+    // 用户需求 2026-10-23：完成界面至少包含版本变迁与错误原因）
+    const results = list.map(() => ({ reason: "" }));
     render(states, 0);
     let succeeded = 0, failed = 0;
     for (let i = 0; i < list.length; i++) {
@@ -6543,6 +6554,7 @@ function renderEndpointStatus() {
         } else {
           states[i] = "failed"; failed++;
           const reason = (payload && payload.stderr) || (res && cliFailLines(res)) || (res && cliErrDetail(res)) || "未知错误";
+          results[i].reason = String(reason);
           // 失败原因写进该行 note（重渲染时带上）
           const doneCount2 = states.filter((s) => s === "done" || s === "failed").length;
           const pct2 = total ? Math.round((doneCount2 / total) * 100) : 0;
@@ -6555,6 +6567,7 @@ function renderEndpointStatus() {
         }
       } catch (e) {
         states[i] = "failed"; failed++;
+        results[i].reason = String((e && e.message) || e || "执行异常");
       }
     }
     // 完成态：汇总统计块（语义色数字）+ 列表 + 关闭按钮
@@ -6564,7 +6577,30 @@ function renderEndpointStatus() {
         <div class="upg-stat"><span class="upg-stat-num ok">${succeeded}</span><span class="upg-stat-label">成功</span></div>
         ${failed ? `<div class="upg-stat"><span class="upg-stat-num err">${failed}</span><span class="upg-stat-label">失败</span></div>` : ""}
       </div>
-      <div class="upg-list">${list.map((n, i) => rowHtml(n, states[i], "")).join("")}</div>
+      <div class="upg-list">${list.map((n, i) => {
+        const st = states[i];
+        const u = (SKILL_UPDATES || {})[n] || {};
+        const from = u.local || "-";
+        const to = u.remote || (u.remoteTime
+          ? new Date(u.remoteTime).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })
+          : "-");
+        const verText = st === "done" && to !== "-"
+          ? `${escapeHtml(from)} → ${escapeHtml(to)}` : "";
+        const reason = String(results[i].reason || "").split("\n").filter((x) => x.trim()).slice(0, 2).join(" / ");
+        const icon = st === "done" ? ICONS.check : ICONS.cross;
+        const cls = st === "done" ? "ok" : "err";
+        return `<div class="upg-done-item">
+          <div class="upg-done-row">
+            <span class="upg-ic ${cls}">${icon}</span>
+            <span class="upg-name mono" title="${escapeHtml(n)}">${escapeHtml(n)}</span>
+            ${verText ? `<span class="upg-done-ver">${verText}</span>` : ""}
+            <span class="upg-state-word ${cls}">${st === "done" ? "成功" : "失败"}</span>
+          </div>
+          ${st === "failed" && reason
+            ? `<div class="upg-done-reason err" title="${escapeHtml(String(results[i].reason || ""))}">${escapeHtml(reason)}</div>`
+            : ""}
+        </div>`;
+      }).join("")}</div>
       <div class="actions"><button class="btn-cancel close-push" id="upg-close">关闭</button></div>
     </div></div>`);
     const closeBtn = $("upg-close");

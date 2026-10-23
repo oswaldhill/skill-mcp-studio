@@ -1648,6 +1648,17 @@ class SkillVersionUiContractTest(unittest.TestCase):
                       "outdated tag 应直接显示远端版本号/时间（无远端信息才回退「有更新」文字）")
         # 确认框带远端信息
         self.assertIn("upg-ver-num", src, "升级确认框应有版本对比条（当前 → 远端）")
+        # 完成态必须展示版本变迁与失败原因（2026-10-23 用户需求）。
+        # 断言必须落在「渲染逻辑」而非类名定义上，否则删掉渲染代码
+        # 仍会因 CSS 里残留选择器而误通过（反向验证已证实这点）。
+        self.assertIn('<span class="upg-done-ver">',
+                      src, "完成态渲染必须输出版本变迁节点（不是仅有 CSS 定义）")
+        self.assertIn('class="upg-done-reason err"',
+                      src, "完成态失败行必须渲染原因节点")
+        self.assertIn("results[i].reason = String(reason);",
+                      src, "失败原因必须在升级失败分支被逐技能记录")
+        self.assertIn("const verText = st === \"done\" && to !== \"-\"",
+                      src, "版本变迁只在成功且远端可判定时展示")
         # 升级确认表：列宽治理 + 取值纪律（2026-10-23 用户反馈「UI 问题」）
         self.assertIn("table-layout: fixed", src, "升级表应定宽布局（防列宽随内容漂移）")
         self.assertIn('<colgroup><col class="c-name">', src, "升级表应显式声明列宽")

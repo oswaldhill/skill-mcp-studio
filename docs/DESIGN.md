@@ -492,7 +492,13 @@ width .3s）+ `.upg-list` 逐技能行（`.upg-row`：状态类驱动样式—�
 
 **完成阶段**：`.upg-stats` 大数字统计（`.upg-stat` 竖排——
 `.upg-stat-num` display 字体 fs-lg 语义色 + `.upg-stat-label` 标签；
-失败为 0 时只显示成功块）+ 列表 + 关闭按钮。
+失败为 0 时只显示成功块）+ 逐技能结果列表 `.upg-done-item`
+（**必须包含版本变迁与失败原因**，用户需求 2026-10-23）：
+`.upg-done-row` 单行（`.upg-ic` 图标 + `.upg-name` 技能名 mono
+截断 + `.upg-done-ver` 版本变迁 mono fs-xs muted（`本地 → 远端`，
+取自升级前的检查快照）+ `.upg-state-word` 右对齐状态词）；
+失败行追加第二行 `.upg-done-reason`（err 色 fs-xs，缩进 `sp-9`
+对齐名称列，最多两段 ` / ` 拼接 + `title` 悬停全文）。
 
 入口：更新列可点击 tag（单个）/ kebab「升级到最新版」（单个）/
 工具栏「一键升级」按钮（`skill-upgrade-all`，批量按顺序逐个）。
