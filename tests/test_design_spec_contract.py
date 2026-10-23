@@ -1648,6 +1648,11 @@ class SkillVersionUiContractTest(unittest.TestCase):
                       "outdated tag 应直接显示远端版本号/时间（无远端信息才回退「有更新」文字）")
         # 确认框带远端信息
         self.assertIn("remoteLine", src, "升级确认框应带远端版本号/提交时间（独立行）")
+        # 升级模态排版（2026-10-23 优化）：进度条 + 状态词 + 汇总统计块
+        self.assertIn("upg-bar-fill", src, "升级模态缺进度条")
+        self.assertIn("upg-state-word", src, "升级行缺状态词（成功/失败/升级中）")
+        self.assertIn("upg-stat-num", src, "完成态缺汇总统计块（语义色数字）")
+        self.assertIn("STATE_WORD", src, "缺状态词映射")
         # 市场源添加表单：不用 placeholder 充当 label（taste-skill 4.6）
         self.assertIn('aria-label="源 ID"', src, "表单字段缺 aria-label（placeholder 不是标签）")
         self.assertIn('<span class="k">源 ID</span>', src, "表单缺可见 label（.k 行结构）")
