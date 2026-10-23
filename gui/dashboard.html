@@ -3361,7 +3361,7 @@ function renderSkillList() {
         : "";
       const updCell = upd
         ? (upd.state === "outdated"
-            ? `<span class="tag warn tag-upgradable" data-skill-upgrade="${escapeHtml(s)}" role="button" tabindex="0" title="本地 ${upd.local || "?"} → 远端 ${upd.remote || (upd.remoteTime || "?")}，点击升级">有更新${remoteLabel ? " " + escapeHtml(remoteLabel) : ""}</span>`
+            ? `<span class="tag warn tag-upgradable" data-skill-upgrade="${escapeHtml(s)}" role="button" tabindex="0" title="有更新：本地 ${upd.local || "?"} → 远端 ${upd.remote || (upd.remoteTime || "?")}，点击升级">${escapeHtml(remoteLabel || "有更新")}</span>`
             : upd.state === "current"
               ? (() => {
                   // v0.31.0：「最新」显示远端版本号或提交时间（用户需求
@@ -3373,7 +3373,7 @@ function renderSkillList() {
                   const tip = upd.remote
                     ? `与远端一致（${upd.remote}）`
                     : (upd.remoteTime ? `与远端一致（上游最新提交 ${upd.remoteTime}）` : "与远端一致");
-                  return `<span class="tag ok" title="${escapeHtml(tip)}">最新${remote ? " " + escapeHtml(remote) : ""}</span>`;
+                  return `<span class="tag ok" title="${escapeHtml(tip)}">${escapeHtml(remote || "最新")}</span>`;
                 })()
               : `<span class="tag" title="${escapeHtml(upd.note || "无来源信息")}">未知</span>`)
         : '<span class="muted">-</span>';

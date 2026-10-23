@@ -1643,7 +1643,8 @@ class SkillVersionUiContractTest(unittest.TestCase):
         # 「最新」/「有更新」tag 都显示远端版本号或提交时间（用户需求）
         self.assertIn("remoteTime", src, "检查结果缺 remoteTime（远端提交时间）")
         self.assertIn("最新${remote", src, "「最新」tag 应显示远端版本号/时间")
-        self.assertIn("有更新${remoteLabel", src, "「有更新」tag 应显示远端版本号/时间")
+        self.assertIn('escapeHtml(remoteLabel || "有更新")', src,
+                      "outdated tag 应直接显示远端版本号/时间（无远端信息才回退「有更新」文字）")
         # 确认框带远端信息
         self.assertIn("remoteInfo", src, "升级确认框应带远端版本号/提交时间")
         # 市场源添加表单：不用 placeholder 充当 label（taste-skill 4.6）
