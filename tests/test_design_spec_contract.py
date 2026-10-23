@@ -1665,6 +1665,14 @@ class SkillVersionUiContractTest(unittest.TestCase):
                       "outdated tag 应直接显示远端版本号/时间（无远端信息才回退「有更新」文字）")
         # 确认框带远端信息
         self.assertIn("upg-ver-num", src, "升级确认框应有版本对比条（当前 → 远端）")
+        # WebDAV 同步范围纪律（v0.31.1）：凭据/技能包永不进同步清单。
+        wd = (ROOT / "core" / "webdav_sync.py").read_text(encoding="utf-8")
+        scope = wd[wd.index("SYNC_FILES"):wd.index("CONFIG_NAME")]
+        for forbidden in ("webdav_credential", "github_token", "skill_backups"):
+            self.assertNotIn(forbidden, scope,
+                             f"同步清单不得包含 {forbidden}（凭据/备份不能上远端）")
+        self.assertIn("0o600", wd, "凭据文件必须 0600（仅属主可读写）")
+        self.assertIn("_mask_credential", wd, "凭据输出必须脱敏")
         # 弹框宽度治理（v0.31.0 收敛）：所有弹框走 --modal-w 变量，
         # 禁止再出现「用 !important 覆盖自身 width」的写法。
         css = _css()

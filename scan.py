@@ -1388,6 +1388,90 @@ def _run_skill_rollback(args) -> int:
     return 0 if result["ok"] else 1
 
 
+def _run_webdav(args) -> int:
+    """WebDAV 远程同步出口（配置 / 状态 / 推 / 拉）。
+
+    同步范围固定为个人配置层（SYNC_FILES）；凭据与技能包本体永不同步。
+    推/拉都是覆盖语义，但两端旧值都会各自留档（见 webdav_sync 模块文档）。
+    """
+    import webdav_sync as wd
+
+    want_json = getattr(args, "format", None) == "json"
+
+    if getattr(args, "set_webdav_url", None) is not None:
+        res = wd.set_url(args.set_webdav_url)
+        if want_json:
+            print(json.dumps(res, ensure_ascii=False, indent=2))
+        else:
+            if res["ok"]:
+                if res.get("cleared"):
+                    print("  WebDAV URL 已清除")
+                else:
+                    print(f"  WebDAV URL 已设置：{res['url']}")
+                    if res.get("note"):
+                        print(f"  {res['note']}")
+            else:
+                print(f"  ❌ {res['reason']}")
+        return 0 if res["ok"] else 1
+
+    if getattr(args, "set_webdav_credential", None) is not None:
+        res = wd.set_credential(args.set_webdav_credential)
+        if want_json:
+            print(json.dumps(res, ensure_ascii=False, indent=2))
+        else:
+            if res["ok"]:
+                if res.get("cleared"):
+                    print("  WebDAV 凭据已清除")
+                else:
+                    print(f"  WebDAV 凭据已保存（{res.get('masked')}，"
+                          f"写入 data/webdav_credential）")
+            else:
+                print(f"  ❌ {res['reason']}")
+        return 0 if res["ok"] else 1
+
+    if getattr(args, "webdav_status", False):
+        st = wd.status()
+        remote = wd.check_remote() if st["configured"] else {"ok": False, "reason": "配置不完整"}
+        payload = dict(st, remote=remote)
+        if want_json:
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        else:
+            print(f"  WebDAV URL：{st['url'] or '未配置'}")
+            print(f"  凭据：{st['credential'] or '未配置'}")
+            print(f"  可同步文件：{len(st['files'])} 个"
+                  f"（缺 {len(st['missing'])} 个）")
+            if st["configured"]:
+                if remote.get("ok"):
+                    print(f"  远端连通：正常（HTTP {remote.get('http_status')}）")
+                else:
+                    print(f"  ❌ 远端不可用：{remote.get('reason')}")
+        return 0 if not st["configured"] or remote.get("ok") else 1
+
+    action = "push" if getattr(args, "sync_webdav_push", False) else "pull"
+    if not getattr(args, "yes", False):
+        print(f"  待执行：WebDAV {action}（覆盖语义，两端旧值都会留档）")
+        print("  这是跨设备写操作，确认后请加 --yes 重跑。")
+        return 2
+
+    res = wd.push() if action == "push" else wd.pull()
+    if want_json:
+        print(json.dumps(dict(res, action=action), ensure_ascii=False, indent=2))
+    else:
+        if not res.get("ok") and res.get("reason"):
+            print(f"  ❌ {res['reason']}")
+        for r in res.get("results") or []:
+            mark = {"uploaded": "↑", "downloaded": "↓", "skipped": "·",
+                    "failed": "✗"}.get(r["action"], "?")
+            line = f"  {mark} {r['file']}: {r['action']}"
+            if r.get("bytes"):
+                line += f"（{r['bytes']} B）"
+            if r.get("reason"):
+                line += f"  {r['reason']}"
+            print(line)
+        print(f"  WebDAV {action} {'完成' if res.get('ok') else '未全部成功'}")
+    return 0 if res.get("ok") else 1
+
+
 def _print_market(payload: dict, kind: str) -> None:
     """人读输出。与 --format json 同源，避免两套口径。"""
     if payload.get("error"):
@@ -2036,6 +2120,27 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--rollback-to", type=str, default=None, metavar="PATH",
         help="配合 --skill-rollback：指定备份路径（默认取最近一次）",
+    )
+    # === WebDAV 远程同步（v0.31.1，#3 后半）===
+    parser.add_argument(
+        "--set-webdav-url", type=str, default=None, metavar="URL",
+        help="设置 WebDAV 远端根 URL（写 data/webdav_config.yaml，空串=清除）",
+    )
+    parser.add_argument(
+        "--set-webdav-credential", type=str, default=None, metavar="USER:PASS",
+        help="设置 WebDAV 凭据（写 data/webdav_credential，0600；空串=清除）",
+    )
+    parser.add_argument(
+        "--webdav-status", action="store_true",
+        help="查看 WebDAV 同步状态（只读，凭据脱敏）",
+    )
+    parser.add_argument(
+        "--sync-webdav-push", action="store_true",
+        help="本地个人配置推送到远端（写操作，需 --yes；上传前备份远端旧值）",
+    )
+    parser.add_argument(
+        "--sync-webdav-pull", action="store_true",
+        help="从远端拉取个人配置到本地（写操作，需 --yes；覆盖前备份本地旧值）",
     )
     # === 技能使用统计（FEAT-10，只读、零侵入）===
     parser.add_argument(
@@ -3004,6 +3109,14 @@ def main() -> int:
     # 通用快照路由之前（否则 --format json 会被快照截走）。
     if getattr(args, "skill_rollback", None) or getattr(args, "list_skill_backups", None):
         return _run_skill_rollback(args)
+
+    # WebDAV 远程同步（v0.31.1）：配置/状态/推/拉共用出口。
+    if (getattr(args, "set_webdav_url", None) is not None
+            or getattr(args, "set_webdav_credential", None) is not None
+            or getattr(args, "webdav_status", False)
+            or getattr(args, "sync_webdav_push", False)
+            or getattr(args, "sync_webdav_pull", False)):
+        return _run_webdav(args)
 
     # 技能使用统计（FEAT-10）同上：只读，且带 --format json 供 GUI 直接
     # JSON.parse，必须排在通用快照路由之前。

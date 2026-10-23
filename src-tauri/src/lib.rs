@@ -598,6 +598,14 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
         "--list-skill-backups",
         "--skill-rollback",
         "--rollback-to",
+        // WebDAV 远程同步（v0.31.1 #3 后半）：写 data/webdav_config.yaml 与
+        // data/webdav_credential（个人凭据文件），同步的是个人配置层，
+        // 不碰 trunk config.yaml。
+        "--set-webdav-url",
+        "--set-webdav-credential",
+        "--webdav-status",
+        "--sync-webdav-push",
+        "--sync-webdav-pull",
         // 技能使用统计（FEAT-10）：只读，解析客户端会话日志，不写盘。
         "--skill-usage",
         // 技能整理建议（FEAT-11）：只读判据，不删、不改、不移动任何技能目录。
