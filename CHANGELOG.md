@@ -7,9 +7,47 @@
 
 ## [Unreleased]
 
+## [v0.31.2] - 2026-10-24
+
+当前发布版本（build 129）。修复 v0.31.1 自带的一个用户可见计数矛盾：
+技能列表显示 2 个「有更新」，点「一键升级」弹框却是 4 个。
+
+### 修复
+
+- **一键升级的条目数与技能列表不一致**：`--market check` 的判定候选原先只要
+  lock 里 `registered=True` 就纳入，不看该技能目录是否还在。本机 lock 残留了
+  两条 2026-04 装过、目录早已删除的登记（`data-visualization`、
+  `logo-design-guide`），它们没有本地版本，于是走「按上游提交时间」兜底被判成
+  `outdated`。技能列表按磁盘目录生成、画不出这两行（所以只有 2 个「有更新」
+  标签），而「一键升级」取检查结果全量过滤 `state == "outdated"`，把 4 个都算
+  进去——两个数字的差异就来自这里，用户看到的是「列表说 2 个、弹框说 4 个」。
+  这正是「检查更新的候选该不该包含已经不在磁盘上的技能」这一口径缺失。
+
+### 变更
+
+- **检查结果新增第四态 `missing`（登记失效）**：lock 有登记、统一库中无目录的
+  技能不再混进 `outdated`，单列 `missing` 且不发任何网络请求（没有本地内容可
+  比对，查了也无处落地），`note` 说明为何不可升级。`summary` 增加 `missing`
+  计数，`_recount` 改为按需累加（将来再加状态不会 `KeyError` 把检查炸掉）。
+  未提供 `on_disk` 字段的调用方按「已安装」处理——少一个字段不该被误判成
+  安装失效。
+- **GUI**：市场页「登记失效」tag + `.list-meta.is-err` 语义色，且**不提供**
+  「升级」按钮（无内容可覆盖，点了只会得到一条失败）；检查完成的 toast 与汇总
+  行单独报 `missing` 数；「一键升级」再按 `SNAP.skills.skills` 过滤一次作为第二
+  道防线，被剔除的条目用 toast 说明原因，避免将来后端口径再变时界面又出现
+  自相矛盾。
+
+### 文档
+
+- `DESIGN.md` / `DESIGN.html` 记录检查结果四态与「**计数口径纪律**」：任何
+  「有多少个可升级」的呈现（toast、汇总行、弹框标题与表格）必须同源取
+  `summary.outdated`，`missing` 单独报数、不混入前者。
+- 新增 11 条断言（后端 4 / GUI 4 / 语义类与规范 3），并对三处都做了负向验证：
+  故意还原 bug 与删掉规范段落，确认测试确实报红后再恢复。
+
 ## [v0.31.1] - 2026-10-23
 
-当前发布版本（build 128）。路线图 P0 #3 后半：**WebDAV 远程同步**，补上 v0.31.0
+（build 128）。路线图 P0 #3 后半：**WebDAV 远程同步**，补上 v0.31.0
 弹框承诺却从未实现的「升级前自动备份」，并把回滚与远程同步接出 GUI 入口；
 另含两处门禁失真修复与设计规范的双轨同步。
 
@@ -1816,7 +1854,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.31.1...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.31.2...HEAD
+[v0.31.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.31.2
 [v0.31.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.31.1
 [v0.30.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.30.0
 [v0.29.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.29.2
