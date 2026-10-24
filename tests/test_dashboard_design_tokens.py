@@ -182,5 +182,37 @@ class TestAccessibilityContract(unittest.TestCase):
                 )
 
 
-if __name__ == "__main__":
-    unittest.main()
+class TestSemanticModifierTokens(unittest.TestCase):
+    """语义修饰类（`.list-meta.is-*`）只许用语义 token 着色。
+
+    v0.31.1 为「登记失效」（missing）新增 `.list-meta.is-err`。这类修饰类的
+    全部价值就是「语义，而不是某个具体颜色」，一旦有人写成字面色值，暗色主题
+    就会失配。规范 §1 已写死这条（颜色一致性锁），这里把它钉住。
+    """
+
+    def test_list_meta_modifiers_use_semantic_tokens(self):
+        decls = re.findall(r"\.list-meta\.(is-[a-z]+)\s*\{([^}]*)\}", HTML)
+        self.assertTrue(decls, "未找到 .list-meta 的语义修饰类")
+        for name, body in decls:
+            with self.subTest(modifier=name):
+                colors = re.findall(r"color:\s*([^;]+);", body)
+                self.assertTrue(colors, f".list-meta.{name} 没有 color 声明")
+                for c in colors:
+                    self.assertRegex(
+                        c.strip(),
+                        r"^var\(--(ok|warn|err|faint|muted|accent[a-z-]*)\)$",
+                        f".list-meta.{name} 的颜色必须来自语义 token：{c!r}")
+
+    def test_missing_state_modifier_exists(self):
+        """missing 态必须有独立的语义着色（不能复用 faint 蒙混过去）。"""
+        self.assertIn(".list-meta.is-err", HTML,
+                      "missing 态应使用 .list-meta.is-err 着色")
+
+    def test_spec_documents_the_missing_state(self):
+        """双轨：代码里的第四态必须在规范里有对应文字（含英文状态名）。"""
+        md = (ROOT / "docs" / "DESIGN.md").read_text(encoding="utf-8")
+        html = (ROOT / "docs" / "DESIGN.html").read_text(encoding="utf-8")
+        for label, text in (("DESIGN.md", md), ("DESIGN.html", html)):
+            with self.subTest(doc=label):
+                self.assertIn("missing", text, f"{label} 未记录 missing 状态")
+                self.assertIn("登记失效", text, f"{label} 未记录「登记失效」文案")

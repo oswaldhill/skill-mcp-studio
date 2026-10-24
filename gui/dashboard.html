@@ -1641,6 +1641,7 @@
   /* 元信息的语义修饰：只改颜色，不回退到字面值（规范 1 颜色一致性锁） */
   .list-meta.is-ok { color: var(--ok); }
   .list-meta.is-warn { color: var(--warn); }
+  .list-meta.is-err { color: var(--err); }
   .list-meta.is-faint { color: var(--faint); }
   .list-act { flex: 0 0 auto; }
   .list-empty {
@@ -6531,8 +6532,11 @@ function renderEndpointStatus() {
       if (s.rate_limited) {
         showToast("warn", `GitHub 配额已用尽（每小时 ${s.total || 0} 次重置）：本轮部分技能未检查，稍后重试或设 GITHUB_TOKEN`);
       } else {
-        showToast(s.outdated ? "warn" : "ok",
-          `检查完成${cached}：有更新 ${s.outdated || 0} · 最新 ${s.current || 0} · 未知 ${s.unknown || 0}`);
+        // v0.31.1：把「登记失效」也报出来（此前它被并进「有更新」，
+        // 导致这里说有 4 个、技能列表只画得出 2 行）。
+        const miss = s.missing ? ` · 登记失效 ${s.missing}` : "";
+        showToast(s.outdated ? "warn" : (s.missing ? "warn" : "ok"),
+          `检查完成${cached}：有更新 ${s.outdated || 0} · 最新 ${s.current || 0} · 未知 ${s.unknown || 0}${miss}`);
       }
     } catch (e) {
       showToast("err", "检查返回无法解析：" + e);
@@ -6775,11 +6779,23 @@ function renderEndpointStatus() {
     const outdated = Object.entries(SKILL_UPDATES)
       .filter(([, v]) => v.state === "outdated")
       .map(([n]) => n);
-    if (!outdated.length) {
+    // v0.31.1（用户实测「列表 2 个有更新，一键升级却 4 个」）第二道防线：
+    // 只升级**技能列表里真实存在**的技能。检查结果可能含 lock 残留登记
+    // （目录已不存在）。后端已把它们单列为 missing，不再计入 outdated，
+    // 这里再按列表口径过滤一次：万一将来后端口径又变，界面也不会出现
+    // 「弹框里有 N 个、列表里一个都看不到」的自相矛盾。
+    const listNames = new Set(((SNAP && SNAP.skills && SNAP.skills.skills) || []).map(String));
+    const ghost = outdated.filter((n) => !listNames.has(n));
+    const upgradable = outdated.filter((n) => listNames.has(n));
+    if (ghost.length) {
+      showToast("warn",
+        `${ghost.length} 个技能已登记但目录不存在（安装失效），已从升级清单排除：${ghost.slice(0, 3).join("、")}${ghost.length > 3 ? " 等" : ""}`);
+    }
+    if (!upgradable.length) {
       showToast("ok", "没有可升级的技能（均为最新或未知）");
       return;
     }
-    await runSkillUpgradeModal(outdated);
+    await runSkillUpgradeModal(upgradable);
   }
 
   async function runMarketCheck(btn) {
@@ -6803,9 +6819,19 @@ function renderEndpointStatus() {
   function renderMarketUpdates(data) {
     renderMarketProgress([]);
     const s = data.summary || {};
+    // v0.31.1：missing（lock 有登记、统一库里没有目录）单独报出来。此前它被
+    // 算进「有更新」，于是这里说 4 个可升级、技能列表却只画得出 2 行。
+    const missing = s.missing || 0;
     appendMarketProgress(
-      `共 ${s.total || 0}：有更新 ${s.outdated || 0}，已最新 ${s.current || 0}，无法检测 ${s.unknown || 0}`,
+      `共 ${s.total || 0}：有更新 ${s.outdated || 0}，已最新 ${s.current || 0}，无法检测 ${s.unknown || 0}`
+        + (missing ? `，登记失效 ${missing}` : ""),
       "info");
+    if (missing) {
+      appendMarketProgress(
+        `有 ${missing} 个技能在 lock 里仍有登记但统一库中已无目录（安装已失效）。`
+        + "它们没有内容可覆盖，不会出现在技能列表里，也无法升级；重新安装或清理登记后才能消除。",
+        "warn");
+    }
     if (s.rate_limited) {
       appendMarketProgress(s.hint || "GitHub 配额已用尽", "warn");
     }
@@ -6819,16 +6845,20 @@ function renderEndpointStatus() {
     }
     updates.forEach((u) => {
       const tag = u.state === "outdated" ? "有更新"
-                : u.state === "current" ? "已最新" : "无法检测";
+                : u.state === "current" ? "已最新"
+                : u.state === "missing" ? "登记失效" : "无法检测";
       const when = u.remote_commit ? `远端 ${u.remote_commit}` : (u.note || "");
       if (!el) return;
       // 状态进元信息行（颜色由 .list-meta 的语义类承担），操作固定在右侧，
       // 不再把"升级 xxx"这种带名字的长按钮塞进列表。
+      // missing 不给「升级」按钮：没有本地内容可覆盖，点了只会得到一条失败。
       const row = marketRow(u.name, when ? `${tag} · ${when}` : tag,
                             u.state === "outdated" ? "升级" : "",
                             "market-upgrade", "name", u.name);
       row.querySelector(".list-meta").classList.add(
-        u.state === "outdated" ? "is-warn" : u.state === "current" ? "is-ok" : "is-faint");
+        u.state === "outdated" ? "is-warn"
+          : u.state === "current" ? "is-ok"
+          : u.state === "missing" ? "is-err" : "is-faint");
       el.appendChild(row);
     });
   }

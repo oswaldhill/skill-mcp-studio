@@ -947,10 +947,26 @@
     <section id="s2-3e">
       <h3 id="s2-3e">2.3e 技能表列（<code>.skill-table</code>，v0.31.0 增两列）<a class="anchor" href="#s2-3e" aria-label="锚点">#</a></h3>
       <p>七列：名称 / 分类 / <strong>版本</strong>（<code>st-ver</code>，8%，mono，<code>skill_meta.version</code>，
-      无版本显示 <code>-</code>）/ 用途 / <strong>更新</strong>（<code>st-upd</code>，9%，检查后三态 tag：
+      无版本显示 <code>-</code>）/ 用途 / <strong>更新</strong>（<code>st-upd</code>，9%，检查后三态 tag
+      （技能行内只可能出现这三态；<code>missing</code> 的技能不在列表里）：
       有更新 <code>tag warn</code>（title 含本地→远端版本）/ 最新 <code>tag ok</code> / 未知中性 <code>tag</code>，
       未检查显示 <code>-</code>）/ 启用 / 操作。嵌套展开行 <code>colspan="7"</code>。更新数据来自
       <code>--market check</code>（版本比对，只读），结果缓存于前端 <code>SKILL_UPDATES</code>。</p>
+
+      <p><strong>检查结果四态（v0.31.1 用户实测缺陷修复）</strong>：<code>outdated</code>（有更新）/
+      <code>current</code>（已最新）/ <code>unknown</code>（无法检测）/
+      <strong><code>missing</code>（登记失效）</strong>。前三态是「已装技能与上游的差异」；
+      <code>missing</code> 是另一类事实：lock 里有登记、但统一库中已无该目录（装过又被删，登记残留）。
+      它必须单列，理由是原先把 <code>missing</code> 并入 <code>outdated</code> 会直接产出用户可见的矛盾：
+      技能列表按磁盘目录生成、画不出这一行（没有「有更新」tag），而「一键升级」取检查结果全量、
+      把它也算进去，于是<strong>列表说 2 个、弹框说 4 个</strong>。该态不提供「升级」动作
+      （无本地内容可覆盖，点了只会得到一条失败），文案用 <code>.list-meta.is-err</code> 承载。</p>
+
+      <p><strong>计数口径纪律（v0.31.1）</strong>：任何「有多少个可升级」的呈现（工具栏 toast、
+      市场页汇总行、一键升级弹框标题与表格）必须同源，一律取 <code>summary.outdated</code>；
+      且 <code>missing</code> 单独报数、不混入前者。前端另有一道防线：一键升级只处理
+      <code>SNAP.skills.skills</code> 里真实存在的技能，被剔除的条目要 toast 说明原因，
+      不得静默少升。</p>
     </section>
 
     <section id="s2-4">

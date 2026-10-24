@@ -469,18 +469,38 @@ def check_updates(only: Optional[List[str]] = None, force: bool = False) -> Dict
     github_sources = [s for s in enabled if s["type"] == "github-repo"]
 
     listing = list_installed()
-    judged = [r for r in listing["installed"] if r.get("registered")]
+    registered = [r for r in listing["installed"] if r.get("registered")]
     if only:
         wanted = set(only)
-        judged = [r for r in judged if r["name"] in wanted]
+        registered = [r for r in registered if r["name"] in wanted]
+
+    # v0.31.1 修复（用户实测「列表只显示 2 个有更新，一键升级弹框却 4 个」）：
+    # 判定的候选必须是**真的落在统一库里**的技能。lock 里可能残留「目录早已
+    # 不存在」的登记（本机实测 2 例：2026-04 装过、目录已删），它们没有内容
+    # 可覆盖、也没有本地版本，却会走下面的「按上游提交时间」兜底被判成
+    # outdated——于是检查结果比可见技能多出若干条：列表按磁盘目录生成、渲染
+    # 不出这些行（没有「有更新」标签），而一键升级取的是检查结果全量，把它们
+    # 一并算进去。这类登记本身就是「安装已失效」，单列 missing 才诚实：
+    # 既能解释数量差异，也让用户看见有登记烂在 lock 里。
+    # 只有**明确知道不在磁盘上**（on_disk is False）才算登记失效；未提供该
+    # 字段的调用方/夹具按「已安装」处理 —— 少一个字段不该被误判成安装失效。
+    judged = [r for r in registered if r.get("on_disk") is not False]
+    ghosts = [r for r in registered if r.get("on_disk") is False]
 
     # 本地版本（SKILL.md frontmatter；D2 轨解析）
     from paths import skills_dir as _sd
     from skill_state import read_skill_meta
     local_versions = read_skill_meta(str(_sd()), [r["name"] for r in judged])
 
-    counts = {"outdated": 0, "current": 0, "unknown": 0}
+    counts = {"outdated": 0, "current": 0, "unknown": 0, "missing": 0}
     rows: List[Dict[str, Any]] = []
+    for r in ghosts:
+        # 不发任何网络请求：没有本地内容可比，远端查了也无处落地。
+        rows.append(dict(r, state="missing", local_version=None,
+                         remote_version=None, remote_time=None,
+                         note="lock 有登记但统一库中无此目录（安装已失效，"
+                              "无内容可升级；可重新安装或清理该登记）"))
+        counts["missing"] += 1
     rate_limited = False
     no_source_hint = not github_sources and not any(
         parse_github_source(r.get("source_url")) for r in judged)
@@ -586,9 +606,12 @@ def check_updates(only: Optional[List[str]] = None, force: bool = False) -> Dict
 
 
 def _recount(rows: List[Dict[str, Any]]) -> Dict[str, int]:
-    counts = {"outdated": 0, "current": 0, "unknown": 0}
+    # 状态集合必须与 check_updates 保持一致（含 v0.31.1 新增的 missing）。
+    # 用 .get 兜底：将来再加状态时这里不会 KeyError 把整个检查炸掉。
+    counts = {"outdated": 0, "current": 0, "unknown": 0, "missing": 0}
     for r in rows:
-        counts[r.get("state", "unknown")] += 1
+        state = r.get("state", "unknown")
+        counts[state] = counts.get(state, 0) + 1
     return {"total": len(rows), **counts}
 
 

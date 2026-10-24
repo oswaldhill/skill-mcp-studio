@@ -418,6 +418,93 @@ class CheckUpdatesTest(unittest.TestCase):
         self.assertEqual(row_a["local_version"], "1.0.0")
         self.assertEqual(row_a["remote_version"], "2.0.0")
 
+    # --- v0.31.1：lock 残留登记（有登记、无目录）不得算作「有更新」 ---
+    #
+    # 用户实测：技能列表只显示 2 个有更新，点「一键升级」弹框却有 4 个。
+    # 差集是两个「2026-04 装过、目录早已删除」的技能——它们仍在 lock 里
+    # 登记，检查时被当成已装技能、又因为没有本地版本走「按上游提交时间」
+    # 兜底，被判成 outdated。列表按磁盘目录生成所以画不出这两行，而一键
+    # 升级取检查结果全量，于是把它俩一起算进去。
+    def test_registered_but_absent_dir_is_missing_not_outdated(self):
+        payload = {"installed": [
+            {"name": "ghost", "source_url": "https://github.com/o/r.git",
+             "skill_path": "guides/x/SKILL.md",
+             "updated_at": "2026-04-10T15:05:19.777Z",
+             "registered": True, "on_disk": False},
+            {"name": "real", "source_url": "https://github.com/o/r.git",
+             "skill_path": "skills/real/SKILL.md",
+             "updated_at": "2026-04-10T15:05:19.777Z",
+             "registered": True, "on_disk": True},
+        ]}
+        # 远端有更新提交：若幽灵技能被误判，它会变成 outdated（这就是 bug）
+        with mock.patch("skill_market.list_installed", return_value=payload), \
+             mock.patch("skill_market._remote_commit_time",
+                        return_value=("2026-09-01T00:00:00.000Z", "ok")), \
+             mock.patch("skill_market._remote_latest_version",
+                        return_value=(None, "unavailable")), \
+             mock.patch("skill_market._load_check_cache", return_value=None), \
+             mock.patch("skill_market._save_check_cache", lambda p: None), \
+             mock.patch("skill_state.read_skill_meta", return_value={}), \
+             mock.patch("market_sources.list_sources",
+                        return_value=([], False, [])):
+            out = check_updates()
+        states = {r["name"]: r["state"] for r in out["updates"]}
+        self.assertEqual(states["ghost"], "missing",
+                         "有登记无目录的技能必须归入 missing，不能算有更新")
+        self.assertEqual(states["real"], "outdated",
+                         "真装着的技能仍要正常判为有更新（不得连带失效）")
+        self.assertEqual(out["summary"]["outdated"], 1)
+        self.assertEqual(out["summary"]["missing"], 1)
+        self.assertEqual(out["summary"]["total"], 2)
+
+    def test_missing_row_has_no_network_lookup_and_explains_why(self):
+        """幽灵技能不发网络请求（无内容可比），且 note 要说清为什么不可升级。"""
+        payload = {"installed": [
+            {"name": "ghost", "source_url": "https://github.com/o/r.git",
+             "skill_path": "guides/x/SKILL.md",
+             "updated_at": "2026-04-10T15:05:19.777Z",
+             "registered": True, "on_disk": False},
+        ]}
+        with mock.patch("skill_market.list_installed", return_value=payload), \
+             mock.patch("skill_market._remote_commit_time") as commit_probe, \
+             mock.patch("skill_market._remote_latest_version") as version_probe, \
+             mock.patch("skill_market._load_check_cache", return_value=None), \
+             mock.patch("skill_market._save_check_cache", lambda p: None), \
+             mock.patch("skill_state.read_skill_meta", return_value={}), \
+             mock.patch("market_sources.list_sources",
+                        return_value=([], False, [])):
+            out = check_updates()
+        commit_probe.assert_not_called()
+        version_probe.assert_not_called()
+        row = out["updates"][0]
+        self.assertEqual(row["state"], "missing")
+        self.assertIn("登记", row["note"])
+
+    def test_missing_key_defaults_to_on_disk_for_legacy_callers(self):
+        """未提供 on_disk 字段时按「已安装」处理（少个字段不该被误判失效）。"""
+        out = self._run(("1.1.0", "ok"))
+        self.assertEqual(out["summary"].get("missing", 0), 0,
+                         "夹具未给 on_disk 时不得凭空产生 missing")
+        self.assertEqual(out["summary"]["outdated"], 1)
+
+    def test_only_filter_keeps_missing_rows(self):
+        """--only 过滤时 missing 仍要保留（口径与全量一致）。"""
+        payload = {"installed": [
+            {"name": "ghost", "source_url": "https://github.com/o/r.git",
+             "skill_path": "guides/x/SKILL.md",
+             "updated_at": "2026-04-10T15:05:19.777Z",
+             "registered": True, "on_disk": False},
+        ]}
+        with mock.patch("skill_market.list_installed", return_value=payload), \
+             mock.patch("skill_market._load_check_cache", return_value=None), \
+             mock.patch("skill_market._save_check_cache", lambda p: None), \
+             mock.patch("skill_state.read_skill_meta", return_value={}), \
+             mock.patch("market_sources.list_sources",
+                        return_value=([], False, [])):
+            out = check_updates(only=["ghost"])
+        self.assertEqual([r["name"] for r in out["updates"]], ["ghost"])
+        self.assertEqual(out["summary"]["missing"], 1)
+
 
 class NoDestructiveCommandTest(unittest.TestCase):
     """护栏：只读模块不得把破坏性子命令当作参数传给 npx。

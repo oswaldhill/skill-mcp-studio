@@ -79,6 +79,50 @@ class MarketUiTest(unittest.TestCase):
         self.assertIn("只读", _src())
 
 
+class UpgradeListConsistencyTest(unittest.TestCase):
+    """v0.31.1 回归：一键升级的条目必须限定在技能列表里真实可见的技能。
+
+    用户实测 bug：技能列表只显示 2 个「有更新」，点「一键升级」弹框却有 4 个。
+    根因是 lock 里残留「目录已删除」的登记，被检查结果当成可升级技能。后端
+    已单列 missing；这里断言 GUI 侧还有第二道口径过滤，防止后端再变时界面
+    又出现「弹框里有 N 个、列表里一个都看不到」的自相矛盾。
+    """
+
+    def test_upgrade_all_filters_by_visible_skill_list(self):
+        body = _fn("runSkillUpgradeAll")
+        self.assertIn("SNAP", body, "必须按快照里的技能列表过滤")
+        # 关键：送进弹框的必须是过滤后的数组。只断言「函数里出现过 filter」
+        # 抓不住回归——排除幽灵技能那行也含 filter，还原成 outdated 照样通过
+        # （实测过：这个断言必须盯住「传给 runSkillUpgradeModal 的实参」）。
+        self.assertRegex(
+            body, r"const upgradable = outdated\.filter\(\(n\) => listNames\.has\(n\)\)",
+            "可升级清单必须是 outdated 与技能列表的交集")
+        self.assertIn("runSkillUpgradeModal(upgradable)", body,
+                      "弹框必须接收过滤后的清单")
+        self.assertNotIn("runSkillUpgradeModal(outdated)", body,
+                         "不得把未过滤的 outdated 直接交给弹框（这就是原 bug）")
+
+    def test_upgrade_all_mentions_invalid_registration(self):
+        """被排除的条目要说明原因，不能静默少升几个。"""
+        body = _fn("runSkillUpgradeAll")
+        self.assertRegex(body, r"登记|目录不存在|失效",
+                         "排除项必须给出可解释的提示")
+        self.assertIn("ghost", body, "排除项要单独收集以便提示")
+
+    def test_missing_state_rendered_separately(self):
+        """检查结果里 missing 要有独立文案，不能混进「无法检测」。"""
+        body = _fn("renderMarketUpdates")
+        self.assertIn("missing", body)
+        self.assertIn("登记失效", body)
+
+    def test_missing_state_never_offers_upgrade_action(self):
+        """missing 无本地内容可覆盖，不给「升级」按钮（点了只会得到失败）。"""
+        body = _fn("renderMarketUpdates")
+        self.assertRegex(
+            body, r'u\.state === "outdated" \? "升级" : ""',
+            "只有 outdated 才提供升级动作")
+
+
 class DashboardForbiddenGlyphTest(unittest.TestCase):
     """与既有 taste 护栏一致：新 UI 不用 em-dash / ⚠ / ✓。"""
 
