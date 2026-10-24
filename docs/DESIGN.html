@@ -443,6 +443,7 @@
     <a href="#s2-3c" class="sub">2.3c IDE / Agent 列表视图</a>
     <a href="#s2-3d" class="sub">2.3d 图例的放置与对齐</a>
     <a href="#s2-3e" class="sub">2.3e 技能表列</a>
+    <a href="#s2-3f" class="sub">2.3f 技能启用状态</a>
     <a href="#s2-4" class="sub">2.4 元信息与数字</a>
     <a href="#s2-5" class="sub">2.5 状态覆盖</a>
     <a href="#s2-5b" class="sub">2.5b 弹窗容器</a>
@@ -967,6 +968,75 @@
       且 <code>missing</code> 单独报数、不混入前者。前端另有一道防线：一键升级只处理
       <code>SNAP.skills.skills</code> 里真实存在的技能，被剔除的条目要 toast 说明原因，
       不得静默少升。</p>
+    </section>
+
+    <!-- ═══ 2.3f ═══ -->
+    <section id="s2-3f">
+      <h3 id="s2-3f">2.3f 技能启用状态（启停矩阵，<code>N / M</code> 徽标与三段筛选）<a class="anchor" href="#s2-3f" aria-label="锚点">#</a></h3>
+
+      <p><strong>「启用」不是技能自带的属性</strong>。上游 Agent Skills 规范里 <code>SKILL.md</code> 的
+      frontmatter 只有 <code>name</code> / <code>description</code>（外加可选 <code>version</code> 等），
+      <strong>没有 <code>enabled</code> 字段</strong>；本项目 <code>~/.skills-manager/config.yaml</code>
+      也没有启停开关。共享库里的技能「存在即存在」。所谓启用 = <strong>某个客户端的 skills 目录里
+      有没有指向共享库该技能的符号链接</strong>。因此它是<strong>「每客户端 × 每技能」的矩阵</strong>，
+      允许「在 Cursor 启用、在 VS Code 未启用」这种状态。</p>
+
+      <p><strong>三态判定</strong>（<code>core/skill_state.py</code>，ADR-17 审计的第 5 层）：</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>态</th><th>判据</th></tr></thead>
+          <tbody>
+            <tr><td><code>enabled</code></td>
+                <td>客户端 skills 目录里有指向本仓库该技能的<strong>有效符号链接</strong>；
+                    <strong>root 形态</strong>客户端（整个 skills 目录就是一条指向共享库的链接）则仓库内全部技能都算启用</td></tr>
+            <tr><td><code>disabled</code></td>
+                <td>技能在仓库里，但该客户端<strong>没有</strong>有效链接（真实目录里缺这条链接，或客户端目录不存在）</td></tr>
+            <tr><td><code>not_in_repo</code></td>
+                <td>技能名不在共享仓库 —— 这类技能<strong>不进入</strong> <code>skill_states</code>，
+                    界面上既不显示「已启用」也不显示「未启用」</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p><strong>三段筛选（<code>data-seg</code>）的口径必须与 <code>N / M</code> 徽标同源</strong>：</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>分段</th><th>判据</th><th>含义</th></tr></thead>
+          <tbody>
+            <tr><td><code>on</code> 已启用</td><td><code>N === M &amp;&amp; M &gt; 0</code></td><td>全部客户端都挂了</td></tr>
+            <tr><td><code>partial</code> 部分启用</td><td><code>0 &lt; N &lt; M</code></td><td>挂了一部分</td></tr>
+            <tr><td><code>off</code> 未启用</td><td><code>N === 0</code></td><td>一端都没挂</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p><code>N</code> = 该技能在 <code>clients_states</code> 里 <code>states[skill] === "enabled"</code>
+      的客户端数；<code>M</code> = <code>clients_states</code> 长度（= 图例要说明的「客户端总数」）。
+      徽标三色：<code>N === M</code> → <code>.tag.ok</code>、<code>0 &lt; N &lt; M</code> →
+      <code>.tag.warn</code>、<code>N === 0</code> → <code>.tag.err</code>。</p>
+
+      <p><strong>图例文案必须写全两个字母</strong>：<code>N / M = 已挂载该技能的客户端数 / 客户端总数
+      （共 M 个 IDE 与 Agent）</code>。只写 <code>N/M</code> 会让用户以为 M 是技能总数（曾如此误解），
+      图例就是为此存在。</p>
+
+      <p><strong>为什么本机常年是「已启用 190 / 部分启用 0 / 未启用 0」</strong>（2026-10-24 实测）：
+      本机客户端多为 <strong>root 形态</strong>（<code>~/.claude/skills</code> 本身就是指向共享库的
+      符号链接），共享库里有什么就自动全开，<strong>根本没有逐个启用的余地</strong>。要让另外两段有
+      内容，必须先把客户端迁到 per-skill 形态（<code>--migrate-skill-links</code>）。这不是界面 bug，
+      是形态决定的。</p>
+
+      <p><strong>写操作与只读查询</strong>：<code>--enable-skill &lt;skill&gt; [--client X]</code> /
+      <code>--disable-skill</code>，实际动作是建 / 删那条 per-skill 符号链接
+      （<code>core/skill_toggle.py</code>）；root 形态返回 <code>skip</code>
+      （「enable whole repo instead of per-skill」），mixed 形态返回 <code>skip</code>（须先迁移）。
+      只读查询用 <code>--list-skill-states</code> 打整张矩阵。</p>
+
+      <p><strong>与「登记失效」（<code>missing</code>）的区别（务必分清）</strong>：
+      <code>missing</code> 是 lock 有登记、磁盘没有目录（安装残留，见 2.3e），它连
+      <code>not_in_repo</code> 都不算 —— 根本不进技能列表，也不进启停矩阵；
+      <code>disabled</code> 则是<strong>技能实实在在在仓库里，只是这个客户端没挂</strong>。
+      两者在界面上都表现为「看不到它生效」，但一个是<strong>数据残缺</strong>，
+      一个是<strong>正常配置状态</strong>，不可混为一谈。</p>
     </section>
 
     <section id="s2-4">

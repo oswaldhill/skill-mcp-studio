@@ -524,6 +524,52 @@ width .3s）+ `.upg-list` 逐技能行（`.upg-row`：状态类驱动样式—�
 入口：更新列可点击 tag（单个）/ kebab「升级到最新版」（单个）/
 工具栏「一键升级」按钮（`skill-upgrade-all`，批量按顺序逐个）。
 
+### 2.3f 技能启用状态（启停矩阵，`N / M` 徽标与三段筛选）
+
+**「启用」不是技能自带的属性**。上游 Agent Skills 规范里 `SKILL.md` 的 frontmatter
+只有 `name` / `description`（外加可选 `version` 等），**没有 `enabled` 字段**；
+本项目 `~/.skills-manager/config.yaml` 也没有启停开关。共享库里的技能「存在即存在」。
+所谓启用 = **某个客户端的 skills 目录里有没有指向共享库该技能的符号链接**。因此它是
+**「每客户端 × 每技能」的矩阵**，允许「在 Cursor 启用、在 VS Code 未启用」这种状态。
+
+**三态判定**（`core/skill_state.py`，ADR-17 审计的第 5 层）：
+
+| 态 | 判据 |
+|---|---|
+| `enabled` | 客户端 skills 目录里有指向本仓库该技能的**有效符号链接**；**root 形态**客户端（整个 skills 目录就是一条指向共享库的链接）则仓库内全部技能都算启用 |
+| `disabled` | 技能在仓库里，但该客户端**没有**有效链接（真实目录里缺这条链接，或客户端目录不存在） |
+| `not_in_repo` | 技能名不在共享仓库 —— 这类技能**不进入** `skill_states`，界面上既不显示「已启用」也不显示「未启用」 |
+
+**三段筛选（`data-seg`）的口径必须与 `N / M` 徽标同源**：
+
+| 分段 | 判据 | 含义 |
+|---|---|---|
+| `on` 已启用 | `N === M && M > 0` | 全部客户端都挂了 |
+| `partial` 部分启用 | `0 < N < M` | 挂了一部分 |
+| `off` 未启用 | `N === 0` | 一端都没挂 |
+
+`N` = 该技能在 `clients_states` 里 `states[skill] === "enabled"` 的客户端数；
+`M` = `clients_states` 长度（= 图例要说明的「客户端总数」）。徽标三色：
+`N === M` → `.tag.ok`、`0 < N < M` → `.tag.warn`、`N === 0` → `.tag.err`。
+
+**图例文案必须写全两个字母**：`N / M = 已挂载该技能的客户端数 / 客户端总数（共 M 个
+IDE 与 Agent）`。只写 `N/M` 会让用户以为 M 是技能总数（曾如此误解），图例就是为此存在。
+
+**为什么本机常年是「已启用 190 / 部分启用 0 / 未启用 0」**（2026-10-24 实测）：
+本机客户端多为 **root 形态**（`~/.claude/skills` 本身就是指向共享库的符号链接），
+共享库里有什么就自动全开，**根本没有逐个启用的余地**。要让另外两段有内容，必须先把
+客户端迁到 per-skill 形态（`--migrate-skill-links`）。这不是界面 bug，是形态决定的。
+
+**写操作与只读查询**：`--enable-skill <skill> [--client X]` / `--disable-skill`，
+实际动作是建 / 删那条 per-skill 符号链接（`core/skill_toggle.py`）；root 形态返回
+`skip`（「enable whole repo instead of per-skill」），mixed 形态返回 `skip`（须先迁移）。
+只读查询用 `--list-skill-states` 打整张矩阵。
+
+**与「登记失效」（`missing`）的区别（务必分清）**：`missing` 是 lock 有登记、磁盘没有
+目录（安装残留，见 §2.3e），它连 `not_in_repo` 都不算 —— 根本不进技能列表，也不进启停
+矩阵；`disabled` 则是**技能实实在在在仓库里，只是这个客户端没挂**。两者在界面上都表现为
+「看不到它生效」，但一个是**数据残缺**，一个是**正常配置状态**，不可混为一谈。
+
 **弹框家族与宽度治理（v0.31.0 收敛）**：宽度一律走 `--modal-w` 变量，
 `.modal` 只声明 `width: var(--modal-w, min(560px, 92vw))`，具体弹框在
 自身类上赋值变量即可，**禁止再写 `width: ... !important`**。
