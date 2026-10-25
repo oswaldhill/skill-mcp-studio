@@ -444,6 +444,7 @@
     <a href="#s2-3d" class="sub">2.3d 图例的放置与对齐</a>
     <a href="#s2-3e" class="sub">2.3e 技能表列</a>
     <a href="#s2-3f" class="sub">2.3f 技能启用状态</a>
+    <a href="#s2-3g" class="sub">2.3g DSH 插件页</a>
     <a href="#s2-4" class="sub">2.4 元信息与数字</a>
     <a href="#s2-5" class="sub">2.5 状态覆盖</a>
     <a href="#s2-5b" class="sub">2.5b 弹窗容器</a>
@@ -1081,6 +1082,61 @@
       <code>disabled</code> 则是<strong>技能实实在在在仓库里，只是这个客户端没挂</strong>。
       两者在界面上都表现为「看不到它生效」，但一个是<strong>数据残缺</strong>，
       一个是<strong>正常配置状态</strong>，不可混为一谈。</p>
+    </section>
+
+    <section id="s2-3g">
+      <h3 id="s2-3g">2.3g DSH 插件页（<code>page-dsh</code>，v0.31.4 新增第八页）<a class="anchor" href="#s2-3g" aria-label="锚点">#</a></h3>
+
+      <p><strong>为什么要有这一页</strong>：本工具的 Skills / MCP 是它自己的模型（符号链接 + 端点库），
+      而 DSH（DeepSeek Harness）的插件是另一套：cordis 载入器的 bundle 体系。用户在 DSH 里装了插件、
+      改了补丁层，却没有一个地方能一眼看清「现在到底会加载什么」。本页补这个空白。
+      <strong>它是第八页</strong>，位于「变更详情」之后、「设置」之前（系统域的最后一项；设置是通用配置，放最末）。</p>
+
+      <p><strong>三种状态必须分开显示</strong>（这是本页存在的全部理由）：</p>
+
+      <table>
+        <thead><tr><th>状态</th><th>判据</th><th>标签</th><th>为什么不能合并</th></tr></thead>
+        <tbody>
+          <tr><td><code>enabled</code></td><td>在 <code>package.json</code> 的 <code>dsh.profile.bundles</code> 里</td>
+            <td><code>tag ok</code> 已启用</td><td>只有它才会被真正加载</td></tr>
+          <tr><td><code>installed</code></td><td>在 <code>dependencies</code> 里但<strong>不在</strong> <code>bundles</code> 里</td>
+            <td><code>tag warn</code> 未启用</td><td>「装了」≠「在用」；合并会让用户以为占着上下文</td></tr>
+          <tr><td><code>broken</code></td><td><code>link:</code> 依赖的目标目录已不存在</td>
+            <td><code>tag err</code> 来源失效</td><td>DSH 载入会失败；合并会让用户以为一切正常</td></tr>
+        </tbody>
+      </table>
+
+      <p><strong><code>broken</code> 必须独立判定</strong>：pnpm 的 link 依赖在源码目录被删除后，
+      <code>node_modules/&lt;name&gt;</code> 常常还留着（旧副本或指过去的符号链接），于是「有 version」
+      会放行。实测本机 <code>dsh-plugin-model-guard</code> 就是 <code>link:</code> 到
+      skill-mcp-studio 仓库的工作副本——这种「开发者自己的插件」恰恰最容易在挪目录后静默失效。
+      所以 <code>broken</code> 判的是 <strong>link 目标存在性</strong>，不是 version 缺失。</p>
+
+      <p><strong>类型三分类</strong>（<code>kind</code>）：<code>builtin</code>（<code>@deepseek-ai/*</code>，
+      随 DSH 本体分发）/ <code>local</code>（<code>link:</code> 指向本地源码）/ <code>registry</code>
+      （npm 第三方包）。三者在页面上用中性 <code>tag</code> 呈现——它们是身份，不是结论，不能抢状态标签的语义色。</p>
+
+      <p><strong>安全约束（硬性）</strong>：<code>cordis.patch.yml</code> 的 <code>config</code> 段里有
+      <strong>明文 apiKey</strong>（本机实测存在）。因此本页：</p>
+      <ul>
+        <li>只显示 patch 层的<strong>结构统计</strong>（条目数 / 禁用数 / 插入数），
+          <strong>绝不渲染任何 config 键值</strong>（连 baseURL 这种也不渲染）；</li>
+        <li>顶部固定显示 <code>patch 值已脱敏</code> 标签，<code>title</code> 说明原因，让用户知道
+          「这里看不到配置」是设计而非缺陷；</li>
+        <li>后端输出带 <code>secrets_redacted: true</code> 作为显式承诺，并由
+          <code>tests/test_dsh_plugins.py</code> 用<strong>含伪造 apiKey 的样本</strong>断言两种出口
+          （JSON 与文本）里都查不到它。</li>
+      </ul>
+
+      <p><strong>布局</strong>：顶部三计数（已启用 / 装了未启用 / 来源失效，各自独立不合并成总数，
+      沿用 <code>.upg-stats</code> 数字锚点）+ 一行来源与口径说明；下方每个 profile 一张
+      <code>.settings-card</code>，卡头是 profile 名与「N 个插件 / 启用 M」，次行是 patch 结构，
+      再下是 <code>.mcp-table</code>（列：插件 / 类型 / 状态 / 版本 / 来源）。profile 无插件时给
+      <code>.hint</code> 说明而不是空表。</p>
+
+      <p><strong>数据来源</strong>：<code>--dsh-plugins --format json</code>（只读出口，排在通用快照
+      路由之前，否则 <code>--format json</code> 会被快照出口截走）。进页时按需拉一次并缓存到
+      <code>DSH_DATA</code>，「重新读取」按钮强制重拉；已拉过不重复拉，避免每次切页起子进程。</p>
     </section>
 
     <section id="s2-4">

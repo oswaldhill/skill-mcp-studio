@@ -6,18 +6,18 @@
 > 因此这份清单不会因为「文档写了但代码没有」而失真，也不会因为代码改名而悄悄过期
 > （门禁会红）。
 >
-> 对照的 PRD 版本：**v1.6**（2026-10-25）。PRD 本身见
+> 对照的 PRD 版本：**v1.7**（2026-10-25）。PRD 本身见
 > [`PRD-产品需求文档.md`](./PRD-产品需求文档.md)。
 
 ## 1. 总览
 
 | 项 | 数量 |
 |---|---|
-| 对照条目 | **73** |
-| ✅ 已实现 | **60** |
+| 对照条目 | **80** |
+| ✅ 已实现 | **66** |
 | 🟡 部分实现 | **1** |
 | ⬜ 未实现（已立需求） | **8** |
-| 🚫 刻意不做 | **4** |
+| 🚫 刻意不做 | **5** |
 
 结论先讲：**主干能力全部落地**。缺口集中在两处——
 ① **§6.2.1「技能关闭」整条需求未实现**（8 条子需求，占全部未实现项 100%）；
@@ -109,6 +109,13 @@
 | 7-07 | §7 | 退出码 0 / 1 / 2 语义 | 非功能 | ✅ 已实现 | `tests/test_exit_codes.py` → `returns_2` | 有独立测试文件守着 |
 | 7-08 | §7 | 三平台构建（macOS / Windows / Linux） | 非功能 | 🟡 部分实现 | `.github/workflows/build-windows.yml` → `msi`；`.github/workflows/build-linux.yml` → `appimage` | 构建与单测已绿；**未做 Win/Linux 真机 GUI 冒烟**（缺口 #6） |
 | 7-09 | §7 | 跨平台路径分派（by_os） | 非功能 | ✅ 已实现 | `core/mainstream_registry_data.py` → `_current_os` | 实测 20 处 windows / 21 处 linux 覆盖 |
+| 6.9-01 | §6.9 | 列出 DSH 各 profile 的插件清单（bundles 顺序即载入顺序） | 读 | ✅ 已实现 | `--dsh-plugins`；`core/dsh_plugins.py` → `def scan_profile` | 本机实测 4 个 profile / 10 个插件（已升级 0 断链） |
+| 6.9-02 | §6.9 | 三态判定 enabled / installed / broken（不合并计数） | 读 | ✅ 已实现 | `core/dsh_plugins.py` → `def classify_plugin`；GUI `DSH_STATE_META` | broken 独立判 link 目标存在性，不靠 version 缺失兜底 |
+| 6.9-03 | §6.9 | 插件类型分类 builtin / local / registry | 读 | ✅ 已实现 | `core/dsh_plugins.py` → `BUILTIN_SCOPE`；GUI `DSH_KIND_LABEL` | — |
+| 6.9-04 | §6.9 | patch 层结构统计（条目/禁用/插入），且 config 值绝不回显 | 读 | ✅ 已实现 | `core/dsh_plugins.py` → `secrets_redacted`；GUI `patch 值已脱敏` | 样本含伪造 apiKey，JSON 与文本两出口均断言查不到；见 tests/test_dsh_plugins.py |
+| 6.9-05 | §6.9 | DSH 根目录可指定（--dsh-home，默认 ~/.dsh） | 读 | ✅ 已实现 | `--dsh-home`；`core/dsh_plugins.py` → `DSH_HOME_ENV` | — |
+| 6.9-06 | §6.9 | 第八页接入：导航 / PAGES 映射 / 命令面板 / Rust 白名单 | 读 | ✅ 已实现 | GUI `data-page="dsh"`；`gui/dashboard.html` → `dsh: "page-dsh"`；`src-tauri/src/lib.rs` → `"--dsh-plugins"` | 不在 Rust 白名单会被安全边界拦下，该断言防止回退 |
+| 6.9-07 | §6.9 | 在 GUI 启用/禁用 DSH 插件、编辑 patch 层 | 边界 | 🚫 刻意不做 | 写 bundles / patch 属 DSH 自身配置写入面，需单独立项 | 只读是刻意边界：patch 文件含密钥，写入边界须另行设计 |
 | 8-01 | §8 | 不做技能市场 / 商店平台（只做消费方） | 边界 | 🚫 刻意不做 | 自建索引/排行/托管分发不做；--market search/install/upgrade 属消费方 | 判据：成为分发方=不做；仅消费上游=做 |
 | 8-02 | §8 | 不做多用户权限体系与云端托管 | 边界 | 🚫 刻意不做 | 本地工具；WebDAV 只搬用户自己的配置文件 | WebDAV 只搬用户自己的配置小层，不搬技能资产与凭据 |
 | 8-03 | §8 | 不内置任何特定工具的 Hook 命令 | 边界 | ✅ 已实现 | `--apply-hook-preset`；`--set-hook-template` | v0.29.0 剥离 ai-memory 后确立；用户自定义模板 |

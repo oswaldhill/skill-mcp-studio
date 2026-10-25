@@ -1609,6 +1609,70 @@ def summarize_insight_text(payload: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _run_dsh_plugins(args) -> int:
+    """`--dsh-plugins` 只读出口：列出 DSH（DeepSeek Harness）各 profile 的插件。
+
+    为什么值得单列一个页：DSH 的插件真相分散在 `package.json` 的
+    `dependencies`（装了什么）、同一文件的 `dsh.profile.bundles`（**启用**了什么）
+    与 `cordis.patch.yml`（补丁层）三处。只看 dependencies 会以为「装了=在用」，
+    只看 bundles 会漏掉「装了没启用」，两者都会让用户对「现在到底加载了什么」
+    判断错误。
+
+    **安全**：patch 层的 config 段里有明文 apiKey（本机实测存在），因此这里只报
+    结构统计（条目数 / 禁用数 / 插入数），任何 config 键值与参数一概不输出；
+    输出里带 `secrets_redacted: true` 作为显式承诺，由测试守着。
+    """
+    from dsh_plugins import scan as scan_dsh
+
+    want_json = getattr(args, "format", None) == "json"
+    try:
+        payload = scan_dsh(getattr(args, "dsh_home", None))
+    except Exception as exc:                      # 读不了也要给出可诊断的输出
+        payload = {"kind": "dsh-plugins", "error": str(exc),
+                   "secrets_redacted": True, "profiles": [],
+                   "summary": {"profiles": 0, "plugins": 0, "enabled": 0,
+                               "broken": 0, "installed_only": 0}}
+
+    if want_json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
+    print(format_dsh_plugins_text(payload))
+    return 0
+
+
+def format_dsh_plugins_text(payload: Dict[str, Any]) -> str:
+    """文本出口：按 profile 分组，先报汇总再报明细。"""
+    if payload.get("error"):
+        return f"  ❌ 读取 DSH 插件失败：{payload['error']}"
+    summary = payload.get("summary") or {}
+    lines = [
+        "  DSH 插件清单（只读；patch 层 config 值已脱敏，不显示）",
+        f"  来源：{payload.get('profiles_dir', '')}",
+        f"  共 {summary.get('profiles', 0)} 个 profile / "
+        f"{summary.get('plugins', 0)} 个插件：已启用 {summary.get('enabled', 0)}"
+        f"，装了未启用 {summary.get('installed_only', 0)}"
+        f"，来源失效 {summary.get('broken', 0)}",
+        "",
+    ]
+    if payload.get("reason"):
+        lines.append(f"  {payload['reason']}")
+    for prof in payload.get("profiles") or []:
+        patch = prof.get("patch") or {}
+        lines.append(
+            f"  ● {prof['name']}：{prof.get('plugin_count', 0)} 个插件"
+            f"（启用 {prof.get('enabled_count', 0)}）"
+            f"；patch 条目 {patch.get('entries', 0)}"
+            f"，禁用 {patch.get('disables', 0)}"
+            f"，插入 {patch.get('inserts', 0)}"
+        )
+        for plug in prof.get("plugins") or []:
+            mark = {"enabled": "启用", "installed": "未启用",
+                    "broken": "来源失效"}.get(plug.get("state"), plug.get("state"))
+            ver = f" v{plug['version']}" if plug.get("version") else ""
+            lines.append(f"      - {plug['name']}{ver}  [{mark}]")
+    return "\n".join(lines)
+
+
 def _run_skill_migrate(args, config, config_path) -> int:
     """Migrate root-form clients to per-skill symlinks (design §14.1 P2).
 
@@ -2154,6 +2218,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--skill-insight", action="store_true",
         help="一次扫描同时产出使用统计与整理建议（两者共用会话日志汇总，避免重扫）",
+    )
+    parser.add_argument(
+        "--dsh-plugins", action="store_true",
+        help="列出 DSH（DeepSeek Harness）各 profile 的插件与启用状态（只读；patch 层 config 值不输出）",
+    )
+    parser.add_argument(
+        "--dsh-home", type=str, default=None, metavar="PATH",
+        help="配合 --dsh-plugins：指定 DSH 配置根目录（默认 ~/.dsh）",
     )
     parser.add_argument(
         "--progress-file", type=str, default=None, metavar="PATH",
@@ -3122,6 +3194,11 @@ def main() -> int:
     # JSON.parse，必须排在通用快照路由之前。
     if getattr(args, "skill_insight", False):
         return _run_skill_insight(args)
+
+    # DSH 插件清单（v0.31.4）：独立只读出口，必须排在通用快照路由之前，
+    # 否则 --format json 会被快照出口截走，GUI 拿到的是整份审计而不是插件清单。
+    if getattr(args, "dsh_plugins", False):
+        return _run_dsh_plugins(args)
 
     if getattr(args, "skill_usage", False):
         return _run_skill_usage(args)

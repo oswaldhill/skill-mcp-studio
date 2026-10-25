@@ -127,12 +127,14 @@ class ClaimsMatchCodeTest(unittest.TestCase):
         self.assertEqual([], missing, f"PRD 声称但 CLI 未实现: {missing}")
 
     def test_pages_claim_matches_dashboard(self):
+        # v1.7 起为八页（新增 DSH 插件页）。这条断言的作用就是：页面集合一变就
+        # 必须回来改这里与 PRD §5.3，防止文档与实现各说各话。
         gui = (ROOT / "gui" / "dashboard.html").read_text(encoding="utf-8")
         pages = set(re.findall(r'data-page="([a-z-]+)"', gui))
         self.assertEqual(
-            {"overview", "agents", "skills", "mcp", "hooks", "changes", "settings"},
+            {"overview", "agents", "skills", "mcp", "hooks", "changes", "dsh", "settings"},
             pages,
-            "PRD §5.3 说七页，dashboard 的 data-page 集合变了就要同步改文档",
+            "PRD §5.3 说八页，dashboard 的 data-page 集合变了就要同步改文档",
         )
 
     def test_registry_count_claim_is_true(self):

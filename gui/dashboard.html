@@ -1912,6 +1912,10 @@
         <svg class="nv-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Z"/><path d="M12 8v4M12 16h.01"/></svg>
         变更详情
       </button>
+      <button class="nav-item" data-page="dsh" id="nav-dsh">
+        <svg class="nv-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3H5a2 2 0 0 0-2 2v4M15 3h4a2 2 0 0 1 2 2v4M9 21H5a2 2 0 0 1-2-2v-4M15 21h4a2 2 0 0 0 2-2v-4"/><circle cx="12" cy="12" r="2.5"/></svg>
+        DSH 插件
+      </button>
       <button class="nav-item" data-page="settings" id="nav-settings">
         <svg class="nv-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M19.8 4.2l-2.1 2.1M6.3 17.7l-2.1 2.1"/></svg>
         设置
@@ -2081,6 +2085,17 @@
         </div>
       </div>
       <div id="changes-result"></div>
+    </section>
+
+    <!-- ===== DSH 插件（v0.31.4：DeepSeek Harness 的 bundle 体系） ===== -->
+    <section id="page-dsh" class="hidden">
+      <div class="page-head">
+        <div class="hd"><h2>DSH 插件</h2><div class="hint">DeepSeek Harness 各 profile 的插件与启用状态（只读；patch 层 config 值不显示）</div></div>
+        <div class="page-actions">
+          <button class="btn-soft" data-action="refresh-dsh">重新读取</button>
+        </div>
+      </div>
+      <div id="dsh-body"></div>
     </section>
 
     <!-- ===== 设置（通用：目录 / 端点库 / 自动发现 / 关于） ===== -->
@@ -2471,6 +2486,7 @@ function paletteItems() {
     { kind: "页面", label: "IDE / Agent", sub: "客户端纳入与安装", run: () => switchPage("agents") },
     { kind: "页面", label: "Skills", sub: "技能清单与启用状态", run: () => switchPage("skills") },
     { kind: "页面", label: "MCP", sub: "每客户端挂载与清单", run: () => switchPage("mcp") },
+    { kind: "页面", label: "DSH 插件", sub: "DeepSeek Harness 插件与启用状态", run: () => switchPage("dsh") },
     { kind: "页面", label: "设置", sub: "目录、端点库、外观", run: () => switchPage("settings") },
     { kind: "操作", label: "刷新快照", sub: "重新读取管理快照", run: () => loadManagement() },
     { kind: "操作", label: "重新扫描", sub: "执行 discover 探测", run: () => doRescan() },
@@ -4463,6 +4479,106 @@ function renderChanges() {
   el.innerHTML = '<div class="hint">点击「运行快照对比」获取最新变更详情</div>';
 }
 
+// ---------------- DSH 插件（v0.31.4） ----------------
+// 数据来自 --dsh-plugins（只读）。三种状态必须分开显示，因为它们对应三件不同的
+// 事：enabled（现在真的会被加载）/ installed（装了但没进 bundles，不会加载）/
+// broken（本地 link 目标已不存在，DSH 启动会载入失败）。
+// patch 层只显示结构统计：**config 值里有明文 apiKey，一律不渲染**。
+let DSH_DATA = null;
+
+const DSH_STATE_META = {
+  enabled:   { label: "已启用", cls: "ok",   hint: "在 dsh.profile.bundles 里，会被加载" },
+  installed: { label: "未启用", cls: "warn", hint: "已装（dependencies 里有）但不在 bundles 里，不会被加载" },
+  broken:    { label: "来源失效", cls: "err", hint: "本地 link 目标目录已不存在，DSH 载入该插件会失败" },
+};
+
+const DSH_KIND_LABEL = {
+  builtin: "内置", local: "本地源码", registry: "第三方包",
+};
+
+async function loadDshPlugins() {
+  const el = $("dsh-body");
+  if (!el) return;
+  el.innerHTML = '<div class="hint">正在读取 DSH 插件清单…</div>';
+  try {
+    const res = await runCli(["--dsh-plugins", "--format", "json"], "读取 DSH 插件清单（只读）");
+    if (!res || res.code !== 0) {
+      el.innerHTML = `<div class="empty"><b>读取失败</b>${escapeHtml(((res && cliErrDetail(res)) || "未知错误"))}</div>`;
+      return;
+    }
+    DSH_DATA = JSON.parse(res.stdout || "{}");
+    renderDshPlugins();
+  } catch (e) {
+    el.innerHTML = `<div class="empty"><b>返回无法解析</b>${escapeHtml(String(e))}</div>`;
+  }
+}
+
+function renderDshPlugins() {
+  const el = $("dsh-body");
+  if (!el) return;
+  if (!DSH_DATA) {
+    el.innerHTML = '<div class="hint">点「重新读取」加载 DSH 插件清单</div>';
+    return;
+  }
+  const d = DSH_DATA;
+  if (d.error) {
+    el.innerHTML = `<div class="empty"><b>读取 DSH 插件失败</b>${escapeHtml(d.error)}</div>`;
+    return;
+  }
+  const s = d.summary || {};
+  if (!(d.profiles || []).length) {
+    el.innerHTML = `<div class="empty"><b>没有可读取的 DSH profile</b>${escapeHtml(d.reason || ("未在 " + (d.profiles_dir || "~/.dsh/profiles") + " 下找到 profile"))}</div>`;
+    return;
+  }
+
+  // 顶部：三个计数（已启用 / 未启用 / 来源失效），口径各自独立、不合并成总数
+  const stat = (num, label, cls) =>
+    `<div class="upg-stat"><span class="upg-stat-num ${cls}">${num}</span><span class="upg-stat-label">${label}</span></div>`;
+  const summaryBar = `<div class="upg-stats">
+      ${stat(s.enabled || 0, "已启用", "ok")}
+      ${stat(s.installed_only || 0, "装了未启用", "warn")}
+      ${stat(s.broken || 0, "来源失效", "err")}
+    </div>
+    <div class="hint" style="margin:var(--sp-2) 0 var(--sp-4)">
+      共 ${s.plugins || 0} 个插件 · ${s.profiles || 0} 个 profile · 来源 <span class="mono">${escapeHtml(d.profiles_dir || "")}</span>
+      ${d.secrets_redacted ? '· <span class="tag" title="patch 文件的 config 段含明文 apiKey，本页只统计结构，不显示任何 config 值">patch 值已脱敏</span>' : ""}
+    </div>`;
+
+  const profileHtml = (d.profiles || []).map((p) => {
+    const patch = p.patch || {};
+    const patchBits = [
+      patch.exists ? `patch 条目 ${patch.entries || 0}` : "无 patch 层",
+      patch.disables ? `禁用 ${patch.disables}` : "",
+      patch.inserts ? `插入 ${patch.inserts}` : "",
+    ].filter(Boolean).join(" · ");
+    const rows = (p.plugins || []).map((plug) => {
+      const meta = DSH_STATE_META[plug.state] || { label: plug.state, cls: "", hint: "" };
+      const ver = plug.version ? `<span class="mono muted">v${escapeHtml(plug.version)}</span>` : "";
+      const src = plug.source_path
+        ? `<span class="mono muted" title="${escapeHtml(plug.source_path)}">${escapeHtml(plug.source_path)}</span>`
+        : "";
+      return `<tr>
+        <td class="mono">${escapeHtml(plug.name)}</td>
+        <td><span class="tag">${escapeHtml(DSH_KIND_LABEL[plug.kind] || plug.kind)}</span></td>
+        <td><span class="tag ${meta.cls}" title="${escapeHtml(meta.hint)}">${escapeHtml(meta.label)}</span></td>
+        <td>${ver}</td>
+        <td style="max-width:32rem;overflow:hidden;text-overflow:ellipsis">${src}</td>
+      </tr>`;
+    }).join("");
+    return `<div class="settings-card">
+      <h4>${escapeHtml(p.name)} <span class="muted" style="font-weight:400">· ${p.plugin_count || 0} 个插件 / 启用 ${p.enabled_count || 0}</span></h4>
+      <div class="hint" style="margin-bottom:var(--sp-3)">${escapeHtml(patchBits)}</div>
+      ${rows
+        ? `<div class="table-scroll"><table class="mcp-table"><thead><tr>
+             <th>插件</th><th>类型</th><th>状态</th><th>版本</th><th>来源</th>
+           </tr></thead><tbody>${rows}</tbody></table></div>`
+        : '<div class="hint">该 profile 未声明任何插件</div>'}
+    </div>`;
+  }).join("");
+
+  el.innerHTML = summaryBar + profileHtml;
+}
+
 function renderSettings() {
   const el = $("settings-body");
   if (!el) return;
@@ -4882,6 +4998,7 @@ function renderAll() {
   renderMcp();
   renderHooks();
   renderChanges();
+  renderDshPlugins();
   renderSettings();
   const app = (SNAP && SNAP.app) || {};
   const fv = $("foot-version");
@@ -4891,7 +5008,8 @@ function renderAll() {
 // ---------------- page switching ----------------
 const PAGES = {
   overview: "page-overview", agents: "page-agents", skills: "page-skills",
-  mcp: "page-mcp", hooks: "page-hooks", changes: "page-changes", settings: "page-settings",
+  mcp: "page-mcp", hooks: "page-hooks", changes: "page-changes",
+  dsh: "page-dsh", settings: "page-settings",
 };
 let ACTIVE_PAGE = "overview";
 function switchPage(page) {
@@ -4901,6 +5019,9 @@ function switchPage(page) {
     const el = $(id);
     if (el) el.classList.toggle("hidden", k !== page);
   });
+  // DSH 插件页的数据不在主快照里（DSH 与本站是两套模型），进页时按需拉一次；
+  // 已拉过则不重拉，避免每次切页都起一次子进程。
+  if (page === "dsh" && !DSH_DATA) loadDshPlugins();
 }
 document.querySelectorAll(".nav-item").forEach((btn) => {
   btn.addEventListener("click", () => switchPage(btn.dataset.page));
@@ -8111,6 +8232,7 @@ document.addEventListener("click", (e) => {
     else if (a === "remove-hooks") removeHooksFor(act.dataset.name);
     else if (a === "fix-hooks-all") fixHooksAll();
     else if (a === "run-snapshot") runSnapshot();
+    else if (a === "refresh-dsh") loadDshPlugins();
     else if (a === "ignore-change") ignoreChange(act.dataset.dim, act.dataset.name, act.dataset.type);
     else if (a === "fix-change") fixChange(act.dataset.dim, act.dataset.name, act.dataset.type);
     else if (a === "show-mcp-class") showMcpClass(act.dataset.name, act.dataset.class);
@@ -8678,7 +8800,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.31.3", build: 130, build_number: 130, semver_ok: true, full: "v0.31.3 (build 130)" },
+  app: { name: "Skill MCP Studio", version: "0.31.4", build: 131, build_number: 131, semver_ok: true, full: "v0.31.4 (build 131)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

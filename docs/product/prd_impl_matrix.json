@@ -2,7 +2,7 @@
   "_meta": {
     "purpose": "PRD ↔ 实现 对照矩阵的单一数据源。markdown 清单与门禁断言都由它派生，避免三处各写一份。",
     "updated": "2026-10-25",
-    "prd_version": "v1.6",
+    "prd_version": "v1.7",
     "status_vocab": {
       "done": "✅ 已实现",
       "partial": "🟡 部分实现",
@@ -1133,6 +1133,139 @@
         }
       ],
       "note": "实测 20 处 windows / 21 处 linux 覆盖"
+    },
+    {
+      "id": "6.9-01",
+      "prd": "§6.9",
+      "capability": "列出 DSH 各 profile 的插件清单（bundles 顺序即载入顺序）",
+      "type": "读",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "flag",
+          "value": "--dsh-plugins"
+        },
+        {
+          "kind": "symbol",
+          "file": "core/dsh_plugins.py",
+          "value": "def scan_profile"
+        }
+      ],
+      "note": "本机实测 4 个 profile / 10 个插件（已升级 0 断链）"
+    },
+    {
+      "id": "6.9-02",
+      "prd": "§6.9",
+      "capability": "三态判定 enabled / installed / broken（不合并计数）",
+      "type": "读",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "symbol",
+          "file": "core/dsh_plugins.py",
+          "value": "def classify_plugin"
+        },
+        {
+          "kind": "gui",
+          "value": "DSH_STATE_META"
+        }
+      ],
+      "note": "broken 独立判 link 目标存在性，不靠 version 缺失兜底"
+    },
+    {
+      "id": "6.9-03",
+      "prd": "§6.9",
+      "capability": "插件类型分类 builtin / local / registry",
+      "type": "读",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "symbol",
+          "file": "core/dsh_plugins.py",
+          "value": "BUILTIN_SCOPE"
+        },
+        {
+          "kind": "gui",
+          "value": "DSH_KIND_LABEL"
+        }
+      ],
+      "note": ""
+    },
+    {
+      "id": "6.9-04",
+      "prd": "§6.9",
+      "capability": "patch 层结构统计（条目/禁用/插入），且 config 值绝不回显",
+      "type": "读",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "symbol",
+          "file": "core/dsh_plugins.py",
+          "value": "secrets_redacted"
+        },
+        {
+          "kind": "gui",
+          "value": "patch 值已脱敏"
+        }
+      ],
+      "note": "样本含伪造 apiKey，JSON 与文本两出口均断言查不到；见 tests/test_dsh_plugins.py"
+    },
+    {
+      "id": "6.9-05",
+      "prd": "§6.9",
+      "capability": "DSH 根目录可指定（--dsh-home，默认 ~/.dsh）",
+      "type": "读",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "flag",
+          "value": "--dsh-home"
+        },
+        {
+          "kind": "symbol",
+          "file": "core/dsh_plugins.py",
+          "value": "DSH_HOME_ENV"
+        }
+      ],
+      "note": ""
+    },
+    {
+      "id": "6.9-06",
+      "prd": "§6.9",
+      "capability": "第八页接入：导航 / PAGES 映射 / 命令面板 / Rust 白名单",
+      "type": "读",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "gui",
+          "value": "data-page=\"dsh\""
+        },
+        {
+          "kind": "symbol",
+          "file": "gui/dashboard.html",
+          "value": "dsh: \"page-dsh\""
+        },
+        {
+          "kind": "symbol",
+          "file": "src-tauri/src/lib.rs",
+          "value": "\"--dsh-plugins\""
+        }
+      ],
+      "note": "不在 Rust 白名单会被安全边界拦下，该断言防止回退"
+    },
+    {
+      "id": "6.9-07",
+      "prd": "§6.9",
+      "capability": "在 GUI 启用/禁用 DSH 插件、编辑 patch 层",
+      "type": "边界",
+      "status": "wontfix",
+      "evidence": [
+        {
+          "kind": "doc",
+          "value": "写 bundles / patch 属 DSH 自身配置写入面，需单独立项"
+        }
+      ],
+      "note": "只读是刻意边界：patch 文件含密钥，写入边界须另行设计"
     },
     {
       "id": "8-01",

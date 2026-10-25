@@ -616,6 +616,10 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
         // 整理建议的执行（FEAT-12）：写操作。把归并方备份后移入 _trash/，
         // 与 --delete-skill 同一条可恢复路径；执行前会重算判据拒绝过期建议。
         "--merge-skills",
+        // DSH 插件清单（v0.31.4）：只读出口，扫 ~/.dsh/profiles 下的
+        // package.json / cordis.patch.yml。不写任何 DSH 文件、不跑 pnpm，
+        // patch 层的 config 值（含明文 apiKey）一律不回显。
+        "--dsh-plugins",
     ];
     // Reject redirection-class flags outright (they re-point the engine at an
     // arbitrary config/profile file, a privilege escalation vector).

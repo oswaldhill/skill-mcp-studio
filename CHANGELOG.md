@@ -7,6 +7,66 @@
 
 ## [Unreleased]
 
+## [v0.31.4] - 2026-10-25
+
+当前发布版本（build 131）。新增**第八页「DSH 插件」**：把 DeepSeek Harness 的
+插件体系接进管理台。
+
+为什么需要：本工具的 Skills / MCP 是自己的模型（符号链接 + 端点库），而 DSH 的
+插件是**另一套**——cordis 载入器的 bundle 体系：装什么写在 `package.json` 的
+`dependencies`，启用什么写在同文件的 `dsh.profile.bundles`，改什么写在
+`cordis.patch.yml`。用户在 DSH 里装插件、改补丁层，却没有任何地方能一眼看清
+「现在到底会加载什么」。这与此前七页无关，故独立成页。
+
+### 新增
+
+- **`--dsh-plugins` 只读出口 + `core/dsh_plugins.py`**：扫 `~/.dsh/profiles/*`，
+  合并三处真相判一个插件的真实状态：
+  - `enabled`（在 `dsh.profile.bundles` 里，**会被真正加载**）；
+  - `installed`（在 `dependencies` 里但不在 bundles 里，装了不用）；
+  - `broken`（`link:` 依赖目标已不存在，DSH 载入会失败）。
+
+  **三态不合并计数**——「装了」不等于「在用」，合并会让用户对「现在加载了几个
+  插件」判断错误。`broken` **独立判 link 目标存在性**，不以 version 缺失兜底：
+  pnpm 的 link 在源码目录删除后 `node_modules/<name>` 常还留着（旧副本或指过去的
+  符号链接），version 读得到但载入必失败。实测本机 `dsh-plugin-model-guard` 正是
+  `link:` 到本仓库工作副本的这类「开发者自己的插件」。
+- **插件类型三分类**：`builtin`（`@deepseek-ai/*`）/ `local`（`link:` 本地源码）/
+  `registry`（npm 第三方）。身份用中性 tag，不与状态语义色抢。
+- **`--dsh-home`**：DSH 配置根目录可指定（默认 `~/.dsh`），便于测试与多实例。
+- **GUI 第八页 `page-dsh`**：导航项、`PAGES` 映射、命令面板均可达；进页按需拉一次
+  并缓存，「重新读取」强制重拉；顶部三计数各自独立，下方每 profile 一张卡片
+  （插件 / 类型 / 状态 / 版本 / 来源）。
+- **Rust `run_cli` 白名单**加入 `--dsh-plugins`：不登记的话界面一点就撞安全边界。
+
+### 安全
+
+- **patch 层的 config 值一律不回显**：`cordis.patch.yml` 的 `config` 段里有**明文
+  apiKey**（本机实测存在）。因此只输出结构统计（条目数 / 禁用数 / 插入数），
+  连 `baseURL`、`provider` 这类「看着不算密钥」的字段也不输出——一旦开始挑选
+  哪些能显示，就必然有新敏感字段漏网。输出带 `secrets_redacted: true` 作显式承诺，
+  页面固定显示「patch 值已脱敏」并说明原因。
+- 全程只读：不写任何 DSH 文件、不执行 `pnpm install`、不碰 lock 文件。
+
+### 文档
+
+- `DESIGN.md` / `DESIGN.html` 双向同步新增 §2.3g（DSH 插件页）：三态判据表、
+  `broken` 为何独立判定、安全约束、布局与数据来源。
+- PRD v1.7：新增 §6.9（DSH 插件页需求 + DoD + 刻意不做的边界）；§5.3 页面结构
+  七页 → **八页**；§5.1 形态图与 §10 勘正表同步。
+- 对照清单 73 → **80 条**（新增 6 条已实现 + 1 条刻意不做），总览计数与
+  PRD 版本号同步；`test_prd_v15_review` 的页面集合断言由七页改为八页（页面一变
+  必须回来改文档，这正是该断言的用途）。
+
+### 测试
+
+- 新增 17 条断言（`tests/test_dsh_plugins.py`）：三态分类用**真实临时目录树**跑
+  （mock 掉文件系统等于把判定删了）；含伪造 `apiKey` 的样本断言 JSON 与文本
+  两种出口都查不到密钥（含 `sk-` 前缀与 baseURL）。负向验证 3 处：把
+  「装了未启用」算成启用（2 条红）、把 config 原文带进输出（1 条红）、不判 link
+  失效（首轮**未报红**——说明断言不够强，补了「有 version 也要判 broken」的用例后
+  才红）。第 3 处是我自己写弱了，记在此处以免重犯。
+
 ### 文档
 
 - **PRD v1.6：补齐三页需求 + 建立「PRD ↔ 实现」对照清单**。v1.5 修的是「写错的」，
@@ -1965,7 +2025,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.31.3...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.31.4...HEAD
+[v0.31.4]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.31.4
 [v0.31.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.31.3
 [v0.31.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.31.2
 [v0.31.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.31.1
