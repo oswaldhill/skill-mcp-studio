@@ -1,0 +1,1212 @@
+{
+  "_meta": {
+    "purpose": "PRD ↔ 实现 对照矩阵的单一数据源。markdown 清单与门禁断言都由它派生，避免三处各写一份。",
+    "updated": "2026-10-25",
+    "prd_version": "v1.6",
+    "status_vocab": {
+      "done": "✅ 已实现",
+      "partial": "🟡 部分实现",
+      "planned": "⬜ 未实现（已立需求）",
+      "wontfix": "🚫 刻意不做"
+    },
+    "evidence_kinds": {
+      "flag": "scan.py 里必须有该 CLI 参数",
+      "symbol": "指定文件里必须出现该符号",
+      "gui": "gui/dashboard.html 里必须出现该选择器/字符串",
+      "doc": "仅文档口径，无代码可验（须在 note 说明原因）"
+    }
+  },
+  "rows": [
+    {
+      "id": "6.1-01",
+      "prd": "§6.1",
+      "capability": "列出本机所有客户端（声明 + 自动发现 + 手动三来源归一去重）",
+      "type": "读",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "flag",
+          "value": "--management"
+        },
+        {
+          "kind": "symbol",
+          "file": "core/management_snapshot.py",
+          "value": "def build"
+        }
+      ],
+      "note": "本机实测发现 23 个客户端"
+    },
+    {
+      "id": "6.1-02",
+      "prd": "§6.1",
+      "capability": "展示安装证据（app bundle / CLI 命令 / 配置路径）",
+      "type": "读",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "symbol",
+          "file": "core/tool_registry.py",
+          "value": "def detect_installation"
+        },
+        {
+          "kind": "gui",
+          "value": "ad-pill"
+        }
+      ],
+      "note": ""
+    },
+    {
+      "id": "6.1-03",
+      "prd": "§6.1",
+      "capability": "展示 Skills 路径合规 + 链接形态（per_skill / root / mixed / n/a）",
+      "type": "读",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "symbol",
+          "file": "core/skill_state.py",
+          "value": "def skill_link_form"
+        },
+        {
+          "kind": "symbol",
+          "file": "gui/dashboard.html",
+          "value": "linkFormText"
+        }
+      ],
+      "note": "四态；n/a 表示该客户端无 skills 语义"
+    },
+    {
+      "id": "6.1-04",
+      "prd": "§6.1",
+      "capability": "展示 MCP 挂载端点（显式 / 自动全部）",
+      "type": "读",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "symbol",
+          "file": "core/management_snapshot.py",
+          "value": "mcp_attach"
+        }
+      ],
+      "note": ""
+    },
+    {
+      "id": "6.1-05",
+      "prd": "§6.1",
+      "capability": "查看客户端完整详情（含配置解析出的 MCP 条目）",
+      "type": "读",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "gui",
+          "value": "showAgentDetail"
+        }
+      ],
+      "note": "右侧 Sheet"
+    },
+    {
+      "id": "6.1-06",
+      "prd": "§6.1",
+      "capability": "纳入 / 移出客户端（主流工具勾选 + 自定义添加）",
+      "type": "写",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "flag",
+          "value": "--add-client"
+        },
+        {
+          "kind": "flag",
+          "value": "--remove-client"
+        },
+        {
+          "kind": "flag",
+          "value": "--add-defaults"
+        }
+      ],
+      "note": ""
+    },
+    {
+      "id": "6.1-07",
+      "prd": "§6.1",
+      "capability": "重新扫描（含自动发现）",
+      "type": "写（触发生成）",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "flag",
+          "value": "--discover"
+        }
+      ],
+      "note": ""
+    },
+    {
+      "id": "6.2-01",
+      "prd": "§6.2",
+      "capability": "展示统一技能目录、技能总数",
+      "type": "读",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "symbol",
+          "file": "core/management_snapshot.py",
+          "value": "unified_dir"
+        }
+      ],
+      "note": "本机实测 192 个技能"
+    },
+    {
+      "id": "6.2-02",
+      "prd": "§6.2",
+      "capability": "搜索 / 筛选技能清单（全部 / 已启用 / 部分 / 未启用 / 可升级）",
+      "type": "读",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "gui",
+          "value": "data-seg=\"partial\""
+        },
+        {
+          "kind": "gui",
+          "value": "data-seg=\"updatable\""
+        }
+      ],
+      "note": "五段筛选"
+    },
+    {
+      "id": "6.2-03",
+      "prd": "§6.2",
+      "capability": "网格 / 列表视图切换（记忆于 localStorage）",
+      "type": "读",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "gui",
+          "value": "localStorage"
+        }
+      ],
+      "note": ""
+    },
+    {
+      "id": "6.2-04",
+      "prd": "§6.2",
+      "capability": "查看单技能详情（描述 + 每客户端启用状态）",
+      "type": "读",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "gui",
+          "value": "showSkillDetail"
+        }
+      ],
+      "note": ""
+    },
+    {
+      "id": "6.2-05",
+      "prd": "§6.2",
+      "capability": "每客户端技能启停（ToggleSwitch）",
+      "type": "写",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "flag",
+          "value": "--enable-skill"
+        },
+        {
+          "kind": "flag",
+          "value": "--disable-skill"
+        }
+      ],
+      "note": "仅 per_skill 形态可用；root 形态返回 skip（缺口 #7）"
+    },
+    {
+      "id": "6.2-06",
+      "prd": "§6.2",
+      "capability": "一键合并（dry-run 预览 → 确认实写）",
+      "type": "写",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "flag",
+          "value": "--fix-skills"
+        }
+      ],
+      "note": ""
+    },
+    {
+      "id": "6.2-07",
+      "prd": "§6.2",
+      "capability": "技能清单展示版本（本地 SKILL.md frontmatter version）",
+      "type": "读",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "symbol",
+          "file": "core/skill_state.py",
+          "value": "def read_skill_meta"
+        }
+      ],
+      "note": "无版本时回落最后更新时间"
+    },
+    {
+      "id": "6.2-08",
+      "prd": "§6.2",
+      "capability": "更新检查（五态：有更新 / 最新 / 未知 / 登记失效 / 仓库待同步）",
+      "type": "读",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "flag",
+          "value": "--market"
+        },
+        {
+          "kind": "symbol",
+          "file": "core/skill_market.py",
+          "value": "repo_outdated"
+        }
+      ],
+      "note": "本机实测 total=192（skill 39 + repo 153）"
+    },
+    {
+      "id": "6.2-09",
+      "prd": "§6.2",
+      "capability": "市场源管理（默认 skills.sh，可删改，支持自定义远端源）",
+      "type": "写（通用）",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "flag",
+          "value": "--set-market-source"
+        },
+        {
+          "kind": "flag",
+          "value": "--remove-market-source"
+        },
+        {
+          "kind": "flag",
+          "value": "--list-market-sources"
+        }
+      ],
+      "note": ""
+    },
+    {
+      "id": "6.2-10",
+      "prd": "§6.2",
+      "capability": "设置统一技能目录",
+      "type": "写（通用）",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "flag",
+          "value": "--set-unified-dir"
+        }
+      ],
+      "note": ""
+    },
+    {
+      "id": "6.2-11",
+      "prd": "§6.2",
+      "capability": "市场搜索 / 安装 / 升级已装技能",
+      "type": "写（业务）",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "flag",
+          "value": "--market-install"
+        },
+        {
+          "kind": "flag",
+          "value": "--market-upgrade"
+        },
+        {
+          "kind": "flag",
+          "value": "--market-query"
+        }
+      ],
+      "note": "安装/升级来自第三方仓库，必须 --yes 显式确认"
+    },
+    {
+      "id": "6.2-12",
+      "prd": "§6.2",
+      "capability": "技能使用统计（使用画像：load/browse/edit/last_used/never_used）",
+      "type": "读",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "flag",
+          "value": "--skill-insight"
+        },
+        {
+          "kind": "symbol",
+          "file": "core/skill_usage.py",
+          "value": "never_used"
+        }
+      ],
+      "note": "本机实测已装 193 / 用过 22 / never_used 171；依赖会话日志完整性（缺口 #8）"
+    },
+    {
+      "id": "6.2-13",
+      "prd": "§6.2",
+      "capability": "备份与回滚（升级前自动备份）",
+      "type": "写（业务）",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "flag",
+          "value": "--list-skill-backups"
+        },
+        {
+          "kind": "flag",
+          "value": "--skill-rollback"
+        }
+      ],
+      "note": "data/skill_backups/<name>/<时间戳>/；回滚前另存 .before-restore-<时间戳>"
+    },
+    {
+      "id": "6.2-14",
+      "prd": "§6.2",
+      "capability": "启停矩阵与形态迁移（list / audit / migrate）",
+      "type": "读 + 写",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "flag",
+          "value": "--list-skill-states"
+        },
+        {
+          "kind": "flag",
+          "value": "--audit-skill-states"
+        },
+        {
+          "kind": "flag",
+          "value": "--migrate-skill-links"
+        }
+      ],
+      "note": "本机 6 客户端 × 192 技能；root → per_skill 迁移为原子替换 + 校验 + 失败还原"
+    },
+    {
+      "id": "6.2-15",
+      "prd": "§6.2",
+      "capability": "跨设备配置同步（WebDAV）",
+      "type": "写（通用）",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "flag",
+          "value": "--sync-webdav-push"
+        },
+        {
+          "kind": "flag",
+          "value": "--sync-webdav-pull"
+        },
+        {
+          "kind": "flag",
+          "value": "--webdav-status"
+        }
+      ],
+      "note": "只同步 3 个个人配置文件，不同步 token 与技能本体；冲突不自动合并，先留档"
+    },
+    {
+      "id": "6.2-16",
+      "prd": "§6.2",
+      "capability": "GitHub token 通道（提升检查配额 60 → 5000 次/小时）",
+      "type": "写（通用）",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "flag",
+          "value": "--set-github-token"
+        },
+        {
+          "kind": "flag",
+          "value": "--get-github-token"
+        }
+      ],
+      "note": "环境变量优先、文件回落；文件 gitignored"
+    },
+    {
+      "id": "6.2.1-R1",
+      "prd": "§6.2.1",
+      "capability": "长期未使用检测（从未使用 / N 天未使用分开呈现）",
+      "type": "读",
+      "status": "planned",
+      "evidence": [
+        {
+          "kind": "doc",
+          "value": "复用 --skill-insight 的 never_used 与 last_used"
+        }
+      ],
+      "note": "数据已具备，缺「按阈值筛选并分开报数」的界面"
+    },
+    {
+      "id": "6.2.1-R2",
+      "prd": "§6.2.1",
+      "capability": "阈值可配（7/14/30/90 天 + 仅从未使用），阈值必须显示在文案里",
+      "type": "读",
+      "status": "planned",
+      "evidence": [
+        {
+          "kind": "doc",
+          "value": "默认 14 天"
+        }
+      ],
+      "note": "取值 7/14/30/90 天 + 仅从未使用；需与 R1 同批落地，否则阈值无意义"
+    },
+    {
+      "id": "6.2.1-R3",
+      "prd": "§6.2.1",
+      "capability": "候选清单 + 勾选（默认全选、可逐项取消、显示最后使用与 N/M）",
+      "type": "读",
+      "status": "planned",
+      "evidence": [
+        {
+          "kind": "doc",
+          "value": "复用技能页分段筛选 + N/M 徽标"
+        }
+      ],
+      "note": "默认全选、允许逐项取消；每行显示最后使用日期与 N/M 徽标"
+    },
+    {
+      "id": "6.2.1-R4",
+      "prd": "§6.2.1",
+      "capability": "批量关闭（逐技能逐客户端执行、部分成功如实回报）",
+      "type": "写（业务）",
+      "status": "planned",
+      "evidence": [
+        {
+          "kind": "doc",
+          "value": "复用 --disable-skill；不新增写路径"
+        }
+      ],
+      "note": "受缺口 #7（root 形态）阻塞"
+    },
+    {
+      "id": "6.2.1-R5",
+      "prd": "§6.2.1",
+      "capability": "关闭前预览与代价说明（关闭≠删除，技能本体保留）",
+      "type": "读",
+      "status": "planned",
+      "evidence": [
+        {
+          "kind": "doc",
+          "value": "关闭只移除符号链接"
+        }
+      ],
+      "note": "文案必须含「关闭≠删除、技能本体保留」，避免用户以为是删除"
+    },
+    {
+      "id": "6.2.1-R6",
+      "prd": "§6.2.1",
+      "capability": "提醒节流（不再提醒，状态落 overlay 不写 config.yaml）",
+      "type": "写（本地）",
+      "status": "planned",
+      "evidence": [
+        {
+          "kind": "doc",
+          "value": "data/local_overrides.yaml 同层"
+        }
+      ],
+      "note": "不改 config.yaml；与现有 overlay 写层同模式，重启后保持"
+    },
+    {
+      "id": "6.2.1-R7",
+      "prd": "§6.2.1",
+      "capability": "入口与触发时机（技能页入口；启动不弹窗打断）",
+      "type": "读",
+      "status": "planned",
+      "evidence": [
+        {
+          "kind": "doc",
+          "value": "仅技能页提示条"
+        }
+      ],
+      "note": "启动不弹窗打断，只在技能页给可关闭的提示条"
+    },
+    {
+      "id": "6.2.1-R8",
+      "prd": "§6.2.1",
+      "capability": "与 MCP 的边界（不得合并成一个数字）",
+      "type": "边界",
+      "status": "planned",
+      "evidence": [
+        {
+          "kind": "doc",
+          "value": "MCP 清理走 MCP 页既有分类"
+        }
+      ],
+      "note": "由门禁断言守住：技能与 MCP 各自计数，不得合并成一个数字"
+    },
+    {
+      "id": "6.3-01",
+      "prd": "§6.3",
+      "capability": "端点库（key / name / url / transport / 探活 / 能力组）",
+      "type": "读",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "symbol",
+          "file": "core/management_snapshot.py",
+          "value": "endpoints"
+        }
+      ],
+      "note": ""
+    },
+    {
+      "id": "6.3-02",
+      "prd": "§6.3",
+      "capability": "每客户端 MCP 条目分类（已挂载 / 旧通道 / 未纳管）",
+      "type": "读",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "gui",
+          "value": "CLASS_TRANSLATE"
+        }
+      ],
+      "note": ""
+    },
+    {
+      "id": "6.3-03",
+      "prd": "§6.3",
+      "capability": "端点 × 客户端覆盖矩阵",
+      "type": "读",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "gui",
+          "value": "data-page=\"mcp\""
+        }
+      ],
+      "note": ""
+    },
+    {
+      "id": "6.3-04",
+      "prd": "§6.3",
+      "capability": "端点库增 / 删 / 改",
+      "type": "写（通用）",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "flag",
+          "value": "--add-endpoint"
+        },
+        {
+          "kind": "flag",
+          "value": "--remove-endpoint"
+        },
+        {
+          "kind": "flag",
+          "value": "--update-endpoint"
+        }
+      ],
+      "note": ""
+    },
+    {
+      "id": "6.3-05",
+      "prd": "§6.3",
+      "capability": "客户端挂载端点调整",
+      "type": "写（业务）",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "flag",
+          "value": "--attach-endpoints"
+        }
+      ],
+      "note": ""
+    },
+    {
+      "id": "6.3-06",
+      "prd": "§6.3（补）",
+      "capability": "端点活体探测（initialize + tools/list，HTTP 与 stdio）",
+      "type": "读",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "flag",
+          "value": "--endpoint-status"
+        },
+        {
+          "kind": "symbol",
+          "file": "core/transport.py",
+          "value": "def probe_stdio"
+        }
+      ],
+      "note": "PRD §6.3 原表未列，本次补入"
+    },
+    {
+      "id": "6.4-01",
+      "prd": "§6.4",
+      "capability": "统一技能目录（可改）",
+      "type": "写",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "flag",
+          "value": "--set-unified-dir"
+        }
+      ],
+      "note": ""
+    },
+    {
+      "id": "6.4-02",
+      "prd": "§6.4",
+      "capability": "Hook 命令模板（按事件编辑 + 预设）",
+      "type": "写",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "flag",
+          "value": "--set-hook-template"
+        },
+        {
+          "kind": "flag",
+          "value": "--apply-hook-preset"
+        },
+        {
+          "kind": "flag",
+          "value": "--list-hook-templates"
+        }
+      ],
+      "note": ""
+    },
+    {
+      "id": "6.4-03",
+      "prd": "§6.4",
+      "capability": "自动发现开关（写 overlay）",
+      "type": "写",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "flag",
+          "value": "--set-auto-discover"
+        }
+      ],
+      "note": "与 §6.4 的 P-3 定案一致；重定向参数 --profile/--config 仍被 Rust 拒"
+    },
+    {
+      "id": "6.4-04",
+      "prd": "§6.4",
+      "capability": "活动 endpoint（active_profile）切换",
+      "type": "写",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "flag",
+          "value": "--set-active-profile"
+        }
+      ],
+      "note": "注意 --active-profile（无 set-）是被 Rust 拒绝的重定向参数，两者不同"
+    },
+    {
+      "id": "6.4-05",
+      "prd": "§6.4",
+      "capability": "配置导入 / 导出（换机 / 分享）",
+      "type": "写",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "flag",
+          "value": "--export-config"
+        },
+        {
+          "kind": "flag",
+          "value": "--import-config"
+        }
+      ],
+      "note": "单 JSON、密钥脱敏、合并导入、导入前自动备份"
+    },
+    {
+      "id": "6.4-06",
+      "prd": "§6.4",
+      "capability": "跨设备配置同步（WebDAV）",
+      "type": "写",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "flag",
+          "value": "--sync-webdav-push"
+        }
+      ],
+      "note": "同 6.2-15，此处为设置页入口"
+    },
+    {
+      "id": "6.4-07",
+      "prd": "§6.4",
+      "capability": "GitHub token（提升检查配额）",
+      "type": "写",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "flag",
+          "value": "--set-github-token"
+        }
+      ],
+      "note": "同 6.2-16，此处为设置页入口"
+    },
+    {
+      "id": "6.4-08",
+      "prd": "§6.4",
+      "capability": "版本 / 构建号",
+      "type": "读",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "flag",
+          "value": "--version"
+        }
+      ],
+      "note": "version.json 单源真相"
+    },
+    {
+      "id": "6.5-01",
+      "prd": "§6.5",
+      "capability": "主题（浅色 / 深色 / 跟随系统）",
+      "type": "读",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "gui",
+          "value": "prefers-color-scheme"
+        },
+        {
+          "kind": "gui",
+          "value": "data-theme"
+        }
+      ],
+      "note": ""
+    },
+    {
+      "id": "6.5-02",
+      "prd": "§6.5",
+      "capability": "⌘K 命令面板（分组 + 过滤 + 键盘导航）",
+      "type": "读",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "gui",
+          "value": "palette"
+        }
+      ],
+      "note": ""
+    },
+    {
+      "id": "6.5-03",
+      "prd": "§6.5",
+      "capability": "右侧详情 Sheet（技能 / 客户端）",
+      "type": "读",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "gui",
+          "value": "sheet"
+        }
+      ],
+      "note": ""
+    },
+    {
+      "id": "6.5-04",
+      "prd": "§6.5",
+      "capability": "Toast 栈（进度 → 成功 / 失败）",
+      "type": "读",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "gui",
+          "value": "showToast"
+        }
+      ],
+      "note": ""
+    },
+    {
+      "id": "6.5-05",
+      "prd": "§6.5",
+      "capability": "全局 Esc 逐级关闭",
+      "type": "读",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "gui",
+          "value": "\"Escape\""
+        }
+      ],
+      "note": ""
+    },
+    {
+      "id": "6.5-06",
+      "prd": "§6.5",
+      "capability": "可访问性（无 emoji 图标 / focus ring / reduced-motion）",
+      "type": "读",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "gui",
+          "value": "prefers-reduced-motion"
+        }
+      ],
+      "note": "reduced-motion 覆盖动画；aria-hidden 39 处"
+    },
+    {
+      "id": "6.6-01",
+      "prd": "§6.6（补）",
+      "capability": "Hook 页：事件词表 + 每客户端接入状态",
+      "type": "读",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "flag",
+          "value": "--list-hooks"
+        },
+        {
+          "kind": "gui",
+          "value": "data-page=\"hooks\""
+        }
+      ],
+      "note": "PRD §6 原缺 Hook 页需求，本次补入"
+    },
+    {
+      "id": "6.6-02",
+      "prd": "§6.6（补）",
+      "capability": "Hook 写入 / 移除（带备份）",
+      "type": "写（业务）",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "flag",
+          "value": "--fix-hooks"
+        },
+        {
+          "kind": "flag",
+          "value": "--remove-hooks"
+        }
+      ],
+      "note": ""
+    },
+    {
+      "id": "6.6-03",
+      "prd": "§6.6（补）",
+      "capability": "Hook 漂移检测与关键事件缺失提示",
+      "type": "读",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "symbol",
+          "file": "gui/dashboard.html",
+          "value": "missing_key_events"
+        }
+      ],
+      "note": ""
+    },
+    {
+      "id": "6.7-01",
+      "prd": "§6.7（补）",
+      "capability": "变更详情：快照 diff（4 维度）",
+      "type": "读",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "flag",
+          "value": "--snapshot"
+        },
+        {
+          "kind": "gui",
+          "value": "renderChanges"
+        }
+      ],
+      "note": "PRD §6 原缺变更详情页需求，本次补入"
+    },
+    {
+      "id": "6.7-02",
+      "prd": "§6.7（补）",
+      "capability": "变更接受 / 忽略 / 取消忽略（忽略清单幂等）",
+      "type": "写（本地）",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "flag",
+          "value": "--ignore-change"
+        },
+        {
+          "kind": "flag",
+          "value": "--unignore-change"
+        },
+        {
+          "kind": "flag",
+          "value": "--list-ignored"
+        }
+      ],
+      "note": "忽略清单存本地"
+    },
+    {
+      "id": "6.8-01",
+      "prd": "§6.8（补）",
+      "capability": "概览：受管客户端 / 已安装 / 仅配置 / 未安装 / 统一技能 / 主流已纳入 六项 KPI",
+      "type": "读",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "gui",
+          "value": "受管客户端"
+        },
+        {
+          "kind": "gui",
+          "value": "主流已纳入"
+        }
+      ],
+      "note": "PRD §6 原缺概览页需求，本次补入；**概览不含 MCP 探活 KPI**（探活已移至独立「端点状态」区，§5.3 已改正）"
+    },
+    {
+      "id": "6.8-02",
+      "prd": "§6.8（补）",
+      "capability": "概览：端点连通性独立呈现（与配置审计分离）",
+      "type": "读",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "gui",
+          "value": "endpoint-status"
+        },
+        {
+          "kind": "flag",
+          "value": "--endpoint-status"
+        }
+      ],
+      "note": "审计只判配置，通断独立，避免总览颜色误导"
+    },
+    {
+      "id": "6.8-03",
+      "prd": "§6.8（补）",
+      "capability": "概览：快捷操作（添加客户端 / 修复链接 / 全量检查 / 管理端点）",
+      "type": "读",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "gui",
+          "value": "quickbox"
+        }
+      ],
+      "note": ""
+    },
+    {
+      "id": "7-01",
+      "prd": "§7",
+      "capability": "写操作统一「备份 → 原子写 → 校验 → 回滚」",
+      "type": "非功能",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "symbol",
+          "file": "core/file_atomic.py",
+          "value": "def backup_path"
+        },
+        {
+          "kind": "symbol",
+          "file": "core/skill_link_migrator.py",
+          "value": "os.replace"
+        }
+      ],
+      "note": "symlink 用 os.symlink(tmp)+os.replace，无删除窗口"
+    },
+    {
+      "id": "7-02",
+      "prd": "§7",
+      "capability": "破坏性写命令支持 --dry-run",
+      "type": "非功能",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "flag",
+          "value": "--dry-run"
+        }
+      ],
+      "note": ""
+    },
+    {
+      "id": "7-03",
+      "prd": "§7",
+      "capability": "GUI 写命令经 Rust 白名单收口，拒绝重定向参数",
+      "type": "非功能",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "symbol",
+          "file": "src-tauri/src/lib.rs",
+          "value": "DENIED_FLAG_PREFIXES"
+        }
+      ],
+      "note": "实测拒绝 --config / --prof / --active-prof / --progress-file"
+    },
+    {
+      "id": "7-04",
+      "prd": "§7",
+      "capability": "GUI / CLI 审计结论一致（回归 gate）",
+      "type": "非功能",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "symbol",
+          "file": "scripts/verify_gui_consistency.sh",
+          "value": "verify"
+        }
+      ],
+      "note": ""
+    },
+    {
+      "id": "7-05",
+      "prd": "§7",
+      "capability": "无参数 CLI 只读；--full 不隐含 git / cleanup / fix",
+      "type": "非功能",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "flag",
+          "value": "--full"
+        },
+        {
+          "kind": "symbol",
+          "file": "scan.py",
+          "value": "完整只读模式"
+        }
+      ],
+      "note": ""
+    },
+    {
+      "id": "7-06",
+      "prd": "§7",
+      "capability": "离线可用（字体自托管、无 CDN）",
+      "type": "非功能",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "gui",
+          "value": "IBM Plex Mono"
+        }
+      ],
+      "note": ""
+    },
+    {
+      "id": "7-07",
+      "prd": "§7",
+      "capability": "退出码 0 / 1 / 2 语义",
+      "type": "非功能",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "symbol",
+          "file": "tests/test_exit_codes.py",
+          "value": "returns_2"
+        }
+      ],
+      "note": "有独立测试文件守着"
+    },
+    {
+      "id": "7-08",
+      "prd": "§7",
+      "capability": "三平台构建（macOS / Windows / Linux）",
+      "type": "非功能",
+      "status": "partial",
+      "evidence": [
+        {
+          "kind": "symbol",
+          "file": ".github/workflows/build-windows.yml",
+          "value": "msi"
+        },
+        {
+          "kind": "symbol",
+          "file": ".github/workflows/build-linux.yml",
+          "value": "appimage"
+        }
+      ],
+      "note": "构建与单测已绿；**未做 Win/Linux 真机 GUI 冒烟**（缺口 #6）"
+    },
+    {
+      "id": "7-09",
+      "prd": "§7",
+      "capability": "跨平台路径分派（by_os）",
+      "type": "非功能",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "symbol",
+          "file": "core/mainstream_registry_data.py",
+          "value": "_current_os"
+        }
+      ],
+      "note": "实测 20 处 windows / 21 处 linux 覆盖"
+    },
+    {
+      "id": "8-01",
+      "prd": "§8",
+      "capability": "不做技能市场 / 商店平台（只做消费方）",
+      "type": "边界",
+      "status": "wontfix",
+      "evidence": [
+        {
+          "kind": "doc",
+          "value": "自建索引/排行/托管分发不做；--market search/install/upgrade 属消费方"
+        }
+      ],
+      "note": "判据：成为分发方=不做；仅消费上游=做"
+    },
+    {
+      "id": "8-02",
+      "prd": "§8",
+      "capability": "不做多用户权限体系与云端托管",
+      "type": "边界",
+      "status": "wontfix",
+      "evidence": [
+        {
+          "kind": "doc",
+          "value": "本地工具；WebDAV 只搬用户自己的配置文件"
+        }
+      ],
+      "note": "WebDAV 只搬用户自己的配置小层，不搬技能资产与凭据"
+    },
+    {
+      "id": "8-03",
+      "prd": "§8",
+      "capability": "不内置任何特定工具的 Hook 命令",
+      "type": "边界",
+      "status": "done",
+      "evidence": [
+        {
+          "kind": "flag",
+          "value": "--apply-hook-preset"
+        },
+        {
+          "kind": "flag",
+          "value": "--set-hook-template"
+        }
+      ],
+      "note": "v0.29.0 剥离 ai-memory 后确立；用户自定义模板"
+    },
+    {
+      "id": "8-04",
+      "prd": "§8",
+      "capability": "不内置 MCP server 远程入口",
+      "type": "边界",
+      "status": "wontfix",
+      "evidence": [
+        {
+          "kind": "doc",
+          "value": "unified_mcp_server.py 已删除"
+        }
+      ],
+      "note": "留待后续专项立项"
+    },
+    {
+      "id": "8-05",
+      "prd": "§8",
+      "capability": "运行时按会话加载（会话级注入）",
+      "type": "边界",
+      "status": "wontfix",
+      "evidence": [
+        {
+          "kind": "doc",
+          "value": "启停已落地；会话级注入仍未做"
+        }
+      ],
+      "note": "属增值层，立项时独立决策"
+    }
+  ]
+}
