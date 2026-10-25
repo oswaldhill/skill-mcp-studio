@@ -7,6 +7,11 @@
 
 ## [Unreleased]
 
+## [v0.31.3] - 2026-10-25
+
+当前发布版本（build 130）。补上「153 个技能永远查不到更新」这个缺口：
+检查覆盖从 39/192 提升到 192/192，并新增第五态 `repo_outdated`（仓库待同步）。
+
 ### 新增
 
 - **仓库形态技能源的更新检查（检查结果第五态 `repo_outdated`「仓库待同步」）**：
@@ -1896,7 +1901,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.31.2...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.31.3...HEAD
+[v0.31.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.31.3
 [v0.31.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.31.2
 [v0.31.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.31.1
 [v0.30.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.30.0

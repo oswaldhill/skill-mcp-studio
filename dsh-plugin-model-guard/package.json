@@ -1,0 +1,31 @@
+{
+  "name": "dsh-plugin-model-guard",
+  "version": "0.2.2",
+  "private": true,
+  "type": "module",
+  "description": "Startup audit and one-click repair for custom model configuration: image input tags, maximum context windows, and multimodal vision fallback.",
+  "exports": {
+    ".": "./index.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "lib/*.mjs",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

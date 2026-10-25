@@ -1,0 +1,13 @@
+# Bundle config layer: the startup model-configuration guard.
+#
+# The plugin audits every custom model declared on the `llm-pi-ai` routes at
+# boot and asks the agent to confirm a repair. It never rewrites configuration
+# on its own. `probeImages: auto` decides real image capability by sending one
+# tiny red PNG per model that has no pinned capability; set it to `never` when
+# the endpoint charges per call and the list is long.
+- insert:
+    - id: model-guard
+      name: dsh-plugin-model-guard
+      config:
+        auditOnStartup: true
+        probeImages: auto
