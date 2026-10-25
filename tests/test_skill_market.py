@@ -401,16 +401,33 @@ class CheckUpdatesTest(unittest.TestCase):
         out = self._run((None, "unavailable"), only=["b"])
         self.assertEqual([r["name"] for r in out["updates"]], ["b"])
 
-    def test_unregistered_skills_are_skipped(self):
-        payload = {"installed": [{"name": "z", "registered": False,
+    def test_unregistered_skills_are_not_single_source_checked(self):
+        """无 lock 登记的技能不进「单技能来源」判定（v0.31.3 起改走仓库形态）。
+
+        行为变更说明：v0.31.0～v0.31.2 里这类技能被整体跳过，`updates` 为空——
+        结果就是实测 153 个技能永远查不到更新。v0.31.3 起它们改由
+        `core/skill_repo_source.py` 按「整仓库形态」判定，落成
+        `source_form="repo"` 的行。这里断言的是**不再走单技能来源那条路**：
+        没有 GitHub 来源、没有 remote_version，绝不产生 outdated。
+        """
+        payload = {"installed": [{"name": "z", "registered": False, "on_disk": True,
                                   "source_url": None, "updated_at": None}]}
+        snap = {"ok": True, "branch": "master", "upstream": "origin/master",
+                "upstream_time": "2026-10-20T00:00:00+08:00",
+                "changed": set(), "dirty": set(), "error": ""}
         with mock.patch("skill_market.list_installed", return_value=payload), \
              mock.patch("skill_market._load_check_cache", return_value=None), \
              mock.patch("skill_market._save_check_cache", lambda p: None), \
+             mock.patch("skill_repo_source.snapshot", return_value=snap), \
              mock.patch("market_sources.list_sources",
                         return_value=([], False, [])):
             out = check_updates()
-        self.assertEqual(out["updates"], [])
+        self.assertEqual([r["name"] for r in out["updates"]], ["z"])
+        row = out["updates"][0]
+        self.assertEqual(row["source_form"], "repo")
+        self.assertEqual(row["state"], "current")
+        self.assertIsNone(row["remote_version"])
+        self.assertEqual(out["summary"]["outdated"], 0)
 
     def test_local_version_in_row(self):
         out = self._run(("2.0.0", "ok"))
@@ -504,6 +521,80 @@ class CheckUpdatesTest(unittest.TestCase):
             out = check_updates(only=["ghost"])
         self.assertEqual([r["name"] for r in out["updates"]], ["ghost"])
         self.assertEqual(out["summary"]["missing"], 1)
+
+
+class RepoFormUpdatesTest(unittest.TestCase):
+    """v0.31.3 仓库形态来源：无 lock 登记的技能也要有结论。
+
+    背景：实测 192 个技能里只有 39 个在 lock 有来源登记，其余 153 个此前一律落
+    unknown —— 它们属于「整仓库形态」（统一库本身是 git 工作区）。这批断言守住
+    三件事：① 它们能被判；② 判定落成独立的 repo_outdated，**不进** outdated
+    （否则「一键升级」会拿 npx 去重装一个仓库形态的技能）；③ 判不了时是
+    unknown 而不是 current。
+    """
+
+    def _installed(self):
+        return {"installed": [
+            {"name": "reg", "source_url": "https://github.com/o/r.git",
+             "skill_path": "skills/reg/SKILL.md",
+             "updated_at": "2026-01-01T00:00:00.000Z",
+             "registered": True, "on_disk": True},
+            {"name": "rep", "source_url": None, "skill_path": None,
+             "updated_at": None, "registered": False, "on_disk": True},
+        ]}
+
+    def _snap(self, **over):
+        snap = {"ok": True, "branch": "master", "upstream": "origin/master",
+                "upstream_time": "2026-10-20T00:00:00+08:00",
+                "changed": set(), "dirty": set(), "error": ""}
+        snap.update(over)
+        return snap
+
+    def _run(self, snap, only=None):
+        with mock.patch("skill_market.list_installed", return_value=self._installed()), \
+             mock.patch("skill_market._remote_latest_version",
+                        return_value=("1.0.0", "ok")), \
+             mock.patch("skill_market._load_check_cache", return_value=None), \
+             mock.patch("skill_market._save_check_cache", lambda p: None), \
+             mock.patch("skill_state.read_skill_meta",
+                        return_value={"reg": {"version": "1.0.0"}}), \
+             mock.patch("skill_repo_source.snapshot", return_value=snap), \
+             mock.patch("market_sources.list_sources",
+                        return_value=([{"id": "s", "label": "s",
+                                        "type": "skills-sh", "enabled": True}],
+                                      False, [])):
+            return check_updates(only=only, force=True)
+
+    def test_unregistered_skill_is_judged_as_repo_form(self):
+        out = self._run(self._snap(changed={"rep"}))
+        by = {r["name"]: r for r in out["updates"]}
+        self.assertEqual(by["rep"]["state"], "repo_outdated")
+        self.assertEqual(by["rep"]["source_form"], "repo")
+        self.assertIn("origin/master", by["rep"]["note"])
+
+    def test_repo_outdated_never_counts_as_outdated(self):
+        """口径纪律：repo_outdated 单独计数，绝不算进 outdated。"""
+        out = self._run(self._snap(changed={"rep"}))
+        self.assertEqual(out["summary"]["repo_outdated"], 1)
+        self.assertEqual(out["summary"]["outdated"], 0)
+        self.assertEqual(out["summary"]["total"], 2)
+
+    def test_synced_repo_skill_is_current(self):
+        out = self._run(self._snap())
+        by = {r["name"]: r["state"] for r in out["updates"]}
+        self.assertEqual(by["rep"], "current")
+        self.assertEqual(out["summary"]["repo_outdated"], 0)
+
+    def test_repo_form_failure_is_unknown_not_current(self):
+        out = self._run(self._snap(ok=False, upstream=None, upstream_time=None,
+                                   error="缺少比对基准 origin/master（尚未 fetch 过该分支）"))
+        row = next(r for r in out["updates"] if r["name"] == "rep")
+        self.assertEqual(row["state"], "unknown")
+        self.assertIn("origin/master", row["note"])
+
+    def test_only_filter_excludes_other_repo_skills(self):
+        out = self._run(self._snap(changed={"rep"}), only=["reg"])
+        self.assertEqual([r["name"] for r in out["updates"]], ["reg"])
 
 
 class NoDestructiveCommandTest(unittest.TestCase):

@@ -3446,7 +3446,11 @@ function renderSkillList() {
                     : (upd.remoteTime ? `与远端一致（上游最新提交 ${upd.remoteTime}）` : "与远端一致");
                   return `<span class="tag ok" title="${escapeHtml(tip)}">${escapeHtml(remote || "最新")}</span>`;
                 })()
-              : `<span class="tag" title="${escapeHtml(upd.note || "无来源信息")}">未知</span>`)
+              : upd.state === "repo_outdated"
+                // v0.31.3：整仓库来源的技能上游有新提交。tag 不可点击——
+                // 它的升级通道是同步整个仓库，不是 npx 重装单技能。
+                ? `<span class="tag warn" title="${escapeHtml(upd.note || "仓库形态来源：上游有新提交，请同步仓库")}">待同步</span>`
+                : `<span class="tag" title="${escapeHtml(upd.note || "无来源信息")}">未知</span>`)
         : '<span class="muted">-</span>';
       return `<tr class="skill-row" data-skill="${escapeHtml(s)}" tabindex="0" aria-label="查看 ${escapeHtml(s)} 详情" title="查看详情">
         <td class="st-name"><div class="st-name-cell">${nameCell}</div></td>
@@ -6535,8 +6539,11 @@ function renderEndpointStatus() {
         // v0.31.1：把「登记失效」也报出来（此前它被并进「有更新」，
         // 导致这里说有 4 个、技能列表只画得出 2 行）。
         const miss = s.missing ? ` · 登记失效 ${s.missing}` : "";
-        showToast(s.outdated ? "warn" : (s.missing ? "warn" : "ok"),
-          `检查完成${cached}：有更新 ${s.outdated || 0} · 最新 ${s.current || 0} · 未知 ${s.unknown || 0}${miss}`);
+        // v0.31.3：整仓库来源的「待同步」单独报，不计入「有更新」；
+        // 两者的升级通道不同（同步仓库 vs npx 重装）。
+        const repoPending = s.repo_outdated ? ` · 仓库待同步 ${s.repo_outdated}` : "";
+        showToast(s.outdated || s.repo_outdated || s.missing ? "warn" : "ok",
+          `检查完成${cached}：有更新 ${s.outdated || 0} · 最新 ${s.current || 0} · 未知 ${s.unknown || 0}${repoPending}${miss}`);
       }
     } catch (e) {
       showToast("err", "检查返回无法解析：" + e);
@@ -6822,10 +6829,21 @@ function renderEndpointStatus() {
     // v0.31.1：missing（lock 有登记、统一库里没有目录）单独报出来。此前它被
     // 算进「有更新」，于是这里说 4 个可升级、技能列表却只画得出 2 行。
     const missing = s.missing || 0;
+    // v0.31.3：仓库形态（统一库本身是 git 工作区）的「待同步」单独报数。
+    // 它和「有更新」的升级通道完全不同：前者要同步整个仓库，后者走 npx 重装。
+    const repoPending = s.repo_outdated || 0;
     appendMarketProgress(
       `共 ${s.total || 0}：有更新 ${s.outdated || 0}，已最新 ${s.current || 0}，无法检测 ${s.unknown || 0}`
+        + (repoPending ? `，仓库待同步 ${repoPending}` : "")
         + (missing ? `，登记失效 ${missing}` : ""),
       "info");
+    if (repoPending) {
+      appendMarketProgress(
+        `有 ${repoPending} 个技能属于「整仓库来源」（统一库本身是 git 工作区），`
+        + "上游比本地新。它们的升级方式是同步仓库，不走市场升级；这里的「升级」按钮对它们不适用，"
+        + "所以不提供。",
+        "warn");
+    }
     if (missing) {
       appendMarketProgress(
         `有 ${missing} 个技能在 lock 里仍有登记但统一库中已无目录（安装已失效）。`
@@ -6846,17 +6864,20 @@ function renderEndpointStatus() {
     updates.forEach((u) => {
       const tag = u.state === "outdated" ? "有更新"
                 : u.state === "current" ? "已最新"
-                : u.state === "missing" ? "登记失效" : "无法检测";
+                : u.state === "missing" ? "登记失效"
+                : u.state === "repo_outdated" ? "仓库待同步" : "无法检测";
       const when = u.remote_commit ? `远端 ${u.remote_commit}` : (u.note || "");
       if (!el) return;
       // 状态进元信息行（颜色由 .list-meta 的语义类承担），操作固定在右侧，
       // 不再把"升级 xxx"这种带名字的长按钮塞进列表。
       // missing 不给「升级」按钮：没有本地内容可覆盖，点了只会得到一条失败。
+      // repo_outdated 同理：npx 重装对「整仓库来源」的技能无效，会得到一条
+      // 假失败（v0.31.3 起这类技能单独成态，正是为了不让它混进可升级集合）。
       const row = marketRow(u.name, when ? `${tag} · ${when}` : tag,
                             u.state === "outdated" ? "升级" : "",
                             "market-upgrade", "name", u.name);
       row.querySelector(".list-meta").classList.add(
-        u.state === "outdated" ? "is-warn"
+        u.state === "outdated" || u.state === "repo_outdated" ? "is-warn"
           : u.state === "current" ? "is-ok"
           : u.state === "missing" ? "is-err" : "is-faint");
       el.appendChild(row);

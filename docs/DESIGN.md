@@ -467,6 +467,48 @@ MM-DD 日期（本地无版本显文件时间、远端无 tag 显提交日），
 `SNAP.skills.skills` 里真实存在的技能，被剔除的条目要 toast 说明原因，
 不得静默少升。
 
+**检查结果第五态 `repo_outdated`（仓库待同步，v0.31.3）**：`missing` 之外的
+另一类「此前查不到」的技能。本机实测 192 个技能里只有 39 个在
+`~/.agents/.skill-lock.json` 有来源登记，其余 153 个此前一律落进 `unknown`
+——那个巨大的「无法检测」桶不是结论，是**缺口**：它们不属于任何「单技能来源」，
+而是**整仓库形态**——统一库目录本身就是一个 git 工作区（`origin` 指向
+`my-agent-skills`，分支 `master`）。这类技能的「上游」是该仓库的远端分支，
+判定单位因此不是技能包 version，而是「本地 `HEAD` 与 `origin/<branch>` 之间，
+该技能目录有没有差异」。
+
+判定实现 `core/skill_repo_source.py`（只读模块）：
+
+| 项 | 口径 |
+|---|---|
+| 适用条件 | `paths.skills_dir()` 是 git 工作区，且该技能**不在** lock 登记里（有登记的技能仍走单技能来源，精确到各自上游仓库） |
+| 比对基准 | `origin/<当前分支>` 的本地 ref；**不发网络请求**，由 `--sync` 或用户手动 fetch 更新 |
+| 有更新判据 | `git diff --name-only HEAD origin/<branch>` 的路径收敛到技能目录后命中该技能 |
+| 已有最新 | 同一 diff 未命中该技能目录 |
+| 本地有未提交修改 | `unknown`（同步必冲突，不能笼统报「可同步」） |
+| 判不成的任何一种 | `unknown` + 原因（git 缺失 / 非工作区 / detached HEAD / 缺上游 ref / 子命令非 0），**绝不静默算 `current`** |
+
+三条纪律：**只读**（只跑 `rev-parse` / `diff` / `status` / `log`，绝不 pull、
+fetch、checkout）；**不发网络请求**（基准提交时间随 `note` 与 `remote_time`
+透出，否则「很久没 fetch」会被读成「远端没变」，那是把查不成当成没问题）；
+**路径收敛只认已知技能目录**（仓库根的 `README.md`、`LICENSE`、`_core`、
+`_trash` 不是技能，若不收口会凭空多出「待同步」条目——与 v0.31.1「列表 2 个、
+弹框 4 个」同一类矛盾）。
+
+**为什么必须是独立状态而不是并进 `outdated`**：两者的升级通道完全不同。
+`outdated` 走市场升级（`npx` 重装单技能），`repo_outdated` 只能同步整个仓库；
+若并成一个状态，「一键升级」会拿 npx 去重装一个仓库形态的技能并得到一条假
+失败，而且「可升级 N」与技能列表又会开始对不上。因此：`repo_outdated` 单独
+计数（`summary.repo_outdated`），**不进** `summary.outdated`、不进「可升级」
+筛选段，市场页与技能表都**不提供**「升级」按钮（技能表远端列显示 `tag warn`
+的「待同步」，不可点击；市场页显示「仓库待同步」）。汇总行与 toast 各自
+单独报这个数，措辞用「仓库待同步」，与「登记失效」区分开。
+
+**计数口径纪律（v0.31.1）**：任何「有多少个可升级」的呈现（工具栏 toast、
+市场页汇总行、一键升级弹框标题与表格）必须同源——一律取 `summary.outdated`，
+且 `missing` 单独报数、不混入前者。前端另有一道防线：一键升级只处理
+`SNAP.skills.skills` 里真实存在的技能，被剔除的条目要 toast 说明原因，
+不得静默少升。
+
 **更新列的升级入口（v0.31.0 用户定案）**：**不设独立升级按钮**——
 「有更新」tag 本身可点击（`.tag-upgradable`：`cursor:pointer` + hover
 边框反馈 + focus ring；`role="button"` + `tabindex="0"`），点击弹升级

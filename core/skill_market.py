@@ -470,6 +470,13 @@ def check_updates(only: Optional[List[str]] = None, force: bool = False) -> Dict
 
     listing = list_installed()
     registered = [r for r in listing["installed"] if r.get("registered")]
+    # 仓库形态分支要用的两个集合：磁盘上真实存在的技能名、lock 已登记的名字。
+    # 直接取自同一次 list_installed()，不另扫目录——否则两次扫描之间的差异
+    # 会让「有登记」与「在磁盘」判断互相打架。
+    _on_disk_names = {r["name"] for r in listing["installed"]
+                      if r.get("on_disk") is not False}
+    _registered_names = {r["name"] for r in listing["installed"]
+                         if r.get("registered")}
     if only:
         wanted = set(only)
         registered = [r for r in registered if r["name"] in wanted]
@@ -492,7 +499,8 @@ def check_updates(only: Optional[List[str]] = None, force: bool = False) -> Dict
     from skill_state import read_skill_meta
     local_versions = read_skill_meta(str(_sd()), [r["name"] for r in judged])
 
-    counts = {"outdated": 0, "current": 0, "unknown": 0, "missing": 0}
+    counts = {"outdated": 0, "current": 0, "unknown": 0, "missing": 0,
+              "repo_outdated": 0}
     rows: List[Dict[str, Any]] = []
     for r in ghosts:
         # 不发任何网络请求：没有本地内容可比，远端查了也无处落地。
@@ -581,6 +589,22 @@ def check_updates(only: Optional[List[str]] = None, force: bool = False) -> Dict
         rows.append(dict(row, state=state, local_version=local,
                          remote_version=remote, note=reason))
 
+    # ---- 仓库形态来源（v0.31.3）----
+    # 上面只处理 lock 有来源登记的技能。实测本机 192 个技能里只有 39 个有登记，
+    # 其余 153 个永远落 unknown —— 它们不属于任何单技能来源，而是整仓库形态：
+    # 统一库目录本身就是 git 工作区。这类技能的更新判定改用「本地 HEAD vs
+    # origin/<branch>」的目录级差异（只读、不联网），结论落成独立的
+    # repo_outdated 状态：它的升级通道是仓库同步，不是 npx 重装，混进 outdated
+    # 会让「一键升级」去重装一个仓库形态的技能并失败（与 v0.31.1 同类矛盾）。
+    unregistered = [n for n in sorted(_on_disk_names) if n not in _registered_names]
+    if only:
+        wanted = set(only)
+        unregistered = [n for n in unregistered if n in wanted]
+    if unregistered:
+        repo_counts = _append_repo_form_rows(rows, unregistered, local_versions)
+        for key in ("repo_outdated", "current", "unknown"):
+            counts[key] += repo_counts.get(key, 0)
+
     summary = {"total": len(rows), **counts}
     if rate_limited:
         summary["rate_limited"] = True
@@ -605,10 +629,46 @@ def check_updates(only: Optional[List[str]] = None, force: bool = False) -> Dict
     return payload
 
 
+def _append_repo_form_rows(
+    rows: List[Dict[str, Any]],
+    names: List[str],
+    local_versions: Dict[str, Any],
+) -> Dict[str, int]:
+    """给「磁盘上有、lock 无登记」的技能补仓库形态判定行（v0.31.3）。
+
+    只读、不发网络请求：判定基准是统一库本地已有的 `origin/<branch>` ref，
+    基准提交时间随 note 一起透出，避免把「很久没 fetch」读成「远端没变」。
+    返回本批的计数增量，由调用方并入 counts。
+    """
+    from paths import skills_dir as _sd
+    import skill_repo_source as _repo
+
+    unified = str(_sd())
+    snap = _repo.snapshot(unified, names)
+    counts: Dict[str, int] = {}
+    for name in names:
+        state, note, remote_time = _repo.classify(name, snap)
+        counts[state] = counts.get(state, 0) + 1
+        meta = local_versions.get(name) or {}
+        rows.append({
+            "name": name,
+            "state": state,
+            "source_form": "repo",
+            "source": snap.get("upstream") if snap.get("ok") else None,
+            "local_version": meta.get("version"),
+            "remote_version": None,
+            "remote_time": remote_time,
+            "note": note,
+        })
+    return counts
+
+
 def _recount(rows: List[Dict[str, Any]]) -> Dict[str, int]:
-    # 状态集合必须与 check_updates 保持一致（含 v0.31.1 新增的 missing）。
+    # 状态集合必须与 check_updates 保持一致（含 v0.31.1 新增的 missing 与
+    # v0.31.3 新增的 repo_outdated）。
     # 用 .get 兜底：将来再加状态时这里不会 KeyError 把整个检查炸掉。
-    counts = {"outdated": 0, "current": 0, "unknown": 0, "missing": 0}
+    counts = {"outdated": 0, "current": 0, "unknown": 0, "missing": 0,
+              "repo_outdated": 0}
     for r in rows:
         state = r.get("state", "unknown")
         counts[state] = counts.get(state, 0) + 1

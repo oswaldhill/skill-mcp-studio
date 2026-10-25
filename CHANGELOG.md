@@ -7,6 +7,48 @@
 
 ## [Unreleased]
 
+### 新增
+
+- **仓库形态技能源的更新检查（检查结果第五态 `repo_outdated`「仓库待同步」）**：
+  实测本机 192 个技能里只有 39 个在 `~/.agents/.skill-lock.json` 有来源登记，
+  其余 153 个在检查结果里一律落 `unknown` —— 那个巨大的「无法检测」桶不是结论，
+  是**缺口**：它们不属于任何「单技能来源」，而是**整仓库形态**，统一库目录本身
+  就是一个 git 工作区（`origin` 指向 `my-agent-skills`，分支 `master`）。新增
+  `core/skill_repo_source.py` 按「本地 `HEAD` 与 `origin/<branch>` 之间该技能
+  目录有无差异」判定：上游有新提交 → `repo_outdated`，一致 → `current`，本地有
+  未提交修改 → `unknown`（同步必冲突，不能笼统报「可同步」），git 缺失 / 非工作
+  区 / detached HEAD / 缺上游 ref / 子命令非 0 → `unknown` + 原因（绝不静默算
+  `current`）。检查总覆盖从 39/192 提升到 192/192。
+
+  三条纪律：**只读**（只跑 `rev-parse` / `diff` / `status` / `log`，绝不 pull、
+  fetch、checkout）；**不发网络请求**（比对基准是本地已有的 `origin/<branch>`
+  ref，由 `--sync` 或手动 fetch 更新，基准提交时间随 `note` 与 `remote_time`
+  透出，否则「很久没 fetch」会被读成「远端没变」）；**路径只收敛到已知技能
+  目录**（仓库根的 `README.md`、`LICENSE`、`_core`、`_trash` 不是技能，不收口
+  就会凭空多出「待同步」条目）。
+
+  **为什么单列而不并进 `outdated`**：两者的升级通道完全不同——`outdated` 走市场
+  升级（`npx` 重装单技能），`repo_outdated` 只能同步整个仓库。若合并，「一键
+  升级」会拿 npx 去重装仓库形态的技能并得到假失败，且「可升级 N」与技能列表又
+  会开始对不上（v0.31.1 同类缺陷）。因此 `summary.repo_outdated` 单独计数、不进
+  `summary.outdated`、不进「可升级」筛选段，市场页与技能表都不提供「升级」按钮
+  （市场页显示「仓库待同步」，技能表远端列显示不可点击的 `tag warn`「待同步」）。
+
+### 文档
+
+- `DESIGN.md` / `DESIGN.html` 双向同步新增第五态口径表（适用条件 / 比对基准 /
+  有更新判据 / 判不成的处理）与「为什么必须是独立状态」的论据。
+- 新增 19 条断言（`tests/test_skill_repo_source.py` 7 条用**真实临时 git 仓库**
+  跑，不 mock 命令；`tests/test_skill_market.py` 5 条守计数口径；
+  `tests/test_dashboard_repo_updates.py` 7 条守 GUI 渲染分支与双轨规范），并对
+  四处做负向验证后复原：① 把 `repo_outdated` 并回 `outdated` → 2 条红；
+  ② 给待同步 tag 加可点击升级入口 → 1 条红；③ 删掉规范里的「不发网络请求」→
+  1 条红；④ 去掉「只认已知技能目录」的收口 → 2 条红。
+- 既有用例 `test_unregistered_skills_are_skipped` 更名并改写为
+  `test_unregistered_skills_are_not_single_source_checked`：它断言的是 v0.31.2
+  之前「无登记即跳过」的旧行为，本次属于有意的行为变更，改名是为了让后来者
+  一眼看出口径换了，而不是偷偷放宽断言。
+
 ## [v0.31.2] - 2026-10-24
 
 当前发布版本（build 129）。修复 v0.31.1 自带的一个用户可见计数矛盾：
