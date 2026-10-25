@@ -7,6 +7,7 @@
 | v1.2 | 2026-09-18 | 版本时点字段改「另见 CHANGELOG」，不再散落快照号（`version.json` 单源真相）；§8 缺口看板标注关闭版本 |
 | v1.3 | 2026-10-21 | 页面结构勘正：五页 → **七页**（Hook 页、变更详情页自 v0.25.0 起已存在，本文此前未回写）；§5.1/§5.3/§10/§11 同步 |
 | v1.4 | 2026-10-22 | §6.2 新增技能版本管理需求（市场源可配置 / 版本展示 / 更新检查，v0.31.0 #4 前半）；市场源定案：QwenWork / 企业 MCP **不是市场源**（移除），skills.sh 为默认源且可删改 |
+| v1.5 | 2026-10-25 | **综合整理 + 深入评审**：对齐 v0.31.3 实况，修正 6 处过时/自相矛盾表述（跨平台「空白」已不成立、更新检查「三态」实为五态、§8「不做技能市场」与已交付的安装/升级冲突、客户端计数 22 实为 38），补入 7 项 v0.31.x 已交付但未入表的能力（使用统计、备份与回滚、WebDAV 同步、GitHub token、启停矩阵与迁移、仓库形态检查、检查更新升级通道），新增 §6.2.1 技能关闭需求与 §12 评审记录 |
 
 > **版本口径**：本文**不再内嵌「当前版本 = vX.Y.Z」快照**——版本号以仓库 `version.json`（及 `CHANGELOG.md`）为单一真相，本文只描述产品能力而不随版本号漂移。
 
@@ -27,7 +28,12 @@ skill-mcp-studio 是**跨平台**的本地桌面工具，同一份代码在三�
 | **macOS** | 支持（当前已实现） | `~`、`/Applications`、`~/Library`、`~/.config` | `.app` / `.dmg` |
 | **Linux** | 支持「主流」口径 = Ubuntu / Debian / Fedora(RPM) + XDG + portable(AppImage) | `~`、`~/.config`（XDG 优先）、`~/.local`、`/usr/share/applications`、`/opt` | `.deb` `.rpm` `.AppImage` |
 
-> 架构结论：必须摒弃「macOS 中心」的路径硬编码，采用**跨平台分派**（决策 A，见 §1.3）。当前代码（`core/mainstream_registry.py`、`config.yaml`）仅含 macOS 路径，且全项目无 `sys.platform` 分派逻辑，Windows/Linux 支持为空白。
+> 架构结论：必须摒弃「macOS 中心」的路径硬编码，采用**跨平台分派**（决策 A，见 §1.3）。
+>
+> **实况勘正（v1.5，2026-10-25 实测）**：本节此前写「当前代码仅含 macOS 路径，且全项目无 `sys.platform` 分派逻辑，Windows/Linux 支持为空白」——**该表述已不成立**，属未回写的历史状态：
+> - 注册表已按平台分派：`core/mainstream_registry_data.py` 的 `_current_os()` + `by_os` 覆盖，实测含 **20 处 `windows`、21 处 `linux`** 路径覆盖；
+> - CI 三平台构建已就位：`.github/workflows/build-macos.yml`（`macos-14`）、`build-windows.yml`（`windows-latest`）、`build-linux.yml`（`ubuntu-22.04`）全绿；
+> - 仍**未闭合**的是「运行时冒烟」：本轮开发机为 macOS，Windows/Linux 侧只验到构建与单测通过，未做真机 GUI 冒烟。该项保留在缺口看板（#6）。
 
 ### 1.2 三类扫描路径
 
@@ -44,17 +50,22 @@ skill-mcp-studio 是**跨平台**的本地桌面工具，同一份代码在三�
 ### 1.3 路径建模（决策 A：已定）
 
 - 每个客户端声明 `paths_by_os: { "darwin": {...}, "windows": {...}, "linux": {...} }`，运行时按 `sys.platform` 取当前平台那份。
+  > **实现落地名（v1.5 勘正）**：实际字段叫 **`by_os`**（不是 `paths_by_os`），落在 `core/mainstream_registry_data.py` 的 `_entry(..., by_os=...)`，由 `_current_os()` + `_pick()` 解析；平台键为 `darwin` / `windows` / `linux`，缺省回落 macOS 默认值（`_pick` 的 `default` 参数）。本文此处以**实现字段名为准**，`paths_by_os` 仅作设计期叫法保留。
 - 三平台通用字段仍在顶层兜底（`commands` 中跨平台一致的 CLI 名如 `claude` / `codex` 可只写一份）。
 - **消费点收口**：新增统一分派层（建议落在 `core/tool_registry.py`），把「当前平台的 `install.app_bundles` / `install.commands` / `install.config_paths` / `skills_paths` / `config_path`」解析成一套平台无关视图，供 `detect_installation`、scanner、combined_checker、mcp_fixer、management_snapshot 等 10+ 处消费点调用，避免各处散写 `sys.platform`。
 - **Windows 路径展开**：`expanduser` 需扩展为同时展开 `%USERPROFILE%` / `%APPDATA%` / `%LOCALAPPDATA%`（`os.path.expandvars` + 平台映射）；Linux/macOS 沿用 `~` 展开。
 
 ### 1.4 内置客户端清单（以主流注册表为唯一事实源）
 
-内置默认清单分两类（国际 / 通用 + 国产）共 **22 个**（完整路径 + 确定度 + 来源 URL 见 [`跨平台路径矩阵-Windows-Linux.md`](../design/跨平台路径矩阵-Windows-Linux.md)）。**条目数量与路径以 `core/mainstream_registry.py`（`register_mainstream_tools()` 返回值）为唯一事实源**，本文的「22 个」只是 v0.7 时代的设计目标快照，后续新增（如 QwenWork、TraeWork、Trae CN）以注册表为准，不再回写本段落计数：
+内置默认清单分两类（国际 / 通用 + 国产），**实测 38 条**（v1.5 勘正：本文此前写「22 个」，那是 v0.7 时代的设计目标快照，此后新增的 QwenWork、TraeWork、Trae CN、Cherry Studio 等均未回写）。完整路径 + 确定度 + 来源 URL 见 [`跨平台路径矩阵-Windows-Linux.md`](../design/跨平台路径矩阵-Windows-Linux.md)。**条目数量与路径以 `core/mainstream_registry.py`（`register_mainstream_tools()` 返回值）为唯一事实源**，本文的「38」同样是快照，后续新增以注册表为准，不再回写本段落计数。
+
+实测条目类型分布（v0.31.3，`register_mainstream_tools()` 共 38 条）：AI Agent 16 / IDE Plugin 12 / AI IDE 8 / AI Assistant 2。其中本机已发现 23 个、Skills 侧有挂载的 5 个——**「注册表条数」≠「本机受管客户端数」≠「有 Skills 挂载的客户端数」**，三者不得混用（旧文本把三者当成一个数）。
 
 **国际 / 通用（15 个）**：Claude Code、Cursor、VS Code、Windsurf、Codex、Gemini CLI、OpenCode、Aider、Cline、Roo Code、JetBrains(IDEA/PyCharm/WebStorm)、Zed、TRAE、Goose、Cherry Studio。
 
 **国产（7 个）**：CodeBuddy、WorkBuddy（腾讯）；Qoder、QwenWork 千问办公（阿里）；Trae、TraeWork、豆包 Doubao（字节）。
+
+> **为什么下面只列 22 个名字、注册表却有 38 条（v1.5 说明）**：注册表把**同一产品的多个变体拆成独立条目**——JetBrains 族的 IDEA / PyCharm / WebStorm 各算一条、Trae 与 Trae CN 分开、QwenWork 与其办公版分开，加上每条还可能带 `aliases`（别名不新增条目）。因此「产品名 22 个」与「注册表条目 38 条」都是对的，**但它们是两个口径，不能互相印证**。需要精确数字时以 `register_mainstream_tools()` 为准。
 
 > **无 Linux 桌面版，Linux 扫描直接跳过**：QwenWork 千问办公（仅 macOS/Win/HarmonyOS）、TraeWork（桌面版仅 macOS/Win）、豆包（仅网页版）。
 > **无本地 skills/MCP 语义，只判安装不参与 skills/MCP 检查**：豆包（通用对话助手，非编程 IDE）。
@@ -78,8 +89,10 @@ skill-mcp-studio 是**跨平台**的本地桌面工具，同一份代码在三�
 skill-mcp-studio 是一台面向开发者的**管理型桌面应用**（Tauri 2 + 通用 CLI 引擎），用于：
 
 1. **IDE / Agent**：检查本机所有 IDE / Agent 的安装状态与配置正确性（声明 + 自动发现 + 手动三来源）；
-2. **Skills**：管理共享 Skills 仓库（统一目录 vs 单独目录判定、一键合并、逐技能启用状态）；
-3. **MCP**：管理多个 MCP endpoint（端点库 + 每客户端多端点挂载 + 逐端点探活与能力验证）。
+2. **Skills**：管理共享 Skills 仓库（统一目录 vs 单独目录判定、一键合并、逐技能启用状态、版本展示与更新检查、市场安装/升级、**升级前自动备份与回滚**、使用统计）；
+3. **MCP**：管理多个 MCP endpoint（端点库 + 每客户端多端点挂载 + 逐端点探活与能力验证）；
+4. **跨设备**：用用户自己的 WebDAV 空间同步「个人配置」这一小层（不是技能本体，也不是凭据）；
+5. **可运维**：启停矩阵与漂移审计、GitHub token 通道提升检查配额、配置导入导出。
 
 核心方法论是「**四层独立验证**」，把「配置对了」和「真的能用」分开，逐项独立报告、不做短路合并。所有写操作复用统一的「备份 → 原子写 → 校验 → 回滚」安全链。
 
@@ -185,9 +198,23 @@ skill-mcp-studio 是一台面向开发者的**管理型桌面应用**（Tauri 2 
 | 每客户端技能启停（ToggleSwitch） | 写 | `--enable-skill <s> --client <c>` / `--disable-skill ...`（见 §8 缺口） |
 | 一键合并（dry-run 预览 → 确认实写） | 写 | `--fix-skills --dry-run` → `--fix-skills` |
 | 技能清单展示版本（本地 `SKILL.md` frontmatter `version:`） | 读 | 快照 `skills.skill_meta[].version`（v0.31.0） |
-| 更新检查（远端最新版比对，三态：有更新 / 最新 / 未知） | 读 | `--market-check`（v0.31.0：结果缓存 + 限流保护；Skills 页「检查更新」按钮触发） |
+| 更新检查（**五态**：有更新 / 最新 / 未知 / 登记失效 / 仓库待同步） | 读 | `--market check`（v0.31.0 三态 → v0.31.1 加 `missing` → v0.31.3 加 `repo_outdated`；1h 缓存、限流不缓存；Skills 页「检查更新」按钮触发） |
 | 市场源管理（默认 skills.sh，**可删改**；支持自定义远端源） | 写（通用） | `--set-market-source` / `--remove-market-source`（设置页 Skill tab「市场源」卡片，v0.31.0） |
 | 设置统一技能目录 | 写（通用） | `--set-unified-dir`（设置页） |
+| **市场搜索 / 安装 / 升级已装技能** | 写（业务） | `--market search --market-query <q>` / `--market-install <pkg> --yes` / `--market-upgrade <name> --yes`（v0.30.0 起；GUI 市场页 + 统一升级弹框三阶段） |
+| **技能使用统计（使用画像）** | 读 | `--skill-insight`（FEAT-10：扫会话日志产出 load / browse / edit / `last_used` / `never_used` / `unused_load`；GUI 技能页用量视图） |
+| **备份与回滚（升级前自动备份）** | 写（业务） | `--list-skill-backups` / `--skill-rollback <name>`（v0.31.0 #4 后半：`data/skill_backups/<name>/<时间戳>/`，回滚前另存 `.before-restore-<时间戳>`） |
+| **启停矩阵与形态迁移** | 读 + 写 | `--list-skill-states`（N 客户端 × M 技能矩阵）/ `--audit-skill-states`（漂移与幂等审计，只读）/ `--migrate-skill-links`（`root` → `per_skill`，写，支持 `--dry-run`/`--client`） |
+| **跨设备配置同步（WebDAV）** | 写（通用） | `--sync-webdav-push` / `--sync-webdav-pull`（v0.31.1：只同步 3 个个人配置文件，不同步 token 与技能本体；冲突不自动合并，先留档 `<file>.remote-<时间戳>`） |
+| **GitHub token 通道**（提升检查配额 60 → 5000 次/小时） | 写（通用） | `--set-github-token`（空串=清除）/ `--get-github-token`（脱敏）；`GITHUB_TOKEN` 环境变量优先、文件回落（v0.31.0） |
+
+> **更新检查的五态统计规则（v1.5 定稿，用户可见口径）**：`outdated`（有更新，走市场升级）/
+> `current`（已最新）/ `unknown`（判不了，带原因）/ `missing`（lock 有登记、磁盘无目录，
+> 安装已失效）/ `repo_outdated`（仓库待同步，走仓库同步）。后两态**必须单独报数**：
+> 它们都无法用「市场升级」修掉，混进 `outdated` 会造成两个用户可见矛盾——① 列表画不出
+> 这些行、「一键升级」却把它们算进去（v0.31.1 实测「列表 2 个、弹框 4 个」正是此因）；
+> ② `npx` 重装对仓库形态技能无效，只会得到一条假失败。故任何「有多少个可升级」的呈现
+> 一律取 `summary.outdated`，`missing` / `repo_outdated` 各自单列。
 
 #### 6.2.1 技能关闭（长期未使用清理）—— **需求，未实现**
 
@@ -266,8 +293,12 @@ skill-mcp-studio 是一台面向开发者的**管理型桌面应用**（Tauri 2 
 | Hook 命令模板（按事件编辑 + 预设） | 写 | `--set-hook-template` / `--apply-hook-preset`（v0.29.0） |
 | 自动发现开关 + 扫描 / 排除路径 | 写 | `--set-auto-discover enabled=<true\|false>`（写 overlay）；扫描 / 排除路径仍只读 |
 | 活动 endpoint（active_profile）切换 | 写 | `--set-active-profile <key>`（写 overlay） |
-| 配置导入 / 导出（换机 / 分享） | 写 | `--export-config <path\|icloud>` / `--import-config <path\|icloud>`（v0.30.0：单 JSON、端点密钥脱敏、合并导入写正典通道、导入前自动备份；WebDAV 远程同步留后续版本） |
+| 配置导入 / 导出（换机 / 分享） | 写 | `--export-config <path\|icloud>` / `--import-config <path\|icloud>`（v0.30.0：单 JSON、端点密钥脱敏、合并导入写正典通道、导入前自动备份） |
+| 跨设备配置同步（WebDAV） | 写 | `--sync-webdav-push` / `--sync-webdav-pull`（v0.31.1）；远端地址与凭据：`--set-webdav-url` / `--set-webdav-credential`；状态：`--webdav-status` |
+| GitHub token（提升检查配额） | 写 | `--set-github-token` / `--get-github-token`（v0.31.0，设置页 Skill tab 卡片） |
 | 版本 / 构建号 | 读 | `--version` 快照 |
+
+> **v1.5 勘正（WebDAV 已交付）**：本节上一版把「WebDAV 远程同步」写作「留后续版本」，实际 v0.31.1 已交付并接出 GUI 入口（设置页 Skill tab）。同步范围**只有** `data/local_overrides.yaml`、`data/market_sources.yaml`、`data/skill_versions.json` 三个个人配置文件；**不同步** `github_token`、WebDAV 凭据与技能包本体。冲突**不做自动合并**：push/pull 都先把对方旧值存成 `<file>.remote-<时间戳>` 再覆盖，因此「同步」永远可从留档回退。
 
 > **P-3 定案（v0.28.0 落地）**：`--set-auto-discover` / `--set-active-profile` 两条写命令已实现，走 overlay 路径（与 `--set-setting` 同模式、早返回不跑审计），均在 Rust `run_cli` 白名单内。它们与 `DENIED_FLAG_PREFIXES` 拒绝的**重定向参数** `--active-profile`／`--profile`／`--config`（把引擎指向任意配置文件、属提权面）是两组不同的 flag，**互不冲突**——写命令经白名单放行，重定向命令被拒。设置页 MCP tab 已提供切换控件（活动端点 `<select>` + 自动发现 `.seg-btn`）。
 
@@ -310,12 +341,16 @@ skill-mcp-studio 是一台面向开发者的**管理型桌面应用**（Tauri 2 
 
 ## 8. 产品边界（刻意不做）
 
-- **不做**技能市场 / 商店（agentregistry、gh skill 领域）。
-- **不做**多用户权限体系与云端同步（企业级平台，部署成本不符）。
-- **不做**云端托管与跨设备实时同步（本地工具）。
+- **不做**技能市场 / 商店**平台**（agentregistry、gh skill 领域：不建索引、不做排行、不托管分发）。
+  > **v1.5 勘正（原表述与已交付能力打架）**：本条此前写「不做技能市场 / 商店」，但 v0.30.0 起已交付 `--market search` / `--market-install` / `--market-upgrade`，界面上也有市场页。这不是违例，是**原表述太粗**。精确边界如下：
+  > - **做**：作为「客户端」消费上游已有分发体系——按用户给的包名（`owner/repo`）检索 skills.sh、安装到统一库、把已装技能升级到上游最新版，并在升级前自动备份、可回滚。价值在于**把上游的东西装进来后管好**，与审计主线一致。
+  > - **不做**：不自建市场/商店（不做全量索引、排行、评分、推荐、付费、托管分发），不替上游做分发决策。市场源本身**用户可增删改**（`--set-market-source`），默认 skills.sh 只是默认值而非产品立场。
+  > - 判据：若某需求会让本工具**成为分发方**（托管技能包、对外提供安装源、承诺可用性），属于「不做」；若只是**消费方**（按需拉取、比对、回滚），属于「做」。
+- **不做**多用户权限体系与云端托管（企业级平台，部署成本不符）。
+  > **v1.5 勘正（原表述与 WebDAV 交付冲突）**：此处原写「不做…云端同步」「不做云端托管与跨设备实时同步」，而 v0.31.1 已交付 WebDAV 跨设备配置同步。二者需要**分开**：本工具是本地工具，不自建云、不做实时协同、不同步技能包与凭据；但它**可以**用用户自己的 WebDAV 空间搬运「个人配置」这一小层（3 个 yaml/json），且冲突不自动合并、只留档覆盖。判据：**搬运的是用户自己的存储、内容是配置而非资产、非实时**——满足则做，否则不做。
 - **不内置任何特定工具的 Hook 命令**：Hook 写入命令完全由用户在 `config.yaml` / GUI 自行配置，产品不预设任何第三方工具的命令（v0.29.0 起剥离 ai-memory 后确立）。
 - **不内置 MCP server 远程入口**：v0.29.0 不提供 MCP server 远程配置入口（`unified_mcp_server.py` 已删除），远程配置留待 v0.30+ 专项立项。
-- 按需加载（阶段四 L5）作为增值层，立项时独立决策。
+- **按需加载 / 逐技能启停已落地（v1.5 勘正）**：原写「按需加载（阶段四 L5）作为增值层，立项时独立决策」，实际已交付——逐技能 × 逐客户端启停（`--enable-skill` / `--disable-skill`，符号链接存在即启用）、启停矩阵（`--list-skill-states`）、漂移审计（`--audit-skill-states`）、形态迁移（`--migrate-skill-links`）。仍属「增值层」的是**运行时按会话加载**（会话级注入），那部分仍未做。
 
 ### 当前已知缺口（缺口看板，逐项标注关闭版本）
 
@@ -326,6 +361,9 @@ skill-mcp-studio 是一台面向开发者的**管理型桌面应用**（Tauri 2 
 | 3 | **端点 transport 选择、能力组编辑**：端点详情编辑最初仅支持 name / url | ✅ 已关闭（`--endpoint-url` / `--endpoint-command` / `--endpoint-required-yaml` 补全 transport 与 required_capabilities 编辑） | v0.20.0 |
 | 4 | **Hook 命令模板可配置 + 剥离 ai-memory**：Hook 写入命令曾硬编码为外部工具命令，且 ai-memory 专属检查器 / 网关代理住在主干 | ✅ 已关闭（命令模板可配置 + 剥离 ai-memory 专属模块） | v0.29.0 |
 | 5 | **技能关闭（长期未使用清理）**：只有逐技能、逐客户端开关，没有「按使用情况批量找出来再一次关掉」的路径；192 个技能逐个点不现实。判定数据（`--skill-insight` 的 `never_used` / `last_used`）与写入动作（`--disable-skill`）都已有，缺的是筛选 → 勾选 → 批量关闭 → 提醒节流这层编排 | ⬜ **待实现**（需求见 §6.2.1） | — |
+| 6 | **Windows / Linux 运行时冒烟未做**：三平台 CI 构建与单测已绿，注册表 `by_os` 也已铺 20/21 处平台路径，但本轮开发机为 macOS，未在 Win/Linux 真机跑过 GUI 与真实客户端扫描——「能构建」不等于「能用」 | ⬜ 待验证 | — |
+| 7 | **`root` 形态客户端无法逐技能启停**：整目录一条符号链接，逐技能开关返回 `skip`；需先 `--migrate-skill-links` 转 `per_skill`。本机实测 `DeepSeek Harness` 即为此形态，属常态而非异常 | ⬜ 设计如此，缺引导（阻塞 §6.2.1 R4） | — |
+| 8 | **技能使用统计依赖会话日志完整性**：`last_used` / `never_used` 来自扫本机会话日志，换会话目录、日志被清或客户端不上报时会偏旧；已按「仅从未使用」提供保守口径，但尚无「日志覆盖度」自检提示 | ⬜ 待增强 | — |
 
 ---
 
@@ -371,5 +409,65 @@ skill-mcp-studio 是一台面向开发者的**管理型桌面应用**（Tauri 2 
 4. 所有写操作走备份 - 原子写 - 回滚，dry-run 可预览。
 5. 阶段一~四全部测试通过；`verify_gui_consistency.sh` gate 绿。
 6. §8「当前已知缺口」在后续版本逐一关闭。
+7. **新增能力必须在落地那一版回写本文**（v1.5 起生效）：未回写的能力视为未交付。
+
+---
+
+## 12. 评审记录（v1.5 综合整理，2026-10-25）
+
+### 12.1 评审方法
+
+不做「读一遍觉得没问题」式的评审。每条 PRD 声明都回到**可验证的事实源**核对：
+`core/*.py` 的实现、CLI 实际参数、`.github/workflows/*.yml` 的 CI 矩阵、以及本机
+真机跑一遍（`--management` / `--market check` / `--skill-insight` / `--list-skill-states`）。
+凡「文档说 A、代码是 B」的，以代码为准回写文档，并把差异记进本节——否则下次
+评审又要重新判断一遍。
+
+### 12.2 发现的问题与处置
+
+| # | 位置 | 原表述 | 实际情况（证据） | 处置 |
+|---|------|--------|------------------|------|
+| 1 | §1.1 | 「全项目无 `sys.platform` 分派逻辑，Windows/Linux 支持为空白」 | 已有 `core/mainstream_registry_data.py` 的 `_current_os()` + `by_os`（实测 20 处 `windows`、21 处 `linux`）；CI 三平台构建全绿（`macos-14` / `windows-latest` / `ubuntu-22.04`） | 改写为「已分派、CI 已就位」，并把「未做真机冒烟」单列为缺口 #6 |
+| 2 | §1.3 | 字段名 `paths_by_os` | 实现叫 `by_os`（`_entry(..., by_os=...)` + `_pick()`） | 保留设计期叫法，补实现字段名 |
+| 3 | §1.4 | 「内置清单共 22 个」 | `register_mainstream_tools()` 实测 **38 条**（Agent 16 / IDE Plugin 12 / AI IDE 8 / AI Assistant 2）；本机已发现 23 个、Skills 挂载 5 个 | 改为 38，并把「注册表条数 ≠ 受管客户端数 ≠ Skills 挂载数」写成纪律 |
+| 4 | §6.2 | 更新检查「三态」 | 实为**五态**：v0.31.0 三态 → v0.31.1 加 `missing` → v0.31.3 加 `repo_outdated` | 改为五态，并补「后两态必须单独报数」的统计规则 |
+| 5 | §6.4 | WebDAV「留后续版本」 | v0.31.1 已交付 push/pull + 状态 + 凭据命令，GUI 也有入口 | 从「未做」移入已交付表，补同步范围与留档语义 |
+| 6 | §8 | 「不做技能市场 / 商店」 | v0.30.0 起已交付 `--market search/install/upgrade`，界面有市场页 | **不是违例，是原表述太粗**：拆成「做消费方 / 不做分发方」，并给出可操作判据 |
+| 7 | §8 | 「不做云端托管与跨设备实时同步」 | v0.31.1 已交付 WebDAV 配置同步 | 拆开：不建云、非实时、只搬配置小层 → 可做 |
+| 8 | §8 | 「按需加载（阶段四 L5）…立项时独立决策」 | 逐技能启停 / 启停矩阵 / 漂移审计 / 形态迁移均已交付 | 改为「已落地；剩余的是运行时按会话加载」 |
+| 9 | §6.2 | 缺 v0.31.x 已交付能力 | 使用统计、备份回滚、启停矩阵与迁移、市场安装升级、GitHub token、WebDAV、仓库形态检查 | 7 项补入 §6.2 / §6.4 |
+
+### 12.3 本轮**没有**改的部分及原因
+
+- **§1.2 三类扫描路径 / §1.5 确定度口径**：与代码一致（`skills_paths` /
+  `app_bundles` / `commands` + 确定度标注仍在用），未动。
+- **§5.3 七页**：实测 `gui/dashboard.html` 的 `data-page` 正好 7 个
+  （overview / agents / skills / mcp / hooks / changes / settings），与文档一致，
+  无需勘正。
+- **§7 退出码语义**：抽验 `scan.py` 的 `return 2` 分支，确为「参数互斥 / 解析失败 /
+  缺必需参数 / 加载失败」这类配置运行错误，与文档 0/1/2 的定义一致。
+- **§6.1 IDE/Agent 能力表**：逐项对照快照字段，无缺项。
+
+### 12.4 评审暴露的**产品层**问题（非文档问题，需排期）
+
+1. **一条需求横跨两种形态（§6.2.1）**：技能关闭对 `per_skill` 客户端可用、对
+   `root` 客户端不可用。这不是缺陷，但用户不知道。产品上需要「形态差异的可见
+   引导」，否则批量关闭必然收获一串失败。已列缺口 #7。
+2. **使用统计的可信度没被量化（缺口 #8）**：`never_used=171` 这种数字很有说服力，
+   但它只等于「本机会话日志里没有触达」。若不显示日志覆盖度，用户会把它当成
+   客观事实——这与本项目一贯的「查不成 ≠ 没问题」纪律相冲突。
+3. **五态之中有两态无法在本工具内修复**（`missing` / `repo_outdated`）：它们能报
+   出来，但修复动作在别处（重装 / 仓库同步）。产品上应明确「本工具只负责指出，
+   修复路径在 X」,否则用户会以为按钮坏了。
+
+---
+
+## 附录 A · 版本与文档纪律
+
+- 本文不内嵌「当前版本号」，版本以 `version.json` + `CHANGELOG.md` 为单一真相。
+- 新增能力的回写纪律：**实现落地的那一版**就要改本文，不留到「下次评审」——
+  本次 9 处问题里有 6 处的共同成因都是「实现先行、PRD 未回写」。
+- 本文的断言由 `tests/test_prd_*.py` 守着：改动关键口径（五态、关闭≠删除、
+  `root` 形态限制、不与 MCP 混算）必须同时改断言，否则门禁报红。
 
 ---
