@@ -97,10 +97,36 @@ fi
 
 # 2a) cargo —— 本地门禁要跑 cargo test（Q0-5）。rustup 默认装在 ~/.cargo/bin，
 #     非交互式 shell 里通常不在 PATH。
-if ! command -v cargo >/dev/null 2>&1 && [ -x "$HOME/.cargo/bin/cargo" ]; then
-  note "· 发现 $HOME/.cargo/bin/cargo，本次运行临时并入 PATH"
-  PATH="$HOME/.cargo/bin:$PATH"
+#     探测两处：$HOME/.cargo（rustup 默认落点）与仓库内 .cargo-home（本机长期
+#     实际使用的替代布局，沿革见 src-tauri/BUILD.md 的注记）。只认 $HOME 一处
+#     会把「工具链在仓库内」误报成「Rust 侧未执行」的覆盖缺口 —— 2026-10-26 实测：
+#     $HOME/.cargo 不存在，而 .cargo-home/bin/cargo（1.98.1）可用、src-tauri/target
+#     仍留有 7.2G 编译缓存。
+#     CARGO_HOME 必须与探测到的目录同源：它决定 cargo 去哪里找 registry 缓存，
+#     指向不存在的 $HOME/.cargo 会让依赖解析在创建目录时就失败（os error 1）。
+_rust_cargo_home=""
+for _cand in "$HOME/.cargo" "$ROOT/.cargo-home"; do
+  if [ -x "${_cand}/bin/cargo" ]; then
+    _rust_cargo_home="$_cand"
+    break
+  fi
+done
+if [ -n "${_rust_cargo_home}" ] && ! command -v cargo >/dev/null 2>&1; then
+  note "· 发现 ${_rust_cargo_home}/bin/cargo，本次运行临时并入 PATH 与 CARGO_HOME"
+  PATH="${_rust_cargo_home}/bin:$PATH"
   export PATH
+  CARGO_HOME="$_rust_cargo_home"
+  export CARGO_HOME
+  # 仓库内布局下 RUSTUP_HOME 与 .cargo-home 并列；存在才覆盖，不猜默认值。
+  case "$_rust_cargo_home" in
+    */.cargo-home)
+      _rustup_sibling="${_rust_cargo_home%/.cargo-home}/.rustup-home"
+      if [ -d "${_rustup_sibling}" ]; then
+        RUSTUP_HOME="$_rustup_sibling"
+        export RUSTUP_HOME
+      fi
+      ;;
+  esac
 fi
 
 # 2) node —— 缺失会让约 35 个渲染护栏用例静默跳过

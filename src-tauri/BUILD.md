@@ -28,6 +28,22 @@ lib.rs 不解析、不重算、不写盘。
 > **均已不存在**，工具链现在确实位于 `$HOME/.cargo`（1.98.1）+ `$HOME/.rustup`，
 > `~/.cargo/bin/cargo-tauri`（tauri-cli 2.11.5）已装。因此 §1 的仓库内 `export` 写法
 > **已过时**，本机日常用法见 §1；受限会话下的构建边界见 §1.1、CI 门禁工具链见 §1.2。
+>
+> ⚠️ **又一次与现实相反（2026-10-26 复核）**：上面「仓库内目录均已不存在」的结论**已不成立**。
+> 实测本机 `$HOME/.cargo` 不存在（`command -v cargo` 为空、`ls ~/.cargo` 无此目录），而仓库内
+> `.cargo-home/`（560MB，含 cargo 1.98.1）与 `.rustup-home/`（436MB）**双双重新存在**，
+> `src-tauri/target/` 也仍有 7.2G 编译缓存。后果是裸 shell 跑 `scripts/ci_parity.sh` 时
+> Rust 门禁被记为「未执行」—— 那是**覆盖缺口的告警，不是 Rust 代码失败**；补上工具链后
+> 12 个用例全过。
+>
+> 处置：`scripts/ci_parity.sh` 的 cargo 探测已改为**同时识别 `$HOME/.cargo` 与仓库内
+> `.cargo-home`**，并同步导出 `CARGO_HOME`/`RUSTUP_HOME`（必须同源：`CARGO_HOME` 决定
+> registry 缓存位置，指向不存在的目录会让依赖解析直接失败）。因此 §1 的手工 `export`
+> 已不再是跑测试的必需步骤。
+>
+> 注意这份布局在四次核实中出现过两个相反结论（09-05 仓库内 → 10-08 仓库内 →
+> 10-10 `$HOME` → 10-26 又回到仓库内），**不要把它当成稳定约定**。判断依据只用
+> 「`command -v cargo` 是否为空」；脚本已完成自动兜底，文档只作沿革记录。
 
 ## 1. 前置条件
 
@@ -46,18 +62,20 @@ lib.rs 不解析、不重算、不写盘。
 #     ~/.local/bin/skill-mcp-studio --all-profiles --format json | head
 which skill-mcp-studio || ls ~/.local/bin/skill-mcp-studio || pipx install skill-mcp-studio
 
-# Rust 工具链：**现位于 $HOME（P2-1 预期布局已达成，2026-10-10）**。
-# 仓库内的 .cargo-home/ 与 .rustup-home/ 均已不存在，下述「仓库本地目录」写法保留
-# 仅作历史记录 —— 本机当前用法见下方「日常使用（当前）」。
+# Rust 工具链：**本机现状以「command -v cargo」为准**（布局在 2026-09 至 2026-10 间
+# 反复漂移，详见顶部注记）。2026-10-26 实测：$HOME/.cargo 不存在，实际可用的是
+# 仓库内 .cargo-home/bin/cargo（1.98.1）+ .rustup-home；scripts/ci_parity.sh 已自动
+# 探测二者并导出 CARGO_HOME/RUSTUP_HOME，因此下面的手工 export 仅用于交互式调试。
 # 忽略状态：src-tauri/target/ 由根 .gitignore 排除。
 # 首次安装（历史写法，仓库本地）：
 #   curl -sSf https://static.rust-lang.org/rustup/dist/aarch64-apple-darwin/rustup-init \
 #     -o .cargo-home/rustup-init && chmod +x .cargo-home/rustup-init
 #   RUSTUP_HOME="$PWD/.rustup-home" CARGO_HOME="$PWD/.cargo-home" \
 #     ./.cargo-home/rustup-init -y --default-toolchain stable --profile minimal --no-modify-path
-# 日常使用（当前，在 src-tauri/ 下）：
-export RUSTUP_HOME="$HOME/.rustup"
-export CARGO_HOME="$HOME/.cargo"
+# 日常使用（当前实测布局，在 src-tauri/ 下）。注意用 $(cd .. && pwd) 取绝对路径，
+# 不要把含 `..` 的相对路径直接塞进 PATH —— 见下方「PATH 陷阱」。
+export RUSTUP_HOME="$(cd .. && pwd)/.rustup-home"
+export CARGO_HOME="$(cd .. && pwd)/.cargo-home"
 export PATH="$CARGO_HOME/bin:$PATH"
 rustc --version && cargo --version   # 1.98.1 / 1.98.1；cargo tauri --version = 2.11.5
 
