@@ -53,3 +53,11 @@ profiles-hermes-home/
 
 # 本会话排查用的临时目录（不进版本库）
 .tmpx/
+
+# DSH 插件工作副本（dsh-plugin-model-guard）
+#
+# 它不属于本工具，是一个独立的 DSH 插件项目：DSH 侧通过
+# `link:/Users/.../skill-mcp-studio/dsh-plugin-model-guard` 直接引用这个目录
+# 作为「本地源码插件」，所以**目录必须留在原地**，只是不纳入本仓库版本控制。
+# 2026-10-25 曾因 `git add -A` 误入库 15 个文件，v0.31.5 移出并显式忽略。
+dsh-plugin-model-guard/

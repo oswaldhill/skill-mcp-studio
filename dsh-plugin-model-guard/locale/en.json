@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "Model Guard",
-    "description": "Audits every hand-declared custom model on the llm-pi-ai routes at each process start: checks the image input tag, raises context windows to the largest known value, and routes images through a multimodal describer when the active model cannot see them. It reports findings first and repairs the configuration only with the user's consent."
-  }
-}

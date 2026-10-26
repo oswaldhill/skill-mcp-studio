@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="mgTitle">
-  <title id="mgTitle">Model Guard</title>
-  <path d="M12 7.6H52V26.6C52 41.6 44.5 50.6 32 57.1C19.5 50.6 12 41.6 12 26.6Z" fill="#3B82F6" stroke="#1E40AF" stroke-width="2.2" stroke-linejoin="round"/>
-  <rect x="16" y="12.4" width="32" height="22" rx="5" fill="#FFFFFF"/>
-  <path d="M22.6 24.2L28.8 29.2L41.2 17.8" fill="none" stroke="#1D4ED8" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/>
-  <rect x="25" y="37.4" width="14" height="4.2" rx="2.1" fill="#FFFFFF"/>
-  <rect x="21.5" y="43.8" width="21" height="4.2" rx="2.1" fill="#FFFFFF"/>
-</svg>
