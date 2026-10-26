@@ -15,15 +15,31 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+# 解释器选择：优先 PYTHON 环境变量（调用方 scripts/ci_parity.sh 会把它选定的
+# 解释器传下来），否则退回裸 python3。选定后必须校验版本 —— 低于 3.11 时用例会
+# 因语法/typing 不支持而整批导入失败，报出几十条 _FailedTest，极易被误读成
+# 「干净环境自检失败」这个产品结论。2026-10-26 实测：PATH 被收窄后落到
+# /usr/bin/python3（3.9.6），正是这种假阳性。
+PY="${PYTHON:-python3}"
+if ! command -v "$PY" >/dev/null 2>&1; then
+  echo "✗ 找不到解释器（PYTHON=${PY}），可用 PYTHON=... 指定" >&2
+  exit 1
+fi
+if ! "$PY" -c 'import sys; raise SystemExit(0 if sys.version_info[:2] >= (3, 11) else 1)'; then
+  echo "✗ 解释器版本过低：$("$PY" --version 2>&1) < 3.11（CI 用 3.11）" >&2
+  echo "  低版本会以与产品无关的原因整批导入失败，请用 PYTHON=... 指定 >= 3.11 的解释器。" >&2
+  exit 1
+fi
+
 TMP_HOME="$(mktemp -d)"
 cleanup() { rm -rf "$TMP_HOME"; }
 trap cleanup EXIT
 
 # 只保留包搜索路径，不保留原 HOME 下的用户数据（技能库、lock、data/ 等）
-SITE_PATH="$(python3 - <<'PY'
+SITE_PATH="$("$PY" - <<'PYCODE'
 import sys
 print(":".join(p for p in sys.path if p and ("site-packages" in p or "dist-packages" in p)))
-PY
+PYCODE
 )"
 
 echo "==> 干净环境自检（临时 HOME=${TMP_HOME}）"
@@ -31,7 +47,7 @@ echo "==> 干净环境自检（临时 HOME=${TMP_HOME}）"
 LOG="$(mktemp)"
 set +e
 HOME="$TMP_HOME" PYTHONPATH="$SITE_PATH" \
-  python3 -m unittest discover -s tests -p 'test_*.py' > "$LOG" 2>&1
+  "$PY" -m unittest discover -s tests -p 'test_*.py' > "$LOG" 2>&1
 CODE=$?
 set -e
 grep -E '^(FAIL|ERROR):' "$LOG" || true

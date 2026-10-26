@@ -522,7 +522,10 @@ note ""
 #     这类缺陷在「本机跑全量」时永远看不见，必须换空 HOME 才暴露。
 note "== 干净环境自检（模拟 CI 无用户数据环境）=="
 if [ -x scripts/ci_clean_env_check.sh ]; then
-  if bash scripts/ci_clean_env_check.sh > /tmp/ci_clean_env.log 2>&1; then
+  # PYTHON 必须传下去：子脚本自己用裸 python3 时会另找一份解释器，
+  # 与本脚本（可能已回退到 3.11 或用 PYTHON= 指定）不一致 —— 那样「干净环境
+  # 自检」测的就不是同一套运行时，低版本还会以整批 _FailedTest 伪装成产品失败。
+  if PYTHON="$PY" bash scripts/ci_clean_env_check.sh > /tmp/ci_clean_env.log 2>&1; then
     note "  ✓ 空 HOME 环境下单元测试同样通过（无本机数据依赖）"
   else
     note ""
