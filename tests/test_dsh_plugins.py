@@ -300,6 +300,50 @@ class DshPageGuiTest(unittest.TestCase):
             nav.find('id="nav-dsh"'), nav.find('id="nav-changes"'),
             "DSH 插件排在了「变更详情」之后 —— 两页都将在系统组内或顺序错乱")
 
+    def test_nav_count_badge_present_like_siblings(self):
+        """DSH 插件必须带 `.count` 徽标，与同组四项保持同一视觉语言。
+
+        回归背景：该项曾被移入管理组却没有徽标，于是同组五项里四项有数字、
+        一项空白 —— 用户会误以为「这一项没数据/没加载出来」，而不是「它本来
+        就没有计数」。徽标的有无是**分组归属完整性的信号**。
+        """
+        self.assertIn('id="count-dsh"', self.body, "DSH 插件导航项缺少 count 徽标")
+        # 与同组各项同构：nav-item 内紧跟文字的 span.count + 唯一 id
+        for sibling in ("count-agents", "count-skills", "count-mcp", "count-hooks"):
+            self.assertIn(f'id="{sibling}"', self.body,
+                          f"同组基准项 {sibling} 缺失，本断言的前提已不成立")
+
+    def test_nav_count_uses_plugin_total_not_enabled(self):
+        """徽标取 `summary.plugins`（总数），不得取 `summary.enabled`（启用数）。
+
+        口径依据 docs/DESIGN.md §2.3g：「管理组五个导航项的计数徽标显示该页
+        要管理的对象**总数**」。若改成 enabled，DSH 会显示 12 而页面顶部写
+        「共 16 个插件」，同组其余四项也都是总数 —— 口径立刻不一致。
+        """
+        fn = self._fn("setDshNavCount")
+        self.assertIn("(d.summary || {}).plugins", fn,
+                      "徽标未取 summary.plugins —— 与同组四项的「总数」口径不符")
+        self.assertNotIn("(d.summary || {}).enabled", fn,
+                         "徽标取成了 summary.enabled —— 该值应在页面内展示，不是导航计数")
+
+    def test_nav_count_failure_shows_dash_not_zero(self):
+        """读取失败时必须显示「—」而不是 0。
+
+        `0` 的语义是「确实一个插件都没有」；失败是「不知道有几个」。二者混淆会
+        把「DSH 未安装」误读成「装了但没有插件」——这正是本页要防的那类误判。
+        """
+        fn = self._fn("setDshNavCount")
+        self.assertIn('"—"', fn, "失败态未回退到「—」，会与「0 个插件」混淆")
+        # 成功分支必须走 plugins，失败分支必须走 —：两条路径都要有
+        self.assertIn("d.error", fn, "未把 error 计入失败判定")
+        self.assertIn("profiles", fn, "未把「没有 profile」计入失败判定")
+
+        load_fn = self._fn("loadDshPlugins")
+        # 两条失败路径（CLI 非零 / 返回无法解析）都必须重置徽标
+        self.assertEqual(
+            2, load_fn.count("setDshNavCount(null)"),
+            "loadDshPlugins 的两条失败路径未都重置徽标 —— 残留旧数字会谎报结果")
+
     def _fn(self, name):
         """截取某个 JS 函数的源码体（到下一个顶层 function 之前）。"""
         start = self.body.find(f"function {name}(")

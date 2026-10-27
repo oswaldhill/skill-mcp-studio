@@ -1909,7 +1909,7 @@
       </button>
       <button class="nav-item" data-page="dsh" id="nav-dsh">
         <svg class="nv-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3H5a2 2 0 0 0-2 2v4M15 3h4a2 2 0 0 1 2 2v4M9 21H5a2 2 0 0 1-2-2v-4M15 21h4a2 2 0 0 0 2-2v-4"/><circle cx="12" cy="12" r="2.5"/></svg>
-        DSH 插件
+        DSH 插件<span class="count" id="count-dsh" title="DSH 插件总数（进页后读取）">0</span>
       </button>
       <button class="nav-group-label push" type="button" data-group="system" aria-expanded="true"><span>系统</span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
       <button class="nav-item" data-page="changes" id="nav-changes">
@@ -4496,6 +4496,18 @@ const DSH_KIND_LABEL = {
   builtin: "内置", local: "本地源码", registry: "第三方包",
 };
 
+// 侧栏徽标：DSH 插件与其他四项口径一致 —— 显示「该页要管理的对象总数」，
+// 即 summary.plugins（= 已启用 + 装了未启用 + 来源失效）。
+// 与 Skills/MCP/Hook 不同的是：本页数据不在主快照里，进页才按需拉取，所以
+// 未进页前徽标停在初始 0。读取失败或没有 profile 时显示「—」而不是 0，
+// 否则「0 个插件」会被误读成「装了但一个都没有」。
+function setDshNavCount(d) {
+  const el = $("count-dsh");
+  if (!el) return;
+  const ok = d && !d.error && Array.isArray(d.profiles) && d.profiles.length > 0;
+  el.textContent = ok ? String((d.summary || {}).plugins || 0) : "—";
+}
+
 async function loadDshPlugins() {
   const el = $("dsh-body");
   if (!el) return;
@@ -4503,12 +4515,15 @@ async function loadDshPlugins() {
   try {
     const res = await runCli(["--dsh-plugins", "--format", "json"], "读取 DSH 插件清单（只读）");
     if (!res || res.code !== 0) {
+      setDshNavCount(null);
       el.innerHTML = `<div class="empty"><b>读取失败</b>${escapeHtml(((res && cliErrDetail(res)) || "未知错误"))}</div>`;
       return;
     }
     DSH_DATA = JSON.parse(res.stdout || "{}");
+    setDshNavCount(DSH_DATA);
     renderDshPlugins();
   } catch (e) {
+    setDshNavCount(null);
     el.innerHTML = `<div class="empty"><b>返回无法解析</b>${escapeHtml(String(e))}</div>`;
   }
 }
