@@ -249,6 +249,64 @@ class DshPageGuiTest(unittest.TestCase):
         self.assertIn('"--dsh-plugins"', lib,
                       "不在 Rust 白名单里，GUI 调用会被安全边界拦下")
 
+    def test_nav_item_lives_in_manage_group(self):
+        """DSH 插件必须归属「管理」组，而不是「系统」组。
+
+        分组在 DOM 里是**隐式**的：`applyNavGroup()` 从 `.nav-group-label` 的
+        下一个兄弟节点起，把所有 `.nav-item` 都当成该组的成员，直到遇到下一个
+        `.nav-group-label`。所以「放在哪个分组」完全由 nav 内的**元素顺序**决定，
+        没有任何显式归属属性可查——改顺序就会静默改变语义，必须用顺序断言守住。
+
+        判据（见 docs/DESIGN.md §2.3g）：管理组各项都是「本工具去检查和管理的
+        对象」（各自有清单与启用状态）；系统组的「变更详情」是审计输出、「设置」
+        是本工具通用配置。DSH 插件是「装了哪些、哪些在生效」的资源清单，与
+        Skills/MCP 同质，因此必须落在「管理」组内。
+
+        本断言会在三种回归下失败：
+          1) 把 nav-dsh 挪回「系统」组（变更详情之后）；
+          2) 把「系统」组标签移到 DSH 插件之前；
+          3) 删掉分组标签导致分组语义消失。
+        """
+        nav_start = self.body.find('<nav class="nav">')
+        nav_end = self.body.find("</nav>", nav_start)
+        self.assertNotIn(-1, (nav_start, nav_end), "找不到侧栏 nav 块，断言失效")
+        nav = self.body[nav_start:nav_end]
+
+        manage_at = nav.find('data-group="manage"')
+        system_at = nav.find('data-group="system"')
+        dsh_at = nav.find('id="nav-dsh"')
+        for name, pos in (("管理组标签", manage_at), ("系统组标签", system_at),
+                          ("DSH 插件导航项", dsh_at)):
+            self.assertNotEqual(-1, pos, f"侧栏里找不到{name}")
+
+        self.assertLess(
+            manage_at, dsh_at,
+            "DSH 插件排到了「管理」组标签之前 —— 它不在管理组里")
+        self.assertLess(
+            dsh_at, system_at,
+            "DSH 插件落到了「系统」组标签之后 —— 它被归入了系统组。"
+            "分组由 DOM 顺序隐式决定（applyNavGroup 按兄弟节点顺序收集 nav-item），"
+            "所以位置即语义。若确实要改归属，请同步改 docs/DESIGN.md §2.3g 与本断言。")
+
+    def test_nav_item_precedes_changes_in_dom(self):
+        """「变更详情」属于系统组，DSH 插件不应再排在它之后。
+
+        这条与上一条互补：上一条守「组边界」，这条守「组内相对位置」。二者分开的
+        原因是失败信息不同——一个说「跨组了」，一个说「组内顺序变了」，便于定位。
+        """
+        nav_start = self.body.find('<nav class="nav">')
+        nav = self.body[nav_start:self.body.find("</nav>", nav_start)]
+        self.assertLess(
+            nav.find('id="nav-dsh"'), nav.find('id="nav-changes"'),
+            "DSH 插件排在了「变更详情」之后 —— 两页都将在系统组内或顺序错乱")
+
+    def _fn(self, name):
+        """截取某个 JS 函数的源码体（到下一个顶层 function 之前）。"""
+        start = self.body.find(f"function {name}(")
+        self.assertNotEqual(-1, start, f"找不到函数 {name}()")
+        nxt = self.body.find("\nfunction ", start + 1)
+        return self.body[start:nxt if nxt != -1 else len(self.body)]
+
 
 if __name__ == "__main__":
     unittest.main()
