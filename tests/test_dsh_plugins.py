@@ -327,14 +327,19 @@ class DshPageGuiTest(unittest.TestCase):
                          "徽标取成了 summary.enabled —— 该值应在页面内展示，不是导航计数")
 
     def test_nav_count_failure_shows_dash_not_zero(self):
-        """读取失败时必须显示「—」而不是 0。
+        """读取失败时必须显示「-」而不是 0。
 
         `0` 的语义是「确实一个插件都没有」；失败是「不知道有几个」。二者混淆会
         把「DSH 未安装」误读成「装了但没有插件」——这正是本页要防的那类误判。
+
+        占位符必须是**普通连字符**（U+002D）而非 em-dash（U+2014）：DESIGN.md §3
+        禁用 em-dash 作可见文案，徽标数字位也属可见文案。这里同时断言「用了
+        "-"」与「没有用 em-dash」，防止有人为了视觉宽度又换回去。
         """
         fn = self._fn("setDshNavCount")
-        self.assertIn('"—"', fn, "失败态未回退到「—」，会与「0 个插件」混淆")
-        # 成功分支必须走 plugins，失败分支必须走 —：两条路径都要有
+        self.assertIn('"-"', fn, "失败态未回退到「-」，会与「0 个插件」混淆")
+        self.assertNotIn("\u2014", fn, "失败态用了 em-dash，违反 DESIGN.md §3")
+        # 成功分支必须走 plugins，失败分支必须走 -：两条路径都要有
         self.assertIn("d.error", fn, "未把 error 计入失败判定")
         self.assertIn("profiles", fn, "未把「没有 profile」计入失败判定")
 
@@ -343,6 +348,68 @@ class DshPageGuiTest(unittest.TestCase):
         self.assertEqual(
             2, load_fn.count("setDshNavCount(null)"),
             "loadDshPlugins 的两条失败路径未都重置徽标 —— 残留旧数字会谎报结果")
+
+    def test_plugins_deduped_across_profiles(self):
+        """同一插件跨 profile 只显示一行，不得按 profile 重复列出。
+
+        实测 `@deepseek-ai/dsh-base`、`@deepseek-ai/dsh-web-app` 在 desktop 与
+        web 两个 profile 里都被声明。逐 profile 分卡片会让它们各出现两次
+        （16 条 vs 14 个唯一插件），看起来像装了两份，也无法横向比较。
+
+        断言强度说明：只检查「存在 byName / new Map()」这类字符串是无效的——
+        把聚合结果替换成空数组时那些字面量仍在，测试照样通过（反向验证实测
+        确认过这个漏洞）。因此这里进一步绑定**数据结构关系**：聚合表以插件名
+        为键、逐条 push 进 states、且行数据取自聚合结果（而非某单 profile）。
+        """
+        fn = self._fn("renderDshPlugins")
+        # 1) 聚合表以插件名为键
+        self.assertIn("byName.get(plug.name)", fn,
+                      "未按插件名查聚合表 —— 无法把同名插件合并到同一行")
+        self.assertIn("byName.set(plug.name, row)", fn, "未按插件名写入聚合表")
+        # 2) 各 profile 的状态收进同一行的 states 数组
+        self.assertIn("row.states.push", fn,
+                      "未把各 profile 的状态收进同一行 —— 去重后会丢 profile 归属")
+        # 3) 行数据必须由聚合结果生成（若改成遍历 p.plugins 就会重复出行）
+        self.assertIn("Array.from(byName.values())", fn,
+                      "行数据未取自聚合结果 —— 同一插件会按 profile 重复出现")
+        self.assertIn("plugins.map(", fn, "表格行未由去重后的聚合结果生成")
+
+    def test_profile_attribution_kept_after_dedup(self):
+        """去重后必须仍能看出某个插件属于哪些 profile。
+
+        去重的代价是丢失「哪个 profile 装了什么」，必须用 profile 列补回来，
+        否则用户无法判断「这个插件到底在哪个 profile 里生效」。
+        """
+        fn = self._fn("renderDshPlugins")
+        self.assertIn("<th>profile</th>", fn, "表头缺少 profile 列 —— 去重后丢失归属信息")
+        self.assertIn("profCell", fn, "未渲染 profile 单元格")
+
+    def test_inconsistent_state_picks_worst_and_labels_it(self):
+        """跨 profile 状态不一致时，取最严重状态并显式标注「不一致」。
+
+        若静默取其一（例如取第一个 profile 的 enabled），则「web 下已失效、
+        desktop 下正常」会被误读成全平台正常 —— 这正是本页要防的误判。
+        broken > installed > enabled 是安全优先的排序。
+        """
+        fn = self._fn("renderDshPlugins")
+        self.assertIn("SEVERITY", fn, "缺少状态严重性表，无法取最严重状态")
+        for state in ("enabled", "installed", "broken"):
+            self.assertIn(f"{state}:", fn, f"严重性表缺少 {state}")
+        self.assertIn("各 profile 不一致", fn,
+                      "状态分歧时未显式标注 —— 用户会以为各 profile 一致")
+
+    def test_empty_source_column_is_merged_into_kind(self):
+        """「来源」不再作为独立列；有值时并入「类型」列。
+
+        实测 16 个插件无一有 source_path，该列长期全空却固定占宽。改为并入
+        类型列后，常见情况下表格少一列，且 link: 依赖的溯源信息不丢失。
+        """
+        fn = self._fn("renderDshPlugins")
+        self.assertNotIn("<th>来源</th>", fn,
+                         "「来源」仍是独立列 —— 实测该列恒空，白占宽度")
+        self.assertIn("kindCell", fn, "未把来源并入类型列")
+        self.assertIn("r.source_path", fn,
+                      "类型列未处理 source_path，link: 依赖的溯源信息会丢失")
 
     def _fn(self, name):
         """截取某个 JS 函数的源码体（到下一个顶层 function 之前）。"""

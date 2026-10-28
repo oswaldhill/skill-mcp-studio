@@ -4499,13 +4499,15 @@ const DSH_KIND_LABEL = {
 // 侧栏徽标：DSH 插件与其他四项口径一致 —— 显示「该页要管理的对象总数」，
 // 即 summary.plugins（= 已启用 + 装了未启用 + 来源失效）。
 // 与 Skills/MCP/Hook 不同的是：本页数据不在主快照里，进页才按需拉取，所以
-// 未进页前徽标停在初始 0。读取失败或没有 profile 时显示「—」而不是 0，
+// 未进页前徽标停在初始 0。读取失败或没有 profile 时显示普通连字符「-」而不是 0，
 // 否则「0 个插件」会被误读成「装了但一个都没有」。
+// 用「-」而非 em-dash：DESIGN.md §3 明确禁用 em-dash 作可见文案（正文、标签、
+// 按钮一律用普通连字符）。这里虽只有一个字符，仍属可见文案，一并守规。
 function setDshNavCount(d) {
   const el = $("count-dsh");
   if (!el) return;
   const ok = d && !d.error && Array.isArray(d.profiles) && d.profiles.length > 0;
-  el.textContent = ok ? String((d.summary || {}).plugins || 0) : "—";
+  el.textContent = ok ? String((d.summary || {}).plugins || 0) : "-";
 }
 
 async function loadDshPlugins() {
@@ -4559,39 +4561,89 @@ function renderDshPlugins() {
       ${d.secrets_redacted ? '· <span class="tag" title="patch 文件的 config 段含明文 apiKey，本页只统计结构，不显示任何 config 值">patch 值已脱敏</span>' : ""}
     </div>`;
 
-  const profileHtml = (d.profiles || []).map((p) => {
+  // 跨 profile 聚合：同一插件常被多个 profile 同时声明（如 @deepseek-ai/dsh-base、
+  // @deepseek-ai/dsh-web-app 在 desktop 与 web 里都出现）。按 profile 逐卡片列出会让
+  // 同一插件重复出现、看起来像装了多份，也不便于横向比较。这里按**插件名**去重：
+  // 一行一个插件，各 profile 的状态收进同一行的状态列。
+  // 副作用：去重后「每 profile 的插件数 / patch 结构」不再由卡片承载，改由上方
+  // 一行 profile 摘要保留，信息不减量。
+  const SEVERITY = { enabled: 1, installed: 2, broken: 3 };
+  const byName = new Map();
+  (d.profiles || []).forEach((p) => {
+    (p.plugins || []).forEach((plug) => {
+      let row = byName.get(plug.name);
+      if (!row) {
+        row = {
+          name: plug.name,
+          kind: plug.kind,
+          version: plug.version || "",
+          source_path: plug.source_path || "",
+          states: [],
+        };
+        byName.set(plug.name, row);
+      }
+      row.states.push({ profile: p.name, state: plug.state });
+      // 版本与来源取首次出现的非空值（同一插件在不同 profile 版本可能缺失）
+      if (!row.version && plug.version) row.version = plug.version;
+      if (!row.source_path && plug.source_path) row.source_path = plug.source_path;
+    });
+  });
+  const plugins = Array.from(byName.values());
+
+  // profile 摘要：原卡片头部的「N 个插件 / 启用 M」与 patch 结构在这里保留
+  const profileBrief = (d.profiles || []).map((p) => {
     const patch = p.patch || {};
-    const patchBits = [
+    const bits = [
+      `<b>${escapeHtml(p.name)}</b> · ${p.plugin_count || 0} 个插件 / 启用 ${p.enabled_count || 0}`,
       patch.exists ? `patch 条目 ${patch.entries || 0}` : "无 patch 层",
       patch.disables ? `禁用 ${patch.disables}` : "",
       patch.inserts ? `插入 ${patch.inserts}` : "",
     ].filter(Boolean).join(" · ");
-    const rows = (p.plugins || []).map((plug) => {
-      const meta = DSH_STATE_META[plug.state] || { label: plug.state, cls: "", hint: "" };
-      const ver = plug.version ? `<span class="mono muted">v${escapeHtml(plug.version)}</span>` : "";
-      const src = plug.source_path
-        ? `<span class="mono muted" title="${escapeHtml(plug.source_path)}">${escapeHtml(plug.source_path)}</span>`
-        : "";
-      return `<tr>
-        <td class="mono">${escapeHtml(plug.name)}</td>
-        <td><span class="tag">${escapeHtml(DSH_KIND_LABEL[plug.kind] || plug.kind)}</span></td>
-        <td><span class="tag ${meta.cls}" title="${escapeHtml(meta.hint)}">${escapeHtml(meta.label)}</span></td>
-        <td>${ver}</td>
-        <td style="max-width:32rem;overflow:hidden;text-overflow:ellipsis">${src}</td>
-      </tr>`;
-    }).join("");
-    return `<div class="settings-card">
-      <h4>${escapeHtml(p.name)} <span class="muted" style="font-weight:400">· ${p.plugin_count || 0} 个插件 / 启用 ${p.enabled_count || 0}</span></h4>
-      <div class="hint" style="margin-bottom:var(--sp-3)">${escapeHtml(patchBits)}</div>
-      ${rows
-        ? `<div class="table-scroll"><table class="mcp-table"><thead><tr>
-             <th>插件</th><th>类型</th><th>状态</th><th>版本</th><th>来源</th>
-           </tr></thead><tbody>${rows}</tbody></table></div>`
-        : '<div class="hint">该 profile 未声明任何插件</div>'}
-    </div>`;
+    return `<div>${bits}</div>`;
   }).join("");
 
-  el.innerHTML = summaryBar + profileHtml;
+  // 「来源」列此前恒为空（16 个插件都没 source_path），却固定占一列宽度 ——
+  // 改为并入「类型」列：有值时跟在类型标签后面，无值时不占位，表格因此更紧凑。
+  const rows = plugins.map((r) => {
+    const uniq = [...new Set(r.states.map((x) => x.state))];
+    const worst = uniq.reduce((a, b) => (SEVERITY[b] > SEVERITY[a] ? b : a), uniq[0]);
+    const meta = DSH_STATE_META[worst] || { label: worst, cls: "", hint: "" };
+    const detail = r.states
+      .map((x) => `${x.profile}: ${(DSH_STATE_META[x.state] || {}).label || x.state}`)
+      .join(" / ");
+    // 状态不一致时不静默取其一：显示最严重的那个（安全优先）并显式标注不一致
+    const stateCell = uniq.length === 1
+      ? `<span class="tag ${meta.cls}" title="${escapeHtml(detail)}">${escapeHtml(meta.label)}</span>`
+      : `<span class="tag ${meta.cls}" title="${escapeHtml(detail)}">${escapeHtml(meta.label)}</span>` +
+        `<span class="muted" title="${escapeHtml(detail)}" style="margin-left:var(--sp-2)">各 profile 不一致</span>`;
+    const profCell = r.states
+      .map((x) => `<span class="tag">${escapeHtml(x.profile)}</span>`)
+      .join(" ");
+    const ver = r.version ? `<span class="mono muted">v${escapeHtml(r.version)}</span>` : "";
+    const kindCell = `<span class="tag">${escapeHtml(DSH_KIND_LABEL[r.kind] || r.kind)}</span>` +
+      (r.source_path
+        ? ` <span class="mono muted" title="${escapeHtml(r.source_path)}" style="max-width:18rem;display:inline-block;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom">${escapeHtml(r.source_path)}</span>`
+        : "");
+    return `<tr>
+        <td class="mono">${escapeHtml(r.name)}</td>
+        <td>${kindCell}</td>
+        <td>${stateCell}</td>
+        <td>${ver}</td>
+        <td>${profCell}</td>
+      </tr>`;
+  }).join("");
+
+  const tableHtml = `<div class="settings-card">
+      <h4>全部插件 <span class="muted" style="font-weight:400">· ${plugins.length} 个唯一插件（去重前 ${s.plugins || 0} 条）</span></h4>
+      <div class="hint" style="margin-bottom:var(--sp-3)">${profileBrief}</div>
+      ${rows
+        ? `<div class="table-scroll"><table class="mcp-table"><thead><tr>
+             <th>插件</th><th>类型</th><th>状态</th><th>版本</th><th>profile</th>
+           </tr></thead><tbody>${rows}</tbody></table></div>`
+        : '<div class="hint">所有 profile 均未声明任何插件</div>'}
+    </div>`;
+
+  el.innerHTML = summaryBar + tableHtml;
 }
 
 function renderSettings() {
