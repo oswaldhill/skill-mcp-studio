@@ -47,7 +47,7 @@ Python 审计 CLI、一个纯前端八页管理台（Tauri 桌面壳）和 66 �
 
 ```
 scan.py                  CLI 入口（多阶段主流程 + 各子命令早返回）
-├── core/                Python 领域逻辑（39 模块）
+├── core/                Python 领域逻辑（66 模块）
 │   ├── checker/fixer          Skills 检查与修复（symlink 对齐）
 │   ├── mcp_checker/mcp_fixer/mcp_probe   MCP 配置检查、修复、活体探测
 │   ├── combined_checker       每客户端综合审计（Skills + MCP + hooks）
@@ -56,24 +56,30 @@ scan.py                  CLI 入口（多阶段主流程 + 各子命令早返回
 │   ├── endpoint_library/store  端点库 CRUD 与持久化
 │   ├── skill_state/toggle/auditor/migrator   启停三态 + 迁移
 │   └── ...                     scanner/reporter/change_tracker/git_sync 等
-├── gui/dashboard.html   八页管理台（单文件静态页，webview 直接装载）
-└── src-tauri/           Tauri v2 桌面壳（frontendDist=../gui，cargo tauri build → .app）
+├── gui/dashboard.html   八页管理台**源文件**（单文件：内联 CSS + 内联 JS）
+└── src-tauri/           Tauri v2 桌面壳（frontendDist=../gui/dist，cargo tauri build → .app）
 ```
 
-无构建步骤前端 `gui/dashboard.html` 通过 `run_audit`（只读快照）与 `run_cli`（管理/写
-命令透传）两个桥接函数消费 CLI；通用配置（统一目录、端点库）与业务动作分离，通用层在
-「设置」页、业务层在对应管理页。写操作统一走「备份 → 原子写 → 校验 → 回滚」安全链。
+**构建期拆分**：`scripts/build_gui.py` 在打包前把 `gui/dashboard.html` 拆成发布产物
+`gui/dist/dashboard.html`（不含内联脚本，改为 `<script src="app.js" defer>`）+ 
+`gui/dist/app.js`（原内联脚本全文）。`tauri.conf.json` 的 `beforeBuildCommand` 会先跑它，
+所以 `gui/dist/` 是构建产物、不入库（`.gitignore` 已排除）。源文件之所以保持单文件，是
+因为 20 余个测试直接读它并正则抽函数体，拆到仓库内会一次性打掉上百条断言。
+
+前端通过 `run_audit`（只读快照）与 `run_cli`（管理/写命令透传）两个桥接函数消费 CLI；
+通用配置（统一目录、端点库）与业务动作分离，通用层在「设置」页、业务层在对应管理页。
+写操作统一走「备份 → 原子写 → 校验 → 回滚」安全链。
 
 ### 仓库结构
 
 ```
 skill-mcp-studio/
 ├── scan.py                    CLI 入口（多阶段主流程 + 各子命令早返回）
-├── core/                      Python 领域逻辑（39 模块）
-├── gui/                       八页管理台前端（单文件 dashboard.html）
+├── core/                      Python 领域逻辑（66 模块）
+├── gui/                       八页管理台前端（源文件单文件；dist/ 为构建产物）
 ├── src-tauri/                 Tauri v2 桌面壳（cargo tauri build → .app）
 ├── scripts/                   构建 / 校验 / 网关辅助脚本
-├── tests/                     单元测试（unittest，共 34 个文件）
+├── tests/                     单元测试（unittest，共 106 个文件）
 ├── docs/                      产品 / 设计 / 决策 / 评审文档（分类归档）
 │   ├── product/               产品需求 · 定位 · 形态
 │   ├── design/                阶段一~五设计 · 跨平台矩阵
@@ -137,6 +143,9 @@ cleanup / commit / push / 修复。
 ---
 
 ## 常用命令速查
+
+> 下表是**按主题分组的常用项**，不是全量清单。完整参数（当前 138 个）见
+> `python3 scan.py --help`；每个参数的权威说明以 argparse 的 help 文本与代码为准。
 
 **只读审计**
 
@@ -250,6 +259,49 @@ cleanup / commit / push / 修复。
 --backup-skill SKILL / --export-skill SKILL
 --rename-skill SKILL --new-name N --new-description D
 --delete-skill SKILL   软删除（先备份再移入 _trash/）
+```
+
+**DSH 插件（v0.31.4，第八页的数据出口）**
+
+```text
+--dsh-plugins --format json               只读：扫 ~/.dsh/profiles/*，输出各 profile 的
+                                          插件清单（enabled / installed / broken 三态不合并）
+--dsh-home PATH                           指定 DSH 配置根（默认 ~/.dsh），便于测试与多实例
+```
+
+**技能市场与版本（v0.31.0–v0.31.3）**
+
+```text
+--market sources|list|search|check        市场源 / 列表 / 搜索 / 只读更新检查
+--market-install PKG [--yes]              安装技能包（带备份）
+--market-upgrade NAME [--yes]             升级已装技能
+--list-market-sources                     只读：列出市场源
+--set-market-source ID [KEY=VALUE ...]    新增/修改市场源
+--remove-market-source ID                 移除市场源
+--set-github-token TOKEN / --get-github-token   GitHub token（写入凭据库，不落明文配置）
+--list-skill-backups NAME / --skill-rollback NAME   技能备份列表与回滚
+--rollback-to PATH                        回滚到指定备份
+--merge-advice                            只读：给出重复/相似技能的合并建议
+--skill-usage [--usage-since ISO_DATE]    技能使用统计（调用次数、最后使用）
+--skill-insight                           使用洞察（长期未使用、冗余候选）
+```
+
+**WebDAV 跨设备配置同步（v0.31.1）**
+
+```text
+--set-webdav-url URL / --set-webdav-credential USER:PASS
+--webdav-status                           只读：连通性与远端状态
+--sync-webdav-push / --sync-webdav-pull   推送 / 拉取「个人配置」这一小层（非资产、非实时）
+```
+
+**变更追踪的忽略清单**
+
+```text
+--snapshot                                生成快照（变更 diff 的基线）
+--ignore-change DIM:NAME:TYPE             把某条变更加入忽略
+--unignore-change DIM:NAME:TYPE           移出忽略
+--list-ignored [--format json]            只读：列出已忽略项
+--prune-ignored                           清理失效的忽略项
 ```
 
 **其它**
