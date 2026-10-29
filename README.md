@@ -517,10 +517,16 @@ variables → Actions 配置以下 secrets：
 
 | 层级 | 路径 | 说明 |
 | --- | --- | --- |
-| 产品 | [`docs/product/`](docs/product/) | PRD、产品定位与路线图、产品形态与开发计划 |
+| 产品 | [`docs/product/`](docs/product/) | PRD（唯一需求来源）、产品定位与路线图、产品形态与开发计划、PRD↔实现对照清单 |
 | 实现 | [`docs/design/`](docs/design/) | 阶段一~五设计文档、跨平台路径矩阵 |
-| 决策 | [`docs/decisions/`](docs/decisions/) | 待决问题定案（D1–D16）、阶段四立项评估 |
-| 评审 | [`docs/reviews/`](docs/reviews/) | 评审整改清单与评审报告 |
+| 决策 | [`docs/decisions/`](docs/decisions/) | 待决问题定案（D1–D22）、阶段四立项评估 |
+| 评审 | [`docs/reviews/`](docs/reviews/) | 评审整改清单与评审报告（均为时点留档） |
+| 交接与计划 | [`docs/superpowers/`](docs/superpowers/) | HANDOFF、实施计划、功能设计 |
+| 取证 | [`docs/research/`](docs/research/) | Hook 事件能力表等调研取证 |
+
+各文档的有效性状态（当前有效 / 历史归档 / 已被取代）以 [`docs/README.md`](docs/README.md)
+为准；版本号以 `version.json` 为单一事实源，PRD 实现矩阵以
+`docs/product/prd_impl_matrix.json` 为单一事实源。
 
 ---
 

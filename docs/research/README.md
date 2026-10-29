@@ -6,9 +6,9 @@
 
 | 文件 | 覆盖客户端 | 性质 |
 |---|---|---|
-| `hook-capability-claude-workbuddy.json` | Claude Code、WorkBuddy | **原始调研输出**（2026-10-12，含官方文档来源与本机实测标注） |
-| `hook-capability-codex-opencode.json` | Codex、OpenCode | **原始调研输出**（2026-10-12；Codex 的 12 项与官方源码双向印证） |
-| `hook-capability-cursor-trae.rebuilt.json` | Cursor、TRAE | **重建**，见下 |
+| [`hook-capability-claude-workbuddy.json`](hook-capability-claude-workbuddy.json) | Claude Code、WorkBuddy | **原始调研输出**（2026-10-12，含官方文档来源与本机实测标注） |
+| [`hook-capability-codex-opencode.json`](hook-capability-codex-opencode.json) | Codex、OpenCode | **原始调研输出**（2026-10-12；Codex 的 12 项与官方源码双向印证） |
+| [`hook-capability-cursor-trae.rebuilt.json`](hook-capability-cursor-trae.rebuilt.json) | Cursor、TRAE | **重建**，见下 |
 
 ## 关于「重建」的那一份
 

@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
+<!-- generated from docs/DESIGN.md @ 072c675 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>界面规范 · Skill MCP Studio 管理台</title>
@@ -536,8 +537,16 @@
             <tr><td>圆角</td><td><code>--r-control</code>(8) <code>--r-card</code>(12) <code>--r-pill</code>(999) <code>--r-hair</code>(3)</td><td>控件 / 卡片 / 胶囊 / 徽标</td></tr>
             <tr><td>阴影</td><td><code>--shadow-card</code> <code>--shadow-card-hover</code> <code>--shadow-modal</code></td><td>卡片 / 悬停 / 弹窗</td></tr>
             <tr><td>缓动</td><td><code>--ease</code></td><td>所有 transition</td></tr>
-            <tr><td>字体</td><td><code>--sans</code> <code>--display</code> <code>--mono</code></td><td>正文 / 标题 / 数字与代码</td></tr>
+            <tr><td>字体</td><td><code>--sans</code> <code>--display</code> <code>--mono</code></td><td>正文 / 弹窗标题（= sans） / 数字与代码</td></tr>
             <tr><td>遮罩</td><td><code>--backdrop</code></td><td>模态背板</td></tr>
+            <tr><td>间距(gap)</td><td><code>--gap-0</code>(0) <code>--gap-1</code>(4) <code>--gap-2</code>(6) <code>--gap-3</code>(8) <code>--gap-4</code>(10) <code>--gap-6</code>(14) <code>--gap-5</code>(16)</td><td>flex/grid 间距</td></tr>
+            <tr><td>间距(sp)</td><td><code>--sp-1</code>(4) <code>--sp-2</code>(6) <code>--sp-3</code>(8) <code>--sp-4</code>(10) <code>--sp-5</code>(12) <code>--sp-6</code>(14) <code>--sp-7</code>(16) <code>--sp-8</code>(20) <code>--sp-9</code>(24)</td><td>padding/margin 竖直分量</td></tr>
+            <tr><td>间距(sp) 扩展档</td><td><code>--sp-0a</code>(1) <code>--sp-0b</code>(2) <code>--sp-0c</code>(3) <code>--sp-1a</code>(5) <code>--sp-3a</code>(7) <code>--sp-3b</code>(9) <code>--sp-5a</code>(11) <code>--sp-5c</code>(13) <code>--sp-5b</code>(15) <code>--sp-7a</code>(18) <code>--sp-8a</code>(22) <code>--sp-9d</code>(26) <code>--sp-9a</code>(28) <code>--sp-9b</code>(32) <code>--sp-9e</code>(36) <code>--sp-9c</code>(40) <code>--sp-9f</code>(64)</td><td>落在主档之间的取值；<strong>已全部在用</strong>（含 2026-10-10 为「间距字面值清零」新登记的 6 档），不得再写字面值</td></tr>
+            <tr><td>焦点环</td><td><code>--ring-ok</code> <code>--ring-warn</code> <code>--ring-err</code></td><td>语义态 focus 外环</td></tr>
+            <tr><td>强调投影</td><td><code>--shadow-accent</code> <code>--shadow-accent-hover</code></td><td>主按钮悬停光晕</td></tr>
+            <tr><td>语义投影</td><td><code>--shadow-err</code> <code>--shadow-err-hover</code> <code>--shadow-knob</code> <code>--shadow-sheet</code></td><td>危险态光晕 / 开关旋钮 / 侧拉面板</td></tr>
+            <tr><td>语义加强色</td><td><code>--err-strong</code></td><td>失败态悬停/实心</td></tr>
+            <tr><td>实体白</td><td><code>--on-solid</code></td><td>实心块上的白（独立 token，禁止裸写 <code>#fff</code>）</td></tr>
           </tbody>
         </table>
       </div>
@@ -545,6 +554,17 @@
       <blockquote>
         <p>圆角四档都要用：<code>--r-hair</code> 专给 10-11px 的小徽标（如变更面板的维度标签），
            它比 <code>--r-control</code> 更贴合小尺寸；不要用字面值 <code>4px</code> 凑合。</p>
+      </blockquote>
+
+      <blockquote>
+        <p><code>--display</code> 当前等于 <code>--sans</code>（同族），保留是为了将来标题可能换字重或字形时不改引用处。</p>
+        <p><code>--ok-bg</code> / <code>--warn-bg</code> / <code>--err-bg</code> 与各自的 <code>-border</code>
+           由上面「语义」一行的「+ 各自 <code>-bg</code> / <code>-border</code>」统一涵盖，不再单列。</p>
+      </blockquote>
+
+      <blockquote>
+        <p>⚠️ <strong>圆角只有四档，没有第五档</strong>：popover 有它自己的 <code>--pop-r-*</code> 体系（见 2.8），
+           管理台页面不得为它另开圆角 token（曾有一个死 token <code>--r-popover</code>，已删）。</p>
       </blockquote>
 
       <div class="rules">
@@ -888,9 +908,181 @@
       <p>不变量由 <code>CardLabelColumnAlignmentTest</code> 逐属性比对（列宽 / gap / 对齐 / 字体族 /
         字号 / 字重 / 大小写 / 颜色）：只改一侧必然失败，要改就两边一起改，并同步 §2.9 的硬数字。</p>
       <h3 id="s2-3c">2.3c IDE / Agent 列表视图的列与图例（<code>.agent-list-table</code>）<a class="anchor" href="#s2-3c" aria-label="锚点">#</a></h3>
-      <p>列表视图列序固定为：<code>名称 | 类型 | 安装 | APP | CLI | CONFIG | 技能目录 | MCP | Hook | 操作</code>。
-        每个状态列都必须配一条同名图例（<code>.skill-legend</code>），四态与列内取值一一对应：
-        两者都复用既有的 <code>.skill-legend</code>（<code>.legend-label</code> / <code>.legend-item</code> / <code>.legend-swatch</code> / <code>.legend-note</code>）。</p>
+      <p>列表视图（<code>.agent-list-table</code>）的列序固定为：
+        <code>名称 | 类型 | 安装 | APP | CLI | CONFIG | 技能目录 | MCP | Hook | 操作</code>。
+        MCP 与 Hook 两列的四态口径：MCP = <code>ok</code> 全部已设置 / <code>warn</code> 部分 /
+        <code>err</code> 未设置 / 中性 不支持或无端点；Hook = <code>ok</code> 全部已配置 /
+        中性 部分已配置 / <code>warn</code> 未配置 / 中性 未收录配置或仅审计。</p>
+
+      <blockquote>
+        <p><strong>IDE/Agent 页的两条图例已整块撤销</strong>（2026-10-14 用户要求：「目前如果全部有图例的话
+           就太多太长了」）。该页两条图例各 4 项 + 一段脚注，合计约 100px 高，且与 chips/表头堆叠。
+           <strong>含义没有丢，改由列头说明气泡承载</strong>（见下）。</p>
+      </blockquote>
+
+      <p><strong>列头说明气泡：<code>data-help</code> + <code>.th-help</code> + <code>.th-tip</code></strong>
+        （图例撤销的配套）。⚠️ <strong>不要用原生 <code>title</code></strong>：实测本应用
+        （Tauri / macOS WKWebView）里 <code>cursor: help</code> 会生效（光标变问号），但
+        <strong>原生 title 气泡不弹出</strong> —— 于是「能不能看说明」完全落空（用户反馈
+        「提示…没有显示出来」）。故改为<strong>自绘浮层</strong>，不依赖任何平台原生行为。</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>部件</th><th>作用</th></tr></thead>
+          <tbody>
+            <tr><td><code>th[data-help]</code></td>
+                <td>说明文本载体；<code>|</code> 分段成行。行有两种：<strong>文本行</strong>（含 <code>=</code>
+                    时排成「键 / 值」两列）与 <strong>图例行</strong>（以 <code>#</code> 开头，见下）</td></tr>
+            <tr><td><code>.th-help</code></td>
+                <td>标签后那枚 11px 的问号图标（<code>ICONS.help</code>），faint 色；hover 时转 accent</td></tr>
+            <tr><td><code>.th-tip</code></td>
+                <td>气泡本体：<code>position: fixed</code>、<code>max-width: 320px</code>，复用
+                    <code>--panel</code> / <code>--line-strong</code> / <code>--r-control</code> /
+                    <code>--shadow-modal</code>，与既有 <code>.path-pop</code> 同族</td></tr>
+            <tr><td><code>.th-tip .tt-row</code></td>
+                <td>气泡内一行：<code>display: flex</code> + <code>gap: var(--gap-3)</code>，让 <code>=</code>
+                    前的键与值分列对齐</td></tr>
+            <tr><td><code>.th-tip .tt-k</code></td>
+                <td>该行的「键」半部（如 <code>N / M =</code>）：<code>flex: none</code> + <code>--muted</code>，不参与换行挤压</td></tr>
+            <tr><td><code>.th-tip .tt-legend</code></td>
+                <td>图例行容器：<code>flex</code> + wrap，条目间距 <code>--gap-4</code></td></tr>
+            <tr><td><code>.th-tip .tt-item</code></td>
+                <td>图例条目：图标/色点 + 标签，<code>inline-flex</code> 对齐</td></tr>
+            <tr><td><code>.th-tip .tt-dot</code></td>
+                <td>8px 纯色点（MCP / Hook 的四态图例用），变体 <code>.ok</code> <code>.warn</code>
+                    <code>.err</code> <code>.na</code> <code>.neutral</code> 与 <code>.legend-swatch</code> 同色系</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p><strong>图例行格式</strong>（<code>data-help</code> 里以 <code>#</code> 开头的段）：条目用 <code>;</code>
+        分隔，每条为 <code>图标名.颜色类:标签</code>；<strong>图标名为空则渲染 <code>.tt-dot</code> 色点</strong>，
+        非空则渲染 16px 的 <code>.al-ico</code> 徽标（与表内单元格同款形态）。</p>
+
+      <blockquote>
+        <p>为什么图例要画图标而不是文字描述（2026-10-14 用户要求「弹出的内容中最好有图标作为图例」）：
+           文字「绿点 已安装」需要读者在脑中翻译成视觉，而直接渲染那枚徽标，气泡里的图例与列里的实际形态
+           <strong>一一对应</strong>，扫一眼即可对上。</p>
+      </blockquote>
+
+      <p>行为：<code>mouseenter</code> / <code>focus</code> 时由 <code>showThTip()</code> 渲染到既有
+        <code>#pop-root</code>（复用层级与定位），<code>mouseleave</code> / <code>blur</code> 时
+        <code>hideThTip()</code> 清除；贴右边界自动左移防裁切。<code>th</code> 带 <code>tabIndex=0</code>
+        且气泡是 <code>role="tooltip"</code>，<strong>键盘 Tab 也能读到说明</strong>（可达性）。</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>列头</th><th><code>data-help</code> 内容</th></tr></thead>
+          <tbody>
+            <tr><td>安装</td><td>图例行：<code>check.ok</code> 已安装 / <code>warn.warn</code> 仅配置 /
+                <code>cross.err</code> 未安装</td></tr>
+            <tr><td>技能目录</td><td>图例行：<code>link.ok</code> 已指向统一技能目录 /
+                <code>folder.warn</code> 独立目录 / <code>cross.err</code> 无目录 / <code>minus</code> 不适用</td></tr>
+            <tr><td>MCP</td><td><code>N / M = 已设置端点数 / 声明挂载的端点总数</code> + 色点图例行（四态）</td></tr>
+            <tr><td>Hook</td><td><code>N / M = 已配置事件数 / 支持的事件数（只看有无配置，不看内容）</code>
+                + 色点图例行（四态）+ 「N 档」为分层作用域</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>可发现性由 <code>.th-help</code> 问号图标承担（<code>cursor: help</code> 保留为辅助）。
+        <strong>不得用 <code>✓ ⚠ ✕ −</code> 等符号字符充当图标</strong>（规范 3b：图标一律 SVG，
+        不用字符/emoji），图例一律走上面的图标名标记。</p>
+
+      <p><strong>状态列内容居中</strong>（2026-10-14 用户反馈「安装 技能目录等内容，没有和上面的标题栏
+        居中对齐」）：<code>.agent-list-table</code> 的第 3 / 7 / 8 / 9 列（安装、技能目录、MCP、Hook）
+        <code>th</code> 与 <code>td</code> 一律 <code>text-align: center</code>。</p>
+
+      <blockquote>
+        <p>为什么居中：这四列的单元格是<strong>单枚徽标或短标签</strong>，左对齐时徽标贴着单元格左缘，
+           而列头文字 + 问号图标整体更宽，视觉上徽标「偏左」。居中后列头与内容的轴线一致
+           （实测四列内容中心与列中心偏差均为 0.0px）。名称 / 类型列保持左对齐（长文本），
+           操作列保持右对齐（按钮组）。</p>
+      </blockquote>
+
+      <p><strong>行内状态列的最终形态：<code>.al-ico</code> 图标徽标 + <code>.tag</code> 胶囊</strong>
+        （2026-10-14 三轮定案）。<code>.agent-list-table</code> 的一行里，按「表达什么」分三种形态，
+        <strong>不允许混入纯着色文字</strong>：</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>列</th><th>取值 → 形态</th></tr></thead>
+          <tbody>
+            <tr><td>安装</td><td><strong><code>.al-ico</code> 图标徽标</strong>：<code>check</code>(<code>.ok</code>) /
+                <code>warn</code>(<code>.warn</code>) / <code>cross</code>(<code>.err</code>)</td></tr>
+            <tr><td>技能目录</td><td><strong><code>.al-ico</code> 图标徽标</strong>：<code>link</code>(<code>.ok</code>) /
+                <code>folder</code>(<code>.warn</code>) / <code>cross</code>(<code>.err</code>) / <code>minus</code>(中性)</td></tr>
+            <tr><td>MCP</td><td><code>N/M</code> <code>.tag.ok</code>·<code>.tag.warn</code>·<code>.tag.err</code> /
+                不支持·<code>0</code> 中性 <code>.tag</code></td></tr>
+            <tr><td>Hook</td><td><code>N/M</code> <code>.tag.ok</code>·中性 <code>.tag</code> / 未配置
+                <code>.tag.warn</code> / 未收录·仅审计 中性 <code>.tag</code>；档数注记 <code>.al-scope</code>
+                （<strong>去盒化</strong>裸文本，见下）</td></tr>
+            <tr><td>APP / CLI / CONFIG</td><td><code>.al-metric</code> 圆形计数徽标（可点，另有 <code>.hit</code> 高亮态）</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p><strong><code>.al-scope</code> 去盒化</strong>（2026-10-15 层级重构）：Hook 列的「N 档」分层作用域注记
+        此前是虚线描边徽标，与实底状态胶囊（<code>.tag</code>）并排时同一格出现<strong>两种盒子</strong>：
+        虚线那个并不显得「更弱」，反而像「另一种东西」，视觉噪音与主状态抢权重。档数是元信息
+        （该客户端 Hook 配置分几档作用域），不是主状态；按密集数据表原则（<strong>盒子只承载主信息</strong>）
+        降为 <code>--faint</code> mono 裸文本，紧跟胶囊之后。主次一眼可分：实底胶囊 = 状态，裸文本 = 注记。
+        列宽也因此从 122px 收窄到 104px。</p>
+
+      <p><code>.al-ico</code>：20×20 圆形，与 <code>.al-metric</code> <strong>同尺寸、同边框、同底色族</strong>
+        （量级一致），<code>svg</code> 12×12；变体 <code>.ok</code>/<code>.warn</code>/<code>.err</code>
+        分别取 <code>--ok-bg</code>/<code>--warn-bg</code>/<code>--err-bg</code>。图标取自 <code>ICONS</code>
+        （既有的 lucide 风格集合，为本次新增 <code>link</code>/<code>folder</code>/<code>minus</code>）。</p>
+
+      <blockquote>
+        <p><strong>为什么这两列最终用图标而不是文字胶囊</strong>（演进记录，三轮都是用户反馈驱动）：
+           ① 最初用 <code>.ok-true</code>/<code>.ok-false</code>/<code>.ok-na</code> —— 纯着色文字，
+           与同行 MCP/Hook 的 <code>.tag</code> 胶囊混形态；② 统一成 <code>.tag</code> 胶囊后，用户仍嫌
+           「<strong>胶囊里的文字显得也比较突兀</strong>」：这两列在多数行上取值相同（「已安装」「链接统一目录」），
+           同一串中文逐行重复，又长又抢眼，而同行其它列都是紧凑徽标（数字 / 短标签 <code>2/2</code>），
+           长文字让这两列成了整行最重的元素；③ 最终定为<strong>图标徽标</strong> —— 能一眼扫完，与数字徽标同量级。</p>
+      </blockquote>
+
+      <p><strong>无障碍（不可省）</strong>：每枚 <code>.al-ico</code> 都必须带 <code>title</code>，并紧跟
+        <code>&lt;span class="sr-only"&gt;</code> 完整文本；图标本身 <code>aria-hidden="true"</code>。
+        理由：WCAG 1.4.1 不以图形/颜色单独传达信息。</p>
+
+      <p>⚠️ <strong>不要用 <code>.ok-true</code> / <code>.ok-false</code> / <code>.ok-na</code> 表达行内状态</strong>：
+        那三个类只设 <code>color</code>，是<strong>纯着色文字</strong>（无边框、无底色）。这三个类<strong>仅允许</strong>
+        用在非表格的密集文本处（如弹窗内的 <code>client-state-row</code>）。不变量由
+        <code>RowStatusCellUniformityTest</code> 守住。</p>
+
+      <p><strong>列宽治理：<code>table-layout: fixed</code> + 紧列定宽 + 文本列弹性</strong>
+        （2026-10-14 量化诊断后整改）。默认 <code>auto</code> 布局下，浏览器把表格<strong>全部宽度</strong>
+        按内容比例分摊给每一列。后果：只装一枚 20px 图标徽标的列（安装、技能目录）被分到 89–125px，
+        Hook 列被分到 186px，1440px 窗口下整表约 <strong>65% 是横向空白</strong>，徽标孤零零悬在列中央。
+        解法：<code>.agent-list-table { table-layout: fixed }</code>，8 个紧列给定宽，
+        名称与类型两个文本列不设宽（吸收剩余空间）。</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>列（nth-child）</th><th>定宽</th><th>依据（内容并集 + <code>--sp-4</code>×2）</th></tr></thead>
+          <tbody>
+            <tr><td>安装 (3)</td><td>56px</td><td>20px 徽标 + 20px 内边 + 余量</td></tr>
+            <tr><td>APP (4)</td><td>48px</td><td>24px 计数徽标 + 20px</td></tr>
+            <tr><td>CLI (5)</td><td>48px</td><td>同上</td></tr>
+            <tr><td>CONFIG (6)</td><td>70px</td><td>24px 徽标，表头词更长</td></tr>
+            <tr><td>技能目录 (7)</td><td>82px</td><td>20px 徽标，表头含问号图标</td></tr>
+            <tr><td>MCP (8)</td><td>78px</td><td>54px（<code>27/27</code> 胶囊）+ 20px</td></tr>
+            <tr><td>Hook (9)</td><td>104px</td><td>84px（胶囊 + 档数注记并排，去盒化后实测）+ 20px</td></tr>
+            <tr><td>操作 (10)</td><td>124px</td><td>96px（详情按钮 + kebab）+ 20px</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <blockquote>
+        <p>数值来源：headless Chrome 实测各列各行<strong>内容并集包围盒</strong>最大值 + 单元格左右内边
+           （<code>var(--sp-4)</code> × 2 = 20px），向上取到 4 的倍数。三个窗口宽度（1018 / 1440 / 1680px）
+           均验证：<strong>零溢出、零横向滚动</strong>。<code>fixed</code> 布局下超长内容不会自动换行，
+           故 <code>td { overflow: hidden }</code> 兜底裁切，<code>.al-name</code> / <code>.al-type</code>
+           加 <code>text-overflow: ellipsis</code> 保证长客户端名不撑破定宽。
+           不变量由 <code>ColumnWidthGovernanceTest</code> 守住。</p>
+      </blockquote>
     </section>
 
     <!-- ═══ 2.3d ═══ -->
@@ -981,21 +1173,23 @@
 
       <p>判定实现 <code>core/skill_repo_source.py</code>（只读模块）：</p>
 
-      <table>
-        <thead><tr><th>项</th><th>口径</th></tr></thead>
-        <tbody>
-          <tr><td>适用条件</td><td><code>paths.skills_dir()</code> 是 git 工作区，且该技能<strong>不在</strong>
-            lock 登记里（有登记的技能仍走单技能来源，精确到各自上游仓库）</td></tr>
-          <tr><td>比对基准</td><td><code>origin/&lt;当前分支&gt;</code> 的本地 ref；
-            <strong>不发网络请求</strong>，由 <code>--sync</code> 或用户手动 fetch 更新</td></tr>
-          <tr><td>有更新判据</td><td><code>git diff --name-only HEAD origin/&lt;branch&gt;</code>
-            的路径收敛到技能目录后命中该技能</td></tr>
-          <tr><td>已有最新</td><td>同一 diff 未命中该技能目录</td></tr>
-          <tr><td>本地有未提交修改</td><td><code>unknown</code>（同步必冲突，不能笼统报「可同步」）</td></tr>
-          <tr><td>判不成的任何一种</td><td><code>unknown</code> + 原因（git 缺失 / 非工作区 /
-            detached HEAD / 缺上游 ref / 子命令非 0），<strong>绝不静默算 <code>current</code></strong></td></tr>
-        </tbody>
-      </table>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>项</th><th>口径</th></tr></thead>
+          <tbody>
+            <tr><td>适用条件</td><td><code>paths.skills_dir()</code> 是 git 工作区，且该技能<strong>不在</strong>
+              lock 登记里（有登记的技能仍走单技能来源，精确到各自上游仓库）</td></tr>
+            <tr><td>比对基准</td><td><code>origin/&lt;当前分支&gt;</code> 的本地 ref；
+              <strong>不发网络请求</strong>，由 <code>--sync</code> 或用户手动 fetch 更新</td></tr>
+            <tr><td>有更新判据</td><td><code>git diff --name-only HEAD origin/&lt;branch&gt;</code>
+              的路径收敛到技能目录后命中该技能</td></tr>
+            <tr><td>已有最新</td><td>同一 diff 未命中该技能目录</td></tr>
+            <tr><td>本地有未提交修改</td><td><code>unknown</code>（同步必冲突，不能笼统报「可同步」）</td></tr>
+            <tr><td>判不成的任何一种</td><td><code>unknown</code> + 原因（git 缺失 / 非工作区 /
+              detached HEAD / 缺上游 ref / 子命令非 0），<strong>绝不静默算 <code>current</code></strong></td></tr>
+          </tbody>
+        </table>
+      </div>
 
       <p>三条纪律：<strong>只读</strong>（只跑 <code>rev-parse</code> / <code>diff</code> /
       <code>status</code> / <code>log</code>，绝不 pull、fetch、checkout）；
@@ -1090,27 +1284,47 @@
       <p><strong>为什么要有这一页</strong>：本工具的 Skills / MCP 是它自己的模型（符号链接 + 端点库），
       而 DSH（DeepSeek Harness）的插件是另一套：cordis 载入器的 bundle 体系。用户在 DSH 里装了插件、
       改了补丁层，却没有一个地方能一眼看清「现在到底会加载什么」。本页补这个空白。
-      <strong>它是第八页</strong>，位于「变更详情」之后、「设置」之前（系统域的最后一项；设置是通用配置，放最末）。</p>
+      <strong>它是第八页</strong>，归入<strong>「管理」组</strong>（位于「Hook」之后、「系统」组之前）。</p>
+
+      <p><strong>分组的判据是「什么在支配什么」</strong>：管理组各项都是「本工具去检查和管理的对象」
+      （IDE/Agent / Skills / MCP / Hook / DSH 插件 各有自己的清单与启用状态），而系统组的「变更详情」
+      是审计输出、「设置」是本工具的通用配置——它们描述的是<strong>工具自身</strong>而非被管理对象。
+      DSH 插件虽然来自另一套 bundle 模型，但与 Skills/MCP 同为「装了哪些、哪些在生效」的资源清单，
+      因此属于管理组，不应混进系统域。</p>
 
       <p><strong>三种状态必须分开显示</strong>（这是本页存在的全部理由）：</p>
 
-      <table>
-        <thead><tr><th>状态</th><th>判据</th><th>标签</th><th>为什么不能合并</th></tr></thead>
-        <tbody>
-          <tr><td><code>enabled</code></td><td>在 <code>package.json</code> 的 <code>dsh.profile.bundles</code> 里</td>
-            <td><code>tag ok</code> 已启用</td><td>只有它才会被真正加载</td></tr>
-          <tr><td><code>installed</code></td><td>在 <code>dependencies</code> 里但<strong>不在</strong> <code>bundles</code> 里</td>
-            <td><code>tag warn</code> 未启用</td><td>「装了」≠「在用」；合并会让用户以为占着上下文</td></tr>
-          <tr><td><code>broken</code></td><td><code>link:</code> 依赖的目标目录已不存在</td>
-            <td><code>tag err</code> 来源失效</td><td>DSH 载入会失败；合并会让用户以为一切正常</td></tr>
-        </tbody>
-      </table>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>状态</th><th>判据</th><th>标签</th><th>为什么不能合并</th></tr></thead>
+          <tbody>
+            <tr><td><code>enabled</code></td><td>在 <code>package.json</code> 的 <code>dsh.profile.bundles</code> 里</td>
+              <td><code>tag ok</code> 已启用</td><td>只有它才会被真正加载</td></tr>
+            <tr><td><code>installed</code></td><td>在 <code>dependencies</code> 里但<strong>不在</strong> <code>bundles</code> 里</td>
+              <td><code>tag warn</code> 未启用</td><td>「装了」≠「在用」；合并会让用户以为占着上下文</td></tr>
+            <tr><td><code>broken</code></td><td><code>node_modules/&lt;name&gt;</code> 里没有该包（且非 <code>builtin</code>），
+                <strong>或</strong> <code>link:</code> 目标目录已不存在</td>
+              <td><code>tag err</code> 来源失效</td><td>DSH 载入会失败；合并会让用户以为一切正常</td></tr>
+          </tbody>
+        </table>
+      </div>
 
-      <p><strong><code>broken</code> 必须独立判定</strong>：pnpm 的 link 依赖在源码目录被删除后，
-      <code>node_modules/&lt;name&gt;</code> 常常还留着（旧副本或指过去的符号链接），于是「有 version」
-      会放行。实测本机 <code>dsh-plugin-model-guard</code> 就是 <code>link:</code> 到
-      skill-mcp-studio 仓库的工作副本——这种「开发者自己的插件」恰恰最容易在挪目录后静默失效。
-      所以 <code>broken</code> 判的是 <strong>link 目标存在性</strong>，不是 version 缺失。</p>
+      <p><strong><code>broken</code> 的实际判据是两条并存</strong>（此前本段与 CHANGELOG 都误写成
+      「只判 link 目标存在性、不以 version 缺失兜底」，与 <code>core/dsh_plugins.py</code> 实现不符，已勘正）：</p>
+      <ol>
+        <li><code>classify_plugin()</code>：<code>version is None and kind != "builtin"</code> → <code>broken</code>。
+          这是<strong>主路径</strong>，覆盖「清单里声明了、但根本没装进 <code>node_modules</code>」这种配置不一致
+          （实测本机 <code>dsh-better-sidebar</code> / <code>dsh-context</code> / <code>dshmarket</code>
+          三个就是这类：在 <code>bundles</code> 里、但不在 <code>dependencies</code>、<code>node_modules</code> 也没有）。</li>
+        <li><code>scan_profile()</code> 再额外判一次 <code>target_missing</code>：<code>link:</code> 依赖的目标目录
+          不存在时强制置 <code>broken</code>。这条是<strong>补充</strong>，因为 pnpm 的 link 在源码目录被删除后
+          <code>node_modules/&lt;name&gt;</code> 可能还留着（旧副本或指过去的符号链接），version 读得到却被放行。</li>
+      </ol>
+      <blockquote>
+        <p>两条加起来才等价于「这个插件载入会失败」。<strong>只判第 2 条会漏掉第 1 类的静默失效</strong>，
+           所以不要按旧表述去「修正」代码。实测 <code>dsh-plugin-model-guard</code> 是
+           <code>link:</code> 到 skill-mcp-studio 仓库的工作副本——这种「开发者自己的插件」恰恰最容易在挪目录后静默失效。</p>
+      </blockquote>
 
       <p><strong>类型三分类</strong>（<code>kind</code>）：<code>builtin</code>（<code>@deepseek-ai/*</code>，
       随 DSH 本体分发）/ <code>local</code>（<code>link:</code> 指向本地源码）/ <code>registry</code>
@@ -1129,14 +1343,61 @@
       </ul>
 
       <p><strong>布局</strong>：顶部三计数（已启用 / 装了未启用 / 来源失效，各自独立不合并成总数，
-      沿用 <code>.upg-stats</code> 数字锚点）+ 一行来源与口径说明；下方每个 profile 一张
-      <code>.settings-card</code>，卡头是 profile 名与「N 个插件 / 启用 M」，次行是 patch 结构，
-      再下是 <code>.mcp-table</code>（列：插件 / 类型 / 状态 / 版本 / 来源）。profile 无插件时给
-      <code>.hint</code> 说明而不是空表。</p>
+      沿用 <code>.upg-stats</code> 数字锚点）+ 一行来源与口径说明；下方是<strong>一张</strong>
+      <code>.settings-card</code>，卡头是「全部插件 · N 个唯一插件（去重前 M 条）」，次行是各 profile
+      的摘要（插件数 / 启用数 / patch 结构），再下是 <code>.mcp-table</code>
+      （列：插件 / 类型 / 状态 / 版本 / profile）。全部 profile 均无插件时给 <code>.hint</code> 而不是空表。</p>
+
+      <p><strong>按插件名去重（v0.31.4 之后、尚未发版）</strong>：同一插件常被多个 profile 同时声明——
+      实测 <code>@deepseek-ai/dsh-base</code>、<code>@deepseek-ai/dsh-web-app</code> 在 <code>desktop</code>
+      与 <code>web</code> 里都出现，去重前 16 条、去重后 14 个唯一插件。逐 profile 分卡片会让同一插件
+      重复出现、看起来像装了两份，也无法横向比较，因此改为<strong>一行一个插件</strong>，由
+      <code>profile</code> 列标出它在哪些 profile 下被声明（多值用多个 <code>.tag</code> 并排）。</p>
+
+      <p><strong>状态列在跨 profile 不一致时的口径</strong>：以<strong>最严重</strong>的状态为准显示
+      （<code>broken</code> &gt; <code>installed</code> &gt; <code>enabled</code>，安全优先），并追加
+      「各 profile 不一致」字样，<code>title</code> 给出逐 profile 明细。<strong>不得静默取其一</strong>——
+      那会让「web 下失效、desktop 下正常」被误读成全平台正常。当前实测数据里所有共有插件状态一致，
+      该分支是为将来出现分歧时准备的。</p>
+
+      <p><strong>「来源」列并入「类型」列</strong>：<code>source_path</code> 此前恒为空
+      （16 个插件无一有值），却固定占一列宽度。改为跟在类型标签后面：有值才显示（超长省略号 +
+      <code>title</code> 给全路径），无值时不占位。这样常见情况下表格少一列、更紧凑，
+      同时不丢失 <code>link:</code> 依赖的溯源信息。</p>
 
       <p><strong>数据来源</strong>：<code>--dsh-plugins --format json</code>（只读出口，排在通用快照
       路由之前，否则 <code>--format json</code> 会被快照出口截走）。进页时按需拉一次并缓存到
       <code>DSH_DATA</code>，「重新读取」按钮强制重拉；已拉过不重复拉，避免每次切页起子进程。</p>
+
+      <p><strong>侧栏计数徽标（<code>.nav-item .count</code>）</strong>：管理组五个导航项右侧的计数徽标
+      <strong>口径必须一致</strong>——显示「该页要管理的对象<strong>总数</strong>」，不是筛选后的可见数、
+      也不是启用数：</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>导航项</th><th>取值</th><th>语义</th></tr></thead>
+          <tbody>
+            <tr><td>IDE / Agent</td><td><code>visible.length</code>（<code>install_state !== "none"</code>）</td><td>受管客户端数</td></tr>
+            <tr><td>Skills</td><td><code>skills.skill_count</code></td><td>统一技能数</td></tr>
+            <tr><td>MCP</td><td><code>endpoints.length</code></td><td>MCP 端点条目数</td></tr>
+            <tr><td>Hook</td><td><code>_hooksEntries().length</code></td><td>Hook 条目数</td></tr>
+            <tr><td>DSH 插件</td><td><code>summary.plugins</code></td><td>插件总数（已启用 + 装了未启用 + 来源失效）</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>DSH 插件这一项有两个<strong>特例</strong>，都是「数据不在主快照里」直接导致的，不是实现瑕疵：</p>
+      <ol>
+        <li><strong>未进页前显示初始 <code>0</code></strong>：其余四项来自主快照，启动即有值；DSH 数据进页才
+          按需拉取（见上「数据来源」），所以徽标会停在 HTML 里写死的 <code>0</code>，直到用户
+          第一次点进该页。这与 <code>Skills</code> 启动瞬间的 <code>0</code> 是同一种过渡态。</li>
+        <li><strong>读取失败/无 profile 时显示 <code>-</code>（普通连字符）而非 <code>0</code></strong>：
+          <code>0</code> 在语义上是「确实一个插件都没有」，而失败是「不知道有几个」。二者必须可区分，
+          否则「DSH 没装」会被误读成「装了但没插件」。判定集中在 <code>setDshNavCount()</code> 一个函数里。
+          占位符用 U+002D 普通连字符，<strong>不用 em-dash</strong>——徽标数字位也是可见文案，
+          受 §3「禁用 em-dash」约束（此处原先误用了长破折号，已随本次修正）。</li>
+      </ol>
+      <p class="spec-note">由 <code>tests/test_dsh_plugins.py::test_nav_count_badge_*</code> 守住上述口径与失败态。</p>
     </section>
 
     <section id="s2-4">
@@ -1314,23 +1575,67 @@
     <section id="s2-10">
       <h3 id="s2-10">2.10 设置页（<code>.settings-tab</code> / <code>.settings-card</code>）<a class="anchor" href="#s2-10" aria-label="锚点">#</a></h3>
       <p>设置页用分段 tab（<code>.settings-tab</code>）+ 卡片分组（<code>.settings-card</code>）。
-        <strong>四个 tab 与各自的卡片归属</strong>（新增设置项必须落到下表的某一 tab，不要新开 tab）：</p>
+        <strong>五个 tab 与各自的卡片归属</strong>（新增设置项必须落到下表的某一 tab，不要新开 tab）：</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>tab</th><th>卡片</th></tr></thead>
           <tbody>
-            <tr><td>通用 <code>appearance</code></td><td>外观（主题 / 缩放）、<strong>后台巡检（定时检查）</strong>、Skills 统一目录</td></tr>
-            <tr><td>Skill <code>general</code></td><td>技能使用统计（自动统计间隔）</td></tr>
+            <tr><td>通用 <code>appearance</code></td><td>外观（主题 / 缩放）、<strong>后台巡检（定时检查）</strong>、
+                Skills 统一目录、<strong>配置导入 / 导出</strong>（v0.30.0）、关于</td></tr>
+            <tr><td>Skill <code>general</code></td><td>技能使用统计（自动统计间隔）、
+                <strong>市场源</strong>（默认 skills.sh 可删改 + 自定义远端源，v0.31.0：<code>#market-sources-card</code>，
+                源行 + 添加表单，读写经 CLI）、<strong>GitHub API Token</strong>（v0.31.0：<code>#github-token-card</code>，
+                状态行脱敏 + password 输入 + 保存/清除，读写经 CLI）</td></tr>
+            <tr><td>通用 <code>general</code>（WebDAV，v0.31.1）</td><td><strong>远程同步</strong>
+                （<code>#webdav-sync-card</code>，规划中）：远端 URL + 凭据状态行（脱敏）、推/拉按钮（写操作需确认）、
+                同步范围说明。同步范围固定为个人配置层（<code>local_overrides</code> / <code>market_sources</code> /
+                <code>discovered_tools</code> / <code>skill_versions</code>），<strong>凭据与技能包本体永不同步</strong></td></tr>
             <tr><td>IDE / Agent <code>agents</code></td><td>IDE / Agent 默认路径；<strong>卡片/列表上的能力摘要</strong>（Skills / MCP / Hook 三行，无需点开详情）；客户端详情内的「Hook 配置」（分层作用域 / 命名规范 / 支持事件）</td></tr>
             <tr><td><strong>Hook <code>hooks</code></strong></td><td>要写入的 Hook 事件（勾选，按分类分组）</td></tr>
-            <tr><td>MCP <code>mcp</code></td><td>MCP 端点库</td></tr>
+            <tr><td>MCP <code>mcp</code></td><td><strong>活动端点</strong>（下拉切换）、<strong>自动发现</strong>（开关 + 扫描路径只读）、MCP 端点库</td></tr>
           </tbody>
         </table>
       </div>
       <p><strong>后台巡检（定时检查）</strong>：开关 + 间隔（5 / 15 / 30 / 60 / 120 分钟）。取值<strong>不在 localStorage</strong>，
         而是写进 <code>config.yaml</code> 的 <code>settings</code> 段（<code>patrol_enabled</code> / <code>patrol_interval_minutes</code>）
         —— 因为 Rust 托盘的「后台巡检」勾选项读同一份值，两处必须同源。读写一律经 CLI
-        <code>--get-setting</code> / <code>--set-setting</code>（后者带备份 → 原子写 → 校验 → 回滚）。</p>
+        <code>--get-setting</code> / <code>--set-setting</code>（后者带备份 → 原子写 → 校验 → 回滚），
+        GUI 不直接改配置文件。间隔由 CLI 钳到 ≥5 分钟，界面需回读落盘值而不是假定已生效。</p>
+
+      <p><strong>MCP tab（<code>mcp</code>）</strong>：三张卡片（2026-10-15 补齐 PRD §10 #1）。</p>
+      <ol>
+        <li><strong>活动端点</strong>：<code>&lt;select&gt;</code> 下拉，列出 <code>settings.endpoints</code> 全部 key。
+          切换后弹确认框（影响所有客户端），确认后经 CLI <code>--set-active-profile &lt;key&gt;</code> 写 overlay。
+          空值 = 清除活动端点。</li>
+        <li><strong>自动发现</strong>：开关（<code>.seg-btn</code>）+ 扫描路径只读展示
+          （<code>&lt;code class="mono"&gt;</code> 每行一条）。切换后经 CLI
+          <code>--set-auto-discover enabled=&lt;true|false&gt;</code> 写 overlay。扫描路径与排除清单在
+          <code>config.yaml</code> 的 <code>auto_discover</code> 段，不经 GUI 编辑。</li>
+        <li><strong>MCP 端点库</strong>：端点 CRUD（增删改），此前已有。</li>
+      </ol>
+      <blockquote>
+        <p>为什么活动端点排在端点库之前：「选哪个端点活动」是比「管理端点库」更上层的操作。
+           两条新 CLI 命令走 overlay 路径（与 <code>--set-setting</code> 同模式），早返回不跑审计，
+           均在 Rust <code>run_cli</code> 白名单内（不是重定向命令，不进 <code>DENIED_FLAG_PREFIXES</code>）。</p>
+      </blockquote>
+
+      <p><strong>配置导入 / 导出卡片</strong>（v0.30.0 #3，<code>#cfg-port-card</code>，通用 tab，
+        排在后台巡检与关于之间）：换机 / 分享的配置迁移入口。导出为单文件、导入前预览差异并要求确认，
+        读写一律经 CLI（GUI 不直接改配置文件）。</p>
+
+      <p><strong>市场源卡片</strong>（v0.31.0，<code>#market-sources-card</code>，Skill tab）：默认
+        <code>skills.sh</code> 源可删改，并可添加自定义远端源；卡片为「源行 + 添加表单」结构，
+        读写经 CLI。</p>
+
+      <p><strong>GitHub API Token 卡片</strong>（v0.31.0，<code>#github-token-card</code>，Skill tab）：
+        状态行<strong>脱敏</strong> + password 输入 + 保存 / 清除，读写经 CLI。
+        Token 用于避免 GitHub API 限流；界面永不回显明文。</p>
+
+      <p><strong>远程同步卡片</strong>（v0.31.1，<code>#webdav-sync-card</code>，通用 tab，规划中）：
+        远端 URL + 凭据状态行（脱敏）、推 / 拉按钮（写操作需确认）、同步范围说明。
+        同步范围固定为<strong>个人配置层</strong>（<code>local_overrides</code> / <code>market_sources</code> /
+        <code>discovered_tools</code> / <code>skill_versions</code>），<strong>凭据与技能包本体永不同步</strong>。</p>
+
       <p><strong>Hook tab（<code>hooks</code>）</strong>：<strong>管理「要写入哪些生命周期事件」</strong>，
         不是展示各 IDE 的接入状态。理由：Skill / MCP 两个 tab 管的都是配置本身，Hook 也应一致；
         各客户端接入状态与写入/移除属于 <strong>Hook 业务页</strong>。</p>
@@ -1426,7 +1731,10 @@
                 <td>若写了 <code>outline: none</code>，同一条规则里必须补 <code>box-shadow</code> 焦点态</td>
                 <td>否则键盘用户完全看不到焦点</td></tr>
             <tr><td><strong>尊重减少动效</strong></td>
-                <td>所有 <code>animation</code> / <code>transition</code> 在 <code>@media (prefers-reduced-motion: reduce)</code> 里关闭</td>
+                <td><strong>所有</strong> <code>animation</code> / <code>transition</code> 在
+                    <code>@media (prefers-reduced-motion: reduce)</code> 里关闭；实现用<strong>通配兜底</strong>
+                    <code>*, *::before, *::after { animation-duration:.01ms!important; transition-duration:.01ms!important }</code>
+                    + 具体选择器补偿</td>
                 <td>前庭敏感用户会因动效不适</td></tr>
             <tr><td><strong>触达目标</strong></td>
                 <td>可点元素最小 32px 高（弹框内）/ 44px（移动端）</td>
@@ -1547,6 +1855,7 @@
       <span>来源：<code>docs/DESIGN.md</code></span>
       <span>可读版：<code>docs/DESIGN.html</code></span>
       <span>本页自身遵守本规范（token 取值、深浅双主题、焦点可见、减少动效）</span>
+      <span class="spec-note">generated from docs/DESIGN.md @ 072c675</span>
     </footer>
 
   </main>
