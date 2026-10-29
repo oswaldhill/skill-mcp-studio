@@ -143,12 +143,12 @@ Do not delete legacy MCP entries automatically. Remove them only after the new e
 
 ## Dashboard (管理台，可写)
 
-`gui/dashboard.html` renders an `--management` snapshot (see below) as a five-page management console: overview / IDE·Agent / Skills / MCP / Settings. Beyond the read-only client × state matrix (green / yellow / red / gray), it drives **write operations** through the Tauri `run_cli` bridge with the unified backup → atomic write → re-parse validate → rollback safety chain: fix Skills links, write unified MCP config, per-skill enable/disable, and endpoint CRUD. A Tauri shell in `src-tauri/` wraps the same dashboard as a desktop `.app`; the browser-only preview shows a read-only unconfigured sample state (the real write commands require the `window.__TAURI__` shell). Repair is therefore available both from the CLI and the management console; see `src-tauri/BUILD.md`.
+`gui/dashboard.html` renders an `--management` snapshot (see below) as an eight-page management console: overview / IDE·Agent / Skills / MCP / Hooks / Changes / DSH Plugins / Settings. Beyond the read-only client × state matrix (green / yellow / red / gray), it drives **write operations** through the Tauri `run_cli` bridge with the unified backup → atomic write → re-parse validate → rollback safety chain: fix Skills links, write unified MCP config, per-skill enable/disable, and endpoint CRUD. A Tauri shell in `src-tauri/` wraps the same dashboard as a desktop `.app`; the browser-only preview shows a read-only unconfigured sample state (the real write commands require the `window.__TAURI__` shell). Repair is therefore available both from the CLI and the management console; see `src-tauri/BUILD.md`.
 
 ## Validation
 
 ```bash
-python3 -m pytest tests/ -q
+python3 -m unittest discover -s tests -p 'test_*.py'
 python3 scan.py --list-profiles
 python3 scan.py --skills --mcp --hooks --probe-mcp --report
 ```

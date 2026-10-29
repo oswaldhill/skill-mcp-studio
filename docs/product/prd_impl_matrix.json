@@ -844,7 +844,7 @@
           "value": "prefers-reduced-motion"
         }
       ],
-      "note": "reduced-motion 覆盖动画；aria-hidden 39 处"
+      "note": "reduced-motion 覆盖动画；aria-hidden 43 处"
     },
     {
       "id": "6.6-01",

@@ -170,16 +170,142 @@ class TestAccessibilityContract(unittest.TestCase):
                 )
 
     def test_reduced_motion_actually_disables_animation(self):
-        """光有 media query 不够，里面必须真的关掉动画。"""
+        """光有 media query 不够，里面必须真的关掉动画/过渡。
+
+        认可两种写法：逐选择器 `animation: none` / `transition: none`，或通配兜底
+        `*, *::before, *::after { animation-duration:.01ms!important; ... }`。
+        两者都必须在块内出现且带实际关闭效果。
+        """
         for name, css in self._pages():
             with self.subTest(page=name):
                 idx = css.find("prefers-reduced-motion")
-                block = css[idx: idx + 400] if idx >= 0 else ""
-                self.assertTrue(
+                block = css[idx: idx + 900] if idx >= 0 else ""
+                closing = (
                     "animation: none" in block or "animation:none" in block
-                    or "transition: none" in block or "transition:none" in block,
+                    or "transition: none" in block or "transition:none" in block
+                    or "animation-duration" in block
+                )
+                self.assertTrue(
+                    closing,
                     f"{name} 的 prefers-reduced-motion 块没有实际关闭动画/过渡",
                 )
+
+
+class TestReducedMotionCoverage(unittest.TestCase):
+    """减少动效必须**覆盖全部**含过渡/动画的选择器，不是「命中一个就过」。
+
+    旧断言 `test_reduced_motion_actually_disables_animation` 只要 400 字符块里
+    出现一次 `animation: none` 就通过——实测 53 个含 transition 的选择器里只覆盖
+    14 个（漏 39 个）它依然全绿。规范 §3b 承诺的是「所有动画/过渡都关闭」，
+    这是用户可感知的承诺，必须按集合包含来判。
+    """
+
+    def _selectors_with_motion(self):
+        css = HTML
+        found = set()
+        for m in re.finditer(
+            r"([^{}]+)\{([^{}]*)\}", css
+        ):
+            sel, body = m.group(1), m.group(2)
+            if "transition" in body or "animation" in body:
+                for part in sel.split(","):
+                    part = part.strip()
+                    # 只取简单类选择器（跳过 @media / at-rule 前缀与伪元素噪声）
+                    if part.startswith(".") and " " not in part and "{" not in part:
+                        found.add(part.split(":")[0])
+        return found
+
+    def test_reduced_motion_block_covers_all_animated_selectors(self):
+        css = HTML
+        idx = css.find("prefers-reduced-motion")
+        self.assertGreaterEqual(idx, 0, "缺少 prefers-reduced-motion 块")
+        block = css[idx: idx + 2000]
+        animated = self._selectors_with_motion()
+        self.assertGreater(len(animated), 20, "解析不到含动效的选择器，断言本身失效了")
+        has_wildcard = re.search(r"\*,\s*\*::before", block) or "*,\n" in block
+        if has_wildcard:
+            # 通配兜底 `*, *::before, *::after` 已覆盖全部元素，视为达标。
+            # 但仍要求它带 !important，否则会被更高优先级的具体规则压过。
+            seg = block[block.find("*"): block.find("*") + 220]
+            self.assertIn(
+                "!important", seg,
+                "通配兜底未带 !important，会被具体选择器的 transition 声明压过，实际不生效",
+            )
+            return
+        missing = sorted(s for s in animated if s not in block)
+        self.assertEqual(
+            [], missing,
+            f"减少动效块既无通配兜底、又漏掉这些动效选择器: {missing[:12]}；"
+            "规范 §3b 承诺的是「所有动画/过渡都关闭」",
+        )
+
+
+class TestTokenResolution(unittest.TestCase):
+    """token 取值必须可解析：不许自引用、不许深色主题漏定义。
+
+    实测缺陷（2026-10-28 审计）：
+    - `--shadow-accent-hover: var(--shadow-accent-hover)` 与
+      `--shadow-knob: var(--shadow-knob)` 是自引用循环 → 计算值 invalid，
+      浅色下主按钮悬停光晕与开关旋钮阴影完全消失（深色反而是对的）。
+    - `--err-strong` 只在浅色定义、深色块漏定义 → 深色下继承浅色深红底，
+      配 `--on-accent` 近黑字对比度极低。
+    旧 TokenRegistryCompletenessTest 只校验「名字在 spec 里出现过」，两者都看不见。
+    """
+
+    def _token_decls(self, block):
+        out = {}
+        for m in re.finditer(r"(--[a-z0-9-]+)\s*:\s*([^;]+);", block):
+            out.setdefault(m.group(1), []).append(m.group(2).strip())
+        return out
+
+    def _light_and_dark_blocks(self):
+        css = HTML
+        # 浅色：第一个 `:root {`；深色：真正的选择器 `html.dark {`。
+        # 注意不能用 css.find("html.dark") —— 文件头注释里就有 "html.dark 覆盖
+        # （Light/Dark/System）" 这句，会先命中注释、把浅色块当成深色块。
+        light_m = re.search(r"^\s*:root\s*\{", css, re.M)
+        self.assertIsNotNone(light_m, "找不到 :root 块")
+        light = css[light_m.end(): css.find("}", light_m.end())]
+        dark_m = re.search(r"^\s*html\.dark\s*\{", css, re.M)
+        self.assertIsNotNone(dark_m, "找不到 html.dark 深色主题块")
+        dark = css[dark_m.end(): css.find("}", dark_m.end())]
+        return light, dark
+
+    def test_no_self_referencing_token(self):
+        for m in re.finditer(r"(--[a-z0-9-]+)\s*:\s*var\((--[a-z0-9-]+)\)\s*;", HTML):
+            self.assertNotEqual(
+                m.group(1), m.group(2),
+                f"{m.group(1)} 用 var() 指向自身，计算值无效（自引用循环）",
+            )
+
+    def test_dark_theme_redefines_strong_error_token(self):
+        light, dark = self._light_and_dark_blocks()
+        self.assertIn("--err-strong", light, "浅色未定义 --err-strong")
+        self.assertIn(
+            "--err-strong", dark,
+            "深色主题未重定义 --err-strong —— 会继承浅色深红底，"
+            "配 --on-accent 近黑字对比度不足",
+        )
+
+    def test_no_duplicate_token_declaration_in_same_block(self):
+        for label, block in (("light", self._light_and_dark_blocks()[0]),
+                             ("dark", self._light_and_dark_blocks()[1])):
+            subs = {}
+            for m in re.finditer(r"(--[a-z0-9-]+)\s*:", block):
+                subs[m.group(1)] = subs.get(m.group(1), 0) + 1
+            dups = {k: v for k, v in subs.items() if v > 1}
+            self.assertEqual(
+                {}, dups,
+                f"{label} 块里重复声明了 token: {dups}（后者覆盖前者，易掩盖旧值）",
+            )
+
+    def test_no_negated_var_without_calc(self):
+        """`-var(--x)` 是非法 CSS，整条声明会被丢弃；必须写 `calc(-1 * var(--x))`。"""
+        bad = re.findall(r"[:\s]-var\(--[a-z0-9-]+\)", HTML)
+        self.assertEqual(
+            [], bad,
+            f"发现 `-var(...)` 语法非法（CSS 不允许负号前置函数），应改 calc(-1 * var(...)): {bad[:5]}",
+        )
 
 
 class TestSemanticModifierTokens(unittest.TestCase):

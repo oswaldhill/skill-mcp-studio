@@ -648,13 +648,22 @@ DSH 里装了插件、改了补丁层，却没有一个地方能一眼看清「�
 |---|---|---|---|
 | `enabled` | 在 `package.json` 的 `dsh.profile.bundles` 里 | `tag ok` 已启用 | 只有它才会被真正加载 |
 | `installed` | 在 `dependencies` 里但**不在** `bundles` 里 | `tag warn` 未启用 | 「装了」≠「在用」；合并会让用户以为占着上下文 |
-| `broken` | `link:` 依赖的目标目录已不存在 | `tag err` 来源失效 | DSH 载入会失败；合并会让用户以为一切正常 |
+| `broken` | `node_modules/<name>` 里没有该包（且非 `builtin`），**或** `link:` 目标目录已不存在 | `tag err` 来源失效 | DSH 载入会失败；合并会让用户以为一切正常 |
 
-**`broken` 必须独立判定**：pnpm 的 link 依赖在源码目录被删除后，
-`node_modules/<name>` 常常还留着（旧副本或指过去的符号链接），于是「有 version」
-会放行。实测本机 `dsh-plugin-model-guard` 就是 `link:` 到 skill-mcp-studio 仓库
-的工作副本——这种「开发者自己的插件」恰恰最容易在挪目录后静默失效。所以
-`broken` 判的是 **link 目标存在性**，不是 version 缺失。
+**`broken` 的实际判据是两条并存**（此前本段与 CHANGELOG 都误写成「只判 link 目标
+存在性、不以 version 缺失兜底」，与 `core/dsh_plugins.py` 实现不符，已勘正）：
+
+1. `classify_plugin()`：`version is None and kind != "builtin"` → `broken`。这是
+   **主路径**，覆盖「清单里声明了、但根本没装进 `node_modules`」这种配置不一致
+   （实测本机 `dsh-better-sidebar` / `dsh-context` / `dshmarket` 三个就是这类：
+   在 `bundles` 里、但不在 `dependencies`、`node_modules` 也没有）。
+2. `scan_profile()` 再额外判一次 `target_missing`：`link:` 依赖的目标目录不存在
+   时强制置 `broken`。这条是**补充**，因为 pnpm 的 link 在源码目录被删除后
+   `node_modules/<name>` 可能还留着（旧副本或指过去的符号链接），version 读得到
+   却被放行。
+
+两条加起来才等价于「这个插件载入会失败」。**只判第 2 条会漏掉第 1 类的静默失效**，
+所以不要按旧表述去"修正"代码。
 
 **类型三分类**（`kind`）：`builtin`（`@deepseek-ai/*`，随 DSH 本体分发）/
 `local`（`link:` 指向本地源码）/ `registry`（npm 第三方包）。三者在页面上用中性
@@ -678,7 +687,7 @@ DSH 里装了插件、改了补丁层，却没有一个地方能一眼看清「�
 （列：插件 / 类型 / 状态 / 版本 / profile）。全部 profile 均无插件时给 `.hint`
 而不是空表。
 
-**按插件名去重（v0.31.5 调整）**：同一插件常被多个 profile 同时声明——
+**按插件名去重（v0.31.4 之后、尚未发版）**：同一插件常被多个 profile 同时声明——
 实测 `@deepseek-ai/dsh-base`、`@deepseek-ai/dsh-web-app` 在 `desktop` 与 `web`
 里都出现，去重前 16 条、去重后 14 个唯一插件。逐 profile 分卡片会让同一插件
 重复出现、看起来像装了两份，也无法横向比较，因此改为**一行一个插件**，由
@@ -1147,7 +1156,7 @@ null 软删除，**不绑定活动端点**）。两处同源：概览页显示�
 |---|---|---|
 | 键盘可达 | 交互元素保留 `:focus-visible` 外环（`2px solid --accent`，偏移 2px） | 无鼠标用户需要知道焦点在哪 |
 | 抑制 outline 必须给替代 | 若写了 `outline: none`，同一条规则里必须补 `box-shadow` 焦点态 | 否则键盘用户完全看不到焦点 |
-| 尊重减少动效 | 所有 `animation` / `transition` 在 `@media (prefers-reduced-motion: reduce)` 里关闭 | 前庭敏感用户会因动效不适 |
+| 尊重减少动效 | **所有** `animation` / `transition` 在 `@media (prefers-reduced-motion: reduce)` 里关闭；实现用通配兜底 `*, *::before, *::after { animation-duration:.01ms!important; transition-duration:.01ms!important }` + 具体选择器补偿 | 前庭敏感用户会因动效不适 |
 | 触达目标 | 可点元素最小 32px 高（弹框内）/ 44px（移动端） | 误触率 |
 | 不靠颜色单独表意 | 状态同时有文字或形状（如变更卡的状态条 + 文字详情） | 色盲可用 |
 | 图标用 SVG | 不用 emoji 当 UI 图标；统一 `viewBox="0 0 24 24"` | 跨平台渲染一致 |

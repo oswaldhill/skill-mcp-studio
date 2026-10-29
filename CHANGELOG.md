@@ -7,6 +7,38 @@
 
 ## [Unreleased]
 
+### 修复
+
+- **DSH 插件表按插件名去重**（用户反馈「同一插件出现两次」）：16 条记录里只有
+  14 个唯一插件，`@deepseek-ai/dsh-base`、`@deepseek-ai/dsh-web-app` 在 desktop 与
+  web 两个 profile 里都声明。改为按插件名聚合成一行一个插件，`profile` 列标出归属。
+  状态跨 profile 不一致时取最严重者（`broken` > `installed` > `enabled`）并显式
+  标注「各 profile 不一致」，不静默取其一。「来源」列并入「类型」列（该列此前
+  16 个插件无一有值却固定占宽）。
+- **DSH 插件导航项补计数徽标**：与同组四项口径对齐，取 `summary.plugins`（总数，
+  非启用数）；读取失败或无 profile 时显示普通连字符 `-`（非 em-dash、非 `0`）。
+- **DSH 插件从「系统」组移入「管理」组**：它是可管理对象，不是系统信息。
+- **浅色主题两个阴影 token 自引用修复**：`--shadow-accent-hover` 与 `--shadow-knob`
+  此前写成 `var(...)` 指向自身，计算值无效，导致主按钮悬停光晕与开关旋钮阴影在
+  浅色下完全消失（深色主题反而是正确值）。补上真实取值。
+- **`.sr-only` 的 `margin: -var(--sp-0a)` 语法非法**：CSS 不允许负号前置 `var()`，
+  整条声明被丢弃。改为 `calc(-1 * var(--sp-0a))`。
+- **深色主题补 `--err-strong`**（此前漏定义、继承浅色深红值，配 `--on-accent` 近黑
+  字对比度极低）；并删掉深色块里 `--shadow-err` / `--shadow-err-hover` 的重复声明。
+- **`prefers-reduced-motion` 覆盖率补齐**：规范承诺「所有动画/过渡都关闭」，实测
+  53 个含过渡的选择器里只覆盖了 14 个。改用通配兜底 + 具体补偿，不再逐个列举。
+
+### 文档
+
+- **`broken` 状态判据勘正**（`DESIGN.md` §2.3g、`core/dsh_plugins.py` docstring、
+  本节 v0.31.4 段）：此前三处都写「`broken` 独立判 `link:` 目标存在性、不以
+  version 缺失兜底」，与实现不符——实现是**两条并存**：`classify_plugin` 以
+  `version is None and kind != "builtin"` 为主路径（覆盖「清单声明了却没装」），
+  `scan_profile` 再对 `link:` 目标缺失强制置 `broken`（覆盖「源码删了但
+  `node_modules` 还留旧副本」）。按旧表述去「修正」代码会漏掉第一类静默失效。
+- **`DESIGN.md` 撤回虚构的版本号**：上一版误写「按插件名去重（v0.31.5 调整）」，
+  项目并无 v0.31.5（`version.json` = 0.31.4、无该 tag），改为「v0.31.4 之后、尚未发版」。
+
 ## [v0.31.4] - 2026-10-25
 
 当前发布版本（build 131）。新增**第八页「DSH 插件」**：把 DeepSeek Harness 的
@@ -27,10 +59,13 @@
   - `broken`（`link:` 依赖目标已不存在，DSH 载入会失败）。
 
   **三态不合并计数**——「装了」不等于「在用」，合并会让用户对「现在加载了几个
-  插件」判断错误。`broken` **独立判 link 目标存在性**，不以 version 缺失兜底：
-  pnpm 的 link 在源码目录删除后 `node_modules/<name>` 常还留着（旧副本或指过去的
-  符号链接），version 读得到但载入必失败。实测本机 `dsh-plugin-model-guard` 正是
-  `link:` 到本仓库工作副本的这类「开发者自己的插件」。
+  插件」判断错误。`broken` 的判据是**两条并存**（本节原写「独立判 link 目标存在性、
+  不以 version 缺失兜底」，与实现不符，已勘正——详见 [Unreleased] › 文档）：
+  ① `classify_plugin` 以 `version is None and kind != "builtin"` 为主路径，覆盖
+  「清单里声明了、但根本没装进 `node_modules`」这种静默的配置不一致；②
+  `scan_profile` 再对 `link:` 目标缺失强制置 `broken`，因为 pnpm 的 link 在源码
+  目录删除后 `node_modules/<name>` 常还留着（旧副本或指过去的符号链接），此时
+  version 读得到却被放行，必须单独判。
 - **插件类型三分类**：`builtin`（`@deepseek-ai/*`）/ `local`（`link:` 本地源码）/
   `registry`（npm 第三方）。身份用中性 tag，不与状态语义色抢。
 - **`--dsh-home`**：DSH 配置根目录可指定（默认 `~/.dsh`），便于测试与多实例。

@@ -128,7 +128,10 @@ def classify_plugin(
     state：
     - ``enabled``：在 ``dsh.profile.bundles`` 里；
     - ``installed``：装了但没启用（真实但常被忽略的状态）；
-    - ``broken``：本地 link 目标不存在（源码被删/挪走，DSH 会载入失败）。
+    - ``broken``：``node_modules`` 里没有该包（且非 ``builtin``），即声明了却没落地，
+      DSH 载入会失败。另有一条补充判据在 :func:`scan_profile`：``link:`` 依赖的目标
+      目录不存在时也置 ``broken``（源码删了但 node_modules 还留着旧副本，此时 version
+      读得到，必须单独判）。两条并存才是「载入会失败」的完整判据。
     """
     if name.startswith(BUILTIN_SCOPE):
         kind = "builtin"

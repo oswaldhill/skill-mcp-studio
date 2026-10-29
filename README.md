@@ -10,7 +10,7 @@
 </p>
 
 **Skill MCP Studio** 是一套本地多客户端 **Skill / MCP 合规审计与修复工具**，由一个
-Python 审计 CLI、一个纯前端七页管理台（Tauri 桌面壳）和近 40 个领域模块组成。
+Python 审计 CLI、一个纯前端八页管理台（Tauri 桌面壳）和 66 个领域模块组成。
 
 它回答三类问题：
 
@@ -56,7 +56,7 @@ scan.py                  CLI 入口（多阶段主流程 + 各子命令早返回
 │   ├── endpoint_library/store  端点库 CRUD 与持久化
 │   ├── skill_state/toggle/auditor/migrator   启停三态 + 迁移
 │   └── ...                     scanner/reporter/change_tracker/git_sync 等
-├── gui/dashboard.html   七页管理台（单文件静态页，webview 直接装载）
+├── gui/dashboard.html   八页管理台（单文件静态页，webview 直接装载）
 └── src-tauri/           Tauri v2 桌面壳（frontendDist=../gui，cargo tauri build → .app）
 ```
 
@@ -70,7 +70,7 @@ scan.py                  CLI 入口（多阶段主流程 + 各子命令早返回
 skill-mcp-studio/
 ├── scan.py                    CLI 入口（多阶段主流程 + 各子命令早返回）
 ├── core/                      Python 领域逻辑（39 模块）
-├── gui/                       七页管理台前端（单文件 dashboard.html）
+├── gui/                       八页管理台前端（单文件 dashboard.html）
 ├── src-tauri/                 Tauri v2 桌面壳（cargo tauri build → .app）
 ├── scripts/                   构建 / 校验 / 网关辅助脚本
 ├── tests/                     单元测试（unittest，共 34 个文件）
@@ -378,7 +378,7 @@ profiles:
 
 ![Skill MCP Studio 管理台](docs/images/dashboard.png)
 
-`gui/dashboard.html` 是七页管理台（**概览 · IDE/Agent · Skills · MCP · Hook · 变更详情 · 设置**），消费
+`gui/dashboard.html` 是八页管理台（**概览 · IDE/Agent · Skills · MCP · Hook · 变更详情 · DSH 插件 · 设置**），消费
 管理快照（`--management --format json`）：
 
 1. **概览**：KPI 汇总（受管客户端 / 安装 / 技能 / MCP 探活 / 主流纳入）+ 快捷操作；

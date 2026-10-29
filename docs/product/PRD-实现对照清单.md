@@ -22,7 +22,7 @@
 结论先讲：**主干能力全部落地**。缺口集中在两处——
 ① **§6.2.1「技能关闭」整条需求未实现**（8 条子需求，占全部未实现项 100%）；
 ② **跨平台只做到「能构建」，没做到「真机可用」**（缺口 #6）。
-另有 1 项部分实现：Win/Linux 冒烟。4 项刻意不做是产品边界，不是欠债。
+另有 1 项部分实现：Win/Linux 冒烟。5 项刻意不做是产品边界，不是欠债。
 
 ## 2. 状态口径
 
@@ -91,7 +91,7 @@
 | 6.5-03 | §6.5 | 右侧详情 Sheet（技能 / 客户端） | 读 | ✅ 已实现 | GUI `sheet` | — |
 | 6.5-04 | §6.5 | Toast 栈（进度 → 成功 / 失败） | 读 | ✅ 已实现 | GUI `showToast` | — |
 | 6.5-05 | §6.5 | 全局 Esc 逐级关闭 | 读 | ✅ 已实现 | GUI `"Escape"` | — |
-| 6.5-06 | §6.5 | 可访问性（无 emoji 图标 / focus ring / reduced-motion） | 读 | ✅ 已实现 | GUI `prefers-reduced-motion` | reduced-motion 覆盖动画；aria-hidden 39 处 |
+| 6.5-06 | §6.5 | 可访问性（无 emoji 图标 / focus ring / reduced-motion） | 读 | ✅ 已实现 | GUI `prefers-reduced-motion` | reduced-motion 覆盖动画；aria-hidden 43 处 |
 | 6.6-01 | §6.6（补） | Hook 页：事件词表 + 每客户端接入状态 | 读 | ✅ 已实现 | `--list-hooks`；GUI `data-page="hooks"` | PRD §6 原缺 Hook 页需求，本次补入 |
 | 6.6-02 | §6.6（补） | Hook 写入 / 移除（带备份） | 写（业务） | ✅ 已实现 | `--fix-hooks`；`--remove-hooks` | — |
 | 6.6-03 | §6.6（补） | Hook 漂移检测与关键事件缺失提示 | 读 | ✅ 已实现 | `gui/dashboard.html` → `missing_key_events` | — |
