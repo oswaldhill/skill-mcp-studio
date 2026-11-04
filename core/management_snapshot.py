@@ -408,7 +408,8 @@ def build_management_snapshot(
     }
 
     # --- mcp: endpoint library + per-client attachment + per-client inventory ---
-    endpoints = endpoint_entries(config)
+    # 快照会被前端渲染：明文凭据一律脱敏（auth_mode 引用见 auth_secret）。
+    endpoints = endpoint_entries(config, mask_secrets=True)
     profile_legacy: set = set()
     for entry in endpoints:
         for ln in entry.get("legacy_names", []) or []:

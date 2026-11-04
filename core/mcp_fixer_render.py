@@ -47,8 +47,143 @@ def _nested_container(data: Dict[str, Any], key_path: List[str]) -> Dict[str, An
 
 
 def _bearer_headers(token: str) -> Dict[str, str]:
-    """落库用鉴权头：`Authorization: Bearer <token>`，token 明文写入客户端配置。"""
+    """落库用鉴权头：`Authorization: Bearer <token>`，token 明文写入客户端配置。
+
+    仅在端点 ``auth_mode=token``（或完全没有声明 ``auth_mode``）时使用；引用型
+    模式改走 :func:`_header_placeholder`，见该函数里的取舍说明。
+    """
     return {"Authorization": "Bearer " + token}
+
+
+#: 引用型 auth_mode 在不能求值的位置（reasonix 的 ``name=url`` 数组）里写的占位符。
+AUTH_PLACEHOLDER = "<redacted>"
+
+
+def resolve_auth_fields(
+    profile: Dict[str, Any], auth: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """把端点的凭据声明归一成渲染器需要的字段（不含明文，除非 ``auth_mode=token``）。
+
+    返回 ``{mode, token, env_var, keychain_service, file_path}``：
+
+    * ``mode=token``：``token`` 是明文（历史行为，逐字节不变）；
+    * ``mode=env``：``env_var`` 是变量名，客户端配置里写 ``${env:VAR}``；
+    * ``mode=keychain`` / ``file``：``token`` 固定为 ``AUTH_PLACEHOLDER``，
+      需要求值的位置由调用方显式传入 ``auth.evaluated_token``。
+
+    ``auth`` 缺省时从 ``profile`` 自行解析（``auth_mode`` 缺省 = ``token``）。
+    """
+    if auth is None:
+        from auth_secret import resolve_auth_fields as _resolve
+
+        return _resolve(profile)
+    mode = str(auth.get("mode") or "token")
+    fields = {
+        "mode": mode,
+        "token": "",
+        "env_var": "",
+        "keychain_service": "",
+        "file_path": "",
+    }
+    if mode == "token":
+        fields["token"] = str(profile.get("auth_token") or "")
+    elif mode == "env":
+        from auth_secret import DEFAULT_ENV_VAR
+
+        fields["env_var"] = str(profile.get("auth_token_env") or DEFAULT_ENV_VAR)
+    elif mode == "keychain":
+        fields["token"] = AUTH_PLACEHOLDER
+        fields["keychain_service"] = str(profile.get("auth_keychain") or "")
+    elif mode == "file":
+        fields["token"] = AUTH_PLACEHOLDER
+        fields["file_path"] = str(profile.get("auth_file") or "")
+    # 求值后的明文只来自显式传入（探活/校验路径），不从 profile 反推。
+    fields["evaluated_token"] = str(auth.get("evaluated_token") or "")
+    return fields
+
+
+def _header_placeholder(auth: Dict[str, Any], format_title: str) -> str:
+    """Return the value written into ``Authorization`` for a non-plaintext mode.
+
+    为什么不是「直接写变量引用」：各客户端对 header 值里的占位符支持**不一致**，
+    而写一个客户端不认识的占位符等于写一个错误 token —— 比报错更难发现。所以
+    这里分两类处理：
+
+    * ``auth_mode=env`` **所有格式**都写 ``Bearer ${env:VAR}``： Claude Code /
+      Cursor / VS Code 文档化的 header 插值语法，是唯一有据可依的通用形。
+    * ``auth_mode=keychain`` / ``file`` 在 JSON/YAML/Cordis 里无法求值（没有通用
+      语法，Codex 的 ``bearer_token_env_var`` 也读不了钥匙串），因此同样写成
+      ``Bearer ${env.<服务名>}`` 形态的**占位符**：客户端不认时是一条会被网关
+      明确拒绝的无效值，而不是在不知情中发出明文；配套动作是
+      ``--auth-secret-status`` 给出的 export 提示。TOML（Codex）改用它官方的
+      ``bearer_token_env_var`` 字段，见 :func:`_render_toml`。
+
+    调用方（``fix_mcp_tool``）在写盘后把「该格式不求值/求值」的事实写进返回消息，
+    保证用户不会以为配置已经能直接连上；判定见 :func:`reference_is_evaluated`。
+
+    ``format_title`` 只用于把「求值兜底」写进代码可读性（当前不参与判断）。
+    """
+    mode = str(auth.get("mode") or "token")
+    if mode == "env":
+        return "Bearer ${env:" + str(auth.get("env_var") or "") + "}"
+    # keychain / file：用同一个合法变量名（见 env_var_for）
+    return "Bearer ${env." + env_var_for(auth) + "}"
+
+
+#: 客户端 registry 的 ``mcp_root_env_style`` 取值 → 配置根上 env 块的**真实键名**。
+#: 取值即键名（不做二次映射：``process_env`` 与 ``process_envs`` 差一个字母，
+#: 多一层映射只会制造两边不一致的机会）：
+#: * ``env`` —— Claude Code / Cursor / VS Code / Windsurf / Gemini CLI / OpenCode；
+#: * ``process_envs`` —— Goose 的根级进程环境块。
+ROOT_ENV_STYLES = ("env", "process_envs")
+
+
+def reference_is_evaluated(
+    config_format: str,
+    mode: str,
+    root_env_style: str = "",
+    auth: Optional[Dict[str, Any]] = None,
+) -> bool:
+    """Whether the client will resolve the reference we write for this credential.
+
+    三条「能求值」的路径，其余一律视为**不能**（写的是占位符）：
+
+    * ``token`` —— 写的就是明文，天然可用；
+    * ``toml``（Codex）—— 引用 ``bearer_token_env_var`` 是官方字段，会被解析；
+    * ``root_env_style`` 非空 —— 我们把真值写进客户端配置根上的 env 块
+      （JSON / YAML 两种容器都支持），客户端启动后会把它注入自身进程环境，
+      于是 ``${env:VAR}`` 插值和 ``headers`` 都能取到值。
+
+    ``cordis_yaml``（DSH）没有可写 env 的容器位置，``reasonix*`` 没有插值能力，
+    二者恒为 False —— 调用方据此不得对用户宣称「已接入」。
+    """
+    if mode == "token":
+        return True
+    if config_format == "toml":
+        # Codex 的 bearer_token_env_var 只接受变量名；变量名不合法时写下去也读不到。
+        return bool(_toml_env_var(auth))
+    return bool(root_env_style)
+
+
+def _env_var_name(auth: Optional[Dict[str, Any]]) -> str:
+    """引用型凭据对应的环境变量名（与 ``_toml_env_var`` 同一取值规则）。"""
+    return _toml_env_var(auth)
+
+
+def _apply_root_env(data: Dict[str, Any], auth: Optional[Dict[str, Any]], style: str, value: str) -> None:
+    """把真值写进配置根上的 env 块（原地）。
+
+    只为引用型且「会用 env 块求值」的客户端调用。已有同名键就覆盖 —— 该键由本工具
+    管理，覆盖是幂等的；其它键原样保留。``value`` 为空时不写（避免在客户端配置里
+    留下一个空变量，让用户以为已配置）。
+    """
+    if not style or not value:
+        return
+    block = data.get(style)
+    if not isinstance(block, dict):
+        block = {}
+        data[style] = block
+    block[_env_var_name(auth)] = value
 
 
 def _toml_string(value: str) -> str:
@@ -78,6 +213,9 @@ def _render_json(
     url: str,
     token: str = "",
     entry_type: str = "",
+    auth: Optional[Dict[str, Any]] = None,
+    root_env_style: str = "",
+    auth_token_value: str = "",
 ) -> str:
     """写入一个 JSON/JSONC 客户端配置。
 
@@ -114,13 +252,27 @@ def _render_json(
     if entry_type:
         entry["type"] = entry_type
     entry["url"] = url
-    if token:
-        entry["headers"] = _bearer_headers(token)
+    headers = _auth_headers(auth, token)
+    if headers:
+        entry["headers"] = headers
     servers[name] = entry
+    # 引用型 + 客户端支持根 env 块：把真值写进去，客户端启动后即可求值
+    # （见 reference_is_evaluated 的三条路径）。
+    if auth is not None and str(auth.get("mode") or "token") != "token":
+        _apply_root_env(data, auth, root_env_style, auth_token_value)
     return json.dumps(data, ensure_ascii=False, indent=2) + "\n"
 
 
-def _render_yaml(text: str, key_path: List[str], name: str, url: str, token: str = "") -> str:
+def _render_yaml(
+    text: str,
+    key_path: List[str],
+    name: str,
+    url: str,
+    token: str = "",
+    auth: Optional[Dict[str, Any]] = None,
+    root_env_style: str = "",
+    auth_token_value: str = "",
+) -> str:
     """Write a unified MCP server entry into a generic YAML config file.
 
     Generic YAML clients (e.g. Hermes Agent ``~/.hermes/config.yaml``) expect
@@ -133,11 +285,29 @@ def _render_yaml(text: str, key_path: List[str], name: str, url: str, token: str
     if not isinstance(data, dict):
         raise ValueError("YAML root must be an object")
     servers = _nested_container(data, key_path)
-    entry = {"url": url}
-    if token:
-        entry["headers"] = _bearer_headers(token)
+    entry: Dict[str, Any] = {"url": url}
+    headers = _auth_headers(auth, token)
+    if headers:
+        entry["headers"] = headers
     servers[name] = entry
+    if auth is not None and str(auth.get("mode") or "token") != "token":
+        _apply_root_env(data, auth, root_env_style, auth_token_value)
     return yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
+
+
+def _auth_headers(auth: Optional[Dict[str, Any]], token: str) -> Dict[str, str]:
+    """JSON/YAML 形态的鉴权头：明文 token → ``Bearer <token>``；引用型 → 占位符。
+
+    ``auth`` 为 ``None`` 表示历史调用面（只有 ``token`` 一个输入）。两种来源都为空
+    时返回空字典，调用方据此不写 ``headers``，保持「端点无凭据」的既有字节输出。
+    """
+    if auth is None:
+        return _bearer_headers(token) if token else {}
+    mode = str(auth.get("mode") or "token")
+    if mode == "token":
+        plain = str(auth.get("token") or "")
+        return _bearer_headers(plain) if plain else {}
+    return {"Authorization": _header_placeholder(auth, "json")}
 
 
 def _render_reasonix(text: str, key_path: List[str], name: str, url: str, token: str = "") -> str:
@@ -192,7 +362,21 @@ def _toml_section_tree_ranges(text: str, section_name: str) -> List[Tuple[int, i
     return ranges
 
 
-def _render_toml(text: str, name: str, url: str, token: str = "") -> str:
+def _render_toml(
+    text: str, name: str, url: str, token: str = "", auth: Optional[Dict[str, Any]] = None
+) -> str:
+    """写入 Codex 的 ``[mcp_servers.<name>]`` 表。
+
+    ``auth``（非 ``None`` 即引用型或显式明文声明）改变鉴权写法：
+
+    * ``auth_mode=env`` / ``keychain`` / ``file`` → 写 Codex 官方字段
+      ``bearer_token_env_var = "<变量名>"``。这是 TOML 侧唯一「不发明文、客户端
+      又真能求值」的形态：Token 由客户端在发起请求时从**自己的环境**读取。
+      钥匙串身份（``auth_keychain``）因此被用作变量名，用户需要把这个变量注入
+      客户端的启动环境（macOS 可在客户端配置里设 ``env``，或在 shell profile 中
+      ``export``）；文件模式同理。
+    * ``auth_mode=token`` → 既有的 ``http_headers = { Authorization = "Bearer ..." }``。
+    """
     _toml.loads(text)
     section_name = f"mcp_servers.{name}"
     # 正典段唯一性只看父表本身：``_toml_section_ranges`` 不匹配 ``[X.http_headers]``，
@@ -203,6 +387,15 @@ def _render_toml(text: str, name: str, url: str, token: str = "") -> str:
     if not canonical:
         separator = "" if not text or text.endswith("\n\n") else ("\n" if text.endswith("\n") else "\n\n")
         block = f'[{section_name}]\nurl = {_toml_string(url)}\n'
+        if _toml_uses_env_ref(auth):
+            # 引用型：清掉可能的明文头，改写 bearer_token_env_var（见函数 docstring）。
+            block += f'bearer_token_env_var = {_toml_string(_toml_env_var(auth))}\n'
+            rendered = text + separator + block
+            rendered = _set_toml_subtable_field(
+                rendered, f"{section_name}.http_headers", "Authorization", None
+            )
+            _toml.loads(rendered)
+            return rendered
         # 文件别处可能已存在 ``[<section>.http_headers]`` 子表（父表尚未声明）。
         # 这种情形下鉴权头必须写进那个子表 —— 再写一行内联 http_headers 就是重复声明。
         has_subtable = _toml_subtable_range(text, f"{section_name}.http_headers") is not None
@@ -264,6 +457,19 @@ def _render_toml(text: str, name: str, url: str, token: str = "") -> str:
             section += f'\nurl = {_toml_string(url)}\n'
         else:
             section = section[:header_end + 1] + f'url = {_toml_string(url)}\n' + section[header_end + 1:]
+    if _toml_uses_env_ref(auth):
+        # 引用型：两个声明位置都收敛到 bearer_token_env_var，且清掉明文头
+        # （子表与内联两种形式都清，避免残留旧 token）。
+        section = _set_toml_field(section, "bearer_token_env_var", _toml_env_var(auth))
+        section = _remove_toml_http_headers(section)
+        section = _set_toml_subtable_field(
+            section, f"{section_name}.http_headers", "Authorization", None
+        )
+        if _toml_subtable_is_empty(section, f"{section_name}.http_headers"):
+            section = _drop_toml_subtable(section, f"{section_name}.http_headers")
+        rendered = text[:start] + section + text[end:]
+        _toml.loads(rendered)
+        return rendered
     # 鉴权：Codex 官方字段 ``http_headers`` 静态表承载明文 ``Authorization`` 头；
     # 同时清理旧的环境变量引用写法（bearer_token_env_var）。
     section = _remove_toml_field(section, "bearer_token_env_var")
@@ -271,6 +477,66 @@ def _render_toml(text: str, name: str, url: str, token: str = "") -> str:
     rendered = text[:start] + section + text[end:]
     _toml.loads(rendered)
     return rendered
+
+
+def _toml_uses_env_ref(auth: Optional[Dict[str, Any]]) -> bool:
+    """Whether this render should use Codex's ``bearer_token_env_var`` field."""
+    return auth is not None and str(auth.get("mode") or "token") != "token"
+
+
+#: POSIX 环境变量名的合法形态（shell 与大多数客户端都按这条校验）。
+_ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def env_var_for(auth: Dict[str, Any], fallback: str = "") -> str:
+    """引用型凭据对应的**合法**环境变量名。
+
+    ``env`` 模式直接用端点声明名；``keychain`` / ``file`` 没有原生等价物，先用它们
+    的身份名（服务名 / 路径）—— 服务名通常合法（``hermes-unified-mcp`` 含连字符，
+    不合法会走到下面的兜底）；路径几乎必然不合法，此时用调用方给的确定性名字
+    （端点 key 派生，见 ``fix_mcp_tool``），而不是把 ``/tmp/tok`` 硬塞进变量名 ——
+    那样写出来的配置在客户端里根本不是「一个变量」，只是碰巧像。
+    """
+    if not auth:
+        return ""
+    mode = str(auth.get("mode") or "token")
+    if mode == "env":
+        name = str(auth.get("env_var") or "")
+        return name if _ENV_NAME_RE.match(name) else fallback
+    # 端点级派生名优先：它保证同一端点在所有客户端里同名（见 mcp_fixer 的
+    # _derived_env_name），不会出现「VS Code 用服务名、Codex 用另一个名字」。
+    candidate = str(auth.get("template_var") or "")
+    if candidate and _ENV_NAME_RE.match(candidate):
+        return candidate
+    # 未派生时退回服务名（仍须合法）；路径永不作为变量名。
+    candidate = str(auth.get("keychain_service") or "")
+    if candidate and _ENV_NAME_RE.match(candidate):
+        return candidate
+    return fallback
+
+
+def _toml_env_var(auth: Optional[Dict[str, Any]]) -> str:
+    """The env var name written into ``bearer_token_env_var`` for a reference mode."""
+    return env_var_for(auth or {})
+
+
+def _toml_subtable_is_empty(block: str, header_name: str) -> bool:
+    """True when the ``[header_name]`` subtable holds no ``key = value`` lines."""
+    span = _toml_subtable_range(block, header_name)
+    if not span:
+        return False
+    start, end = span
+    body = block[start:end].splitlines()[1:]
+    return not any(re.match(r"^[ \t]*[A-Za-z0-9_.-]+[ \t]*=", line) for line in body)
+
+
+def _drop_toml_subtable(block: str, header_name: str) -> str:
+    """Remove a ``[header_name]`` subtable block (used once its last key is gone)."""
+    span = _toml_subtable_range(block, header_name)
+    if not span:
+        return block
+    start, end = span
+    return block[:start] + block[end:]
 
 
 def _toml_target_is_stdio(text: str, section_name: str) -> bool:
@@ -536,7 +802,24 @@ def _remove_reasonix_headers(block: str) -> str:
     return line.sub("", block)
 
 
-def _cordis_entry_block(url: str, name: str = "hermes", token: str = "") -> str:
+def _cordis_entry_block(
+    url: str, name: str = "hermes", token: str = "", auth: Optional[Dict[str, Any]] = None
+) -> str:
+    """DSH cordis patch 条目。``auth`` 为引用型时写占位符而非明文。
+
+    实测约束（2026-11-04）：``!!js`` 表达式的值里只要含反引号/花括号，PyYAML
+    的 plain scalar 就会解析失败（``found character '`' that cannot start any
+    token``），而本项目的校验链正是用 PyYAML 读回这份文件 —— 写下去就是一份
+    「自己校验不过」的配置。因此这里与 JSON/YAML 采用**同一种形态**
+    （``_header_placeholder``），保证六个格式对外表述一致：
+
+    * ``env`` → ``Bearer ${env:VAR}``
+    * ``keychain`` / ``file`` → ``Bearer ${env.<服务名>}``
+
+    代价是 DSH 客户端暂时同样不求值（与其它客户端同一处境，见
+    ``_header_placeholder`` 的取舍说明）；把 ``!!js`` 真正写通是下一步的事，
+    前提是先让 config_codec 的解析器接受它。
+    """
     block = (
         f"- id: mcp-{name}\n"
         "  name: '@deepseek-ai/dsh-mcp-client'\n"
@@ -545,6 +828,12 @@ def _cordis_entry_block(url: str, name: str = "hermes", token: str = "") -> str:
         "    transport: streamable-http\n"
         f"    url: {url}\n"
     )
+    if auth is not None and str(auth.get("mode") or "token") != "token":
+        block += (
+            "    headers:\n"
+            f'      Authorization: "{_header_placeholder(auth, "cordis_yaml")}"\n'
+        )
+        return block
     if token:
         block += (
             "    headers:\n"
@@ -553,7 +842,9 @@ def _cordis_entry_block(url: str, name: str = "hermes", token: str = "") -> str:
     return block
 
 
-def _render_cordis_yaml(text: str, name: str, url: str, token: str = "") -> str:
+def _render_cordis_yaml(
+    text: str, name: str, url: str, token: str = "", auth: Optional[Dict[str, Any]] = None
+) -> str:
     """Insert or replace the canonical cordis patch entry for serverName ``name``.
 
     The canonical channel for DSH uses serverName `hermes`; additional managed
@@ -573,32 +864,65 @@ def _render_cordis_yaml(text: str, name: str, url: str, token: str = "") -> str:
             if re.match(r"^- id:\s", lines[j]):
                 block_end = j
                 break
-        rendered = "".join(lines[:start]) + _cordis_entry_block(url, name, token) + "".join(lines[block_end:])
+        rendered = "".join(lines[:start]) + _cordis_entry_block(url, name, token, auth) + "".join(lines[block_end:])
     else:
         separator = "" if not text or text.endswith("\n\n") else ("\n" if text.endswith("\n") else "\n\n")
-        rendered = text + separator + _cordis_entry_block(url, name, token)
+        rendered = text + separator + _cordis_entry_block(url, name, token, auth)
     _load_cordis_yaml(rendered)  # validate the rewritten document
     return rendered
 
 
-def _render(tool: Dict[str, Any], text: str, name: str, url: str, token: str = "") -> str:
+def _render(
+    tool: Dict[str, Any],
+    text: str,
+    name: str,
+    url: str,
+    token: str = "",
+    auth: Optional[Dict[str, Any]] = None,
+) -> str:
+    """按客户端格式渲染统一端点条目。
+
+    ``auth`` 由 :func:`resolve_auth_fields` 产出（``None`` = 只有 ``token`` 的
+    历史调用面，行为逐字节不变）。引用型 ``auth`` 的分支写在六个格式各自的
+    渲染器里，因为它们「能不能求值」的能力不同：
+
+    ============  ==================================================
+    格式           引用型 ``auth`` 的写法
+    ============  ==================================================
+    json / jsonc  ``Authorization: "Bearer ${env:VAR}"``
+    yaml          同上
+    toml          ``bearer_token_env_var = "VAR"``（Codex 官方字段）
+    cordis_yaml   同上（``!!js`` 写法会被 PyYAML 拒绝，见 _cordis_entry_block）
+    reasonix*     ``Bearer <redacted>`` 占位（该格式无求值能力）
+    ============  ==================================================
+    """
     config_format = tool.get("format", "json")
     key_path = tool.get("mcp_key_path", ["mcpServers"])
+    root_env_style = str(tool.get("mcp_root_env_style") or "")
+    if root_env_style not in ROOT_ENV_STYLES:
+        root_env_style = ""
+    auth_value = str((auth or {}).get("evaluated_token") or "")
     if config_format in ("json", "jsonc"):
         return _render_json(
             text, key_path, name, url, token,
             entry_type=str(tool.get("mcp_entry_type") or ""),
+            auth=auth,
+            root_env_style=root_env_style,
+            auth_token_value=auth_value,
         )
     if config_format == "toml":
-        return _render_toml(text, name, url, token)
+        return _render_toml(text, name, url, token, auth=auth)
     if config_format == "reasonix_toml":
         return _render_reasonix_toml(text, name, url, token)
     if config_format == "reasonix":
         return _render_reasonix(text, key_path, name, url, token)
     if config_format == "cordis_yaml":
-        return _render_cordis_yaml(text, name, url, token)
+        return _render_cordis_yaml(text, name, url, token, auth=auth)
     if config_format == "yaml":
-        return _render_yaml(text, key_path, name, url, token)
+        return _render_yaml(
+            text, key_path, name, url, token, auth=auth,
+            root_env_style=root_env_style, auth_token_value=auth_value,
+        )
     raise ValueError("unsupported MCP configuration format")
 
 

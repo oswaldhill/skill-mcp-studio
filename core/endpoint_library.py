@@ -105,11 +105,16 @@ def validate_attachment(config: Dict[str, Any]) -> None:
                 )
 
 
-def endpoint_entries(config: Dict[str, Any]) -> List[Dict[str, Any]]:
+def endpoint_entries(config: Dict[str, Any], *, mask_secrets: bool = False) -> List[Dict[str, Any]]:
     """Endpoint library as an ordered list of ``{key, ...profile}``.
 
     The ``key`` field is injected so GUI/CLI callers never rely on dict iteration
     order for the library table (stage-5 §3 端点库管理).
+
+    ``mask_secrets=True`` 时把 ``auth_token`` 明文替换为 ``<redacted>``（见
+    :func:`auth_secret.redact_profile`）。**管理台快照必须走这个开关**：快照是
+    前端消费的结构，明文一旦进了 DOM（哪怕只是 ``data-*`` 属性），就等同于
+    把一个长期有效的令牌暴露给了任何能读页面源码的人。
     """
     profiles = config.get("profiles")
     if profiles is None:
@@ -117,7 +122,13 @@ def endpoint_entries(config: Dict[str, Any]) -> List[Dict[str, Any]]:
         from profile_loader import _wrap_legacy
 
         wrapped = _wrap_legacy(config)
-        return [{"key": key, **dict(profile)} for key, profile in wrapped.items()]
-    if not isinstance(profiles, dict):
+        entries = [{"key": key, **dict(profile)} for key, profile in wrapped.items()]
+    elif not isinstance(profiles, dict):
         raise ProfileError("'profiles:' must be a mapping")
-    return [{"key": key, **dict(profile)} for key, profile in profiles.items() if profile is not None]
+    else:
+        entries = [{"key": key, **dict(profile)} for key, profile in profiles.items() if profile is not None]
+    if not mask_secrets:
+        return entries
+    from auth_secret import redact_profile
+
+    return [redact_profile(entry) for entry in entries]

@@ -64,6 +64,10 @@ def _probe_with_profile_timing(expected: Dict[str, Any]) -> Dict[str, Any]:
         timeout=8.0 if raw_timeout is None else raw_timeout,
         token=expected.get("auth_token"),
         token_env=expected.get("auth_token_env"),
+        # auth_mode=keychain/file 时按引用取真值（见 auth_secret）；
+        # 端点未声明这两个字段时按 None 传入，保持历史行为。
+        auth_keychain=expected.get("auth_keychain") or None,
+        auth_file=expected.get("auth_file") or None,
         url_policy=expected.get("url_policy", "strict"),
         retries=1 if raw_retries is None else raw_retries,
     )

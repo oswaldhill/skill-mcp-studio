@@ -22,6 +22,30 @@ import yaml
 
 from mcp_fixer import _atomic_write, _backup_path
 
+#: 端点的凭据声明字段（迁移到 overlay 时一并复制，见 update_endpoint）。
+#: 只放**引用**：``auth_mode`` 决定语义，另外三个是引用目标。明文
+#: ``auth_token`` 单独处理（它存在时才有意义，且可能被明确清空）。
+AUTH_REF_FIELDS = ("auth_mode", "auth_token_env", "auth_keychain", "auth_keychain_account", "auth_file")
+
+
+def _apply_auth_fields(profile: Dict[str, Any], auth_fields: Dict[str, Any]) -> None:
+    """把凭据声明写进 profile（原地）。
+
+    ``None`` 表示「不改」；空串表示「清空该字段」。``auth_mode=token`` 时
+    一并清掉三个引用字段，避免「切回明文了但 JSON 里还留着旧引用」的歧义。
+    """
+    for field in AUTH_REF_FIELDS:
+        value = auth_fields.get(field)
+        if value is None:
+            continue
+        if value == "":
+            profile.pop(field, None)
+        else:
+            profile[field] = value
+    if auth_fields.get("auth_mode") == "token":
+        for field in ("auth_token_env", "auth_keychain", "auth_keychain_account", "auth_file"):
+            profile.pop(field, None)
+
 
 def _source_paths(config: Dict[str, Any]) -> List[str]:
     sources = config.get("profile_sources") or []
@@ -110,13 +134,20 @@ def add_endpoint(
     dry_run: bool = False,
     active: bool = False,
     auth_token: Optional[str] = None,
+    auth_fields: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, str]:
-    """Add (or overwrite) one endpoint in the store. Set it active when ``active``."""
+    """Add (or overwrite) one endpoint in the store. Set it active when ``active``.
+
+    ``auth_fields`` 见 :data:`AUTH_REF_FIELDS`：新增端点时可以一次把
+    ``auth_mode`` / ``auth_token_env`` / ``auth_keychain`` / ``auth_file`` 写全。
+    """
     path = _write_target(config)
     if not _source_paths(config):
         return {"status": "error", "message": "no profile_sources configured; add one first", "path": "", "backup": ""}
     data = _ensure_profiles(_load_target(path))
     data["profiles"][key] = dict(profile)
+    if auth_fields:
+        _apply_auth_fields(data["profiles"][key], auth_fields)
     if auth_token is not None:
         data["profiles"][key]["auth_token"] = auth_token
     if active:
@@ -159,6 +190,7 @@ def update_endpoint(
     command: Optional[str] = None,
     transport: Optional[str] = None,
     dry_run: bool = False,
+    auth_fields: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, str]:
     path = _write_target(config)
     if not _source_paths(config):
@@ -171,6 +203,8 @@ def update_endpoint(
             profiles[key]["url"] = url
         if name is not None:
             profiles[key]["name"] = name
+        if auth_fields:
+            _apply_auth_fields(profiles[key], auth_fields)
         if auth_token is not None:
             profiles[key]["auth_token"] = auth_token
         if command is not None:
@@ -189,6 +223,8 @@ def update_endpoint(
             profiles[key]["url"] = url
         if name is not None:
             profiles[key]["name"] = name
+        if auth_fields:
+            _apply_auth_fields(profiles[key], auth_fields)
         if auth_token is not None:
             profiles[key]["auth_token"] = auth_token
         if command is not None:

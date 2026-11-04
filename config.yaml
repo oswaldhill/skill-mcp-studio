@@ -80,6 +80,9 @@ mcp_tools:
   config_path: ~/.claude.json
   format: json
   mcp_key_path: [mcpServers]
+  # 引用型凭据的注入位：~/.claude.json 支持根级 "env"，客户端启动时读取，
+  # MCP server 子进程继承（--fix-mcp 写值，端点条目里仍只写引用）。
+  mcp_root_env_style: env
   fix_supported: true
   hooks_config_path: ~/.claude/settings.json
 - name: Cursor
@@ -93,6 +96,8 @@ mcp_tools:
   mcp_key_path: [mcpServers]
   fix_supported: true
   hooks_config_path: ~/.cursor/hooks.json
+  # 引用型凭据的注入位（同 Claude Code：根 "env" 块）。
+  mcp_root_env_style: env
 - name: WorkBuddy
   aliases: [workbuddy, codebuddy]
   install:
@@ -102,6 +107,10 @@ mcp_tools:
   config_path: ~/.workbuddy/mcp.json
   format: json
   mcp_key_path: [mcpServers]
+  # 引用型凭据（auth_mode=env/keychain/file）需要把真值注入客户端进程环境。
+  # 该客户端支持配置根上的 "env" 块，客户端启动时读取它 —— 声明后
+  # --fix-mcp 会把值写进去，${env:VAR} 插值才真正生效。
+  mcp_root_env_style: env
   fix_supported: true
   hooks_config_path: ~/.workbuddy/settings.json
 - name: Codex
@@ -148,6 +157,8 @@ mcp_tools:
   # 客户端（Claude Code / Cursor / WorkBuddy）的条目只需 url，多写 type 反而多余。
   # 故连接类型按客户端声明，而不是在渲染层统一硬编码。
   mcp_entry_type: remote
+  # 引用型凭据注入位：OpenCode 读配置根的 "env"，据此设置 MCP server 的环境。
+  mcp_root_env_style: env
   # OpenCode 已有本地 hermes stdio 桥（指向 NAS 网关），统一端点用独立 key 写入，避免覆盖本地桥
   unified_name: hermes-unified
   # 本地 stdio 桥条目名为 "hermes"（hermes-bridge.py 指向 NAS 网关），与统一端点

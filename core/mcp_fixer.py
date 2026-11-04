@@ -5,6 +5,7 @@
 """
 import json
 import os
+import re
 import shutil
 import stat
 from typing import Any, Dict, List, Optional, Tuple
@@ -48,6 +49,9 @@ from mcp_fixer_render import _remove_reasonix_headers as _remove_reasonix_header
 from mcp_fixer_render import _cordis_entry_block as _cordis_entry_block
 from mcp_fixer_render import _render_cordis_yaml as _render_cordis_yaml
 from mcp_fixer_render import _render as _render
+from mcp_fixer_render import resolve_auth_fields as resolve_auth_fields
+from mcp_fixer_render import reference_is_evaluated as reference_is_evaluated
+from auth_secret import resolve_auth as resolve_auth
 from mcp_fixer_render import _render_without_entries as _render_without_entries
 from mcp_fixer_render import _render_without_legacy as _render_without_legacy
 from mcp_fixer_render import _render_cordis_without_entries as _render_cordis_without_entries
@@ -68,6 +72,30 @@ _LEGACY_REMOVAL_MESSAGES = {
     "dry-run": "将移除旧通道条目",
     "updated": "旧通道条目已移除并校验通过",
 }
+
+
+def _derived_env_name(expected: Dict[str, Any]) -> str:
+    """由端点名派生一个合法且稳定的环境变量名（``hermes-home`` → ``HERMES_HOME_MCP_TOKEN``）。
+
+    为什么派生而不是复用服务名/路径：钥匙串服务名可能含连字符
+    （``hermes-unified-mcp``）、文件路径必然含斜杠，二者都不是合法变量名。
+    派生名只依赖端点名，所以同一端点在所有客户端里同名、跨机器一致。
+    """
+    from mcp_fixer_render import _ENV_NAME_RE  # 复用同一套合法性判据
+
+    raw = str(expected.get("name") or expected.get("key") or "mcp")
+    slug = re.sub(r"[^A-Za-z0-9]+", "_", raw).strip("_").upper()
+    if not slug or not slug[0].isalpha():
+        slug = "MCP_" + slug
+    name = slug + "_MCP_TOKEN"
+    return name if _ENV_NAME_RE.match(name) else ""
+
+
+def _env_name_of(auth: Dict[str, Any]) -> str:
+    """引用型凭据在本轮渲染里实际使用的变量名（供消息展示）。"""
+    from mcp_fixer_render import env_var_for
+
+    return env_var_for(auth)
 
 
 def _effective_tools(config: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -197,9 +225,46 @@ def fix_mcp_tool(
     name = tool.get("unified_name") if use_unified_name else None
     name = name or expected.get("name", "hermes")
     url = expected.get("url", "")
-    # 鉴权：端点带 auth_token 时以明文 Bearer 头写入客户端配置（本机单用户场景，
-    # token 已在本地 profiles 明文存储，环境变量引用在 GUI 应用里时灵时不灵）。
-    token = expected.get("auth_token") or ""
+    # 鉴权：按端点的 ``auth_mode`` 决定写法（见 auth_secret 模块头）：
+    #
+    # * ``token``（默认）—— 与历史行为完全一致：``auth_token`` 明文以 Bearer 头
+    #   写进客户端配置。本机单用户场景，且 token 本来就在本地 profiles 里。
+    # * ``env`` / ``keychain`` / ``file`` —— 配置里只写**引用**（变量名 / 服务名 /
+    #   文件路径），明文不落进任何客户端配置文件。这是本轮新增的能力：此前用户
+    #   把 token 存进钥匙串后，工具仍然只认 ``auth_token`` 明文，配置里必然会
+    #   抄一份，钥匙串等于白存。
+    #
+    # 引用型不需要读出明文（配置只要知道引用怎么写），所以这里用 resolve_for_fix：
+    # 钥匙串尚未授权时 --fix-mcp 也不会失败。
+    # 引用型凭据在客户端配置里的变量名：env 模式用端点声明的名字，其余用
+    # 「端点 key 派生」的确定性名字（如 HERMES_HOME_MCP_TOKEN）。派生名保证
+    # 同一端点在所有客户端里同名 —— 用户注入一次即可，且不会把服务名/路径
+    # 这种非法变量名写进配置。
+    derived_env = _derived_env_name(expected)
+    auth = resolve_auth_fields({**expected, "auth_env_name": derived_env})
+    token = auth.get("token") or ""
+    # 引用型若客户端支持「根 env 块」，写入时需要真值（客户端启动后据此注入环境）。
+    # 这里只在**该客户端确实会用它**时才读取 —— 对不支持 env 块的客户端，读钥匙串
+    # 只会白白触发一次系统授权弹窗。读取失败不阻断写盘：配置照常写入引用，只是
+    # env 块留空，结果消息如实提示「真值未取到」。
+    root_env_style = str(tool.get("mcp_root_env_style") or "")
+    auth_unresolved = ""
+    if auth.get("mode") != "token" and reference_is_evaluated(
+        tool.get("format", "json"), auth.get("mode"), root_env_style, auth
+    ) and root_env_style:
+        resolved = resolve_auth(expected)
+        if resolved["ok"]:
+            auth = {**auth, "evaluated_token": resolved["token"]}
+        else:
+            auth_unresolved = resolved["error"]
+    if auth.get("mode") != "token" and not auth.get("env_var") and not auth.get("keychain_service") and not auth.get("file_path"):
+        return _result(
+            tool,
+            "unsupported",
+            f"端点的 auth_mode={auth.get('mode')} 但没有声明对应的来源字段"
+            f"（auth_token_env / auth_keychain / auth_file），无法写引用；"
+            "请先用 --update-endpoint 补齐来源，或改回 auth_mode=token。",
+        )
     existed = os.path.isfile(path)
     config_format = tool.get("format", "json")
     initial = "{}\n" if config_format in ("json", "jsonc") else ""
@@ -223,7 +288,7 @@ def fix_mcp_tool(
     # 配置文件（实际那份文件完全合法）。这里改为：渲染异常单独归因，并把根因
     # （异常类型 + 首行信息）留在消息里，便于一眼看出是谁的问题。
     try:
-        rendered = _render(tool, original, name, url, token)
+        rendered = _render(tool, original, name, url, token, auth=auth)
     except McpEntryConflict as exc:
         # 「目标 key 被 stdio 条目占用」是**可预期的冲突**，不是内部异常：不写盘、
         # 报 unsupported（scan.py 映射为 ⏭️，不计入 repair_errors），并把处置办法
@@ -286,6 +351,36 @@ def fix_mcp_tool(
         return _result(tool, "error", "validation failed; original configuration was rolled back")
 
     action = "updated" if existed else "created"
+    # 引用型凭据：如实区分「客户端会求值」与「写的是占位符」。
+    #
+    # 前者（Codex 的 bearer_token_env_var）配置写完就能连；后者写进 JSON/YAML/Cordis
+    # 的 `${env.X}` 不会被这些客户端解析 —— 若只报「updated and verified」，用户会
+    # 以为接入完成，实际连不上。把需要做的下一步直接写进消息里。
+    if auth.get("mode") not in (None, "token") and not reference_is_evaluated(
+        tool.get("format", "json"), auth.get("mode"), root_env_style, auth
+    ):
+        var = _env_name_of(auth)
+        return _result(
+            tool,
+            action,
+            f"endpoint {name!r} 已写入引用（不落明文）；该客户端不会解析占位符，"
+            f"需把真值注入环境变量 {var} 后生效"
+            f"（--auth-secret-status {name} 可查看来源与注入命令）",
+        )
+    if root_env_style and auth.get("mode") not in (None, "token"):
+        var = _env_name_of(auth)
+        if auth_unresolved:
+            return _result(
+                tool,
+                action,
+                f"endpoint {name!r} 已写入引用（不落明文），但真值未取到（{auth_unresolved}），"
+                f"客户端 {root_env_style} 块暂为空；修复后重跑即可补齐",
+            )
+        return _result(
+            tool,
+            action,
+            f"endpoint {name!r} 已写入引用（不落明文），真值已注入客户端 {root_env_style} 块（{var}）",
+        )
     return _result(tool, action, f"endpoint {name!r} updated and verified")
 
 

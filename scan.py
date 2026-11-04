@@ -162,6 +162,65 @@ def _run_all_profiles(args, config, config_path) -> int:
     return 0 if all_ok else 1
 
 
+def _auth_summary(entry: dict) -> str:
+    """One-line credential summary for ``--list-endpoints``（不含明文）。"""
+    from auth_secret import auth_configured, normalize_auth_mode
+
+    mode = normalize_auth_mode(entry)
+    if not auth_configured(entry):
+        return f"{mode}(未配置)"
+    if mode == "env":
+        return f"env:{entry.get('auth_token_env')}"
+    if mode == "keychain":
+        return f"keychain:{entry.get('auth_keychain')}"
+    if mode == "file":
+        return f"file:{entry.get('auth_file')}"
+    return "token(明文)"
+
+
+#: auth_mode → 声明来源所需的命令行参数（错误提示与校验共用一处定义）。
+_AUTH_SOURCE_FLAG = {
+    "env": "--endpoint-auth-env <变量名>",
+    "keychain": "--endpoint-auth-keychain <钥匙串服务名>",
+    "file": "--endpoint-auth-file <凭据文件路径>",
+}
+
+
+def _auth_source_of(auth_fields: dict) -> str:
+    """从归一后的 auth 字段里取「用户本次实际声明的来源」值（可能为空串）。"""
+    mode = auth_fields.get("auth_mode")
+    if mode == "env":
+        return auth_fields.get("auth_token_env") or ""
+    if mode == "keychain":
+        return auth_fields.get("auth_keychain") or ""
+    if mode == "file":
+        return auth_fields.get("auth_file") or ""
+    return ""
+
+
+def _endpoint_auth_fields_from_args(args) -> dict:
+    """把 ``--endpoint-auth-*`` 参数归一成 store 的 ``auth_fields``。
+
+    只有**显式出现在命令行上**的字段才进返回值：``store`` 对 ``None`` 的解释是
+    「不改」，而「没写这个参数」与「把这个参数清空」是两件事。因此这里逐项判定
+    ``getattr(args, "<dest>") is not None``，而不是用 ``or ""``。
+    """
+    fields: dict = {}
+    mode = getattr(args, "endpoint_auth_mode", None)
+    if mode is not None:
+        fields["auth_mode"] = str(mode).strip().lower()
+    for arg_name, dest in (
+        ("endpoint_auth_env", "auth_token_env"),
+        ("endpoint_auth_keychain", "auth_keychain"),
+        ("endpoint_auth_keychain_account", "auth_keychain_account"),
+        ("endpoint_auth_file", "auth_file"),
+    ):
+        value = getattr(args, arg_name, None)
+        if value is not None:
+            fields[dest] = str(value).strip()
+    return fields
+
+
 def _run_list_endpoints(args, config, config_path) -> int:
     """Read-only: print the endpoint library table."""
     print("\n  端点库（endpoint library）:")
@@ -169,7 +228,8 @@ def _run_list_endpoints(args, config, config_path) -> int:
     for entry in endpoint_entries(config):
         print(
             f"    - {entry.get('key','?')}: name={entry.get('name','')!r} "
-            f"url={entry.get('url','')!r} transport={entry.get('transport','streamable-http')!r}"
+            f"url={entry.get('url','')!r} transport={entry.get('transport','streamable-http')!r} "
+            f"auth={_auth_summary(entry)}"
         )
     print("")
     return 0
@@ -216,9 +276,27 @@ def _run_add_endpoint(args, config, config_path) -> int:
             "url_policy": "strict",
             "required_capabilities": required,
         }
+    auth_fields = _endpoint_auth_fields_from_args(args)
+    mode = auth_fields.get("auth_mode")
+    if mode and mode != "token":
+        # 引用型：``--endpoint-auth-token`` 与 auth_mode 语义冲突（一个要存明文，
+        # 一个明确说「不存明文」）。静默忽略 token 会让用户以为它被保存了，
+        # 写入后必被动下发；这里直接拒绝。
+        if getattr(args, "endpoint_auth_token", None):
+            print("  ❌ --endpoint-auth-token 与引用型 --endpoint-auth-mode 互斥"
+                  "（引用型不在端点库里存明文）")
+            return 2
+        declared = _auth_source_of(auth_fields)
+        if not declared:
+            print(f"  ❌ --endpoint-auth-mode {mode} 需要声明来源："
+                  f"{_AUTH_SOURCE_FLAG[mode]}")
+            return 2
+    else:
+        profile["auth_mode"] = "token"
     result = store_add_endpoint(
         config, key, profile, dry_run=args.dry_run,
-        auth_token=getattr(args, "endpoint_auth_token", None),
+        auth_token=getattr(args, "endpoint_auth_token", None) if mode in (None, "token") else None,
+        auth_fields=auth_fields,
     )
     _print_store_result(result)
     return 0 if result["status"] in ("ok", "dry-run") else 2
@@ -231,6 +309,24 @@ def _run_remove_endpoint(args, config, config_path) -> int:
 
 
 def _run_update_endpoint(args, config, config_path) -> int:
+    auth_fields = _endpoint_auth_fields_from_args(args)
+    mode = str(getattr(args, "endpoint_auth_mode") or "").strip().lower()
+    if mode and mode != "token" and getattr(args, "endpoint_auth_token", None):
+        print("  ❌ --endpoint-auth-token 与引用型 --endpoint-auth-mode 互斥"
+              "（引用型不在端点库里存明文）")
+        return 2
+    if mode and mode != "token" and not _auth_source_of(auth_fields):
+        entry = next(
+            (e for e in endpoint_entries(config) if e.get("key") == args.update_endpoint), {}
+        )
+        if not (entry.get("auth_token_env") or entry.get("auth_keychain") or entry.get("auth_file")):
+            print(f"  ❌ --endpoint-auth-mode {mode} 需要声明来源：{_AUTH_SOURCE_FLAG[mode]}")
+            return 2
+    if mode == "token" and not getattr(args, "endpoint_auth_token", None):
+        # 切回明文时必须显式提供 token，否则端点会变成「声明明文却无 token」，
+        # 客户端配置里既没有 Authorization 也没有引用，连接必然 401。
+        print("  ❌ 切回 auth_mode=token 需要同时用 --endpoint-auth-token 提供明文 token")
+        return 2
     result = store_update_endpoint(
         config,
         args.update_endpoint,
@@ -240,6 +336,7 @@ def _run_update_endpoint(args, config, config_path) -> int:
         command=getattr(args, "set_command", None),
         transport=getattr(args, "endpoint_transport", None),
         dry_run=args.dry_run,
+        auth_fields=auth_fields,
     )
     _print_store_result(result)
     return 0 if result["status"] in ("ok", "dry-run") else 2
@@ -258,6 +355,34 @@ def _run_test_endpoint(args, config, config_path) -> int:
     key = args.test_endpoint
     entries = endpoint_entries(config)
     entry = next((e for e in entries if e.get("key") == key), None)
+    # 凭据来源：命令行显式给的 --endpoint-auth-mode 优先（GUI 在弹窗里现选、
+    # 尚未保存的场景），其次用端点库里已存的声明。
+    from auth_secret import (
+        normalize_auth_mode,
+        resolve_auth,
+        resolve_auth_fields,
+    )
+
+    auth_decl = dict(entry or {})
+    explicit_mode = getattr(args, "endpoint_auth_mode", None)
+    if explicit_mode:
+        auth_decl["auth_mode"] = str(explicit_mode).strip().lower()
+        for arg_name, field in (
+            ("endpoint_auth_env", "auth_token_env"),
+            ("endpoint_auth_keychain", "auth_keychain"),
+            ("endpoint_auth_file", "auth_file"),
+        ):
+            if getattr(args, arg_name, None):
+                auth_decl[field] = getattr(args, arg_name)
+    auth_mode = normalize_auth_mode(auth_decl)
+    auth_error = ""
+    if auth_mode != "token":
+        resolved = resolve_auth(auth_decl)
+        if not resolved["ok"]:
+            auth_error = f"凭据不可用（{auth_mode}）：{resolved['error']}"
+        # 引用型探活必须用取到的真值：客户端配置里写的是引用，探活若不带 token
+        # 就会把「能连通的端点」判死。
+        auth_decl = {**resolve_auth_fields(auth_decl), "evaluated_token": resolved["token"]}
 
     # 允许探测「尚未入库」的端点：GUI 在「添加端点」表单里点测试时，端点还没写入
     # 端点库，唯一标识 key 自然查不到。此时用命令行内联的 url / command / transport
@@ -265,7 +390,10 @@ def _run_test_endpoint(args, config, config_path) -> int:
     transport = getattr(args, "endpoint_transport", None) or (entry or {}).get("transport", "streamable-http")
     url = getattr(args, "endpoint_url", None) or (entry or {}).get("url", "")
     command = getattr(args, "endpoint_command", None) or (entry or {}).get("command", "")
-    token = getattr(args, "endpoint_auth_token", None) or (entry or {}).get("auth_token", "")
+    if auth_mode != "token":
+        token = ""
+    else:
+        token = getattr(args, "endpoint_auth_token", None) or (entry or {}).get("auth_token", "")
     name = getattr(args, "endpoint_name", None) or (entry or {}).get("name", "") or key
 
     # 既没有存量条目、又没有内联的 url/command 可探测，才判定为「不存在」。
@@ -273,24 +401,201 @@ def _run_test_endpoint(args, config, config_path) -> int:
         print(json.dumps({"ok": False, "error": f"端点 {key!r} 不存在"}, ensure_ascii=False))
         return 2
 
-    if transport == "stdio":
+    resolved_token = auth_decl.get("evaluated_token", "") if auth_mode != "token" else token
+    if auth_error:
+        # 凭据取不到时不去连：报 401 只会把人引向「token 过期」这个错误猜想。
+        result = {"initialize_ok": False, "tools_list_ok": False, "tool_names": [],
+                  "error": auth_error}
+    elif transport == "stdio":
         if not command:
             result = {"initialize_ok": False, "tools_list_ok": False, "tool_names": [],
                       "error": "stdio 端点缺少 command"}
         else:
-            result = probe_mcp("", transport="stdio", command=command, token=token or None)
+            result = probe_mcp("", transport="stdio", command=command, token=resolved_token or None)
     else:
         if not url:
             result = {"initialize_ok": False, "tools_list_ok": False, "tool_names": [],
                       "error": "streamable-http 端点缺少 URL"}
         else:
-            result = probe_mcp(url, token=token if token else None)
+            result = probe_mcp(url, token=resolved_token if resolved_token else None)
     result["endpoint_key"] = key
     result["endpoint_name"] = name
     result["transport"] = transport
+    result["auth_mode"] = auth_mode
     result["ok"] = result.get("initialize_ok", False) and result.get("tools_list_ok", False)
     print(json.dumps(result, ensure_ascii=False))
     return 0 if result["ok"] else 1
+
+
+def _run_auth_secret_status(args, config, config_path) -> int:
+    """只读：报告端点凭据来源、是否取得到、脱敏值；绝不回显明文。
+
+    为什么需要它：``auth_mode=env`` 在 GUI 里最容易踩坑 —— 应用由 launchd 启动，
+    读不到 ``~/.zshrc`` 里 export 的变量。用户会看到「明明配了却说没有 token」。
+    本命令同时检查「当前进程环境里有没有同名变量」，把「配了但读不到」与
+    「根本没配」分开报。
+    """
+    import os as _os
+
+    from auth_secret import describe_auth, keychain_entry_exists, keychain_supported
+
+    requested = args.auth_secret_status
+    entries = endpoint_entries(config)
+    if requested != "all":
+        entries = [e for e in entries if e.get("key") == requested]
+        if not entries:
+            print(f"  ❌ 端点 {requested!r} 不存在（用 --auth-secret-status all 查看全部）")
+            return 2
+    # --check-credential：真的去读一次（钥匙串可能弹授权）。默认不读，见
+    # auth_secret.describe_auth 的说明。
+    check = bool(getattr(args, "check_credential", False))
+    from auth_secret import injection_hint
+    from mcp_fixer import _derived_env_name
+
+    reports = []
+    for entry in entries:
+        status = describe_auth(entry, check=check)
+        status["endpoint_key"] = entry.get("key", "")
+        # 引用型：客户端配置里拿到的是 ${env:VAR}，必须知道 VAR 叫什么、怎么注入。
+        # env 模式用端点声明的名字；其余用派生名（与 --fix-mcp 写入时同源）。
+        if status["mode"] != "token":
+            var = status["source"] if status["mode"] == "env" else _derived_env_name(entry)
+            status["env_var"] = var
+            status["injection_hint"] = injection_hint(status["mode"], var)
+        # 额外的诊断：钥匙串条目是否存在（读元数据，不会弹授权）
+        if status["mode"] == "keychain" and keychain_supported():
+            status["entry_exists"] = keychain_entry_exists(
+                str(entry.get("auth_keychain") or ""),
+                str(entry.get("auth_keychain_account") or ""),
+            )
+        if status["mode"] == "env":
+            name = str(entry.get("auth_token_env") or "")
+            # 与探活同一条读取路径（os.environ），避免「状态说可用、探活说不可用」
+            status["process_env_set"] = bool(name and _os.environ.get(name))
+        reports.append(status)
+
+    as_json = getattr(args, "format", None) == "json"
+    wants_all = requested == "all"
+    payload = reports if wants_all else reports[0]
+    if as_json:
+        print(json.dumps({"kind": "auth-secret-status", "endpoints": reports}
+                         if wants_all else payload, ensure_ascii=False, indent=2))
+        return 0
+    print("\n  端点凭据来源:")
+    print("  " + "-" * 62)
+    for report in reports:
+        if not report["configured"]:
+            state = "⚠️ 未配置"
+        elif report["available"] and report.get("checked"):
+            state = "✅ 已读取并验证"
+        elif report["available"]:
+            state = "✅ 可用（未读取内容）"
+        else:
+            state = "❌ 取不到"
+        print(f"    - {report['endpoint_key']}: mode={report['mode']} "
+              f"source={report['source'] or '-'} {state}"
+              + (f" masked={report['masked']}" if report["masked"] else ""))
+        if report.get("error"):
+            print(f"        原因：{report['error']}")
+        if "entry_exists" in report:
+            print(f"        钥匙串条目存在：{'是' if report['entry_exists'] else '否'}")
+        if report["mode"] == "env" and not report.get("process_env_set"):
+            print(f"        提示：环境变量 {report['source']} 在当前进程里为空。"
+                  "GUI 由 launchd 启动，读不到 shell profile 里的 export；"
+                  "改用 keychain / file 来源或把变量写进客户端自身配置。")
+        if report.get("injection_hint"):
+            print(f"        客户端需要的变量：{report.get('env_var')}"
+                  f"（支持根 env 块的客户端由 --fix-mcp 自动写入；其余需自行注入）")
+            print(f"        注入示例：{report['injection_hint']}")
+    if not check:
+        print("\n  提示：默认不读取凭据内容（读取钥匙串会弹系统授权）。"
+              "加 --check-credential 真正取一次并验证。")
+    print("")
+    return 0 if all(r["available"] or not r["configured"] for r in reports) else 1
+
+
+def _run_set_auth_secret(args, config, config_path) -> int:
+    """写操作：把凭据存进端点声明的来源（目前支持 keychain / file）。
+
+    明文只在**本次进程内**出现，命令行参数 → 存储介质，不进端点库、不进日志。
+    ``env`` 来源没有「存储」这一步（环境变量由用户的 shell / 客户端配置管理），
+    因此明确拒绝，避免用户以为我们替他写了 shell profile。
+    """
+    import os as _os
+
+    from auth_secret import keychain_delete, keychain_supported, keychain_write
+
+    key = args.set_auth_secret
+    entry = next((e for e in endpoint_entries(config) if e.get("key") == key), None)
+    if entry is None:
+        print(f"  ❌ 端点 {key!r} 不存在")
+        return 2
+    mode = str(getattr(args, "endpoint_auth_mode", None) or entry.get("auth_mode") or "token").strip().lower()
+    secret = getattr(args, "endpoint_auth_token", "")
+    secret = "" if secret is None else str(secret).strip()
+
+    if mode == "keychain":
+        service = getattr(args, "endpoint_auth_keychain", None) or entry.get("auth_keychain") or ""
+        account = (
+            getattr(args, "endpoint_auth_keychain_account", None)
+            or entry.get("auth_keychain_account")
+            or ""
+        )
+        if not service:
+            print("  ❌ 未指定钥匙串服务名（--endpoint-auth-keychain 或端点已存的 auth_keychain）")
+            return 2
+        if not keychain_supported():
+            print("  ❌ 当前平台不支持钥匙串写入（仅 macOS / Linux Secret Service）")
+            return 2
+        try:
+            if secret:
+                keychain_write(service, secret, account)
+                print(f"  ✅ 已写入钥匙串：服务 {service!r}（账户 {account or _os.environ.get('USER','当前用户')}）")
+            else:
+                keychain_delete(service, account)
+                print(f"  ✅ 已从钥匙串删除：服务 {service!r}")
+        except (RuntimeError, ValueError) as exc:
+            print(f"  ❌ {exc}")
+            return 2
+        return 0
+
+    if mode == "file":
+        path = getattr(args, "endpoint_auth_file", None) or entry.get("auth_file") or ""
+        if not path:
+            print("  ❌ 未指定凭据文件路径（--endpoint-auth-file 或端点已存的 auth_file）")
+            return 2
+        path = _os.path.expanduser(path)
+        if not secret:
+            try:
+                _os.unlink(path)
+                print(f"  ✅ 已删除凭据文件 {path}")
+            except FileNotFoundError:
+                print(f"  ℹ️ 凭据文件不存在：{path}")
+            except OSError as exc:
+                print(f"  ❌ 删除失败：{exc}")
+                return 2
+            return 0
+        try:
+            _os.makedirs(_os.path.dirname(path) or ".", exist_ok=True)
+            # 0600：凭据文件不允许同机其它用户读。用 os.open 显式带权限创建，
+            # 避免「先按默认权限创建再 chmod」的窗口期。
+            fd = _os.open(path, _os.O_WRONLY | _os.O_CREAT | _os.O_TRUNC, 0o600)
+            with _os.fdopen(fd, "w", encoding="utf-8") as handle:
+                handle.write(secret + "\n")
+            _os.chmod(path, 0o600)
+        except OSError as exc:
+            print(f"  ❌ 写入凭据文件失败：{exc}")
+            return 2
+        print(f"  ✅ 已写入凭据文件 {path}（0600）")
+        return 0
+
+    if mode == "env":
+        print("  ❌ auth_mode=env 的凭据由环境变量提供，本命令不代写 shell profile。\n"
+              "     请在客户端自身的启动环境里 export 该变量，或用 --set-auth-secret "
+              "配合 --endpoint-auth-mode keychain 改存钥匙串。")
+        return 2
+    print("  ❌ auth_mode=token 的明文由 --endpoint-auth-token 管理，不走本命令")
+    return 2
 
 
 def _run_attach_endpoints(args, config, config_path) -> int:
@@ -2039,7 +2344,43 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--endpoint-auth-token", type=str, default=None,
-        help="配合 --add-endpoint / --update-endpoint / --test-endpoint：认证 Token（Bearer）",
+        help="配合 --add-endpoint / --update-endpoint / --test-endpoint：认证 Token（Bearer，明文存进端点库）",
+    )
+    parser.add_argument(
+        "--endpoint-auth-mode", type=str, default=None, choices=["token", "env", "keychain", "file"],
+        help="配合 --add-endpoint / --update-endpoint / --test-endpoint：凭据来源。"
+             "token=明文现行为（默认）；env=环境变量；keychain=系统钥匙串；file=本机凭据文件。"
+             "引用型模式只写引用进客户端配置，明文不落盘。",
+    )
+    parser.add_argument(
+        "--endpoint-auth-env", type=str, default=None, metavar="VAR",
+        help="配合 --endpoint-auth-mode env：读取 token 的环境变量名（默认 HERMES_MCP_AUTH_TOKEN）",
+    )
+    parser.add_argument(
+        "--endpoint-auth-keychain", type=str, default=None, metavar="SERVICE",
+        help="配合 --endpoint-auth-mode keychain：钥匙串条目的服务名（如 hermes-unified-mcp）",
+    )
+    parser.add_argument(
+        "--endpoint-auth-keychain-account", type=str, default=None, metavar="ACCOUNT",
+        help="配合 --endpoint-auth-keychain：钥匙串条目账户名（默认当前用户名）",
+    )
+    parser.add_argument(
+        "--endpoint-auth-file", type=str, default=None, metavar="PATH",
+        help="配合 --endpoint-auth-mode file：存放 token 的文件路径（建议 0600）",
+    )
+    parser.add_argument(
+        "--auth-secret-status", type=str, default=None, metavar="KEY",
+        help="只读：报告端点凭据来源与是否取得到（脱敏，绝不回显明文）。KEY=all 报告全部端点",
+    )
+    parser.add_argument(
+        "--check-credential", action="store_true",
+        help="配合 --auth-secret-status：真正读取一次凭据（钥匙串会弹系统授权），"
+             "用于确认「存了且取得出来」；默认只检查存在性",
+    )
+    parser.add_argument(
+        "--set-auth-secret", type=str, default=None, metavar="KEY",
+        help="写操作：把凭据存进声明的来源。配合 --endpoint-auth-mode keychain 写系统钥匙串，"
+             "file 写凭据文件；值从配对的 --endpoint-auth-token 读取（空=删除）",
     )
     parser.add_argument(
         "--test-endpoint", type=str, default=None, metavar="KEY",
@@ -3121,6 +3462,11 @@ def main() -> int:
         return _run_update_endpoint(args, config, config_path)
     if getattr(args, "test_endpoint", None):
         return _run_test_endpoint(args, config, config_path)
+    # 凭据来源（2026-11-04）：读取/写入门控与端点 CRUD 同组早返回。
+    if getattr(args, "auth_secret_status", None):
+        return _run_auth_secret_status(args, config, config_path)
+    if getattr(args, "set_auth_secret", None):
+        return _run_set_auth_secret(args, config, config_path)
     if getattr(args, "attach_endpoints", None):
         return _run_attach_endpoints(args, config, config_path)
     if getattr(args, "list_mcp_inventory", False):
