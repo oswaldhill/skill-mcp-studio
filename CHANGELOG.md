@@ -7,6 +7,55 @@
 
 ## [Unreleased]
 
+### 新增
+
+- **端点凭据来源（`auth_mode`）：钥匙串 / 环境变量 / 凭据文件**（用户反馈：token
+  此前只能明文存进端点库再抄进每个客户端的 `Authorization` 头，已经存进 macOS
+  「登录」钥匙串的凭据在本工具里无处可用）。端点现在可声明凭据从哪来：
+  `token`（默认，行为与从前逐字节一致）/ `env` / `keychain` / `file`。
+  - 引用型只把**引用**写进客户端配置：Claude Code / Cursor / VS Code 等 JSON、YAML
+    写 `Authorization: "Bearer ${env:VAR}"`；Codex（TOML）改用官方
+    `bearer_token_env_var` 字段并清掉旧的明文 `http_headers`；DSH cordis patch
+    写同样形态的占位符（`!!js` 写法会被本项目的 PyYAML 校验拒绝，实测过）。
+  - 探活在连接时按引用取真值：钥匙串经 `security find-generic-password -w`
+    （Linux 为 `secret-tool`），文件读 0600 凭据文件。取不到时报「凭据不可用：
+    <原因>」而不是拿错误 token 去撞鉴权，也不再静默回落到环境变量。
+  - 新 CLI：`--endpoint-auth-mode/-env/-keychain/-keychain-account/-file`、
+    `--auth-secret-status <key>|all [--check-credential]`、
+    `--set-auth-secret <key>`（写钥匙串 / 文件，空值=移除）。`--list-endpoints`
+    增加 `auth=` 摘要列。
+  - 管理台：端点弹窗加「认证方式」选择器与来源输入行（带「检测来源」）；端点库表格
+    新增「认证」列，只显示来源元信息；「设置 → MCP」新增「MCP 端点凭据」卡片
+    （模式 / 来源 / 状态表 + 检测 + 存入）。
+  - **安全边界**：状态查询默认**不读**凭据内容（读钥匙串会弹系统授权，GUI 子进程 /
+    后台巡检里没人点「允许」，实测挂到 10 秒超时才失败并误报），只有用户主动点
+    「检测」才加 `--check-credential` 真读；任何输出与日志都只给脱敏值。
+  - **客户端 env 注入（让敲定式真能连上）**：客户端可在 `config.yaml` /
+    `discovered_tools.yaml` 里声明 `mcp_root_env_style`（真实键名：`env` 用于
+    Claude Code / Cursor / WorkBuddy / VS Code / OpenCode，`process_envs` 用于 Goose），
+    `--fix-mcp` 会把从钥匙串 / 文件取到的真值写进该配置根的 env 块，客户端启动时
+    注入自身环境 —— `${env:VAR}` 插值这才真正生效。已为上述客户端声明该字段。
+  - **变量名合法且稳定**：`${env.X}` 的 X 必须匹配 `[A-Za-z_][A-Za-z0-9_]*`；钥匙串
+    服务名常含连字符、文件路径必含斜杠，都不能直接当变量名。引用型统一改用**由端点名
+    派生**的名字（`hermes-home` → `HERMES_MCP_TOKEN`），同一端点在所有客户端同名。
+  - **能力边界如实告知**：Codex 的 `bearer_token_env_var` 会被客户端解析；声明了
+    `mcp_root_env_style` 的客户端由我们注入真值；其余（DSH cordis、Reasonix）写的是
+    占位符。引用型的修复结果因此不复用「updated and verified」，而是分别写出
+    「真值已注入客户端 env 块」或「需把真值注入环境变量 X」，避免把「写了占位符」
+    误报成「已接入」。
+  - **钥匙串失败的诊断**：读取超时 / 被拒（exit 161）/ 写入 `Operation not permitted`
+    三种情况分别给出可执行处置（点「总是允许」、改用 `--endpoint-auth-mode file` 等），
+    不再只抛一句 `Timed out`。
+
+### 安全
+
+- **管理台快照不再下发明文 `auth_token`**：`--management` 的端点库此前把明文令牌原样
+  交给前端，页面又把它写进编辑按钮的 `data-auth_token` 属性 —— 等于把一个长期有效
+  的令牌放进了 DOM。现在后端在快照里脱敏为 `<redacted>`，编辑按钮只携带 `data-key`，
+  凭据值仅在「编辑 / 存入」弹窗里由用户在 password 输入框输入后当次传给 CLI。
+- **切到引用型时清除旧的明文头**：JSON / YAML / TOML / cordis 四个渲染器的写后校验
+  保证旧 token 不残留（TOML 的子表形式也会连带删除空的 `[X.http_headers]` 表）。
+
 ### 修复
 
 - **DSH 插件表按插件名去重**（用户反馈「同一插件出现两次」）：16 条记录里只有

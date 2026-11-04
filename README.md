@@ -234,6 +234,11 @@ cleanup / commit / push / 修复。
 
 ```text
 --list-endpoints / --add-endpoint KEY / --remove-endpoint KEY / --update-endpoint KEY
+--endpoint-auth-mode token|env|keychain|file   端点凭据来源（默认 token=明文）
+--endpoint-auth-env VAR / --endpoint-auth-keychain SERVICE / --endpoint-auth-file PATH
+                                    引用型来源的变量名 / 钥匙串服务名 / 文件路径
+--auth-secret-status KEY|all [--check-credential]   凭据来源与可用性（脱敏，默认不读内容）
+--set-auth-secret KEY [--endpoint-auth-token VALUE]  把凭据写进来源（keychain/file；空值=移除）
 --test-endpoint KEY                 探测某端点（initialize + tools/list）
 --attach-endpoints KEY,... --client C   设置客户端 mcp_attach
 --list-mcp-inventory                逐客户端 MCP 条目分类（attached/legacy/unmanaged）
@@ -474,6 +479,16 @@ profiles:
 
 - 端点库管理：`--list-endpoints` / `--add-endpoint` / `--remove-endpoint` /
   `--update-endpoint`（均支持 `--dry-run`）
+- 端点凭据来源：端点可声明 `auth_mode`（`token` 明文 / `env` 环境变量 / `keychain`
+  系统钥匙串 / `file` 凭据文件）。引用型只把**引用**写进客户端配置（变量名 / 服务名 /
+  文件路径），明文不落盘；钥匙串经 macOS `security` 或 Linux `secret-tool` 读写。
+  状态查询与写入经 `--auth-secret-status` / `--set-auth-secret`，管理台在
+  「设置 → MCP」的「MCP 端点凭据」卡片里
+  - 客户端若声明了 `mcp_root_env_style`（`env` / `process_envs`，取值为真实键名），
+    `--fix-mcp` 会把真值写进该配置根的 env 块，`${env:VAR}` 插值随之生效；
+    引用型统一使用由端点名派生的合法变量名（`hermes-home` → `HERMES_MCP_TOKEN`）
+  - 钥匙串读取会触发系统授权对话框；无人值守环境下请改用 `keychain` 之外的来源，
+    或用 `--auth-secret-status <key> --check-credential` 在交互终端里完成一次授权
 - MCP 自动识别：`--list-mcp-inventory`
 - 一致性 gate：`scripts/verify_gui_consistency.sh`（验证 GUI 结论 == CLI 结论）
 

@@ -39,6 +39,8 @@ profiles:
 
 A profile may also declare `auth_token_env` (an environment variable name for the probe Bearer token), `probe_timeout`, `legacy_names` (legacy entries to detect/remove), and `legacy_detection` (heuristic rules for the legacy-channel check). Field semantics live in the product spec; here a profile is the single source of truth for the endpoint.
 
+Credential **source** is declared with `auth_mode` rather than by encoding it into the token string: `token` (default, the plaintext `auth_token` is written into client configs, as before), `env` (`auth_token_env`), `keychain` (`auth_keychain`, read via macOS `security` / Linux `secret-tool`), or `file` (`auth_file`). Reference modes write only the **reference** into client configs and never store the secret in the endpoint library; probes resolve the reference at connect time and report an unreadable source as a credential error instead of a network failure. Inspect with `--auth-secret-status <key>|all [--check-credential]` (masked, does not read the secret unless asked) and store with `--set-auth-secret` (keychain / file).
+
 - `--list-profiles` prints the available profiles and exits.
 - `--profile <name>` overrides `active_profile` for one run.
 - `required_capabilities: {}` means the endpoint only must complete `initialize` and `tools/list`. Otherwise each group maps a display name to the tool names that must appear in `tools/list`.
