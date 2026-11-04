@@ -453,6 +453,7 @@
     <a href="#s2-5d" class="sub">2.5d 分页</a>
     <a href="#s2-5e" class="sub">2.5e 路径字段行</a>
     <a href="#s2-5f" class="sub">2.5f 洞察弹窗</a>
+    <a href="#s2-5g" class="sub">2.5g 端点凭据</a>
     <a href="#s2-6" class="sub">2.6 工具条</a>
     <a href="#s2-7" class="sub">2.7 变更卡片</a>
     <a href="#s2-8" class="sub">2.8 托盘弹框</a>
@@ -1484,6 +1485,43 @@
         <li>不复用 <code>.modal</code> 的居中浮层样式，是独立的结构</li>
       </ul>
 
+      <h3 id="s2-5g">2.5g 端点凭据（<code>.auth-mode-row</code> / <code>.cred-source-row</code> / <code>.cred-status</code> / <code>.auth-badge</code>，v0.31.4 之后）<a class="anchor" href="#s2-5g" aria-label="锚点">#</a></h3>
+      <p><strong>为什么有这套组件</strong>：MCP 端点的 token 此前只有一种去向 —— 明文存进端点库，
+      再抄进每个客户端的 <code>Authorization</code> 头。用户把 token 存进系统钥匙串之后，
+      工具里没有任何地方能表达「凭据在钥匙串里」，只能把明文再抄一遍。本组组件就是
+      「凭据从哪来」的选择器与状态反馈。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>值</th><th>界面标签</th><th>配置里写的东西</th><th>明文在哪</th></tr></thead>
+          <tbody>
+            <tr><td><code>token</code></td><td>明文 Token</td><td><code>Authorization: Bearer &lt;token&gt;</code></td><td>客户端配置文件</td></tr>
+            <tr><td><code>env</code></td><td>环境变量</td><td><code>Bearer ${env:VAR}</code> / Codex <code>bearer_token_env_var</code></td><td>客户端进程环境</td></tr>
+            <tr><td><code>keychain</code></td><td>系统钥匙串</td><td>钥匙串<strong>服务名</strong></td><td>macOS 登录钥匙串 / Linux Secret Service</td></tr>
+            <tr><td><code>file</code></td><td>凭据文件</td><td>文件<strong>路径</strong></td><td>本机 0600 文件</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <pre>┌ 认证方式 ─────────────────────────────────────────────┐
+│ (•) 明文 Token  ( ) 环境变量  ( ) 系统钥匙串  ( ) 凭据文件 │
+└───────────────────────────────────────────────────────┘
+┌ 来源（引用型展开）──────────────────────────────────────┐
+│ [ 服务名 / 变量名 / 路径      ] [检测来源]  (●) 可用       │
+└───────────────────────────────────────────────────────┘</pre>
+      <ul>
+        <li>选择器 <code>.auth-mode-opt</code> 与 <code>.transport-opt</code> 逐值同构（整行可点、
+          <code>var(--r-control)</code> 圆角、选中态 <code>var(--accent)</code> 描边 + <code>var(--accent-bg)</code> 底），
+          因此不在 2.9 另立数字</li>
+        <li>结果胶囊 <code>.cred-status</code> 四态：默认 / <code>.ok</code> 可用 / <code>.warn</code> 未配置 / <code>.err</code> 取不到</li>
+        <li>端点库表格用 <code>.auth-badge</code> 显示来源元信息，引用型加 <code>.is-ref</code> 用 <code>--accent</code> 强调</li>
+        <li><strong>任何路径都不得把凭据值写进 DOM</strong>：快照已脱敏，编辑按钮只带 <code>data-key</code></li>
+        <li><strong>如实说明是否会被求值</strong>：<code>token</code> 天然可用；Codex 的 <code>bearer_token_env_var</code> 会解析；
+          声明了 <code>mcp_root_env_style</code> 的客户端（值为真实键名 <code>env</code> / <code>process_envs</code>）由我们写入真值、启动时注入自身环境；
+          其余客户端里的 <code>Bearer ${env.X}</code> 只是占位符，界面与修复结果都不得显示成「已连接」</li>
+        <li><strong>变量名合法且稳定</strong>：由端点名派生（<code>hermes-home</code> → <code>HERMES_MCP_TOKEN</code>），
+          服务名连字符与文件路径斜杠都不直接当变量名</li>
+        <li>设置页状态表默认不读凭据内容（读钥匙串会弹系统授权），只有点「检测」才加 <code>--check-credential</code> 真读</li>
+      </ul>
+
       <h3 id="s2-6">2.6 工具条（<code>.mt-toolbar</code> / <code>.agent-toolbar</code> / <code>.market-toolbar</code> / <code>.insight-toolbar</code>）<a class="anchor" href="#s2-6" aria-label="锚点">#</a></h3>
       <p>搜索框 + 操作按钮同排。各区域各有一个工具条类（<strong>不存在统一的 <code>.toolbar</code></strong>，按所在区域选对应类）：</p>
       <div class="table-wrap">
@@ -1685,6 +1723,30 @@
 
     <!-- ═══ 2.11 ═══ -->
     <section id="s2-11">
+      <h3 id="s2-11a">2.11a 概览页统计卡口径（<code>.stat-card</code>，2026-11-04 定案）<a class="anchor" href="#s2-11a" aria-label="锚点">#</a></h3>
+      <p>概览页顶部六张 <code>.stat-card</code>。<strong>语义色只能表达「需要处理的问题」</strong>，
+      不能表达「本机没有这个东西」—— 后者是正常状态。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>卡</th><th>语义色</th><th>含义</th></tr></thead>
+          <tbody>
+            <tr><td>受管客户端</td><td>中性（<code>accent</code> 强调）</td><td>注册表收录总数，<strong>含未安装</strong></td></tr>
+            <tr><td>已安装</td><td>中性 + <code>accent</code></td><td>有可执行 / App / 配置证据</td></tr>
+            <tr><td>仅发现配置</td><td><code>warn</code></td><td>只有配置文件、无程序（多为残留）</td></tr>
+            <tr><td>未安装</td><td><strong>中性</strong></td><td>只在注册表中，不进 Skills / MCP 运行时列表</td></tr>
+            <tr><td>统一技能</td><td>中性</td><td>统一技能目录下的技能数</td></tr>
+            <tr><td>主流已纳入</td><td>中性</td><td><code>registered / total</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <ul>
+        <li><strong>为什么「未安装」不用 <code>err</code> 红</strong>：用户反馈「概览说未安装 12，MCP 页却说 5 个客户端，是不是矛盾」。
+          两个数在数据上一致（17 = 5 安装 + 12 未安装，MCP 页只渲染 <code>install_state !== "none"</code>）；
+          红色在别处表示「要修的问题」，与「本机没装」共用一个红，读者就会去找根本不存在的错误</li>
+        <li>会一起被读的相邻卡必须带 <code>tip</code> 说明口径，文案要能自解释</li>
+        <li>口径（受管 = 已装 + 仅配置 + 未安装）不得因文案调整而改变，由 <code>tests/test_dashboard_overview_stats.py</code> 守住</li>
+      </ul>
+
       <h3 id="s2-11">2.11 概览页「全量检查」区（4 维度 + 端点，v0.30.0）<a class="anchor" href="#s2-11" aria-label="锚点">#</a></h3>
       <p>概览页的「全量检查」按钮跑<strong>与托盘后台巡检同一条</strong> <code>--snapshot</code>
       命令（4 维度变更对比：IDE/Agent · MCP · Skill · Hook）+ 端点库整体探活

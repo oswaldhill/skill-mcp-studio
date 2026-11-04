@@ -945,6 +945,36 @@
   .transport-opt:hover { border-color: var(--accent-border); }
   .transport-opt:has(input:checked) { border-color: var(--accent); background: var(--accent-bg); color: var(--accent); font-weight: 500; }
   .transport-opt input { accent-color: var(--accent); }
+  /* 凭据来源选择（v0.31.4 之后：auth_mode = token / env / keychain / file）
+     与 .transport-opt 同构：整行可点、选中态用强调色描边 + 强调底色。
+     为什么单独建类而不是复用 .transport-opt：两者语义不同（一个是
+     「怎么连」，一个是「凭据从哪来」），共用会让规范里的组件表失真。 */
+  .auth-mode-row { display: flex; gap: var(--gap-3); flex-wrap: wrap; }
+  .auth-mode-opt {
+    flex: 1 1 auto; display: flex; align-items: center; gap: var(--gap-2);
+    padding: var(--sp-3) var(--sp-5); border: 1px solid var(--line); border-radius: var(--r-control);
+    cursor: pointer; font-size: var(--fs-sm); color: var(--muted); background: var(--panel);
+    transition: all .15s var(--ease);
+  }
+  .auth-mode-opt:hover { border-color: var(--accent-border); }
+  .auth-mode-opt:has(input:checked) { border-color: var(--accent); background: var(--accent-bg); color: var(--accent); font-weight: 500; }
+  .auth-mode-opt input { accent-color: var(--accent); }
+  /* 引用型来源的身份输入行（变量名 / 钥匙串服务名 / 文件路径）：单行 +
+     右侧「检测」按钮，与 token-row 的视觉语言一致。 */
+  .cred-source-row { display: flex; gap: 0; align-items: stretch; }
+  .cred-source-row input { flex: 1; border-top-right-radius: 0; border-bottom-right-radius: 0; }
+  .cred-source-actions { display: flex; align-items: center; gap: var(--gap-1); margin-top: var(--gap-2); flex-wrap: wrap; }
+  .cred-status {
+    display: inline-flex; align-items: center; gap: var(--gap-2);
+    padding: var(--sp-0b) var(--sp-3); border-radius: var(--r-hair);
+    font-size: var(--fs-2xs); border: 1px solid var(--line); color: var(--muted);
+  }
+  .cred-status.ok { background: var(--ok-bg); border-color: var(--ok-border); color: var(--ok); }
+  .cred-status.warn { background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn); }
+  .cred-status.err { background: var(--err-bg); border-color: var(--err-border); color: var(--err); }
+  /* 端点库表格里的认证方式列 */
+  .auth-badge { font-family: var(--mono); font-size: var(--fs-2xs); color: var(--muted); white-space: nowrap; }
+  .auth-badge.is-ref { color: var(--accent); }
 
   .pagination { display: flex; align-items: center; gap: var(--gap-2); justify-content: center; margin-top: var(--sp-6); flex-wrap: wrap; }
   .pagination button { padding: var(--sp-1) var(--sp-3b); font-size: var(--fs-xs); }
@@ -2670,15 +2700,28 @@ function renderOverview() {
   // 那会让用户以为总览的颜色包含了端口通断 —— 正是本次要消除的误解。
   const registered = mainstream.filter((t) => t.registered).length;
   const card = statCard;  // S9：统一到顶层的 statCard
+  // 统计卡口径（2026-11-04 用户反馈「概览说未安装 12，MCP 页却有 5 个客户端」）：
+  //
+  // 两个数字在数据上一致 —— 17 = 已安装 5 + 仅配置 0 + 未安装 12，而 MCP 页只渲染
+  // install_state !== "none" 的客户端。读起来像矛盾，是两个表达问题：
+  //   ① 「未安装」原用 err 红。在别处 err 表示「需要处理的问题」，而这里没装某个
+  //      客户端是**正常状态**（注册表收录 ≠ 你该装它）。同一个红被两种含义共用，
+  //      用户自然会去找「哪里出错了」。故改用中性色（不传 cls）。
+  //   ② 「受管客户端」不带说明，读者默认 17 个都在用。补 tip 写明它含未安装项。
+  // 三张卡的 tip 必须互相呼应：看任何一张都能自己推出口径，不用再问。
   el.innerHTML =
     '<div class="stat-grid">' +
-    card(agents.length, "受管客户端", "", false) +
-    card(installed, "已安装", "", true) +
-    card(configOnly, "仅发现配置", "warn", false) +
-    card(uncovered, "未安装", "err", false) +
-    card(skills.skill_count || 0, "统一技能", "", false) +
-    card(`${registered}/${mainstream.length}`, "主流已纳入", "", false) +
-    "</div>" +
+    card(agents.length, "受管客户端", "", false,
+      "注册表里收录、由本工具统一管理的客户端总数，含本机未安装的")
+    + card(installed, "已安装", "", true,
+      "本机检测到可执行文件 / App / 配置文件证据的客户端")
+    + card(configOnly, "仅发现配置", "warn", false,
+      "只找到配置文件、没有可执行文件的客户端（多为已卸载残留）")
+    + card(uncovered, "未安装", "", false,
+      "本机未安装的客户端：只在注册表中存在，不参与 Skills / MCP 页的运行时列表")
+    + card(skills.skill_count || 0, "统一技能", "", false)
+    + card(`${registered}/${mainstream.length}`, "主流已纳入", "", false)
+    + "</div>" +
     '<div class="quickbox"><span class="quickbox-label">快捷操作</span>' +
     '<button class="btn-soft" data-action="add-agent">添加 IDE / API</button>' +
     '<button class="btn-soft" data-action="merge">修复链接</button>' +
@@ -3728,6 +3771,109 @@ async function confirmDeleteSkill(skill) {
   }, () => refreshBlocks(["skills", "agents"]), ["备份到 _backup/", "移入 _trash/ 回收目录", "刷新技能清单"]);
 }
 
+// ---------------- MCP 端点凭据（设置页 · v0.31.4 之后） ----------------
+// 表格一屏列出所有端点：模式 / 来源 / 状态 / 操作（检测、存入、移除）。
+// 只有 keychain / file 两种模式能「存入」——env 由用户自己的 shell 管，
+// token 明文走端点编辑弹窗。
+function renderEndpointCredentials(reports) {
+  const body = $("endpoint-cred-body");
+  if (!body) return;
+  if (!reports.length) { body.innerHTML = '<div class="empty">端点库为空<div class="empty-cta">先在「MCP 端点库」添加端点</div></div>'; return; }
+  const rows = reports.map((r) => {
+    const canStoreSource = r.mode === "keychain" || r.mode === "file";
+    const stateBadge = !r.configured ? '<span class="cred-status warn">未配置</span>'
+      : r.available ? '<span class="cred-status ok">可用</span>'
+      : '<span class="cred-status err">取不到</span>';
+    // 空来源占位用 "-"（规范禁止 em-dash，见 DESIGN.md §0 质量规则）
+    const source = r.source ? `<code class="mono">${escapeHtml(r.source)}</code>` : '<span class="faint">-</span>';
+    return `<tr>
+      <td class="mono">${escapeHtml(r.endpoint_key)}</td>
+      <td>${escapeHtml(AUTH_MODES[r.mode] ? AUTH_MODES[r.mode].label : r.mode)}</td>
+      <td>${source}</td>
+      <td>${stateBadge}${r.masked ? ` <code class="mono">${escapeHtml(r.masked)}</code>` : ""}</td>
+      <td>
+        <button class="ghost sm" data-action="check-credential" data-key="${escapeHtml(r.endpoint_key)}">检测</button>
+        ${canStoreSource ? `<button class="ghost sm" data-action="store-credential" data-key="${escapeHtml(r.endpoint_key)}">存入</button>` : ""}
+      </td>
+    </tr>`;
+  }).join("");
+  body.innerHTML = `<div class="table-scroll"><table><thead><tr><th>端点 key</th><th>认证方式</th><th>来源</th><th>状态</th><th style="width:132px">操作</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+// 读取状态（不读凭据内容：钥匙串读取会弹授权，只在用户点「检测」时才读）
+async function loadEndpointCredentials() {
+  const body = $("endpoint-cred-body");
+  if (!body) return;
+  const res = await runCli(["--auth-secret-status", "all", "--format", "json"]);
+  if (!res || res.code !== 0) {
+    body.innerHTML = '<div class="empty">凭据状态读取失败<div class="empty-cta">' + escapeHtml(cliErrDetail(res)) + "</div></div>";
+    return;
+  }
+  let data = {};
+  try { data = JSON.parse(res.stdout || "{}"); } catch (e) { data = {}; }
+  renderEndpointCredentials(data.endpoints || []);
+}
+
+// 「检测」：真正读一次凭据（钥匙串会弹系统授权），把是否取得到反馈给用户
+async function checkEndpointCredential(key) {
+  const res = await runCli(["--auth-secret-status", key, "--check-credential", "--format", "json"]);
+  let data = {};
+  try { data = JSON.parse((res && res.stdout) || "{}"); } catch (e) { data = {}; }
+  if (data.available) {
+    showToast("ok", `${key}：凭据可用${data.masked ? "（" + data.masked + "）" : ""}`);
+  } else {
+    showToast("err", `${key}：${data.error || "凭据不可用"}`);
+  }
+  loadEndpointCredentials();
+}
+
+// 「存入」：把用户输入的凭据写进端点声明的来源（钥匙串 / 文件），再刷新状态
+function openStoreCredentialModal(key) {
+  mountModal(`<div class="modal-backdrop"><div class="modal modal-form">
+    <div class="form-title">存入库凭据</div>
+    <div class="form-sub">把凭据写入端点 <code class="mono">${escapeHtml(key)}</code> 声明的来源。凭据只在本次操作中传入，不会存进端点库或页面。</div>
+    <div class="form-field"><label for="cs-secret">凭据值 *</label>
+      <div class="token-row">
+        <input type="password" id="cs-secret" placeholder="Bearer token 或 API key" autocomplete="off" />
+        <button type="button" class="token-toggle" id="cs-secret-toggle" aria-label="显示或隐藏凭据">显示</button>
+      </div>
+    </div>
+    <div class="note" id="cs-hint"></div>
+    <div class="form-actions">
+      <button class="btn-cancel" id="cs-cancel">取消</button>
+      <button class="btn-test" id="cs-clear">从来源移除</button>
+      <button id="cs-save" class="btn-save">存入</button>
+    </div>
+  </div></div>`);
+  $("cs-secret-toggle").onclick = () => {
+    const inp = $("cs-secret");
+    const btn = $("cs-secret-toggle");
+    if (inp.type === "password") { inp.type = "text"; btn.textContent = "隐藏"; }
+    else { inp.type = "password"; btn.textContent = "显示"; }
+  };
+  const mcp = (SNAP && SNAP.mcp) || {};
+  const ep = (mcp.endpoints || []).find(e => e.key === key) || {};
+  const mode = endpointAuthMode(ep);
+  $("cs-hint").textContent = mode === "keychain"
+    ? "写入 macOS 登录钥匙串；同服务名已有条目会被覆盖更新。"
+    : "写入本机文件（权限 0600）；同路径已有文件会被覆盖。";
+  $("cs-cancel").onclick = closeModal;
+  $("cs-save").onclick = async () => {
+    const secret = $("cs-secret").value.trim();
+    if (!secret) { showBanner("err", "请填写凭据值"); return; }
+    const res = await runCli(["--set-auth-secret", key, "--endpoint-auth-mode", mode, "--endpoint-auth-token", secret]);
+    closeModal();
+    if (res && res.code === 0) { showToast("ok", "凭据已写入来源"); loadEndpointCredentials(); }
+    else showToast("err", cliErrDetail(res));
+  };
+  $("cs-clear").onclick = async () => {
+    const res = await runCli(["--set-auth-secret", key, "--endpoint-auth-mode", mode, "--endpoint-auth-token", ""]);
+    closeModal();
+    if (res && res.code === 0) { showToast("ok", "已从来源移除"); loadEndpointCredentials(); }
+    else showToast("err", cliErrDetail(res));
+  };
+}
+
 // ---------------- 端点库（设置页内嵌） ----------------
 function renderEndpointLibrary() {
   const el = $("settings-endpoints");
@@ -3735,7 +3881,11 @@ function renderEndpointLibrary() {
   const mcp = (SNAP && SNAP.mcp) || {};
   const endpoints = mcp.endpoints || [];
   if (!endpoints.length) { el.innerHTML = '<div class="empty">端点库为空，点「添加端点」。</div>'; return; }
-  el.innerHTML = '<div class="table-scroll"><table><thead><tr><th>端点 key</th><th>name</th><th>地址 / 命令</th><th>transport</th><th style="width:168px">操作</th></tr></thead><tbody>' +
+  // 「认证」列：显示凭据来源，**不回显任何凭据值**。
+  // 此前「编辑」按钮把 auth_token 塞进 data-auth_token 属性 —— 等于把明文令牌
+  // 写进 DOM 属性，快照/开发者工具/复制页面都能读到。现在明文不再离开后端
+  // （快照已脱敏），编辑弹窗也按 auth_mode 只显示「已配置/未配置」。
+  el.innerHTML = '<div class="table-scroll"><table><thead><tr><th>端点 key</th><th>name</th><th>地址 / 命令</th><th>transport</th><th>认证</th><th style="width:168px">操作</th></tr></thead><tbody>' +
     endpoints.map((ep) => {
       const isStdio = (ep.transport || "streamable-http") === "stdio";
       const address = isStdio ? (ep.command || "-") : (ep.url || "");
@@ -3744,8 +3894,9 @@ function renderEndpointLibrary() {
         <td class="mono">${escapeHtml(ep.name || "")}</td>
         <td class="mono" title="${escapeHtml(address)}">${escapeHtml(address)}</td>
         <td>${isStdio ? '<span class="tag">stdio</span>' : '<span class="tag tag-blue">http</span>'}</td>
+        <td>${authBadge(ep)}</td>
         <td>
-          <button class="ghost sm" data-action="edit-endpoint" data-key="${escapeHtml(ep.key)}" data-name="${escapeHtml(ep.name || "")}" data-url="${escapeHtml(ep.url || "")}" data-auth_token="${escapeHtml(ep.auth_token || "")}" data-transport="${escapeHtml(ep.transport || "streamable-http")}" data-command="${escapeHtml(ep.command || "")}">编辑</button>
+          <button class="ghost sm" data-action="edit-endpoint" data-key="${escapeHtml(ep.key)}">编辑</button>
           <button class="ghost sm" data-action="test-endpoint" data-key="${escapeHtml(ep.key)}">测试</button>
           <button class="danger sm" data-action="rm-endpoint" data-key="${escapeHtml(ep.key)}">删除</button>
         </td>
@@ -4930,11 +5081,22 @@ function renderSettings() {
     </div>
     <div class="note" style="margin-top:var(--sp-4)">开启后扫描时会自动发现未登记的技能目录。扫描路径与排除清单在 config.yaml 中维护。</div>
   </div>`;
+  // 「MCP 端点凭据」：把凭据存进它声明的来源（钥匙串 / 文件），
+  // 并列出各端点的来源状态。此前 token 只能明文存进端点库、再抄进每个客户端配置；
+  // 钥匙串里已存的凭据无处可用。本卡片承担「存进来源」这一步：端点配置本身只写引用。
+  //
+  // 安全纪律：凭据值只从 password 输入框读出、当次传给 CLI，不回显、不进 DOM 属性、
+  // 不进快照；状态行只显示「模式 / 来源 / 是否存在」（脱敏）。
+  const credCard = `<div class="settings-card" id="endpoint-cred-card">
+    <h4>MCP 端点凭据</h4>
+    <div id="endpoint-cred-body"><div class="empty">加载中…</div></div>
+    <div class="note" style="margin-top:var(--sp-4)">凭据以「引用」形式生效：端点库只记录来源（环境变量名 / 钥匙串服务名 / 文件路径），客户端配置里写的也是引用，明文不再落盘。检测与存储经 CLI（--auth-secret-status / --set-auth-secret）。</div>
+  </div>`;
   const mcpCard = `${_activeProfileCard}${_autoDiscoverCard}<div class="settings-card">
     <h4>MCP 端点库</h4>
     <div class="card-link"><div class="grow note">端点库为通用 MCP 配置，增删改在此集中进行。</div><button class="primary" data-action="add-endpoint">添加端点</button></div>
     <div id="settings-endpoints" style="margin-top:var(--sp-4)"></div>
-  </div>`;
+  </div>${credCard}`;
 
   el.innerHTML =
     `<div class="settings-tab-panel" data-panel="appearance">${appearanceCard}${patrolCard}${configPortCard}${_aboutCard}</div>` +
@@ -5045,6 +5207,7 @@ function renderSettings() {
   applyScale(currentScale(), false);
   renderAgentsTable(0);
   renderEndpointLibrary();
+  loadEndpointCredentials();
   // 重建面板后恢复用户当前所在的子页（否则 loadInternal 重新渲染会跳回「通用」）
   switchSettingsTab(_settingsTab);
 }
@@ -7892,8 +8055,144 @@ function statusTag(status) {
   return `<span class="tag ${st.cls}">${escapeHtml(st.label)}</span>`;
 }
 
+// ---------------- 端点凭据（auth_mode，v0.31.4 之后） ----------------
+// 单一事实来源：模式取值与中文标签。后端 core/auth_secret.py 的 AUTH_MODES 必须
+// 与这里的键一一对应（tests/test_dashboard_auth_ui.py 守住这条一致性）。
+const AUTH_MODES = {
+  token: { label: "明文 Token", hint: "填在下面的输入框，会写进各客户端配置的 Authorization 头。" },
+  env: { label: "环境变量", hint: "配置只写变量名，由客户端自己从环境变量取值。GUI 由 launchd 启动，读不到 shell profile。" },
+  keychain: { label: "系统钥匙串", hint: "凭据存 macOS 登录钥匙串（或 Linux Secret Service），配置里只写服务名。" },
+  file: { label: "凭据文件", hint: "凭据存本机 0600 文件，配置里只写文件路径。" },
+};
+
+// 端点当前的凭据模式（缺省 = token，与后端 normalize_auth_mode 一致）
+function endpointAuthMode(ep) {
+  const mode = String((ep && ep.auth_mode) || "token").toLowerCase();
+  return AUTH_MODES[mode] ? mode : "token";
+}
+
+// 端点库「认证」列：模式名 + 是否已配置。**只读元信息，不含任何凭据值**。
+function authBadge(ep) {
+  const mode = endpointAuthMode(ep);
+  const configured = mode === "token"
+    ? Boolean(ep && ep.auth_token)
+    : Boolean(ep && (ep.auth_token_env || ep.auth_keychain || ep.auth_file));
+  const source = mode === "env" ? (ep.auth_token_env || "")
+    : mode === "keychain" ? (ep.auth_keychain || "")
+    : mode === "file" ? (ep.auth_file || "") : "";
+  const text = mode === "token" ? (configured ? "token" : "token · 未配置")
+    : (configured ? source : `${mode} · 未声明来源`);
+  const cls = mode === "token" ? "auth-badge" : "auth-badge is-ref";
+  return `<span class="${cls}" title="${escapeHtml(AUTH_MODES[mode].label)}">${escapeHtml(text)}</span>`;
+}
+
+// 凭据来源输入区的字段：模式 → { 输入框 id 后缀, 参数名, 占位符, 标签 }
+const AUTH_SOURCE_FIELDS = {
+  env: { arg: "--endpoint-auth-env", label: "环境变量名", placeholder: "HERMES_MCP_AUTH_TOKEN", hint: "客户端启动环境中必须存在该变量" },
+  keychain: { arg: "--endpoint-auth-keychain", label: "钥匙串服务名", placeholder: "hermes-unified-mcp", hint: "macOS 登录钥匙串中的条目名" },
+  file: { arg: "--endpoint-auth-file", label: "凭据文件路径", placeholder: "~/.config/skill-mcp-studio/mcp-token", hint: "建议权限 0600，内容为纯 token" },
+};
+
+// 生成「认证方式」选块 + 随模式切换的来源输入行。prefix 区分新增(ep)/编辑(ee)两个弹窗。
+function authModeBlock(prefix, ep) {
+  const mode = endpointAuthMode(ep);
+  const opts = Object.entries(AUTH_MODES).map(([key, meta]) =>
+    `<label class="auth-mode-opt"><input type="radio" name="${prefix}-auth-mode" value="${key}" ${key === mode ? "checked" : ""} /> ${meta.label}</label>`
+  ).join("");
+  const sourceValue = mode === "env" ? (ep.auth_token_env || "")
+    : mode === "keychain" ? (ep.auth_keychain || "")
+    : mode === "file" ? (ep.auth_file || "") : "";
+  return `<div class="form-field">
+      <label id="${prefix}-auth-mode-label">认证方式</label>
+      <div class="auth-mode-row" role="radiogroup" aria-labelledby="${prefix}-auth-mode-label">${opts}</div>
+      <div class="note" id="${prefix}-auth-hint" style="margin-top:var(--sp-2)">${escapeHtml(AUTH_MODES[mode].hint)}</div>
+    </div>
+    <div id="${prefix}-auth-source" class="form-field" style="display:none">
+      <label id="${prefix}-auth-source-label" for="${prefix}-auth-source-input">来源</label>
+      <div class="cred-source-row"><input type="text" id="${prefix}-auth-source-input" placeholder="" /></div>
+      <div class="cred-source-actions" id="${prefix}-auth-source-actions"></div>
+    </div>
+    <div class="form-field" id="${prefix}-token-field">
+      <label for="${prefix}-token">认证 Token（可选）</label>
+      <div class="token-row">
+        <input type="password" id="${prefix}-token" placeholder="Bearer token 或 API key" autocomplete="off" />
+        <button type="button" class="token-toggle" id="${prefix}-token-toggle" aria-label="显示或隐藏 Token">显示</button>
+      </div>
+    </div>`;
+}
+
+// 绑定认证方式联动：token 显示输入框，引用型显示来源输入行 + 状态。
+// onModeChange(mode) 由调用方决定额外行为（如清空明文输入）。
+function bindAuthModeBlock(prefix, ep, onModeChange) {
+  const sourceField = $(`${prefix}-auth-source`);
+  const tokenField = $(`${prefix}-token-field`);
+  const sourceInput = $(`${prefix}-auth-source-input`);
+  const hint = $(`${prefix}-auth-hint`);
+  if (!sourceField || !tokenField || !sourceInput) return null;
+  // 明文 token 只在「编辑」弹窗里可能已有值；快照脱敏后后端只告诉我们
+  // auth_token 是否存在，弹窗不预填明文（提示占位符说明），避免回显。
+  if (ep && ep.auth_token && ep.auth_token !== "<redacted>") $(`${prefix}-token`).value = ep.auth_token;
+  const sync = () => {
+    const mode = document.querySelector(`input[name="${prefix}-auth-mode"]:checked`).value;
+    hint.textContent = AUTH_MODES[mode].hint;
+    tokenField.style.display = mode === "token" ? "" : "none";
+    sourceField.style.display = mode === "token" ? "none" : "";
+    if (mode !== "token") {
+      const field = AUTH_SOURCE_FIELDS[mode];
+      $(`${prefix}-auth-source-label`).textContent = field.label;
+      sourceInput.placeholder = field.placeholder;
+      $(`${prefix}-auth-source-actions`).innerHTML =
+        `<button type="button" class="ghost sm" id="${prefix}-auth-check">检测来源</button>` +
+        `<span class="cred-status" id="${prefix}-auth-status" role="status">未检测</span>` +
+        `<span class="note">${escapeHtml(field.hint)}</span>`;
+      $(`${prefix}-auth-check`).onclick = () => checkAuthSource(prefix, mode);
+    }
+    if (onModeChange) onModeChange(mode);
+  };
+  document.querySelectorAll(`input[name="${prefix}-auth-mode"]`).forEach(r => r.addEventListener("change", () => {
+    // 切换模式时清空上一模式的来源值，避免把变量名带到钥匙串服务名里
+    sourceInput.value = "";
+    sync();
+  }));
+  sync();
+  return sync;
+}
+
+// 读取当前弹窗里选中的认证方式与来源值
+function readAuthFields(prefix) {
+  const mode = document.querySelector(`input[name="${prefix}-auth-mode"]:checked`).value;
+  const args = ["--endpoint-auth-mode", mode];
+  if (mode !== "token") {
+    const value = ($(`${prefix}-auth-source-input`) || {}).value;
+    const v = (value || "").trim();
+    if (!v) return { mode, error: `请填写${AUTH_SOURCE_FIELDS[mode].label}` };
+    args.push(AUTH_SOURCE_FIELDS[mode].arg, v);
+  }
+  return { mode, args };
+}
+
+// 「检测来源」：调 --auth-secret-status，把结果渲染成状态胶囊。
+// check=true 时才真正读内容（钥匙串会弹授权，属于用户主动点击，符合预期）。
+async function checkAuthSource(prefix, mode) {
+  const statusEl = $(`${prefix}-auth-status`);
+  if (!statusEl) return;
+  const value = ($(`${prefix}-auth-source-input`).value || "").trim();
+  if (!value) { statusEl.className = "cred-status warn"; statusEl.textContent = "请先填写来源"; return; }
+  statusEl.className = "cred-status";
+  statusEl.textContent = "检测中…";
+  const flag = mode === "env" ? "--endpoint-auth-env" : mode === "keychain" ? "--endpoint-auth-keychain" : "--endpoint-auth-file";
+  // 借用 --test-endpoint 的内联参数入口做探测：端点可能尚未入库，直接给声明。
+  const res = await runCli(["--test-endpoint", "__auth_probe__", flag, value, "--endpoint-auth-mode", mode]);
+  let data = {};
+  try { data = JSON.parse((res && res.stdout) || "{}"); } catch (e) { data = {}; }
+  if (data.ok) { statusEl.className = "cred-status ok"; statusEl.textContent = "可用"; return; }
+  const err = String(data.error || "").replace(/^凭据不可用（\w+）：/, "");
+  statusEl.className = "cred-status err";
+  statusEl.textContent = err || "不可用";
+}
+
 // ---------------- 端点测试辅助 ----------------
-async function testEndpointConnection(key, url, token, transport, command) {
+async function testEndpointConnection(key, url, token, transport, command, authArgs) {
   const panel = $("ep-test-panel") || $("ee-test-panel");
   if (!panel) return;
   panel.className = "test-panel show loading";
@@ -7914,7 +8213,9 @@ async function testEndpointConnection(key, url, token, transport, command) {
     } else {
       args.push("--endpoint-url", url);
     }
-    if (token) args.push("--endpoint-auth-token", token);
+    // 认证：引用型只传声明（后端按引用取真值探测），明文型传 token。
+    if (authArgs && authArgs.length) args.push(...authArgs);
+    else if (token) args.push("--endpoint-auth-token", token);
     const res = await runCli(args);
     if (!res || res.code === undefined) {
       panel.className = "test-panel show err";
@@ -7939,7 +8240,7 @@ async function testEndpointConnection(key, url, token, transport, command) {
 
 // 表内「测试」按钮：对已保存端点发起探测，结果用专门的对话框展示
 async function testStoredEndpoint(key) {
-  // 从快照取端点摘要（name / url / command / transport / auth_token）
+  // 从快照取端点摘要（name / url / command / transport / 认证方式；凭据已脱敏）
   const mcp = (SNAP && SNAP.mcp) || {};
   const ep = (mcp.endpoints || []).find(e => e.key === key) || {};
   const isStdio = (ep.transport || "streamable-http") === "stdio";
@@ -8008,12 +8309,7 @@ function openAddEndpointModal() {
     </div>
     <div class="form-field" id="ep-url-field"><label>URL *</label><input type="url" id="ep-url" placeholder="https://host/mcp" /></div>
     <div class="form-field" id="ep-cmd-field" style="display:none"><label>本地命令 *</label><input type="text" id="ep-cmd" placeholder="npx -y @modelcontextprotocol/server-filesystem /path" /></div>
-    <div class="form-field"><label>认证 Token（可选）</label>
-      <div class="token-row">
-        <input type="password" id="ep-token" placeholder="Bearer token 或 API key" />
-        <button type="button" class="token-toggle" id="ep-token-toggle">显示</button>
-      </div>
-    </div>
+    ${authModeBlock("ep", { auth_mode: "token" })}
     <div id="ep-test-panel" class="test-panel"></div>
     <div class="form-actions">
       <button class="btn-cancel" id="ep-cancel">取消</button>
@@ -8022,13 +8318,14 @@ function openAddEndpointModal() {
     </div>
   </div></div>`);
 
-  // Token 显示/隐藏切换
+  // Token 显示/隐藏切换（引用型的 token 输入框是隐藏的，按钮仍保留以兼容键盘流）
   $("ep-token-toggle").onclick = () => {
     const inp = $("ep-token");
     const btn = $("ep-token-toggle");
     if (inp.type === "password") { inp.type = "text"; btn.textContent = "隐藏"; }
     else { inp.type = "password"; btn.textContent = "显示"; }
   };
+  bindAuthModeBlock("ep", { auth_mode: "token" });
 
   // 传输类型联动：stdio 显示命令框，HTTP 显示 URL
   const syncTransport = () => {
@@ -8049,9 +8346,12 @@ function openAddEndpointModal() {
     const command = $("ep-cmd").value.trim();
     if (!key) { showBanner("err", "请先填写 Key"); return; }
     if (transport === "streamable-http" && !url) { showBanner("err", "请先填写 URL"); return; }
+    if (!key) { showBanner("err", "请先填写 Key"); return; }
+    const auth = readAuthFields("ep");
+    if (auth.error) { showBanner("err", auth.error); return; }
     $("ep-test").disabled = true;
     $("ep-test").textContent = "探测中…";
-    await testEndpointConnection(key, url, token, transport, command);
+    await testEndpointConnection(key, url, token, transport, command, auth.args);
     $("ep-test").disabled = false;
     $("ep-test").textContent = "测试连接";
   };
@@ -8067,10 +8367,19 @@ function openAddEndpointModal() {
     if (!key) { showBanner("err", "key 必填"); return; }
     if (transport === "streamable-http" && !url) { showBanner("err", "远程端点需要 URL"); return; }
     if (transport === "stdio" && !command) { showBanner("err", "stdio 端点需要本地命令"); return; }
+    const auth = readAuthFields("ep");
+    if (auth.error) { showBanner("err", auth.error); return; }
     const args = ["--add-endpoint", key, "--endpoint-name", name || key, "--endpoint-transport", transport];
     if (transport === "stdio") args.push("--endpoint-command", command);
     else args.push("--endpoint-url", url);
-    if (token) args.push("--endpoint-auth-token", token);
+    args.push(...auth.args);
+    if (auth.mode === "token") {
+      if (token) args.push("--endpoint-auth-token", token);
+    } else if (token) {
+      // 引用型不存明文：用户在同一次操作里既填了 token 又选了引用来源时，
+      // 解析成「把 token 存进该来源」，而不是丢掉或私存明文（后端同样会拒绝）。
+      showBanner("warn", "已选引用型认证：Token 输入框的值不会被保存。需要入库请用设置页的「存储到该来源」。");
+    }
     const res = await runCli(args);
     closeModal();
     if (res && res.code === 0) { showToast("ok", "端点已添加"); refreshBlocks(["endpoints"]); }
@@ -8079,8 +8388,12 @@ function openAddEndpointModal() {
 }
 
 function openEditEndpoint(ds) {
-  const { key, name, url, auth_token, transport, command } = ds;
-  const tokenVal = auth_token || "";
+  // 快照里的端点条目（凭据已脱敏）。只用 key 从 data-* 取端点，避免把
+  // auth_token 等敏感字段塞进 DOM 属性（见 renderEndpointLibrary 的说明）。
+  const key = (ds && ds.key) || "";
+  const mcp = (SNAP && SNAP.mcp) || {};
+  const ep = (mcp.endpoints || []).find(e => e.key === key) || { key };
+  const { name, url, transport, command } = ep;
   const trans = transport === "stdio" ? "stdio" : "streamable-http";
   const cmdVal = command || "";
   mountModal(`<div class="modal-backdrop"><div class="modal modal-form">
@@ -8095,12 +8408,7 @@ function openEditEndpoint(ds) {
     </div>
     <div class="form-field" id="ee-url-field"><label>URL *</label><input type="url" id="ee-url" placeholder="url" value="${escapeHtml(url || "")}" /></div>
     <div class="form-field" id="ee-cmd-field" style="display:${trans==="stdio"?"":"none"}"><label>本地命令 *</label><input type="text" id="ee-cmd" placeholder="npx -y ..." value="${escapeHtml(cmdVal)}" /></div>
-    <div class="form-field"><label>认证 Token（可选）</label>
-      <div class="token-row">
-        <input type="password" id="ee-token" placeholder="Bearer token 或 API key" value="${escapeHtml(tokenVal)}" />
-        <button type="button" class="token-toggle" id="ee-token-toggle">显示</button>
-      </div>
-    </div>
+    ${authModeBlock("ee", ep)}
     <div id="ee-test-panel" class="test-panel"></div>
     <div class="form-actions">
       <button class="btn-cancel" id="ee-cancel">取消</button>
@@ -8115,6 +8423,16 @@ function openEditEndpoint(ds) {
     if (inp.type === "password") { inp.type = "text"; btn.textContent = "隐藏"; }
     else { inp.type = "password"; btn.textContent = "显示"; }
   };
+
+  bindAuthModeBlock("ee", ep);
+  // 预填已存的引用来源（变量名 / 服务名 / 路径 —— 都不是秘密，可以回显）
+  (() => {
+    const mode = endpointAuthMode(ep);
+    const stored = mode === "env" ? (ep.auth_token_env || "")
+      : mode === "keychain" ? (ep.auth_keychain || "")
+      : mode === "file" ? (ep.auth_file || "") : "";
+    if (stored && $("ee-auth-source-input")) $("ee-auth-source-input").value = stored;
+  })();
 
   // 传输类型联动
   const syncTransport = () => {
@@ -8133,9 +8451,11 @@ function openEditEndpoint(ds) {
     const testTransport = document.querySelector('input[name="ee-transport"]:checked').value;
     const testCommand = $("ee-cmd").value.trim();
     if (testTransport === "streamable-http" && !testUrl) { showBanner("err", "请先填写 URL"); return; }
+    const auth = readAuthFields("ee");
+    if (auth.error) { showBanner("err", auth.error); return; }
     $("ee-test").disabled = true;
     $("ee-test").textContent = "探测中…";
-    await testEndpointConnection(key, testUrl, testToken, testTransport, testCommand);
+    await testEndpointConnection(key, testUrl, testToken, testTransport, testCommand, auth.args);
     $("ee-test").disabled = false;
     $("ee-test").textContent = "测试连接";
   };
@@ -8149,11 +8469,23 @@ function openEditEndpoint(ds) {
     const newToken = $("ee-token").value.trim();
     if (newTransport === "streamable-http" && !newUrl) { showBanner("err", "远程端点需要 URL"); return; }
     if (newTransport === "stdio" && !newCommand) { showBanner("err", "stdio 端点需要本地命令"); return; }
+    const auth = readAuthFields("ee");
+    if (auth.error) { showBanner("err", auth.error); return; }
     const args = ["--update-endpoint", key, "--endpoint-transport", newTransport];
     if (newName) args.push("--endpoint-name", newName);
     if (newTransport === "stdio") args.push("--set-command", newCommand);
     else args.push("--endpoint-url", newUrl);
-    if (newToken) args.push("--endpoint-auth-token", newToken);
+    args.push(...auth.args);
+    if (auth.mode === "token") {
+      if (newToken) args.push("--endpoint-auth-token", newToken);
+    } else if (newToken) {
+      // 引用型不保存明文；提示用户改用设置页的「存进该来源」把值写进钥匙串 / 文件。
+      const store = await runCli(["--set-auth-secret", key, ...auth.args, "--endpoint-auth-token", newToken]);
+      if (!(store && store.code === 0)) {
+        showBanner("err", "存入来源失败，端点配置未改动");
+        return;
+      }
+    }
     const res = await runCli(args);
     closeModal();
     if (res && res.code === 0) { showToast("ok", "端点已更新"); refreshBlocks(["endpoints"]); }
@@ -8300,6 +8632,8 @@ document.addEventListener("click", (e) => {
     else if (a === "merge") openMergePreview();
     else if (a === "add-endpoint") openAddEndpointModal();
     else if (a === "edit-endpoint") openEditEndpoint(act.dataset);
+    else if (a === "check-credential") checkEndpointCredential(act.dataset.key);
+    else if (a === "store-credential") openStoreCredentialModal(act.dataset.key);
     else if (a === "rm-endpoint") removeEndpoint(act.dataset.key);
     else if (a === "test-endpoint") testStoredEndpoint(act.dataset.key);
     else if (a === "agent-detail") showAgentDetail(act.dataset.name);

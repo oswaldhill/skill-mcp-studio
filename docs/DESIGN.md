@@ -825,6 +825,76 @@ DSH 插件这一项有两个**特例**，都是「数据不在主快照里」直
 - 最大宽 `min(1040px, 100%)`，内部两级滚动（工具条钉顶 + 结果区滚动）
 - 不复用 `.modal` 的居中浮层样式，是独立的结构
 
+### 2.5g 端点凭据（`.auth-mode-row` / `.cred-source-row` / `.cred-status` / `.auth-badge`，v0.31.4 之后）
+
+**为什么有这套组件**：MCP 端点的 token 此前只有一种去向 —— 明文存进端点库，再抄进
+每个客户端的 `Authorization` 头。用户把 token 存进 macOS 钥匙串之后，工具里**没有
+任何地方能表达「凭据在钥匙串里」**，只能把明文再抄一遍，钥匙串等于白存。本组组件
+就是「凭据从哪来」的选择器与状态反馈。
+
+**四种认证方式**（`auth_mode`，取值必须与引擎 `core/auth_secret.py` 的 `AUTH_MODES`
+一一对应 —— `tests/test_dashboard_auth_ui.py` 守住这条跨端一致性）：
+
+| 值 | 界面标签 | 配置里写的东西 | 明文在哪 |
+|---|---|---|---|
+| `token` | 明文 Token | `Authorization: Bearer <token>` | 客户端配置文件里 |
+| `env` | 环境变量 | `Bearer ${env:VAR}` / Codex `bearer_token_env_var` | 客户端进程环境 |
+| `keychain` | 系统钥匙串 | 钥匙串**服务名** | macOS 登录钥匙串 / Linux Secret Service |
+| `file` | 凭据文件 | 文件**路径** | 本机 0600 文件 |
+
+**结构**（`.auth-mode-opt` 与 `.transport-opt` 同构：整行可点、`<input type=radio>` 在左）：
+
+```
+┌ 认证方式 ────────────────────────────────────────────┐
+│ (•) 明文 Token   ( ) 环境变量   ( ) 系统钥匙串  ( ) 凭据文件 │
+│  提示句随所选项切换（.note）                              │
+└──────────────────────────────────────────────────────┘
+（引用型额外展开 ↓）
+┌ 来源 ────────────────────────────────────────────────┐
+│ [ 服务名 / 变量名 / 路径                ] [检测来源]        │
+│ (●) 可用   export hermes-unified-mcp=$(security ... -w)   │
+└──────────────────────────────────────────────────────┘
+```
+
+- 选择器：`.auth-mode-row` + `.auth-mode-opt`，`role="radiogroup"` +
+  `aria-labelledby` 指向字段标签。圆角/描边/选中态取值与 `.transport-opt` **逐值相同**
+  （`var(--r-control)` / `var(--accent)` / `var(--accent-bg)`），因此不在 §2.9 另立数字
+  —— 这里没有新的不可协商取值，§2.9 只登记「脱离组件默认档」的数字。
+- 来源行：`.cred-source-row`（单行 `input` + 右侧动作），复用 `.token-row` 的拼合圆角约定。
+- 结果胶囊：`.cred-status`，四态——默认（未检测）/ `.ok` 可用 / `.warn` 未配置 / `.err` 取不到。
+  取值全为语义 token（`--ok-bg` / `--warn-bg` / `--err-bg` + 对应 `-border` / 前景色）。
+- 表格徽标：`.auth-badge`，引用型加 `.is-ref` 用 `--accent` 强调「配置里没有明文」。
+
+**编排规则**：
+
+1. 选 `token` 时只显示 `.token-row` 明文输入（`autocomplete="off"`，带显示/隐藏切换）；
+   选引用型时明文输入**隐藏**，来源行展开并清空上一模式残留值 —— 避免把变量名当服务名存进去。
+2. 「检测来源」调 `--test-endpoint` 的凭据探测分支；「存入」调 `--set-auth-secret`
+   （只对 `keychain` / `file` 出现，`env` 由用户自己的 shell 管理）。
+3. **任何人、任何路径都不得把凭据值写进 DOM**：端点库快照已由后端脱敏，
+   编辑按钮只带 `data-key`，凭据值只从 `password` 输入框读到后当次传给 CLI。
+4. **客户端能否自己求值，必须如实告诉用户**。三条「能求值」的路径
+   （`mcp_fixer_render.reference_is_evaluated`）：
+
+   | 路径 | 说明 |
+   |---|---|
+   | `token` | 写的就是明文，天然可用 |
+   | Codex（TOML） | 引用 `bearer_token_env_var`，客户端自己解析 |
+   | 客户端声明 `mcp_root_env_style` | 我们把真值写进配置根的 env 块，客户端启动时注入自身环境 |
+
+   `mcp_root_env_style` 取值为**真实键名**（`env`：Claude Code / Cursor /
+   WorkBuddy / VS Code / OpenCode；`process_envs`：Goose），不做二次映射。
+   未声明该字段的客户端（如 DSH cordis、Reasonix）写的是占位符，修复结果不复用
+   「updated and verified」，而是明确写出「需注入环境变量 X」；界面同样不得用
+   「已连接」表达一个只写了占位符的端点。
+5. **变量名必须合法且稳定**：`${env.X}` 里的 X 只能是 `[A-Za-z_][A-Za-z0-9_]*`。
+   钥匙串服务名常含连字符、文件路径必含斜杠，二者都不能直接当变量名。因此引用型
+   统一使用**由端点名派生**的名字（`hermes-home` → `HERMES_MCP_TOKEN`），保证同一
+   端点在所有客户端里同名 —— 用户注入一次即可。
+4. 设置页的状态表**默认不读凭据内容**（读钥匙串会弹系统授权，GUI 子进程里没人点
+   「允许」→ 实测 10 秒超时后误报失败）。「检测」按钮是用户主动动作，才加
+   `--check-credential` 真读一次。
+
 ### 2.6 工具条（`.mt-toolbar` / `.agent-toolbar` / `.market-toolbar` / `.insight-toolbar`）
 
 搜索框 + 操作按钮同排。各区域各有一个工具条类（**不存在统一的 `.toolbar`**，按所在区域选对应类）：
@@ -921,7 +991,7 @@ DSH 插件这一项有两个**特例**，都是「数据不在主快照里」直
 | 通用 `general`（WebDAV，v0.31.1） | **远程同步**（`#webdav-sync-card`，规划中）：远端 URL + 凭据状态行（脱敏）、推/拉按钮（写操作需确认）、同步范围说明。同步范围固定为个人配置层（`local_overrides` / `market_sources` / `discovered_tools` / `skill_versions`），**凭据与技能包本体永不同步** |
 | IDE / Agent `agents` | IDE / Agent 默认路径；**卡片/列表上的能力摘要**（Skills / MCP / Hook 三行，无需点开详情）；客户端详情内的「Hook 配置」 |
 | **Hook `hooks`** | 要写入的 Hook 事件（勾选，按分类分组） |
-| MCP `mcp` | **活动端点**（下拉切换）、**自动发现**（开关 + 扫描路径只读）、MCP 端点库 |
+| MCP `mcp` | **活动端点**（下拉切换）、**自动发现**（开关 + 扫描路径只读）、MCP 端点库、**MCP 端点凭据**（v0.31.4 之后：`#endpoint-cred-card`，模式 / 来源 / 状态表 + 检测 / 存入，读写经 CLI） |
 
 **后台巡检（定时检查）**：开关 + 间隔（5 / 15 / 30 / 60 / 120 分钟）。
 取值**不在 localStorage**，而是写进 `config.yaml` 的 `settings` 段
@@ -938,7 +1008,11 @@ GUI 不直接改配置文件。间隔由 CLI 钳到 ≥5 分钟，界面需回�
 2. **自动发现**：开关（`.seg-btn`）+ 扫描路径只读展示（`<code class="mono">` 每行一条）。
    切换后经 CLI `--set-auto-discover enabled=<true|false>` 写 overlay。
    扫描路径与排除清单在 `config.yaml` 的 `auto_discover` 段，不经 GUI 编辑。
-3. **MCP 端点库**：端点 CRUD（增删改），此前已有。
+3. **MCP 端点库**：端点 CRUD（增删改）。表格列为
+   「端点 key / name / 地址·命令 / transport / **认证** / 操作」。
+   「认证」列只显示**来源元信息**（`token` / `env:VAR` / `keychain:服务名` / `file:路径`，
+   未配置时追加 `· 未配置`），**不回显任何凭据值**；编辑按钮只携带 `data-key`。
+4. **MCP 端点凭据**（`#endpoint-cred-card`，v0.31.4 之后）：见 §2.5g。
 
 > 为什么活动端点排在端点库之前："选哪个端点活动"是比"管理端点库"更上层的操作。
 > 两条新 CLI 命令走 overlay 路径（与 `--set-setting` 同模式），早返回不跑审计，
@@ -1082,6 +1156,30 @@ GUI 不直接改配置文件。间隔由 CLI 钳到 ≥5 分钟，界面需回�
 > localStorage，跨进程共享类（巡检开关）用 config.yaml 并经 CLI。
 
 ---
+
+### 2.11a 概览页统计卡口径（`.stat-card`，2026-11-04 定案）
+
+概览页顶部六张 `.stat-card`。**每张卡的语义色只能表达「需要处理的问题」**，
+不能用来表达「本机没有这个东西」——后者是正常状态。
+
+| 卡 | 取值 | 语义色 | 含义 |
+|---|---|---|---|
+| 受管客户端 | `agents.length` | 中性（`accent` 强调） | 注册表收录总数，**含未安装** |
+| 已安装 | `installed` | 中性 + `accent` | 有可执行 / App / 配置证据 |
+| 仅发现配置 | `config_only` | `warn` | 只有配置文件、无程序（多为残留） |
+| 未安装 | `none` | **中性** | 只在注册表中，不进 Skills / MCP 运行时列表 |
+| 统一技能 | `skill_count` | 中性 | 统一技能目录下的技能数 |
+| 主流已纳入 | `registered / total` | 中性 | 内置主流工具已进注册表的比例 |
+
+**为什么「未安装」不用 `err` 红**（用户反馈：「概览说未安装 12，MCP 页却说 5 个
+客户端，是不是矛盾？」）：两个数在数据上完全一致（17 = 5 安装 + 12 未安装，
+MCP 页只渲染 `install_state !== "none"`）。问题在于红色在别处表示「要修的问题」，
+与「本机没装」共用一个红，读者就会去找根本不存在的错误。
+
+**规则**：会一起被读的相邻卡（受管客户端 / 未安装）**必须带 `tip` 说明口径**，
+且 tip 要能自解释（出现「注册表」「未安装」这类词）。口径本身（受管 = 已装 +
+仅配置 + 未安装）不得因文案调整而改变，`tests/test_dashboard_overview_stats.py`
+同时守住颜色、tip 与数值口径三条。
 
 ### 2.11 概览页「全量检查」区（4 维度 + 端点，v0.30.0）
 

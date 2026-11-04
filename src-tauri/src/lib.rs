@@ -524,6 +524,19 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
         "--update-endpoint",
         "--test-endpoint",
         "--attach-endpoints",
+        // MCP 端点凭据（v0.31.5）：把 token 存进端点声明的来源（钥匙串 / 文件）
+        // 并报告状态。不碰 trunk config.yaml 与端点库里的明文，只写系统钥匙串
+        // （用户显式点「存入」才执行）或用户声明的 0600 凭据文件；--endpoint-auth-*
+        // 是上面那几个命令的配套参数（独立 flag），一并登记。
+        "--auth-secret-status",
+        "--set-auth-secret",
+        "--check-credential",
+        "--endpoint-auth-mode",
+        "--endpoint-auth-env",
+        "--endpoint-auth-keychain",
+        "--endpoint-auth-keychain-account",
+        "--endpoint-auth-file",
+        "--endpoint-auth-token",
         "--add-client",
         "--add-defaults",
         "--remove-client",
