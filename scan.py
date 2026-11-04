@@ -3079,59 +3079,30 @@ def _run_get_setting(args, config) -> int:
 
 
 def _run_set_active_profile(args, config, config_path) -> int:
-    """设置活动 endpoint profile，写入 overlay（带备份）。
+    """设置活动 endpoint profile，写入**真正生效**的那层覆盖文件。
 
-    独立早返回出口（与 --set-setting 同一模式）：校验 key 存在性后写 overlay，
-    不跑后续审计。空字符串 = 清除活动端点。
+    实现下沉到 ``config_store.set_active_profile``（2026-11-04 实测缺陷）：
+    此前本函数自己挑写入目标，挑的是优先级**最低**的覆盖层，于是
+    「命令打印 ✅ 成功、load_config 读回旧值」。判定与清理同在一处，
+    CLI 与测试共用同一个实现。
     """
-    from endpoint_store import _load_target, _write_target, _ensure_profiles
-    import os as _os
-    import yaml as _yaml
-    from config_store import _overlay_target, _atomic_write
+    from config_store import set_active_profile
 
     key = (args.set_active_profile or "").strip()
-
     print("")
     print("=" * 60)
     print("  Set active profile")
     print("=" * 60)
-    try:
-        if not key:
-            # 清除：写空字符串到 overlay
-            target = _overlay_target(config_path)
-            existing = {}
-            if _os.path.isfile(target):
-                with open(target, "r", encoding="utf-8") as fh:
-                    existing = _yaml.safe_load(fh) or {}
-            existing["active_profile"] = ""
-            rendered = _yaml.safe_dump(existing, allow_unicode=True, default_flow_style=False)
-            _atomic_write(target, rendered, 0o644)
-            print("  ✅ active_profile = (已清除)")
-            return 0
-
-        # 校验 key 存在
-        path = _write_target(config)
-        data = _ensure_profiles(_load_target(path)) if os.path.isfile(path) else {}
-        profiles = data.get("profiles") or {}
-        trunk_profiles = config.get("profiles") or {}
-        if key not in profiles and key not in trunk_profiles:
-            print(f"  ❌ endpoint '{key}' 不存在（可用: {', '.join(sorted(set(list(profiles) + list(trunk_profiles))))}）")
-            return 2
-
-        # 写入 overlay（与 config_store.set_unified_dir 同路径）
-        target = _overlay_target(config_path)
-        existing = {}
-        if _os.path.isfile(target):
-            with open(target, "r", encoding="utf-8") as fh:
-                existing = _yaml.safe_load(fh) or {}
-        existing["active_profile"] = key
-        rendered = _yaml.safe_dump(existing, allow_unicode=True, default_flow_style=False)
-        _atomic_write(target, rendered, 0o644)
-        print(f"  ✅ active_profile = {key}")
-        return 0
-    except Exception as e:
-        print(f"\n  ❌ Set active profile failed: {e}")
+    result = set_active_profile(config_path, key)
+    if result["status"] != "ok":
+        print(f"  ❌ {result['message']}")
         return 2
+    shown = key if key else "(已清除)"
+    print(f"  ✅ active_profile = {shown}")
+    print(f"     写入: {result['path']}")
+    for other in result.get("cleared") or []:
+        print(f"     已清除低优先级层的同名键: {other}")
+    return 0
 
 
 def _run_set_auto_discover(args, config, config_path) -> int:

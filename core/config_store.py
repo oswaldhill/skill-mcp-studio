@@ -53,21 +53,130 @@ def _local_overrides_file() -> str:
 def _overlay_target(config_path: str) -> str:
     """Pick the write target for personal topology overlays.
 
-    Reuses the first *existing* ``profile_sources`` overlay file (same channel
-    as endpoint_store); falls back to the dedicated ``data/local_overrides.yaml``
-    which is auto-registered as a profile_source on first write.
+    **返回 ``profile_sources`` 里最后一个存在的文件**（优先级最高的那层）。
+
+    为什么是「最后」而不是「第一个」（2026-11-04 实测缺陷）：
+    ``profile_loader.apply_profile_sources`` 按 ``profile_sources`` 顺序合并，
+    **后面的覆盖前面的**（文档原话 "later sources win"）。而本函数原先返回
+    第一个存在的文件 —— 方向正好相反，写入落到优先级**最低**的一层，
+    被后面的层盖掉。
+
+    实测后果：``--set-active-profile hermes-home`` 打印
+    ``✅ active_profile = hermes-home``（写进 ``~/.skills-manager/profiles.local.yaml``），
+    但 ``load_config`` 读回仍是空串 —— 因为 ``data/local_overrides.yaml``
+    （排在后面）里的 ``active_profile: ''`` 把它盖住了。命令「成功」而配置没变，
+    这是最难排查的一类缺陷。
+
+    相对路径按 config 所在目录解析（与 apply_profile_sources 同语义）。
+    无任何存在来源时回退到 ``data/local_overrides.yaml``。
     """
+    existing = _profile_source_files(config_path)
+    if existing:
+        return existing[-1]
+    return _local_overrides_file()
+
+
+def _profile_source_files(config_path: str) -> List[str]:
+    """All existing ``profile_sources`` files, in declared order (low → high)."""
     try:
         with open(config_path, "r", encoding="utf-8") as handle:
             config = yaml.safe_load(handle) or {}
     except (OSError, yaml.YAMLError):
-        config = {}
+        return []
+    base_dir = os.path.dirname(os.path.abspath(config_path)) if config_path else None
+    out: List[str] = []
     for raw in config.get("profile_sources") or []:
-        if isinstance(raw, str) and raw.strip():
-            candidate = os.path.expanduser(raw)
-            if os.path.isfile(candidate):
-                return candidate
-    return _local_overrides_file()
+        if not (isinstance(raw, str) and raw.strip()):
+            continue
+        candidate = os.path.expanduser(raw)
+        if not os.path.isabs(candidate) and base_dir:
+            candidate = os.path.join(base_dir, candidate)
+        if os.path.isfile(candidate):
+            out.append(candidate)
+    return out
+
+
+def _clear_key_if_present(path: str, key: str) -> bool:
+    """Remove ``key`` from a YAML file if present (keeps everything else)."""
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            data = yaml.safe_load(handle)
+    except (OSError, yaml.YAMLError):
+        return False
+    if not isinstance(data, dict) or key not in data:
+        return False
+    data.pop(key)
+    try:
+        _atomic_write(path, yaml.safe_dump(data, allow_unicode=True, default_flow_style=False), 0o600)
+    except OSError:
+        return False
+    return True
+
+
+def set_active_profile(config_path: str, key: str) -> Dict[str, Any]:
+    """Persist the active endpoint into the layer that actually wins.
+
+    ``key`` 为空串表示清除活动端点。
+
+    除写入目标层外，还**清掉其它层里残留的 ``active_profile``**：那些层优先级
+    更低，留着不影响当下，但它们是普通 YAML —— 下次任何人（GUI 切自动发现、
+    脚本改 disabled_tools）重写那个文件时，旧值会随之写回并突然复活。
+    """
+    key = (key or "").strip()
+    target = _overlay_target(config_path)
+    try:
+        with open(config_path, "r", encoding="utf-8") as handle:
+            trunk = yaml.safe_load(handle) or {}
+    except (OSError, yaml.YAMLError):
+        trunk = {}
+    # 可选端点 = 主干 ∪ 所有覆盖层。端点库条目几乎都住在覆盖层里，
+    # 只查主干会把它们全判成「不存在」（2026-11-04 实测：hermes-home 在覆盖层
+    # 中，命令却报「可用: generic-http」，把真实可用的端点拒之门外）。
+    profiles = dict(trunk.get("profiles") or {})
+    for src in _profile_source_files(config_path):
+        try:
+            with open(src, "r", encoding="utf-8") as handle:
+                data = yaml.safe_load(handle) or {}
+        except (OSError, yaml.YAMLError):
+            continue
+        if isinstance(data, dict) and isinstance(data.get("profiles"), dict):
+            for name, value in data["profiles"].items():
+                if value is None:
+                    profiles.pop(name, None)   # null = 软删除，不应被视为可用
+                else:
+                    profiles[name] = value
+    if key and key not in profiles:
+        return {
+            "status": "error",
+            "message": f"endpoint {key!r} 不存在（可用: {', '.join(sorted(profiles))}）",
+            "path": target,
+        }
+
+    existing: Dict[str, Any] = {}
+    if os.path.isfile(target):
+        try:
+            with open(target, "r", encoding="utf-8") as handle:
+                loaded = yaml.safe_load(handle)
+            if isinstance(loaded, dict):
+                existing = loaded
+        except (OSError, yaml.YAMLError) as exc:
+            return {"status": "error", "message": f"覆盖层无法解析：{exc}", "path": target}
+    existing["active_profile"] = key
+    try:
+        os.makedirs(os.path.dirname(target) or ".", exist_ok=True)
+        _atomic_write(
+            target, yaml.safe_dump(existing, allow_unicode=True, default_flow_style=False), 0o600
+        )
+    except OSError as exc:
+        return {"status": "error", "message": f"写入失败：{exc}", "path": target}
+
+    cleared: List[str] = []
+    for other in _profile_source_files(config_path):
+        if os.path.normpath(other) == os.path.normpath(target):
+            continue
+        if _clear_key_if_present(other, "active_profile"):
+            cleared.append(other)
+    return {"status": "ok", "message": "written", "path": target, "cleared": cleared}
 
 
 def _ensure_overlay_registered(config_path: str, overlay_path: str) -> None:
