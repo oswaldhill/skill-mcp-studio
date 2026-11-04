@@ -12,25 +12,70 @@ from urllib.parse import urlparse
 from mcp_checker import is_valid_mcp_url
 
 
+#: 系统 CA 包候选路径，按「该平台 Python 的默认上下文是否真的空」逐条兜底。
+#: 实测（2026-11-04）：macOS 的 python.org framework 构建
+#: ``ssl.create_default_context()`` 加载到的根证书数 **为 0**，
+#: 于是所有 HTTPS 探活都以 ``CERTIFICATE_VERIFY_FAILED`` 失败 —— 而依赖
+#: ``certifi`` 的写法只有在「用户恰好装了 certifi」时才对。
+#: 本机实测三个解释器（/usr/local/bin/python3、framework 3.13、/usr/bin/python3）
+#: 全部没有 certifi，等于所有端点都被判成「连不上」。
+SYSTEM_CA_BUNDLES = (
+    "/etc/ssl/cert.pem",                                  # macOS（libressl 软链到系统钥匙串导出的根）
+    "/etc/ssl/certs/ca-certificates.crt",                  # Debian/Ubuntu
+    "/etc/pki/tls/certs/ca-bundle.crt",                    # RHEL/Fedora
+    "/etc/ssl/ca-bundle.pem",                              # openSUSE
+    "/etc/ssl/cert.pem",                                   # Alpine/FreeBSD
+)
+
+
 def _ssl_context() -> ssl.SSLContext:
     """Build a verifying TLS context with a usable CA trust store.
 
     macOS python.org framework builds ship without a linked system CA store, so
     ``ssl.create_default_context()`` alone cannot verify real HTTPS endpoints
-    (``CERTIFICATE_VERIFY_FAILED``). ``certifi`` is a declared dependency (see
-    ``pyproject.toml``); we load its bundle explicitly. Verification is always
-    enforced — a security audit tool must never downgrade to ``CERT_NONE``.
+    (``CERTIFICATE_VERIFY_FAILED``).
+
+    取信任库的优先级（每一步都只在「前一步没拿到根证书」时才走）：
+
+    1. ``certifi``（若已安装）—— 跨平台最一致，也是 ``pyproject.toml`` 的声明依赖；
+    2. 系统 CA 包（见 :data:`SYSTEM_CA_BUNDLES`）—— certifi 缺失时的兜底。
+       它是本次修复的重点：此前 certifi 缺失就**直接返回空上下文**，任何
+       半吊子安装（装好了工具、没装依赖）都会让全部端点显示「连接失败」。
+
+    **校验强度不降级**：两条路径都是 ``load_verify_locations``，绝不落到
+    ``CERT_NONE`` / ``check_hostname=False`` —— 审计工具不能为了「看起来能连」
+    而放弃证书校验。若一条信任库都找不到，抛 ``RuntimeError`` 说明原因，
+    而不是静默构造一个必然失败的上下文。
     """
     context = ssl.create_default_context()
+    if context.get_ca_certs():
+        return context  # 平台本身就带根证书（Linux 常见），无需额外加载
+
     try:
         import certifi
-    except ImportError:  # pragma: no cover - declared dependency, defensive only
-        import warnings
+    except ImportError:
+        certifi = None  # noqa: F841 - 下面按「有没有拿到根证书」判断，不按异常类型
+    else:
+        context.load_verify_locations(certifi.where())
+        if context.get_ca_certs():
+            return context
 
-        warnings.warn("certifi 未安装，TLS 校验将依赖系统默认 CA（macOS python.org 构建可能失败）")
-        return context
-    context.load_verify_locations(certifi.where())
-    return context
+    for bundle in SYSTEM_CA_BUNDLES:
+        if not os.path.isfile(bundle):
+            continue
+        try:
+            context.load_verify_locations(bundle)
+        except (OSError, ssl.SSLError):
+            continue
+        if context.get_ca_certs():
+            return context
+
+    raise RuntimeError(
+        "找不到可用的 CA 信任库：certifi 未安装，且系统 CA 包（"
+        + " / ".join(SYSTEM_CA_BUNDLES)
+        + "）均不可用。请安装 certifi（pip install certifi）或在系统装上 CA 证书；"
+        "本工具不会为「能连上」而关闭证书校验。"
+    )
 
 
 def _decode_response(body: str) -> Dict[str, Any]:
@@ -88,6 +133,17 @@ def _is_probeable_url(url: str, url_policy: str) -> bool:
     return is_valid_mcp_url(url)
 
 
+def token_needs_resolution(profile: Dict[str, Any]) -> bool:
+    """Whether the profile's credential must be resolved by us before probing.
+
+    引用型（``env`` / ``keychain`` / ``file``）都需要：客户端在配置里拿到的是
+    占位符，探活必须自己按引用取出真值，结论才与客户端一致。
+    """
+    from auth_secret import normalize_auth_mode
+
+    return normalize_auth_mode(profile) in ("env", "keychain", "file")
+
+
 def probe_mcp(
     url: str,
     *,
@@ -100,6 +156,8 @@ def probe_mcp(
     token_env: Optional[str] = None,
     url_policy: str = "strict",
     retries: int = 0,
+    auth_keychain: Optional[str] = None,
+    auth_file: Optional[str] = None,
 ) -> Dict[str, Any]:
     # 阶段二 §4.2：transport 白名单。非法值在加载期由 profile_loader 拒绝
     # （退出码 2）；此处为防御性兜底，绝不静默落入 HTTP 分支。
@@ -145,8 +203,31 @@ def probe_mcp(
     if not _is_probeable_url(url, url_policy):
         result["error"] = "MCP URL must use HTTPS and end in /mcp"
         return result
-    auth_env = token_env or "HERMES_MCP_AUTH_TOKEN"
-    auth_token = token if token is not None else os.environ.get(auth_env, "")
+    # 凭据来源优先级：显式 keychain / file 引用 → 显式 token → 环境变量。
+    #
+    # 为什么把引用型放在最前面：端点声明 ``auth_mode=keychain`` / ``file`` 时，
+    # 客户端配置里写的是引用而不是明文，探活**必须按引用取到真值**，否则探活
+    # 与客户端的行为就不一致（探活 401、客户端能用，或反之）。
+    #
+    # 取不到（钥匙串条目不存在、``security`` 被拒、文件不可读）时**不静默回落**
+    # 到环境变量：回落会把「凭据来源配置错了」伪装成「端点故障」，用户会去查
+    # 网络。这里直接把原因写进 error，GUI/CLI 原样展示。
+    if auth_keychain or auth_file:
+        from auth_secret import resolve_auth
+
+        source = {"auth_mode": "keychain" if auth_keychain else "file"}
+        if auth_keychain:
+            source["auth_keychain"] = auth_keychain
+        else:
+            source["auth_file"] = auth_file
+        resolved = resolve_auth(source)
+        if not resolved["ok"]:
+            result["error"] = f"凭据不可用：{resolved['error']}"
+            return result
+        auth_token = resolved["token"]
+    else:
+        auth_env = token_env or "HERMES_MCP_AUTH_TOKEN"
+        auth_token = token if token is not None else os.environ.get(auth_env, "")
     # 探活是「尽力而为」的可用性观测：远程 MCP 网关偶发抖动（单次 socket 超时）
     # 并不等于端点故障。这里对 initialize 与 tools/list 两个阶段的瞬时网络错误
     # 均重试 ``retries`` 次；一旦拿到业务响应（result 或 error）就停止重试，因此
