@@ -158,5 +158,56 @@ class SetActiveProfileTakesEffectTest(unittest.TestCase):
         self.assertEqual(load_config(str(self.trunk)).get("active_profile"), "")
 
 
+class TrunkHasNoPhantomEndpointTest(unittest.TestCase):
+    """主干 config.yaml 不得残留「已被软删除、却仍能复活」的占位端点。
+
+    2026-11-05 实测隐患：``generic-http``（https://example.internal/mcp）在端点库里
+    早已是 null（软删除标记），合并后根本不出现 —— 但主干 ``profiles`` 里那份还在。
+    一旦 ``data/local_overrides.yaml`` 被清空（换机、重装、清理个人数据），
+    它会**重新成为活动端点**，把所有客户端的 MCP 配置指向一个不存在的地址。
+
+    两条判据：
+    1. 主干 profiles 必须是**合法的空映射**（`{}`）或只含真实端点 —— 留空会解析成
+       null，而 profile_loader 要求非空映射；写成空映射是唯一能表达
+       「端点全部由覆盖层提供」又不炸加载的形态。
+    2. 主干里不得出现指向占位域名的端点（example.* / .internal / .local 等）。
+    """
+
+    TRUNK = ROOT / "config.yaml"
+    PHANTOM_HOSTS = ("example.internal", "example.com", "localhost", "127.0.0.1")
+
+    def setUp(self):
+        self.config = yaml.safe_load(self.TRUNK.read_text(encoding="utf-8"))
+        self.profiles = self.config.get("profiles")
+
+    def test_profiles_is_a_mapping_not_null(self):
+        # 留空（只有注释）会解析成 None，加载期必炸；必须是 {} 或真实映射。
+        self.assertIsInstance(
+            self.profiles, dict,
+            "主干 profiles 必须是映射：留空会解析成 null，profile_loader 会抛"
+            "「'profiles:' must be a non-empty mapping」",
+        )
+
+    def test_no_placeholder_endpoint_in_trunk(self):
+        offenders = []
+        for key, profile in (self.profiles or {}).items():
+            url = str((profile or {}).get("url") or "")
+            if any(host in url for host in self.PHANTOM_HOSTS):
+                offenders.append(f"{key} -> {url}")
+        self.assertEqual(
+            offenders, [],
+            "主干仍有占位端点：覆盖层一旦被清空，它会重新成为活动端点"
+            "并把客户端指向不存在的地址：%r" % offenders,
+        )
+
+    def test_merged_config_still_has_endpoints(self):
+        """删掉占位端点后，真实环境（覆盖层存在）仍必须解析出端点。"""
+        from profile_loader import list_profiles
+        from scanner import load_config
+
+        merged = list_profiles(load_config(str(self.TRUNK)))
+        self.assertTrue(merged, "合并后一个端点都没有 —— 覆盖层可能缺失，先确认 profile_sources")
+
+
 if __name__ == "__main__":
     unittest.main()

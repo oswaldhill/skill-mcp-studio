@@ -63,13 +63,16 @@ profile_sources:
 - data/local_overrides.yaml
 
 profiles:
-  generic-http:
-    name: my-mcp
-    url: https://example.internal/mcp
-    transport: streamable-http
-    url_policy: strict
-    required_capabilities: {}
-    hooks_required: true   # v0.29.0：显式声明该端点要求客户端配 hook（解耦，不再寄生在能力组键名上）
+  # 占位端点 generic-http（https://example.internal/mcp）已于 2026-11-05 移除：
+  #   · 端点库里它早已是 null（软删除标记），合并后根本不出现；
+  #   · 但主干这份仍在，一旦本地覆盖层被清空，它就会**重新成为活动端点**，
+  #     把所有客户端的 MCP 配置指向一个不存在的 example.internal 地址。
+  # 现在真正的端点全部住在 ~/.skills-manager/profiles.local.yaml。
+  #
+  # 注意：``profiles:`` 在这里写 `{}` 而不是留空 —— 留空会解析成 null，
+  # profile_loader 要求「非空映射」，null 与空映射都会让加载失败。
+  # 写成 `{}` 后：主干不提供端点，端点全部由覆盖层提供，合并结果非空即可。
+  {}
 mcp_tools:
 - name: Claude Code
   aliases: [claude, claude-code]
