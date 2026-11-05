@@ -3513,9 +3513,19 @@ function renderSkillList() {
                     || (upd.remoteTime
                         ? new Date(upd.remoteTime).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })
                         : "");
+                  // 2026-11-05（用户反馈）：「本地」列是该技能自己的最后更新时间，
+                  // 「远端」列是**整仓库上游基准**的提交时间 —— 两个不同的量。
+                  // 并排显示成同样的 MM/DD 会让「07/21 vs 11/02」看起来像「本地旧、
+                  // 远端新」，实际只是两个计时起点不同。所以 tip 必须说清基准是什么，
+                  // 并在后端标记 stale（没拉到真实远端）时透出「可能过期」。
+                  const repoForm = upd.sourceForm === "repo";
+                  const baseWhat = repoForm ? "整仓库上游基准" : "上游最新提交";
+                  const staleNote = upd.stale ? "；注意：本轮未拉到真实远端，基准可能过期" : "";
                   const tip = upd.remote
-                    ? `与远端一致（${upd.remote}）`
-                    : (upd.remoteTime ? `与远端一致（上游最新提交 ${upd.remoteTime}）` : "与远端一致");
+                    ? `与远端一致（${upd.remote}）${staleNote}`
+                    : (upd.remoteTime
+                        ? `与远端一致（${baseWhat} ${upd.remoteTime}）${staleNote}`
+                        : "与远端一致");
                   return `<span class="tag ok" title="${escapeHtml(tip)}">${escapeHtml(remote || "最新")}</span>`;
                 })()
               : upd.state === "repo_outdated"
@@ -6918,7 +6928,12 @@ function renderEndpointStatus() {
       for (const row of data.updates || []) {
         map[row.name] = { state: row.state, local: row.local_version,
                           remote: row.remote_version, remoteTime: row.remote_time || null,
-                          note: row.note || "" };
+                          note: row.note || "",
+                          // 来源形态与「基准是否过期」直接决定远端列怎么措辞：
+                          // 仓库形态的 remote_time 是**整仓库**基准时间，不是该技能
+                          // 自己的更新时间；stale 时结论仅供参考。
+                          sourceForm: row.source_form || "",
+                          stale: Boolean(row.stale) };
       }
       SKILL_UPDATES = map;
       renderSkillList();

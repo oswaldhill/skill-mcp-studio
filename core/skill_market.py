@@ -438,7 +438,11 @@ def _iso_lt(a: Optional[str], b: Optional[str]) -> bool:
     return bool(a and b and a < b)
 
 
-def check_updates(only: Optional[List[str]] = None, force: bool = False) -> Dict[str, Any]:
+def check_updates(
+    only: Optional[List[str]] = None,
+    force: bool = False,
+    refresh: bool = True,
+) -> Dict[str, Any]:
     """只读更新检测（v0.31.0 重构：版本号比对 + 缓存 + 新源模型）。
 
     三态：outdated / current / unknown。**绝不调用 `npx skills check` 或
@@ -450,6 +454,12 @@ def check_updates(only: Optional[List[str]] = None, force: bool = False) -> Dict
     commit 时间，既不直观也不可靠。无来源信息的技能 → unknown（带 reason）。
 
     缓存：data/market_check_cache.json，TTL 1 小时；force=True 跳过。
+
+    ``refresh``（v0.31.4 之后，默认 True）控制仓库形态技能判定前是否先
+    ``git fetch``：不 fetch 时比对的是本地缓存的 origin ref，实测会停在数天前，
+    期间远端新提交一律发现不了 —— 153 个仓库形态技能会全部显示「与远端一致」。
+    fetch 只更新远程跟踪引用，不动工作区，也不与本地未提交修改冲突。
+    高频调用方（托盘巡检等）可传 False 走纯只读路径。
     """
     # 缓存命中（非 force 且未过期）直接返回
     cached = _load_check_cache()
@@ -601,7 +611,7 @@ def check_updates(only: Optional[List[str]] = None, force: bool = False) -> Dict
         wanted = set(only)
         unregistered = [n for n in unregistered if n in wanted]
     if unregistered:
-        repo_counts = _append_repo_form_rows(rows, unregistered, local_versions)
+        repo_counts = _append_repo_form_rows(rows, unregistered, local_versions, refresh=refresh)
         for key in ("repo_outdated", "current", "unknown"):
             counts[key] += repo_counts.get(key, 0)
 
@@ -633,6 +643,7 @@ def _append_repo_form_rows(
     rows: List[Dict[str, Any]],
     names: List[str],
     local_versions: Dict[str, Any],
+    refresh: bool = True,
 ) -> Dict[str, int]:
     """给「磁盘上有、lock 无登记」的技能补仓库形态判定行（v0.31.3）。
 
@@ -644,7 +655,7 @@ def _append_repo_form_rows(
     import skill_repo_source as _repo
 
     unified = str(_sd())
-    snap = _repo.snapshot(unified, names)
+    snap = _repo.snapshot(unified, names, refresh=refresh)
     counts: Dict[str, int] = {}
     for name in names:
         state, note, remote_time = _repo.classify(name, snap)
@@ -659,6 +670,9 @@ def _append_repo_form_rows(
             "remote_version": None,
             "remote_time": remote_time,
             "note": note,
+            # 本轮没能拉到真实远端时，GUI 据此提示「结论可能不准」，
+            # 而不是把「与远端一致」当成确定事实展示。
+            "stale": bool(snap.get("stale")),
         })
     return counts
 

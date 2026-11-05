@@ -166,3 +166,61 @@ class EnableSpecTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _remote_title_block(src: str):
+    """取「远端列说明文案」整段：从 repoForm 定义到 tip 语句结束。
+
+    为什么要单独取块：措辞拆在 baseWhat / staleNote / tip 三处，只抓 tip 一行
+    会漏掉前两处（第一版断言就是这么误报的）。
+    """
+    start = src.find("const repoForm = upd.sourceForm")
+    if start < 0:
+        return None
+    end = src.find('"与远端一致");', start)
+    if end < 0:
+        return None
+    return src[start:end + len('"与远端一致");')]
+
+
+
+class RemoteColumnWordingTest(unittest.TestCase):
+    """「本地」与「远端」两列的时间必须能区分是「同一个量」。
+
+    2026-11-05 用户反馈：「superpowers 本地 07/21、远端 11/02，相差这么大为什么
+    不算可更新」。实查：07/21 是**该技能目录**最后一次提交，11/02 是**整个仓库**
+    远端基准的提交时间 —— 两个不同的量，却并排显示成同样的 MM/DD，看起来就像
+    「本地旧、远端新」。
+
+    判据：远端列的 title（悬停说明）必须说清基准是什么量（仓库/分支/提交时间），
+    不能只有一句「与远端一致」。
+    """
+
+    def test_remote_title_states_what_the_baseline_is(self):
+        src = page_source()
+        block = _remote_title_block(src)
+        self.assertIsNotNone(block, "找不到远端列的 tip 构造代码")
+        tip = block
+        for word in ("仓库", "基准"):
+            self.assertIn(
+                word, tip,
+                f"远端列说明里没有出现「{word}」，用户无法判断这个时间和本地那个是不是同一个量",
+            )
+
+    def test_remote_title_mentions_stale_when_signalled(self):
+        """后端标记 stale（没能拉到真实远端）时，前端必须把「可能过期」透出来。"""
+        src = page_source()
+        block = _remote_title_block(src)
+        self.assertIsNotNone(block)
+        # 断言强度：只查 "stale" 这个词是不够的 —— 把它赋成空串后字面量仍在，
+        # 测试照样通过（反向验证实测确认过这个漏洞）。必须绑到「实际用到它」
+        # 的那条表达式：upd.stale 参与条件判断，且结果进了提示文案。
+        self.assertIn(
+            "upd.stale", block,
+            "前端没有读取 upd.stale，过期基准会被当成确定事实",
+        )
+        self.assertRegex(
+            block,
+            r"const\s+\w+\s*=\s*upd\.stale\s*\?\s*\"[^\"]+\"",
+            "upd.stale 没有参与提示文案的构造（被赋空串），过期信息透不出来",
+        )

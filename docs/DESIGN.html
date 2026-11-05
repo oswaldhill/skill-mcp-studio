@@ -1180,8 +1180,9 @@
           <tbody>
             <tr><td>适用条件</td><td><code>paths.skills_dir()</code> 是 git 工作区，且该技能<strong>不在</strong>
               lock 登记里（有登记的技能仍走单技能来源，精确到各自上游仓库）</td></tr>
-            <tr><td>比对基准</td><td><code>origin/&lt;当前分支&gt;</code> 的本地 ref；
-              <strong>不发网络请求</strong>，由 <code>--sync</code> 或用户手动 fetch 更新</td></tr>
+            <tr><td>比对基准</td><td><code>origin/&lt;当前分支&gt;</code>；
+              <strong>判定前先 <code>git fetch</code></strong>（<code>refresh=True</code>，默认），
+              只更新远程跟踪引用、不动工作区</td></tr>
             <tr><td>有更新判据</td><td><code>git diff --name-only HEAD origin/&lt;branch&gt;</code>
               的路径收敛到技能目录后命中该技能</td></tr>
             <tr><td>已有最新</td><td>同一 diff 未命中该技能目录</td></tr>
@@ -1193,12 +1194,33 @@
       </div>
 
       <p>三条纪律：<strong>只读</strong>（只跑 <code>rev-parse</code> / <code>diff</code> /
-      <code>status</code> / <code>log</code>，绝不 pull、fetch、checkout）；
-      <strong>不发网络请求</strong>（基准提交时间随 <code>note</code> 与 <code>remote_time</code> 透出，
-      否则「很久没 fetch」会被读成「远端没变」，那是把查不成当成没问题）；
+      <code>status</code> / <code>log</code> / <code>fetch</code>，绝不 pull、merge、checkout ——
+      <code>fetch</code> 只改 <code>refs/remotes/origin/&lt;branch&gt;</code> 一个引用，工作区一个字节都不动）；
+      <strong>fetch 失败绝不静默算 <code>current</code></strong>（见下「基准新鲜度」）；
       <strong>路径收敛只认已知技能目录</strong>（仓库根的 <code>README.md</code>、<code>LICENSE</code>、
       <code>_core</code>、<code>_trash</code> 不是技能，若不收口会凭空多出「待同步」条目——
       与 v0.31.1「列表 2 个、弹框 4 个」同一类矛盾）。</p>
+
+      <p><strong>基准新鲜度（2026-11-05 用户反馈修正）</strong>：上一版规定「不发网络请求」，理由是快、无副作用。
+      那条判断在实测中被证明是错的：本机 <code>origin/master</code> 引用停在 2026-11-02，而检查逻辑只比对这个
+      <strong>本地缓存</strong>，结果是 153 个仓库形态技能<strong>即使远端真有新提交也一律显示「与远端一致」</strong>。
+      一个永远说「一致」的检查等于没检查，而且比 <code>unknown</code> 更有害 —— <code>unknown</code> 至少承认「不知道」。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>参数</th><th>行为</th><th>适用</th></tr></thead>
+          <tbody>
+            <tr><td><code>refresh=True</code>（<code>--market check</code> 默认）</td><td>先 <code>git fetch</code>，再对比<strong>真实远端</strong></td><td>用户主动点「检查更新」</td></tr>
+            <tr><td><code>refresh=False</code></td><td>只比对本地缓存的 ref，不联网</td><td>高频调用路径（托盘巡检等）</td></tr>
+            <tr><td>fetch 失败</td><td>结论标记 <code>stale=True</code> + <code>stale_reason</code>，<code>note</code> 追加「基准可能过期」</td><td>无网 / 认证失败</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><code>stale</code> 会一直透传到 GUI 远端列 title —— 界面不得把「基于过期基准的一致」当成确定事实展示。</p>
+
+      <p><strong>两列的时间不是同一个量（2026-11-05 用户反馈）</strong>：「本地」列是该技能<strong>目录</strong>的最后更新时间，
+      「远端」列（仓库形态）是<strong>整仓库上游基准</strong>的提交时间。两者并排显示成同样的 MM/DD，会让
+      「07/21 vs 11/02」看起来像「本地旧、远端新」。因此远端列的 <code>title</code> 必须写明基准是什么
+      （仓库形态写「整仓库上游基准」，单技能来源写「上游最新提交」），<code>stale</code> 时追加过期提示。</p>
 
       <p><strong>为什么必须是独立状态而不是并进 <code>outdated</code></strong>：两者的升级通道
       完全不同。<code>outdated</code> 走市场升级（<code>npx</code> 重装单技能），

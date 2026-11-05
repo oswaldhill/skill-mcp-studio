@@ -100,12 +100,37 @@ def _top_dirs_from_diff(paths: Iterable[str], known: Set[str]) -> Set[str]:
     return hit
 
 
-def snapshot(unified_dir: str, known_skills: Iterable[str]) -> Dict[str, Any]:
-    """采集仓库形态的更新判定快照（只读、不联网）。
+def _fetch_unified(unified_dir: str, branch: str) -> Tuple[bool, str]:
+    """把 ``origin/<branch>`` 更新到真实远端状态（只动远程跟踪引用，不动工作区）。
+
+    **只 fetch，绝不 pull / merge / checkout**：工作区内容一个字节都不改，被更新的
+    只有 ``refs/remotes/origin/<branch>`` 这一个引用。这意味着即便用户在本地有
+    未提交修改，fetch 也不会与之冲突。
+
+    2026-11-05 加入：此前 ``snapshot`` 只比对本地缓存的 origin ref，从不动网络。
+    实测该 ref 停在 2026-11-02（一周前），期间远端有新提交也发现不了 —— 153 个
+    仓库形态技能会全部显示「与远端一致」。**一个永远说「一致」的检查等于没检查。**
+    """
+    rc, _out, err = _git(unified_dir, "fetch", "--quiet", "origin", branch)
+    if rc == 0:
+        return True, ""
+    return False, _first_line(err) or f"git fetch 失败（退出码 {rc}）"
+
+
+def snapshot(
+    unified_dir: str,
+    known_skills: Iterable[str],
+    refresh: bool = False,
+) -> Dict[str, Any]:
+    """采集仓库形态的更新判定快照。
 
     Args:
         unified_dir: 统一库目录（通常是 `paths.skills_dir()`）。
         known_skills: 当前磁盘上的技能名集合，用于把 diff 路径收敛到技能。
+        refresh: True 时先 ``git fetch`` 再对比真实远端（会联网，约 1-2 秒）；
+            False（默认）只比对本地缓存的 origin ref —— 纯只读、不联网，
+            供频繁调用的路径使用。**判定结论的可信度不同**：不 fetch 时基准
+            可能过期，此时 note 里会带「基准可能过期」的提示。
 
     Returns:
         dict: {
@@ -127,6 +152,8 @@ def snapshot(unified_dir: str, known_skills: Iterable[str]) -> Dict[str, Any]:
         "changed": set(),
         "dirty": set(),
         "error": "",
+        "stale": False,
+        "stale_reason": "",
     }
 
     if not is_repo(unified_dir):
@@ -143,10 +170,20 @@ def snapshot(unified_dir: str, known_skills: Iterable[str]) -> Dict[str, Any]:
         return empty
 
     upstream = f"origin/{branch}"
+    stale, stale_reason = False, ""
+    if refresh:
+        fetched, fetch_err = _fetch_unified(unified_dir, branch)
+        if not fetched:
+            # 取不到真实远端 ≠ 没问题。标记 stale，让结论带上「基准可能过期」，
+            # 而不是把「查不成」伪装成「一致」。
+            stale, stale_reason = True, f"无法更新远端基准（{fetch_err}）"
+
     rc, out, err = _git(unified_dir, "rev-parse", "--verify", "--quiet", upstream)
     if rc != 0 or not out.strip():
         empty["branch"] = branch
         empty["error"] = f"缺少比对基准 {upstream}（尚未 fetch 过该分支）"
+        empty["stale"] = stale
+        empty["stale_reason"] = stale_reason
         return empty
 
     rc, out, err = _git(unified_dir, "log", "-1", "--format=%cI", upstream)
@@ -178,6 +215,9 @@ def snapshot(unified_dir: str, known_skills: Iterable[str]) -> Dict[str, Any]:
         "changed": changed,
         "dirty": dirty,
         "error": "",
+        # stale=True：本轮没能拉到真实远端，下面的结论基于**可能过期**的本地基准。
+        "stale": stale,
+        "stale_reason": stale_reason,
     }
 
 
@@ -196,6 +236,11 @@ def classify(name: str, snap: Dict[str, Any]) -> Tuple[str, str, Optional[str]]:
     branch = snap.get("branch") or "?"
     base = snap.get("upstream_time")
     base_note = f"，基准 {base}" if base else "，基准提交时间未知"
+    if snap.get("stale"):
+        # 没能拉到真实远端：结论基于本地缓存的基准，可能已过期。
+        # 不把它降级成 unknown —— 有基准总比没有强；但必须让用户看见这条限制，
+        # 否则「与远端一致」会被当成确定事实。
+        base_note += f"；⚠ 基准可能过期：{snap.get('stale_reason') or '未能更新远端'}"
 
     if name in (snap.get("dirty") or set()):
         return (

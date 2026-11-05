@@ -154,3 +154,90 @@ class TopDirTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FetchBeforeCompareTest(unittest.TestCase):
+    """判定前必须先看真实远端（2026-11-05 用户反馈）。
+
+    ## 缺陷
+
+    ``snapshot`` 只比对**本地缓存的 origin/<branch> ref**，从不动网络。本机实测：
+    该 ref 停在 2026-11-02（一周前），期间远端即便有新提交也发现不了 —— 153 个
+    仓库形态技能会全部显示「与远端一致」。
+
+    用户的直觉是对的：他看到某技能本地 07/21、远端基准 11/02，问「差这么大为什么
+    不算可更新」。那次碰巧远端确实没变（fetch 验证过），但**判定方法本身不足以
+    支撑这个结论** —— 一个永远说「一致」的检查等于没检查。
+
+    ## 判据
+
+    1. ``refresh=True`` 时先 fetch，再对比；fetch 成功则用**真实远端**判定；
+    2. fetch 失败（无网络 / 认证失败）**不能静默当成 current**：参考基准比不了，
+       结果标 ``stale`` 并说明原因，调用方可据此提示「结论可能不准」；
+    3. ``refresh=False``（默认）保持原行为 —— 纯只读、不联网，供高频调用路径使用。
+    """
+
+    def setUp(self):
+        self.repo = _TmpRepo()
+        self.addCleanup(self.repo.cleanup)
+
+    def _add_bare_remote(self):
+        """造一个 bare 仓库当 origin，再把两个仓库连起来。"""
+        bare = tempfile.mkdtemp(prefix="bare-")
+        self.addCleanup(subprocess.run, ["rm", "-rf", bare], timeout=30)
+        _git(bare, "init", "-q", "--bare", "-b", "master")
+        _git(self.repo.path, "remote", "add", "origin", bare)
+        return bare
+
+    def test_refresh_fetches_so_new_remote_commits_are_seen(self):
+        bare = self._add_bare_remote()
+        _git(self.repo.path, "push", "-q", "origin", "master")
+        _git(self.repo.path, "update-ref", "refs/remotes/origin/master",
+             _git(self.repo.path, "rev-parse", "HEAD"))
+
+        # 另一侧（模拟别人）往远端推了一条改动 alpha 的提交
+        other = tempfile.mkdtemp(prefix="other-")
+        self.addCleanup(subprocess.run, ["rm", "-rf", other], timeout=30)
+        _git(other, "clone", "-q", bare, ".")
+        _git(other, "config", "user.email", "o@example.com")
+        _git(other, "config", "user.name", "o")
+        Path(other, "alpha", "SKILL.md").write_text("# alpha v2 remote\n", encoding="utf-8")
+        _git(other, "add", "-A")
+        _git(other, "commit", "-q", "-m", "remote: alpha v2")
+        _git(other, "push", "-q", "origin", "master")
+
+        # 不 fetch：基准还是旧的 → 看不到这条提交
+        stale_snap = repo.snapshot(self.repo.path, {"alpha", "beta"})
+        self.assertNotIn("alpha", stale_snap["changed"],
+                         "前提：不 fetch 时基准未更新，应看不到远端新提交")
+
+        # fetch 后再判：必须看到
+        fresh_snap = repo.snapshot(self.repo.path, {"alpha", "beta"}, refresh=True)
+        self.assertTrue(fresh_snap["ok"], fresh_snap["error"])
+        self.assertIn("alpha", fresh_snap["changed"],
+                      "refresh=True 时没有 fetch，远端新提交被漏判成「一致」")
+        state, _note, _t = repo.classify("alpha", fresh_snap)
+        self.assertEqual(state, repo.REPO_OUTDATED)
+
+    def test_fetch_failure_is_not_silently_current(self):
+        # 指向一个不存在的远端：fetch 必失败
+        _git(self.repo.path, "remote", "add", "origin", "/nonexistent/repo.git")
+        _git(self.repo.path, "update-ref", "refs/remotes/origin/master",
+             _git(self.repo.path, "rev-parse", "HEAD"))
+        snap = repo.snapshot(self.repo.path, {"alpha", "beta"}, refresh=True)
+        self.assertTrue(snap.get("stale"), "fetch 失败必须标记 stale，不能静默当 current")
+        self.assertIn("远端", snap.get("stale_reason") or "")
+        # 有本地基准可比时仍给出结论，但 note 必须说明「基准可能过期」
+        _state, note, _t = repo.classify("alpha", snap)
+        self.assertIn("过期", note)
+
+    def test_refresh_false_does_not_touch_network(self):
+        # 默认路径纯只读：把 fetch 换成本该爆炸的替身，确认根本没被调用
+        import unittest.mock as mock
+
+        self.repo.set_upstream_to_head()
+        with mock.patch.object(repo, "_git") as fake:
+            fake.return_value = (0, "", "")
+            repo.snapshot(self.repo.path, {"alpha"}, refresh=False)
+        calls = [c.args[1] for c in fake.call_args_list if len(c.args) > 1]
+        self.assertNotIn("fetch", calls, "refresh=False 时不该发起 fetch")
