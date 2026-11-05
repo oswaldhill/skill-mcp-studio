@@ -1497,8 +1497,22 @@
           </tbody>
         </table>
       </div>
-      <p><strong>为什么过程反馈例外</strong>：用户已确认「保留行内进度」。若连「正在执行…」也弹框，每个操作都会先弹一个框、完成后再弹一个，
-      弹框数量翻倍，而且用户必须关掉前一个才能看到后一个。</p>
+      <p><strong>一次操作 = 一个弹框，过程在框内累积</strong>（用户原话：「可以在弹框中进行进度的展示，每个操作都作为进度的一部分，
+      只有完整结束之后再关闭弹框」）。三条 API：<code>progressBegin(标题)</code> → <code>progressStep(文字, ok)</code> →
+      <code>progressFinish(标题, ok, 明细)</code>，后者<strong>原地</strong>换成结果，不得先关再开。</p>
+      <pre>┌ 纳入 3 个客户端 ─────────────┐       ┌ 纳入完成（有失败）───────────┐
+│ ● WorkBuddy · 已纳入   (绿)   │       │ 3 个成功，1 个失败           │
+│ ● Codex · 已纳入       (绿)   │ ──▶  │ ▸ 查看过程（3 步，失败 1）   │
+│ ● Zed · 失败           (红)   │       │             [关掉]           │
+│ 已完成 3 / 3                  │       └──────────────────────────────┘
+└───────────────────────────────┘</pre>
+      <ul>
+        <li><strong>为什么不只用行内 spinner</strong>：批量操作天然有 N 步，用户需要看到走到哪一步、哪一步失败；spinner 只表达「在忙」，失败还得再弹一次</li>
+        <li><strong>同一件事不说两遍</strong>：已展示完整结果的面板（如一键升级的逐条结果），不得再弹只写「成功 N」的结果框</li>
+        <li><strong>绝对禁止</strong>在循环里逐条弹结果框</li>
+        <li><code>.progress-card</code> / <code>.prog-list</code> / <code>.prog-dot</code> 是进度态的语义类；结果态复用 <code>.notice-card</code>，
+          原地替换的落点用 <code>data-progress-replace</code> 属性标记（<strong>不引入样式类</strong>）</li>
+      </ul>
       <p><strong>实现约定</strong>：统一入口 <code>modalNotice(kind, title, message)</code>，内部走 <code>mountModal</code> 进入 top layer。</p>
       <ul>
         <li><code>.notice-card</code>：信息弹框容器；<code>.notice-ok</code> / <code>.notice-warn</code> / <code>.notice-err</code> 按 kind 换图标色</li>

@@ -652,6 +652,24 @@
   .notice-card .notice-msg { user-select: text; }
   /* 汇总类信息可能较长（多行计数）：限高并允许滚动，避免撑破弹框 */
   .notice-card .notice-msg { max-height: 40vh; overflow: auto; word-break: break-word; }
+
+  /* 进度弹框（.progress-card，DESIGN.md §2.5b-2）
+     一次操作 = 一个框：过程中列出每一步，结束后原地转成结果。
+     与 .task-card 的区别：task-card 是「阶段占位」（按时间依次点亮，不代表真实
+     进度），progress-card 是**真实步骤**（每完成一条追加一条，能看出哪一步失败）。 */
+  .progress-card .prog-spinner { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--accent-bg); border-top-color: var(--accent); animation: ts-spin .7s linear infinite; margin: 0 auto var(--sp-4); }
+  .progress-card .prog-count { margin: var(--sp-4) 0 0; text-align: center; }
+  .progress-card .prog-body { max-height: 40vh; overflow: auto; }
+  .progress-card .prog-list { display: flex; flex-direction: column; gap: var(--gap-2); text-align: left; }
+  .progress-card .prog-step { display: flex; align-items: center; gap: var(--gap-2); font-size: var(--fs-xs); color: var(--muted); }
+  .progress-card .prog-dot { width: 8px; height: 8px; border-radius: var(--r-hair); background: var(--line-strong); flex: 0 0 auto; }
+  .progress-card .prog-step.good .prog-dot { background: var(--ok); }
+  .progress-card .prog-step.good { color: var(--text); }
+  .progress-card .prog-step.bad .prog-dot { background: var(--err); }
+  .progress-card .prog-step.bad { color: var(--err); }
+  .progress-card .prog-fold { margin-top: var(--sp-4); text-align: left; font-size: var(--fs-xs); color: var(--muted); }
+  .progress-card .prog-fold summary { cursor: pointer; }
+  .progress-card .prog-detail { margin-top: var(--sp-3); }
   .cfm-card .actions { justify-content: center; gap: var(--gap-5); margin-top: 0; }
   .cfm-card .actions button {
     min-height: 32px; padding: var(--sp-3) var(--sp-8a); border-radius: var(--r-control); font-size: var(--fs-sm); font-weight: 500;
@@ -2330,6 +2348,70 @@ function modalNotice(kind, title, message) {
 // 将来若换成按钮内的行内 spinner，只改这一处即可。
 function setInlineBusy(label) {
   showBusy(label);
+}
+
+// 进度弹框（DESIGN.md §2.5b-2，2026-11-05 用户要求）。
+//
+// 用户原话：「可以在弹框中进行进度的展示，每个操作都作为进度的一部分，只有
+// 完整结束之后再关闭弹框」。
+//
+// 为什么不是「每次操作弹一次」：批量操作会连弹 N 个框，必须逐个关掉，而且弹框
+// 本身就是结果 —— 过程仍然看不见。这里改成**一个框贯穿一次操作**：
+//   progressBegin(标题)      → 打开，显示「0 / ?」
+//   progressStep(文字, ok)   → 追加一条，可带 ok / err 标记
+//   progressFinish(标题, ok, 明细) → **原地**把内容换成结果，同一个框，不关不重开
+// 用户点「关掉」才关闭，所以「完整结束之后再关闭」成立。
+let _progressSteps = [];
+
+function _progressInner() {
+  const rows = _progressSteps.map((st) => {
+    const cls = st.ok === false ? "bad" : (st.ok === true ? "good" : "run");
+    return `<div class="prog-step ${cls}"><span class="prog-dot"></span><span>${escapeHtml(st.text)}</span></div>`;
+  }).join("");
+  return `<div class="prog-list">${rows}</div>`;
+}
+
+function progressBegin(title) {
+  _progressSteps = [];
+  mountModal(`<div class="modal-backdrop"><div class="modal cfm-card progress-card" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}" tabindex="-1">
+    <div class="prog-spinner" aria-hidden="true"></div>
+    <div class="cfm-title">${escapeHtml(title)}</div>
+    <div class="prog-body" id="prog-body">${_progressInner()}</div>
+    <div class="cfm-msg prog-count" id="prog-count">正在进行…</div>
+  </div></div>`);
+}
+
+function progressStep(text, ok) {
+  _progressSteps.push({ text: String(text), ok: ok === undefined ? null : !!ok });
+  const body = $("prog-body");
+  if (body) body.innerHTML = _progressInner();
+  const cnt = $("prog-count");
+  if (cnt) {
+    const done = _progressSteps.filter((s) => s.ok !== null).length;
+    cnt.textContent = done ? `已完成 ${done} / ${_progressSteps.length}` : "正在进行…";
+  }
+}
+
+// 结束：**原地**替换内容（progress-replace 是这条替换的落点标记），
+// 绝不 closeModal 后再 mountModal —— 那样会闪两下，也违背「完整结束后再关闭」。
+function progressFinish(title, ok, detail) {
+  const badCount = _progressSteps.filter((s) => s.ok === false).length;
+  const meta = ok ? NOTICE_META.ok : NOTICE_META.err;
+  const kind = ok ? "ok" : "err";
+  const stepsHtml = _progressSteps.length
+    ? `<details class="prog-fold" ${ok ? "" : "open"}><summary>查看过程（${_progressSteps.length} 步${badCount ? `，失败 ${badCount}` : ""}）</summary><div class="prog-body">${_progressInner()}</div></details>`
+    : "";
+  const detailHtml = detail ? `<div class="cfm-msg prog-detail">${escapeHtml(String(detail))}</div>` : "";
+  mountModal(`<div class="modal-backdrop"><div class="modal cfm-card notice-card notice-${kind}" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}" tabindex="-1">
+    <div class="cfm-icon notice-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">${meta.path}</svg></div>
+    <div class="cfm-title">${escapeHtml(title)}</div>
+    <div data-progress-replace="${kind}"></div>
+    ${detailHtml}
+    ${stepsHtml}
+    <div class="actions"><button class="cfm-btn-cancel" id="prog-ok">关掉</button></div>
+  </div></div>`);
+  const btn = $("prog-ok");
+  if (btn) { btn.onclick = closeModal; try { btn.focus(); } catch (e) {} }
 }
 
 function confirmModal(title, message, danger, confirmText) {
@@ -7234,12 +7316,24 @@ function renderEndpointStatus() {
       <div class="actions"><button class="btn-cancel close-push" id="upg-close">关闭</button></div>
     </div></div>`);
     const closeBtn = $("upg-close");
-    if (closeBtn) closeBtn.onclick = closeModal;
-    // 刷新技能清单 + 重查更新状态
-    await refreshBlocks(["skills"]);
-    await runSkillCheckUpdates(null);
-    modalNotice(failed ? "warn" : "ok", failed ? "升级部分完成" : "升级完成",
-      `成功 ${succeeded}${failed ? ` · 失败 ${failed}` : ""}`);
+    // 刷新技能清单 + 重查更新状态。
+    //
+    // 刷新**放到用户关闭之后**：刷新期间界面上还挂着上面这块完成面板，
+    // 用户在关掉它之前不该看到任何跳变。
+    //
+    // 这里**不再额外弹结果框**（2026-11-05 用户要求「完整结束之后再关闭」）：
+    // 上面那个面板本身就是完整结果（逐条成功/失败 + 版本变迁 + 失败原因），
+    // 再弹一个只写「成功 N」的框是同一件事说两遍，还得让用户多关一次。
+    if (closeBtn) {
+      closeBtn.onclick = async () => {
+        closeModal();
+        await refreshBlocks(["skills"]);
+        await runSkillCheckUpdates(null);
+      };
+    } else {
+      await refreshBlocks(["skills"]);
+      await runSkillCheckUpdates(null);
+    }
   }
 
   // 单个升级（tag 点击 / kebab 菜单）：走统一模态（N=1）
@@ -7737,16 +7831,26 @@ function renderAddPanel(filter) {
     $("mt-sum").textContent = `已纳入 ${managed} · 未纳入 ${installable} · 未安装 ${list.length - p.length}`;
   }
   updateMtSum(tools);
+  // 批量纳入 / 移出：**一个进度弹框贯穿全程**，每条客户端作为一行进度，
+  // 全部跑完才转成结果；用户点「关掉」才关闭（DESIGN.md §2.5b-2）。
+  //
+  // 此前是循环里累加计数、结束后弹一次结果框 —— 过程完全不可见，用户只能
+  // 盯着一个没有动静的界面等。改动后既保留「一次操作一个框」，又让每一步
+  // 都看得见。
   async function batchToggleMts(checked) {
     const boxes = Array.from(document.querySelectorAll(".mainstream-item input[type=checkbox]")).filter((cb) => !cb.disabled && cb.checked !== checked);
     if (!boxes.length) { modalNotice("info", "提示", checked ? "没有可纳入的已安装客户端" : "没有已勾选的项目"); return; }
+    const verb = checked ? "纳入" : "移出";
+    progressBegin(`${verb} ${boxes.length} 个客户端`);
     let ok = 0, fail = 0;
     for (const cb of boxes) {
       const name = cb.dataset.name;
       const mt = tools.find((t) => t.name === name) || {};
       const args = checked ? mtAddArgs(mt) : ["--remove-client", name];
       const res = await runCli(args);
-      if (res && res.code === 0) {
+      const done = !!(res && res.code === 0);
+      progressStep(`${name} · ${done ? `已${verb}` : "失败"}`, done);
+      if (done) {
         ok++;
         cb.checked = checked;
         cb.parentElement.classList.toggle("on", checked);
@@ -7754,10 +7858,10 @@ function renderAddPanel(filter) {
         if (lbl) { lbl.textContent = checked ? "已纳入" : "未纳入"; lbl.className = "chk-label" + (checked ? "" : " off"); }
       } else fail++;
     }
-    modalNotice(fail ? "warn" : "ok", checked ? "已纳入" : "已移出",
-      `${ok} 个${fail ? `，失败 ${fail} 个` : ""}`);
     await refreshBlocks(["agents", "mainstream"]);
     updateMtSum((SNAP && SNAP.mainstream_tools) || []);
+    progressFinish(fail ? `${verb}完成（有失败）` : `${verb}完成`,
+      fail === 0, `${ok} 个成功${fail ? `，${fail} 个失败` : ""}`);
   }
   $("mt-all").onclick = () => batchToggleMts(true);
   $("mt-none").onclick = () => batchToggleMts(false);

@@ -130,6 +130,9 @@ pg-btn
 pi-ico
 pill-list
 pop-menu
+prog-dot
+prog-list
+progress-card
 row
 row-block
 seg-btn
