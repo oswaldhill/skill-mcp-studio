@@ -13,11 +13,15 @@ Rust 侧单元测试见 ``src-tauri/src/lib.rs`` 的 ``#[cfg(test)]``（由 CI
 """
 
 import re
+import sys
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 GUI = ROOT / "gui" / "dashboard.html"
+sys.path.insert(0, str(ROOT))
+
+from tests._gui_source import page_html  # noqa: E402
 
 
 def _main_script() -> str:
@@ -56,3 +60,50 @@ class GuiJsStructureTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PageRefreshActionTest(unittest.TestCase):
+    """每个内容页都必须有一个「重新拉取」的入口（2026-11-05 用户反馈）。
+
+    现象：MCP 页没有刷新按钮，而它的数据来自快照。用户改完配置后回到该页，
+    看到的仍是打开 App 时的缓存 —— 实测出现过「改名后页面仍显示旧条目名」，
+    让人误以为是重复配置。
+
+    判据：**数据页**的 `.page-head` 必须带 `.page-actions`，且其中至少有一个
+    触发重新拉取的按钮。设置页是配置表单（其控件本身就是即时生效的），
+    不在此列 —— 用白名单显式排除，而不是放宽到「任意页都不要求」。
+    """
+
+    NO_REFRESH_ALLOWED = {"page-settings"}
+
+    def _pages(self) -> dict:
+        html = page_html()
+        out = {}
+        for m in re.finditer(r'<section id="(page-[a-z]+)"[^>]*>(.*?)</section>', html, re.S):
+            out[m.group(1)] = m.group(2)
+        return out
+
+    def test_every_data_page_offers_a_refresh_action(self):
+        pages = self._pages()
+        self.assertGreaterEqual(len(pages), 6, "页面区块没解析到，检查 <section id=page-*> 结构")
+        missing = []
+        for pid, body in pages.items():
+            if pid in self.NO_REFRESH_ALLOWED:
+                continue
+            # page-head 里要有 page-actions，且至少一个 data-action 按钮
+            head = re.search(r'<div class="page-head">(.*?)</div>\s*</div>', body, re.S)
+            chunk = body[: body.find("</div>\n      <div")] if "</div>\n      <div" in body else body
+            if "page-actions" not in chunk or "data-action=" not in chunk:
+                missing.append(pid)
+        self.assertEqual(
+            missing,
+            [],
+            "以下页面没有刷新入口：用户改完配置回到该页会看到缓存，"
+            "误以为改动没生效或出现重复配置：%r" % missing,
+        )
+
+    def test_mcp_page_refresh_is_wired(self):
+        html = page_html()
+        m = re.search(r'<section id="page-mcp".*?</section>', html, re.S)
+        self.assertIsNotNone(m)
+        self.assertIn("data-action=", m.group(0), "MCP 页缺少刷新按钮")

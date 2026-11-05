@@ -2101,6 +2101,7 @@
     <section id="page-mcp" class="hidden">
       <div class="page-head">
         <div class="hd"><h2>MCP</h2><div class="hint">每客户端挂载与 MCP 清单；「自动」= 未显式声明 mcp_attach，按端点库全集期望；端点库请在「设置」中管理</div></div>
+        <div class="page-actions"><button class="btn-soft" data-action="refresh-mcp">刷新 MCP</button></div>
       </div>
       <div id="mcp-clients"></div>
     </section>
@@ -8574,6 +8575,10 @@ document.addEventListener("click", (e) => {
     const a = act.dataset.action;
     if (a === "add-agent") renderAddPanel();
     else if (a === "refresh-audit") refreshWithBtn(act);
+    // MCP 页刷新：与其它页同一个 refreshWithBtn（禁用按钮 → 重新拉快照 → 提示）。
+    // 单独一个 action 名而不是复用 "refresh"，是为了让「哪一页的哪个按钮」
+    // 在测试里可定位（tests/test_gui_dashboard_structure.py 断言每页都有入口）。
+    else if (a === "refresh-mcp") refreshWithBtn(act);
     else if (a === "rescan") doRescan(act);
     else if (a === "refresh") refreshWithBtn(act);
     else if (a === "refresh-skills") refreshWithBtn(act);

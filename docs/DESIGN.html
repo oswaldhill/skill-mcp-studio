@@ -1539,7 +1539,30 @@
         按钮固定宽度不换行；输入框必须有 <code>placeholder</code> 与 <code>aria-label</code>。
         新增工具条必须复用上表某一类，不要另起一个只差间距的类。</p>
 
-      <h3 id="s2-7">2.7 变更卡片（<code>.chg-card</code>）<a class="anchor" href="#s2-7" aria-label="锚点">#</a></h3>
+            <h3 id="s2-6b">2.6b 页面级刷新入口（<code>.page-head</code> / <code>.page-actions</code>）<a class="anchor" href="#s2-6b" aria-label="锚点">#</a></h3>
+      <p><strong>每个数据页都必须在页头提供一个「重新拉取」按钮</strong>（<code>.page-actions</code> 内，<code>btn-soft</code> 变体）。
+      界面数据来自打开 App 时拉取的快照，不刷新就会一直显示缓存 —— 实测事故：端点 key 改名后 MCP 页仍显示旧条目名，
+      看起来像「配置重复」，实际是页面没重新拉数据。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>页面</th><th>按钮</th><th>动作</th></tr></thead>
+          <tbody>
+            <tr><td>概览</td><td>刷新审计</td><td><code>refresh</code></td></tr>
+            <tr><td>IDE / Agent</td><td>刷新审计</td><td><code>refresh-audit</code></td></tr>
+            <tr><td><strong>MCP</strong></td><td><strong>刷新 MCP</strong></td><td><code>refresh-mcp</code></td></tr>
+            <tr><td>Hook</td><td>一键写入 Hook</td><td><code>fix-hooks-all</code></td></tr>
+            <tr><td>变更详情</td><td>运行快照对比</td><td><code>run-snapshot</code></td></tr>
+            <tr><td>DSH 插件</td><td>重新读取</td><td><code>refresh-dsh</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <ul>
+        <li>统一走 <code>refreshWithBtn(btn)</code>：禁用按钮 → 「刷新中…」→ 重新拉取 → toast 反馈</li>
+        <li><strong>唯一例外是「设置」页</strong>：控件本身即时生效，没有需要重新拉取的整体视图；
+          例外在 <code>tests/test_gui_dashboard_structure.py</code> 白名单里显式排除</li>
+      </ul>
+
+<h3 id="s2-7">2.7 变更卡片（<code>.chg-card</code>）<a class="anchor" href="#s2-7" aria-label="锚点">#</a></h3>
       <p>用于「变更详情」面板：每条变更一行决策（修复 / 保持）。</p>
       <pre>┌────────────────────────────────────────────────┐
 │▌[维度] 名称                          [修复][保持]│
