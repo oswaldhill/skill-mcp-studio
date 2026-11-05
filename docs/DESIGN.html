@@ -1481,7 +1481,32 @@
             （<code>--backdrop</code> 是<strong>颜色 token</strong>，不是类名。）</li>
       </ul>
 
-      <h3 id="s2-5c">2.5c 开关（<code>.switch</code>）<a class="anchor" href="#s2-5c" aria-label="锚点">#</a></h3>
+            <h3 id="s2-5b-2">2.5b-2 信息展示与询问一律用弹框（硬规则，2026-11-05 用户要求）<a class="anchor" href="#s2-5b-2" aria-label="锚点">#</a></h3>
+      <p><strong>所有面向用户的信息展示与询问都必须走弹框（modal），不得用 toast 吐司。</strong></p>
+      <p>为什么（用户原话：「目前的 UI 规范里面，对于信息的展示没有要求必须是弹框吗？」）：本项目此前没有任何关于「信息用什么容器」的规定，
+      于是 86 处反馈全靠 <code>showToast()</code> 这类<strong>自动消失</strong>的浮层。后果是：检查结果、错误原因这类<strong>需要读完再判断</strong>的信息，
+      几秒后就没了；用户刚切回窗口、或正在看别处就彻底错过；无法复制、无法回看。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>场景</th><th>容器</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>操作结果（成功 / 失败 / 警告 / 汇总）</td><td><strong>弹框</strong></td><td>用 <code>.cfm-card</code> 形态；标题 + 详情 + 单个「好」出口</td></tr>
+            <tr><td>需要用户确认的询问</td><td><strong>弹框</strong></td><td>已有的 <code>confirmModal</code></td></tr>
+            <tr><td>长任务的过程反馈</td><td><strong>行内进度</strong></td><td>就地显示「执行中」，<strong>不发 toast</strong></td></tr>
+            <tr><td>页面级致命错误</td><td><strong>横幅</strong>（<code>showBanner</code>）</td><td>属于持续状态，不是一次性消息</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><strong>为什么过程反馈例外</strong>：用户已确认「保留行内进度」。若连「正在执行…」也弹框，每个操作都会先弹一个框、完成后再弹一个，
+      弹框数量翻倍，而且用户必须关掉前一个才能看到后一个。</p>
+      <p><strong>实现约定</strong>：统一入口 <code>modalNotice(kind, title, message)</code>，内部走 <code>mountModal</code> 进入 top layer。</p>
+      <ul>
+        <li><code>.notice-card</code>：信息弹框容器；<code>.notice-ok</code> / <code>.notice-warn</code> / <code>.notice-err</code> 按 kind 换图标色</li>
+        <li><code>.notice-icon</code>：左侧状态图标，<strong>内联 SVG</strong>，不用 emoji / 符号字（规范 3b）</li>
+        <li><code>.notice-msg</code>：<code>user-select: text</code> 可复制，<code>max-height: 40vh</code> 防长汇总撑破弹框</li>
+      </ul>
+
+<h3 id="s2-5c">2.5c 开关（<code>.switch</code>）<a class="anchor" href="#s2-5c" aria-label="锚点">#</a></h3>
       <ul>
         <li>轨道：宽 34px 高 20px，<code>--r-pill</code>，关闭态 <code>--line-strong</code> 底</li>
         <li>旋钮：16px 圆点，<code>--on-solid</code> 底，<code>transition: transform</code></li>

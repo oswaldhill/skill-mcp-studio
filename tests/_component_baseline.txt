@@ -119,6 +119,8 @@ nav-group-label
 nav-item
 nav-link
 nest-list
+notice-card
+notice-icon
 nv-ico
 pagination
 pal-list

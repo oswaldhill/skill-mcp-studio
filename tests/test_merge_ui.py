@@ -81,7 +81,9 @@ class MergeUiTest(unittest.TestCase):
                          "重跑不该另调 --merge-advice")
         body = _fn("verifyMerge")
         self.assertIn("actionable", body, "核对必须看新的 actionable")
-        self.assertIn("showToast", body, "核对结果要反馈给用户")
+        # 2026-11-05：反馈容器从 toast 改为弹框（DESIGN.md §2.5b-2），
+        # 断言的意图不变 —— 「核对结果必须反馈给用户」，只是换了载体。
+        self.assertIn("modalNotice", body, "核对结果要反馈给用户")
 
     def test_no_stale_readonly_claim(self):
         """旧的"只读/不会替你执行"文案必须消失，否则界面在说谎。"""

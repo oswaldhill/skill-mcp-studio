@@ -641,6 +641,17 @@
   }
   .cfm-card .cfm-title { font-size: var(--fs-md); font-weight: 600; color: var(--text); margin: 0 0 var(--sp-2); }
   .cfm-card .cfm-msg { font-size: var(--fs-sm); color: var(--muted); margin: 0 0 var(--sp-9); line-height: 1.55; white-space: pre-line; }
+
+  /* 信息弹框（.notice-card，DESIGN.md §2.5b-2）
+     取代原来的 toast：结果通知要能读完、能回看、能复制，自动消失的浮层做不到。
+     复用 .cfm-card 的容器尺寸与出口按钮，只按 kind 换语义色。 */
+  .notice-card .notice-icon { color: var(--muted); }
+  .notice-card.notice-ok .notice-icon { color: var(--ok); }
+  .notice-card.notice-warn .notice-icon { color: var(--warn); }
+  .notice-card.notice-err .notice-icon { color: var(--err); }
+  .notice-card .notice-msg { user-select: text; }
+  /* 汇总类信息可能较长（多行计数）：限高并允许滚动，避免撑破弹框 */
+  .notice-card .notice-msg { max-height: 40vh; overflow: auto; word-break: break-word; }
   .cfm-card .actions { justify-content: center; gap: var(--gap-5); margin-top: 0; }
   .cfm-card .actions button {
     min-height: 32px; padding: var(--sp-3) var(--sp-8a); border-radius: var(--r-control); font-size: var(--fs-sm); font-weight: 500;
@@ -2270,6 +2281,57 @@ function closeModal() {
  * Custom confirmation dialog — replaces browser window.confirm().
  * Returns a Promise<boolean>. In browser preview mode, falls back to window.confirm().
  */
+// 统一的信息弹框入口（DESIGN.md §2.5b-2，2026-11-05 用户要求）。
+//
+// 为什么不让各处继续用 showToast：本项目此前没有任何「信息用什么容器」的规定，
+// 86 处反馈全靠**自动消失**的浮层。检查汇总、错误原因这类需要读完再判断的信息
+// 几秒后就没，用户切回窗口时已错过，也无法复制回看。
+//
+// 与 runTaskModal / confirmModal 的分工：
+//   - 结果通知（成功 / 失败 / 警告 / 汇总） → modalNotice（本函数，单出口）
+//   - 需要用户做决定 → confirmModal
+//   - 长任务过程 → runTaskModal / 行内状态（**不发 toast**）
+//
+// 走 mountModal 而不是直接写 innerHTML：必须 showModal() 进入 top layer，
+// 否则会被同为 top layer 的其它层整个盖住（confirmModal 已有同样的教训）。
+// 图标用内联 SVG，不用 emoji / 符号字（规范 3b：禁止 emoji 当 UI 图标；
+// 符号字在不同字体下基线不一致，还会被 emoji 门禁判成图标）。
+const NOTICE_META = {
+  ok:   { label: "已完成",   path: '<path d="M20 6 9 17l-5-5"/>' },
+  err:  { label: "操作失败", path: '<path d="M18 6 6 18M6 6l12 12"/>' },
+  warn: { label: "请注意",   path: '<path d="M12 8v5M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/>' },
+  info: { label: "提示",     path: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>' },
+};
+function modalNotice(kind, title, message) {
+  const meta = NOTICE_META[kind] || NOTICE_META.info;
+  const safeTitle = escapeHtml(title || meta.label);
+  const body = message == null ? "" : String(message);
+  mountModal(`<div class="modal-backdrop"><div class="modal cfm-card notice-card notice-${kind}" role="dialog" aria-modal="true" aria-label="${safeTitle}" tabindex="-1">
+    <div class="cfm-icon notice-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">${meta.path}</svg></div>
+    <div class="cfm-title">${safeTitle}</div>
+    <div class="cfm-msg notice-msg">${escapeHtml(body)}</div>
+    <div class="actions">
+      <button class="cfm-btn-cancel" id="notice-ok">好</button>
+    </div>
+  </div></div>`);
+  const btn = $("notice-ok");
+  if (btn) {
+    btn.onclick = closeModal;
+    // 焦点落到出口按钮：键盘用户按回车即可关闭，不必先 Tab 过去
+    try { btn.focus(); } catch (e) {}
+  }
+}
+
+// 「正在执行…」的过程反馈入口（DESIGN.md §2.5b-2 的例外项）。
+//
+// 不复用 toast：吐司会自动消失，长任务里用户既看不到进度也无法取消。
+// 统一走已有的 showBusy —— 它是带计时与「取消」的进度层，比吐司更合适；
+// 保留这个名字是为了让调用点语义清晰（「这里是过程反馈，不是结果通知」），
+// 将来若换成按钮内的行内 spinner，只改这一处即可。
+function setInlineBusy(label) {
+  showBusy(label);
+}
+
 function confirmModal(title, message, danger, confirmText) {
   return new Promise((resolve) => {
     let settled = false;
@@ -3300,7 +3362,7 @@ async function openExternal(url) {
   // 落到 window.open(url)；而 url 来自 SKILL.md frontmatter（第三方内容），
   // escapeHtml 只解决 HTML 转义、不解决 scheme —— javascript:/file: 会走到平台。
   if (!/^https?:\/\//i.test(url)) {
-    showToast("err", "仅支持 http(s) 链接");
+    modalNotice("err", "操作失败", "仅支持 http(s) 链接");
     return;
   }
   if (tauriInvoke) {
@@ -3308,7 +3370,7 @@ async function openExternal(url) {
     catch (err) {
       // 安全边界拒了它就不该再交给平台 —— 直接提示，不回退。
       console.error("open_url error:", err);
-      showToast("err", "打开链接失败（已被安全边界拒绝或系统调用失败）");
+      modalNotice("err", "操作失败", "打开链接失败（已被安全边界拒绝或系统调用失败）");
       return;
     }
   }
@@ -3694,15 +3756,15 @@ function showSkillDetail(skill) {
 }
 
 async function setSkillState(skill, client, enable) {
-  if (!tauriInvoke) { showToast("warn", "浏览器预览模式：写入需在桌面 App 内执行"); return; }
-  showToast("info", `${enable ? "启用" : "禁用"} ${skill} @ ${client}…`, { loading: true });
+  if (!tauriInvoke) { modalNotice("warn", "请注意", "浏览器预览模式：写入需在桌面 App 内执行"); return; }
+  setInlineBusy(`${enable ? "启用" : "禁用"} ${skill} @ ${client}…`);
   const res = await runCli([enable ? "--enable-skill" : "--disable-skill", skill, "--client", client]);
   if (res && res.code === 0) {
-    showToast("ok", `${enable ? "已启用" : "已禁用"} ${skill} @ ${client}`);
+    modalNotice("ok", "已完成", `${enable ? "已启用" : "已禁用"} ${skill} @ ${client}`);
     await refreshBlocks(["skills", "agents"]);
     showSkillDetail(skill);
   } else {
-    showToast("err", (res && res.stderr) || "操作失败");
+    modalNotice("err", "操作失败", (res && res.stderr) || "操作失败");
   }
 }
 
@@ -3714,19 +3776,19 @@ function skillDisplayName(skill) {
 }
 
 async function backupSkill(skill) {
-  if (!tauriInvoke) { showToast("warn", "浏览器预览模式：写入需在桌面 App 内执行"); return; }
-  showToast("info", `备份 ${skill}…`, { loading: true });
+  if (!tauriInvoke) { modalNotice("warn", "请注意", "浏览器预览模式：写入需在桌面 App 内执行"); return; }
+  setInlineBusy(`备份 ${skill}…`);
   const res = await runCli(["--backup-skill", skill]);
-  if (res && res.code === 0) showToast("ok", `${skill} 已备份`);
-  else showToast("err", cliErrDetail(res));
+  if (res && res.code === 0) modalNotice("ok", "已完成", `${skill} 已备份`);
+  else modalNotice("err", "操作失败", cliErrDetail(res));
 }
 
 async function exportSkill(skill) {
-  if (!tauriInvoke) { showToast("warn", "浏览器预览模式：写入需在桌面 App 内执行"); return; }
-  showToast("info", `导出 ${skill}…`, { loading: true });
+  if (!tauriInvoke) { modalNotice("warn", "请注意", "浏览器预览模式：写入需在桌面 App 内执行"); return; }
+  setInlineBusy(`导出 ${skill}…`);
   const res = await runCli(["--export-skill", skill]);
-  if (res && res.code === 0) showToast("ok", `${skill} 已导出 zip`);
-  else showToast("err", cliErrDetail(res));
+  if (res && res.code === 0) modalNotice("ok", "已完成", `${skill} 已导出 zip`);
+  else modalNotice("err", "操作失败", cliErrDetail(res));
 }
 
 function openRenameSkillModal(skill) {
@@ -3752,28 +3814,28 @@ function openRenameSkillModal(skill) {
   </div></div>`);
   $("sk-rn-cancel").onclick = closeModal;
   $("sk-rn-ok").onclick = async () => {
-    if (!tauriInvoke) { showToast("warn", "浏览器预览模式：写入需在桌面 App 内执行"); closeModal(); return; }
+    if (!tauriInvoke) { modalNotice("warn", "请注意", "浏览器预览模式：写入需在桌面 App 内执行"); closeModal(); return; }
     const newName = $("sk-rename-name").value.trim();
     const newDesc = $("sk-rename-desc").value.trim();
-    if (!newName && !newDesc) { showToast("warn", "名称与描述至少填一项"); return; }
+    if (!newName && !newDesc) { modalNotice("warn", "请注意", "名称与描述至少填一项"); return; }
     closeModal();
-    showToast("info", `保存 ${skill} 元数据…`, { loading: true });
+    setInlineBusy(`保存 ${skill} 元数据…`);
     const args = ["--rename-skill", skill];
     if (newName) args.push("--new-name", newName);
     if (newDesc) args.push("--new-description", newDesc);
     const res = await runCli(args);
     if (res && res.code === 0) {
-      showToast("ok", `${skill} 元数据已保存`);
+      modalNotice("ok", "已完成", `${skill} 元数据已保存`);
       await refreshBlocks(["skills", "agents"]);
       showSkillDetail(skill);
-    } else showToast("err", cliErrDetail(res));
+    } else modalNotice("err", "操作失败", cliErrDetail(res));
   };
 }
 
 async function confirmDeleteSkill(skill) {
   const ok = await confirmModal("删除技能", `将把 ${skill} 移到统一目录的 _trash/ 回收目录（删除前自动备份到 _backup/，可恢复）。确定继续？`, true);
   if (!ok) return;
-  if (!tauriInvoke) { showToast("warn", "浏览器预览模式：写入需在桌面 App 内执行"); return; }
+  if (!tauriInvoke) { modalNotice("warn", "请注意", "浏览器预览模式：写入需在桌面 App 内执行"); return; }
   await runTaskModal(`删除 ${skill}`, async () => {
     const res = await runCli(["--delete-skill", skill]);
     if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
@@ -3831,9 +3893,9 @@ async function checkEndpointCredential(key) {
   let data = {};
   try { data = JSON.parse((res && res.stdout) || "{}"); } catch (e) { data = {}; }
   if (data.available) {
-    showToast("ok", `${key}：凭据可用${data.masked ? "（" + data.masked + "）" : ""}`);
+    modalNotice("ok", "已完成", `${key}：凭据可用${data.masked ? "（" + data.masked + "）" : ""}`);
   } else {
-    showToast("err", `${key}：${data.error || "凭据不可用"}`);
+    modalNotice("err", "操作失败", `${key}：${data.error || "凭据不可用"}`);
   }
   loadEndpointCredentials();
 }
@@ -3874,14 +3936,14 @@ function openStoreCredentialModal(key) {
     if (!secret) { showBanner("err", "请填写凭据值"); return; }
     const res = await runCli(["--set-auth-secret", key, "--endpoint-auth-mode", mode, "--endpoint-auth-token", secret]);
     closeModal();
-    if (res && res.code === 0) { showToast("ok", "凭据已写入来源"); loadEndpointCredentials(); }
-    else showToast("err", cliErrDetail(res));
+    if (res && res.code === 0) { modalNotice("ok", "已完成", "凭据已写入来源"); loadEndpointCredentials(); }
+    else modalNotice("err", "操作失败", cliErrDetail(res));
   };
   $("cs-clear").onclick = async () => {
     const res = await runCli(["--set-auth-secret", key, "--endpoint-auth-mode", mode, "--endpoint-auth-token", ""]);
     closeModal();
-    if (res && res.code === 0) { showToast("ok", "已从来源移除"); loadEndpointCredentials(); }
-    else showToast("err", cliErrDetail(res));
+    if (res && res.code === 0) { modalNotice("ok", "已完成", "已从来源移除"); loadEndpointCredentials(); }
+    else modalNotice("err", "操作失败", cliErrDetail(res));
   };
 }
 
@@ -5594,12 +5656,12 @@ async function doRescan(btnEl) {
   const btn = btnEl || $("nav-agents");
   const orig = btn ? btn.textContent : "";
   if (btn) { btn.disabled = true; btn.textContent = "扫描中…"; }
-  showToast("info", "正在重新扫描（含自动发现）…", { loading: true });
+  setInlineBusy("正在重新扫描（含自动发现）…");
   try {
     await loadInternal(true);
-    showToast("ok", "扫描完成");
+    modalNotice("ok", "已完成", "扫描完成");
   } catch (err) {
-    showToast("err", "扫描失败：" + err);
+    modalNotice("err", "操作失败", "扫描失败：" + err);
   } finally {
     LOADING = false;
     if (btn) { btn.disabled = false; btn.textContent = orig; }
@@ -5707,7 +5769,7 @@ async function refreshWithBtn(btnEl) {
   const orig = btn ? btn.textContent : "";
   const label = (orig || "").replace(/^刷新/, "") || "数据";
   if (btn) { btn.disabled = true; btn.textContent = "刷新中…"; }
-  showToast("info", `正在刷新${label}…`, { loading: true });
+  setInlineBusy(`正在刷新${label}…`);
   let ok = false;
   try {
     ok = await loadManagement();
@@ -5715,7 +5777,7 @@ async function refreshWithBtn(btnEl) {
     LOADING = false;
     if (btn) { btn.disabled = false; btn.textContent = orig; }
   }
-  showToast(ok ? "ok" : "err", ok ? `${label}已刷新` : "刷新失败");
+  modalNotice(ok ? "ok" : "err", ok ? "刷新完成" : "刷新失败", ok ? `${label}已刷新` : "请查看页面横幅了解原因");
 }
 
 // 端点连通性检查：走**独立出口** ``--endpoint-status``，不再借道 --management。
@@ -5740,7 +5802,7 @@ async function reprobeEndpoints(btnEl) {
   const btn = btnEl;
   const orig = btn ? btn.textContent : "";
   if (btn) { btn.disabled = true; btn.textContent = "检查中…"; }
-  showToast("info", "正在全量检查（4 维度对比 + 端点探活）…", { loading: true });
+  setInlineBusy("正在全量检查（4 维度对比 + 端点探活）…");
   let ok = false;
   try {
     // 1. 4 维度快照对比（与托盘巡检同一条命令；退出码 0=执行成功，
@@ -5772,7 +5834,7 @@ async function reprobeEndpoints(btnEl) {
     LOADING = false;
     if (btn) { btn.disabled = false; btn.textContent = orig; }
   }
-  showToast(ok ? "ok" : "err", ok ? "全量检查完成" : "全量检查失败");
+  modalNotice(ok ? "ok" : "err", ok ? "全量检查完成" : "全量检查失败", ok ? "4 维度对比与端点探活均已完成，结果见下方「端点状态」区。" : "检查未能完成，请查看页面横幅了解原因。");
 }
 
 // 渲染「端点状态」区。**只画端点连通性**，不碰审计区的任何元素。
@@ -6211,7 +6273,7 @@ function renderEndpointStatus() {
     // 参数都来自按钮自身的数据属性，不读全局快照：即使面板状态被清空，
     // 只要按钮还在，用户点它就应当得到明确回应，而不是静默无反应。
     if (!keep || !fold.length) {
-      showToast("warn", "这个按钮缺少必要参数，请重新统计后再试");
+      modalNotice("warn", "请注意", "这个按钮缺少必要参数，请重新统计后再试");
       return;
     }
     const foldShow = fold.join("、");
@@ -6221,7 +6283,7 @@ function renderEndpointStatus() {
       + "执行前会重新复核判据；若该建议此刻已不成立，将拒绝执行且不改动任何文件。确定继续？",
       true);
     if (!ok) return;
-    if (!tauriInvoke) { showToast("warn", "浏览器预览模式：写入需在桌面 App 内执行"); return; }
+    if (!tauriInvoke) { modalNotice("warn", "请注意", "浏览器预览模式：写入需在桌面 App 内执行"); return; }
 
     const before = (ADVICE_DATA && ADVICE_DATA.actionable) || [];
     const beforeCount = before.length;
@@ -6258,7 +6320,7 @@ function renderEndpointStatus() {
     const domCount = document.querySelectorAll('[data-action="merge-group"]').length;
     const act = (ADVICE_DATA && ADVICE_DATA.actionable) || [];
     if (!act.length || !domCount) {
-      showToast("info", act.length ? "视图已过期，请重新统计后再合并" : "当前没有可执行合并组");
+      modalNotice("info", "提示", act.length ? "视图已过期，请重新统计后再合并" : "当前没有可执行合并组");
       return;
     }
     const total = act.reduce((n, g) => n + ((g.fold || []).length), 0);
@@ -6268,7 +6330,7 @@ function renderEndpointStatus() {
       + "每个归并方都会先备份再移入 _trash/，可恢复。执行前会逐组复核判据。确定继续？",
       true);
     if (!ok) return;
-    if (!tauriInvoke) { showToast("warn", "浏览器预览模式：写入需在桌面 App 内执行"); return; }
+    if (!tauriInvoke) { modalNotice("warn", "请注意", "浏览器预览模式：写入需在桌面 App 内执行"); return; }
     if (btn) btn.disabled = true;
 
     await runTaskModal(`全部合并（${act.length} 组）`, async () => {
@@ -6299,9 +6361,9 @@ function renderEndpointStatus() {
     const still = after.find((g) => g.keep === keep
       && (g.fold || []).some((f) => fold.indexOf(f) >= 0));
     if (still) {
-      showToast("warn", `合并后该组仍被列为可合并（${keep}），请人工检查 _trash/ 与判据`);
+      modalNotice("warn", "请注意", `合并后该组仍被列为可合并（${keep}），请人工检查 _trash/ 与判据`);
     } else {
-      showToast("ok", `已核对：该组不再出现在可执行合并里（合并前 ${beforeCount} 组，现 ${after.length} 组）`);
+      modalNotice("ok", "已完成", `已核对：该组不再出现在可执行合并里（合并前 ${beforeCount} 组，现 ${after.length} 组）`);
     }
   }
 
@@ -6309,9 +6371,9 @@ function renderEndpointStatus() {
     await refreshAdviceAfterWrite();
     const after = (ADVICE_DATA && ADVICE_DATA.actionable) || [];
     if (after.length) {
-      showToast("warn", `全部合并后仍有 ${after.length} 组可执行，请人工复核`);
+      modalNotice("warn", "请注意", `全部合并后仍有 ${after.length} 组可执行，请人工复核`);
     } else {
-      showToast("ok", "已核对：当前已无剩余的可执行合并组");
+      modalNotice("ok", "已完成", "已核对：当前已无剩余的可执行合并组");
     }
   }
 
@@ -6550,7 +6612,7 @@ function renderEndpointStatus() {
   async function runMarketSearch(btn) {
     const input = $("market-query");
     const q = ((input && input.value) || "").trim();
-    if (!q) { showToast("err", "请输入搜索词"); return; }
+    if (!q) { modalNotice("err", "操作失败", "请输入搜索词"); return; }
     if (btn) { btn.disabled = true; btn.textContent = "搜索中…"; }
     renderMarketProgress([{ text: `正在搜索「${q}」`, kind: "info" }]);
     try {
@@ -6695,12 +6757,12 @@ function renderEndpointStatus() {
     if (save) save.onclick = async () => {
       const url = (($("webdav-url") || {}).value || "").trim();
       const cred = (($("webdav-cred") || {}).value || "").trim();
-      if (!url) { showToast("err", "请填写远端 URL"); return; }
+      if (!url) { modalNotice("err", "操作失败", "请填写远端 URL"); return; }
       const r1 = await runCli(["--set-webdav-url", url, "--format", "json"]);
       if (!r1 || r1.code !== 0) {
         let why = "";
         try { why = (JSON.parse(r1.stdout || "{}").reason) || ""; } catch (_) { why = ""; }
-        showToast("err", `URL 保存失败：${why || "未知错误"}`);
+        modalNotice("err", "操作失败", `URL 保存失败：${why || "未知错误"}`);
         return;
       }
       if (cred) {
@@ -6708,11 +6770,11 @@ function renderEndpointStatus() {
         if (!r2 || r2.code !== 0) {
           let why = "";
           try { why = (JSON.parse(r2.stdout || "{}").reason) || ""; } catch (_) { why = ""; }
-          showToast("err", `凭据保存失败：${why || "格式应为 user:pass"}`);
+          modalNotice("err", "操作失败", `凭据保存失败：${why || "格式应为 user:pass"}`);
           return;
         }
       }
-      showToast("ok", "WebDAV 配置已保存");
+      modalNotice("ok", "已完成", "WebDAV 配置已保存");
       await loadWebdavStatus();
     };
     const clear = $("webdav-clear");
@@ -6720,7 +6782,7 @@ function renderEndpointStatus() {
       confirmModal("清除 WebDAV 配置？", "远端 URL 与凭据都会从本机删除，已同步数据不受影响。", async () => {
         await runCli(["--set-webdav-url", "", "--format", "json"]);
         await runCli(["--set-webdav-credential", "", "--format", "json"]);
-        showToast("ok", "WebDAV 配置已清除");
+        modalNotice("ok", "已完成", "WebDAV 配置已清除");
         await loadWebdavStatus();
       }, "清除");
     };
@@ -6743,9 +6805,9 @@ function renderEndpointStatus() {
       const done = (payload.results || []).filter((r) => r.action === "uploaded" || r.action === "downloaded").length;
       const failed = (payload.results || []).filter((r) => r.action === "failed");
       if (payload.ok) {
-        showToast("ok", `${word}完成：${done} 个文件`);
+        modalNotice("ok", "已完成", `${word}完成：${done} 个文件`);
       } else {
-        showToast("err", `${word}未全部成功${failed.length ? `：${failed.length} 个失败` : ""}（${payload.reason || ""}）`);
+        modalNotice("err", "操作失败", `${word}未全部成功${failed.length ? `：${failed.length} 个失败` : ""}（${payload.reason || ""}）`);
       }
       await loadWebdavStatus();
     }, word);
@@ -6780,7 +6842,7 @@ function renderEndpointStatus() {
     if (saveBtn) {
       saveBtn.onclick = async () => {
         const val = ($("gt-input") || {}).value || "";
-        if (!val.trim()) { showToast("err", "请先填写 token"); return; }
+        if (!val.trim()) { modalNotice("err", "操作失败", "请先填写 token"); return; }
         await runTaskModal("保存 GitHub token", async () => {
           const res = await runCli(["--set-github-token", val.trim()]);
           if (!res) return { ok: false, message: "工具未能执行" };
@@ -6898,8 +6960,8 @@ function renderEndpointStatus() {
         const label = ($("ms-add-label") || {}).value || "";
         const type = ($("ms-add-type") || {}).value || "skills-sh";
         const url = ($("ms-add-url") || {}).value || "";
-        if (!id.trim()) { showToast("err", "请填写源 id"); return; }
-        if (type === "github-repo" && !url.trim()) { showToast("err", "github-repo 源需要填写仓库 URL"); return; }
+        if (!id.trim()) { modalNotice("err", "操作失败", "请填写源 id"); return; }
+        if (type === "github-repo" && !url.trim()) { modalNotice("err", "操作失败", "github-repo 源需要填写仓库 URL"); return; }
         await runTaskModal(`添加源 ${id}`, async () => {
           const args = ["--set-market-source", id.trim(), `label=${label.trim() || id.trim()}`, `type=${type}`];
           if (url.trim()) args.push(`url=${url.trim()}`);
@@ -6920,7 +6982,7 @@ function renderEndpointStatus() {
       const res = await runCli(["--market", "check", "--format", "json"],
         "检查技能更新：本地版本 vs 远端最新版（只读）");
       if (!res || res.code !== 0) {
-        showToast("err", "检查更新失败：" + ((res && cliErrDetail(res)) || "未知错误"));
+        modalNotice("err", "操作失败", "检查更新失败：" + ((res && cliErrDetail(res)) || "未知错误"));
         return;
       }
       const data = JSON.parse(res.stdout || "{}");
@@ -6940,7 +7002,7 @@ function renderEndpointStatus() {
       const s = data.summary || {};
       const cached = data.cache_hit ? "（缓存）" : "";
       if (s.rate_limited) {
-        showToast("warn", `GitHub 配额已用尽（每小时 ${s.total || 0} 次重置）：本轮部分技能未检查，稍后重试或设 GITHUB_TOKEN`);
+        modalNotice("warn", "请注意", `GitHub 配额已用尽（每小时 ${s.total || 0} 次重置）：本轮部分技能未检查，稍后重试或设 GITHUB_TOKEN`);
       } else {
         // v0.31.1：把「登记失效」也报出来（此前它被并进「有更新」，
         // 导致这里说有 4 个、技能列表只画得出 2 行）。
@@ -6948,11 +7010,13 @@ function renderEndpointStatus() {
         // v0.31.3：整仓库来源的「待同步」单独报，不计入「有更新」；
         // 两者的升级通道不同（同步仓库 vs npx 重装）。
         const repoPending = s.repo_outdated ? ` · 仓库待同步 ${s.repo_outdated}` : "";
-        showToast(s.outdated || s.repo_outdated || s.missing ? "warn" : "ok",
-          `检查完成${cached}：有更新 ${s.outdated || 0} · 最新 ${s.current || 0} · 未知 ${s.unknown || 0}${repoPending}${miss}`);
+        modalNotice(
+          s.outdated || s.repo_outdated || s.missing ? "warn" : "ok",
+          `检查完成${cached}`,
+          `有更新 ${s.outdated || 0} · 最新 ${s.current || 0} · 未知 ${s.unknown || 0}${repoPending}${miss}`);
       }
     } catch (e) {
-      showToast("err", "检查返回无法解析：" + e);
+      modalNotice("err", "操作失败", "检查返回无法解析：" + e);
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = "检查更新"; }
     }
@@ -7174,8 +7238,8 @@ function renderEndpointStatus() {
     // 刷新技能清单 + 重查更新状态
     await refreshBlocks(["skills"]);
     await runSkillCheckUpdates(null);
-    showToast(failed ? "warn" : "ok",
-      `升级完成：成功 ${succeeded}${failed ? ` · 失败 ${failed}` : ""}`);
+    modalNotice(failed ? "warn" : "ok", failed ? "升级部分完成" : "升级完成",
+      `成功 ${succeeded}${failed ? ` · 失败 ${failed}` : ""}`);
   }
 
   // 单个升级（tag 点击 / kebab 菜单）：走统一模态（N=1）
@@ -7186,7 +7250,7 @@ function renderEndpointStatus() {
   // 一键升级全部（v0.31.0：用户需求「一键升级全部 + 按顺序逐个 + 过程展示」）
   async function runSkillUpgradeAll() {
     if (!SKILL_UPDATES) {
-      showToast("info", "请先点「检查更新」");
+      modalNotice("info", "提示", "请先点「检查更新」");
       return;
     }
     const outdated = Object.entries(SKILL_UPDATES)
@@ -7201,11 +7265,10 @@ function renderEndpointStatus() {
     const ghost = outdated.filter((n) => !listNames.has(n));
     const upgradable = outdated.filter((n) => listNames.has(n));
     if (ghost.length) {
-      showToast("warn",
-        `${ghost.length} 个技能已登记但目录不存在（安装失效），已从升级清单排除：${ghost.slice(0, 3).join("、")}${ghost.length > 3 ? " 等" : ""}`);
+      modalNotice("warn", "请注意", `${ghost.length} 个技能已登记但目录不存在（安装失效），已从升级清单排除：${ghost.slice(0, 3).join("、")}${ghost.length > 3 ? " 等" : ""}`);
     }
     if (!upgradable.length) {
-      showToast("ok", "没有可升级的技能（均为最新或未知）");
+      modalNotice("ok", "已完成", "没有可升级的技能（均为最新或未知）");
       return;
     }
     await runSkillUpgradeModal(upgradable);
@@ -7326,7 +7389,7 @@ function renderEndpointStatus() {
   function reportMarketExec(res, what) {
     if (!res || res.code !== 0) {
       appendMarketProgress(`${what} 失败：${(res && res.stderr) || "无输出"}`, "err");
-      showToast("err", `${what} 失败`);
+      modalNotice("err", "操作失败", `${what} 失败`);
       return;
     }
     let ok = true;
@@ -7335,7 +7398,7 @@ function renderEndpointStatus() {
     } catch (e) { ok = false; }
     appendMarketProgress(ok ? `${what} 完成` : `${what} 未生效（请在技能库中核对）`,
                          ok ? "ok" : "warn");
-    showToast(ok ? "ok" : "err", ok ? `${what} 完成` : `${what} 未生效`);
+    modalNotice(ok ? "ok" : "err", ok ? `${what} 完成` : `${what} 未生效`, ok ? "" : "写入未生效，原配置已按安全链回滚。");
   }
 function showAgentDetail(name) {
   const a = (SNAP && SNAP.agents || []).find((x) => x.name === name);
@@ -7676,7 +7739,7 @@ function renderAddPanel(filter) {
   updateMtSum(tools);
   async function batchToggleMts(checked) {
     const boxes = Array.from(document.querySelectorAll(".mainstream-item input[type=checkbox]")).filter((cb) => !cb.disabled && cb.checked !== checked);
-    if (!boxes.length) { showToast("info", checked ? "没有可纳入的已安装客户端" : "没有已勾选的项目"); return; }
+    if (!boxes.length) { modalNotice("info", "提示", checked ? "没有可纳入的已安装客户端" : "没有已勾选的项目"); return; }
     let ok = 0, fail = 0;
     for (const cb of boxes) {
       const name = cb.dataset.name;
@@ -7691,7 +7754,8 @@ function renderAddPanel(filter) {
         if (lbl) { lbl.textContent = checked ? "已纳入" : "未纳入"; lbl.className = "chk-label" + (checked ? "" : " off"); }
       } else fail++;
     }
-    showToast(fail ? "warn" : "ok", checked ? `已纳入 ${ok} 个${fail ? `，失败 ${fail} 个` : ""}` : `已移出 ${ok} 个${fail ? `，失败 ${fail} 个` : ""}`);
+    modalNotice(fail ? "warn" : "ok", checked ? "已纳入" : "已移出",
+      `${ok} 个${fail ? `，失败 ${fail} 个` : ""}`);
     await refreshBlocks(["agents", "mainstream"]);
     updateMtSum((SNAP && SNAP.mainstream_tools) || []);
   }
@@ -7718,11 +7782,11 @@ function renderAddPanel(filter) {
           cb.parentElement.classList.toggle("on", willRegister);
           const lbl = cb.parentElement.querySelector(".chk-label");
           if (lbl) { lbl.textContent = willRegister ? "已纳入" : "未纳入"; lbl.className = "chk-label" + (willRegister ? "" : " off"); }
-          showToast("ok", willRegister ? `${name} 已纳入管理` : `${name} 已移出管理`);
+          modalNotice("ok", "已完成", willRegister ? `${name} 已纳入管理` : `${name} 已移出管理`);
           await refreshBlocks(["agents", "mainstream"]);
           updateMtSum((SNAP && SNAP.mainstream_tools) || []);
         } else {
-          showToast("err", (res && res.stderr) || "操作失败");
+          modalNotice("err", "操作失败", (res && res.stderr) || "操作失败");
           cb.disabled = false;
           cb.checked = !willRegister;
         }
@@ -7782,7 +7846,7 @@ function renderAddPanel(filter) {
   });
   $("ac-save").onclick = async () => {
     const name = $("ac-name").value.trim();
-    if (!name) { $("ac-name").focus(); showToast("err", "请填写名称（必填）"); return; }
+    if (!name) { $("ac-name").focus(); modalNotice("err", "操作失败", "请填写名称（必填）"); return; }
     const btn = $("ac-save");
     btn.disabled = true;
     btn.textContent = "添加中…";
@@ -7808,12 +7872,12 @@ function renderAddPanel(filter) {
     const res = await runCli(args);
     if (res && res.code === 0) {
       closeModal();
-      showToast("ok", `已添加客户端「${name}」`);
+      modalNotice("ok", "已完成", `已添加客户端「${name}」`);
       refreshBlocks(["agents", "mainstream"]);
     } else {
       btn.disabled = false;
       btn.textContent = "添加";
-      showToast("err", (res && res.stderr) || "添加失败");
+      modalNotice("err", "操作失败", (res && res.stderr) || "添加失败");
     }
   };
 }
@@ -7862,7 +7926,7 @@ function openUnifiedDirModal() {
 function exportConfigAction() {
   const input = $("cfg-export-path");
   const path = (input && input.value || "").trim();
-  if (!path) { showToast("err", "请先填写导出路径（绝对路径或 icloud）"); return; }
+  if (!path) { modalNotice("err", "操作失败", "请先填写导出路径（绝对路径或 icloud）"); return; }
   // 回调必须返回 {ok, message, detail}：runTaskModal 判 ok=!!r.ok，而 runCli
   // 返回 {code, stdout, stderr}（无 ok 字段）——裸传会让成功也显示「失败」
   // （与「应用预设」的既有包装模式一致；v0.28.0 的两处裸传见同批修复）。
@@ -7877,7 +7941,7 @@ function exportConfigAction() {
 async function importConfigAction() {
   const input = $("cfg-import-path");
   const path = (input && input.value || "").trim();
-  if (!path) { showToast("err", "请先填写导入包路径（绝对路径或 icloud）"); return; }
+  if (!path) { modalNotice("err", "操作失败", "请先填写导入包路径（绝对路径或 icloud）"); return; }
   const ok = await confirmModal("导入配置",
     "将按「导入值优先、不删除本地已有项」合并导入（端点密钥若已脱敏则保留本地值）。\n写入前自动备份。继续？");
   if (!ok) return;
@@ -7897,14 +7961,14 @@ async function importConfigAction() {
 }
 
 async function openMergePreview() {
-  showToast("info", "正在生成合并预览（dry-run）…", { loading: true });
+  setInlineBusy("正在生成合并预览（dry-run）…");
   const preview = await runCli(["--fix-skills", "--dry-run", "--format", "json"], "生成链接修复预览（只读 dry-run）");
-  if (!preview || preview.code !== 0) { showToast("err", (preview && preview.stderr) || "预览失败"); return; }
+  if (!preview || preview.code !== 0) { modalNotice("err", "操作失败", (preview && preview.stderr) || "预览失败"); return; }
   let data;
   try { data = JSON.parse(preview.stdout || "{}"); }
-  catch { showToast("err", "预览数据解析失败"); return; }
+  catch { modalNotice("err", "操作失败", "预览数据解析失败"); return; }
   if (data.kind !== "fix-skills-preview" || !data.scan) {
-    showToast("err", data.error || "预览数据异常"); return;
+    modalNotice("err", "操作失败", data.error || "预览数据异常"); return;
   }
   renderMergePreview(data);
 }
@@ -8425,8 +8489,8 @@ function openAddEndpointModal() {
     }
     const res = await runCli(args);
     closeModal();
-    if (res && res.code === 0) { showToast("ok", "端点已添加"); refreshBlocks(["endpoints"]); }
-    else showToast("err", (res && res.stderr) || "添加失败");
+    if (res && res.code === 0) { modalNotice("ok", "已完成", "端点已添加"); refreshBlocks(["endpoints"]); }
+    else modalNotice("err", "操作失败", (res && res.stderr) || "添加失败");
   };
 }
 
@@ -8531,8 +8595,8 @@ function openEditEndpoint(ds) {
     }
     const res = await runCli(args);
     closeModal();
-    if (res && res.code === 0) { showToast("ok", "端点已更新"); refreshBlocks(["endpoints"]); }
-    else showToast("err", (res && res.stderr) || "更新失败");
+    if (res && res.code === 0) { modalNotice("ok", "已完成", "端点已更新"); refreshBlocks(["endpoints"]); }
+    else modalNotice("err", "操作失败", (res && res.stderr) || "更新失败");
   };
 }
 
@@ -8541,10 +8605,10 @@ async function removeEndpoint(key) {
   if (!ok) return;
   showBanner("warn", "正在删除端点…");
   runCli(["--remove-endpoint", key]).then((res) => {
-    if (res && res.code === 0) { showToast("ok", "端点已删除"); refreshBlocks(["endpoints"]); }
-    else showToast("err", (res && res.stderr) || "删除失败");
+    if (res && res.code === 0) { modalNotice("ok", "已完成", "端点已删除"); refreshBlocks(["endpoints"]); }
+    else modalNotice("err", "操作失败", (res && res.stderr) || "删除失败");
   }).catch((err) => {
-    showToast("err", "删除失败：" + (err && err.message || err));
+    modalNotice("err", "操作失败", "删除失败：" + (err && err.message || err));
   });
 }
 
@@ -8834,8 +8898,8 @@ async function runSkillRollback(name) {
     try { payload = JSON.parse((r && r.stdout) || "{}"); } catch (_) { payload = {}; }
     const ok = r && r.code === 0 && payload.ok;
     closeModal();
-    showToast(ok ? "ok" : "err",
-      ok ? `已回滚 ${name} 到升级前版本` : `回滚失败：${payload.reason || (r && r.stderr) || "未知错误"}`);
+    modalNotice(ok ? "ok" : "err", ok ? "回滚完成" : "回滚失败",
+      ok ? `${name} 已回滚到升级前版本` : (payload.reason || (r && r.stderr) || "未知错误"));
     if (ok) await refreshBlocks(["skills"]);
   };
 }
@@ -9286,13 +9350,13 @@ const SAMPLE_MGMT = {
 // 这里显式提示并保留控制台堆栈（不吞异常）。
 window.addEventListener("error", (ev) => {
   console.error("[global error]", ev.error || ev.message);
-  try { showToast("err", "页面出现未处理的错误：" + ((ev.error && ev.error.message) || ev.message)); }
+  try { modalNotice("err", "操作失败", "页面出现未处理的错误：" + ((ev.error && ev.error.message) || ev.message)); }
   catch (_) { /* toast 自身失败时不再抛出，避免递归 */ }
 });
 window.addEventListener("unhandledrejection", (ev) => {
   const r = ev.reason;
   console.error("[unhandled rejection]", r);
-  try { showToast("err", "后台操作失败：" + ((r && r.message) || r)); }
+  try { modalNotice("err", "操作失败", "后台操作失败：" + ((r && r.message) || r)); }
   catch (_) { /* 同上 */ }
 });
 
