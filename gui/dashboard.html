@@ -4667,6 +4667,29 @@ const DSH_KIND_LABEL = {
 // 否则「0 个插件」会被误读成「装了但一个都没有」。
 // 用「-」而非 em-dash：DESIGN.md §3 明确禁用 em-dash 作可见文案（正文、标签、
 // 按钮一律用普通连字符）。这里虽只有一个字符，仍属可见文案，一并守规。
+// DSH 徽标的「只取计数」入口：启动时与每次刷新快照后各拉一次。
+//
+// 为什么需要它（2026-11-05 用户反馈）：管理组五项里只有 DSH 插件显示 `0`，
+// 其余四项启动即有数字 —— 因为徽标此前停在 HTML 里写死的初值上，而真实值是 16。
+// `0` 不是「还没加载」的占位符，它明确声称「一个插件都没有」，是错误信息。
+// 旧实现把这件事归为「可接受的过渡态」（DESIGN.md §2.3g 特例1），但同组四项
+// 都在启动时就有值，一项显示假 0 只会让人以为数据没读到。
+//
+// 与 loadDshPlugins 的分工：本函数**不渲染整页**（没进页时画 DOM 是白费），
+// 只取 summary 更新徽标；进页仍走 loadDshPlugins 拉全量并渲染。
+let DSH_NAV_LOADED = false;
+async function loadDshNavCount(force) {
+  if (!tauriInvoke) return;                 // 浏览器预览模式：保持示例态
+  if (DSH_NAV_LOADED && !force) return;     // 每次刷新快照只拉一次
+  try {
+    const res = await runCli(["--dsh-plugins", "--format", "json"], "读取 DSH 插件计数（只读）");
+    setDshNavCount(res && res.code === 0 ? JSON.parse(res.stdout || "{}") : null);
+    if (res && res.code === 0) DSH_NAV_LOADED = true;
+  } catch (e) {
+    setDshNavCount(null);                   // 失败显示 "-"，不谎报 0
+  }
+}
+
 function setDshNavCount(d) {
   const el = $("count-dsh");
   if (!el) return;
@@ -4687,6 +4710,7 @@ async function loadDshPlugins() {
     }
     DSH_DATA = JSON.parse(res.stdout || "{}");
     setDshNavCount(DSH_DATA);
+    DSH_NAV_LOADED = true;   // 进页拉到的是同一份数据，标记已加载避免重复拉
     renderDshPlugins();
   } catch (e) {
     setDshNavCount(null);
@@ -5531,6 +5555,9 @@ async function loadManagement() {
     if (mgmt && mgmt.code === 0) {
       render(JSON.parse(mgmt.stdout));
       clearBanner();
+      // DSH 插件数据不在主快照里：顺手拉一次徽标计数，避免该项停在写死的 0。
+      // 不 await —— 它是次要信息，不该拖慢主快照的呈现；失败只影响徽标本身。
+      loadDshNavCount();
       return true;
     }
     // mgmt === null 时 runCli 已透出具体错误（CLI 未装/安全边界/连接失败），此处不再覆盖。

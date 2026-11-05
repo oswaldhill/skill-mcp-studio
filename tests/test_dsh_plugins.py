@@ -349,7 +349,41 @@ class DshPageGuiTest(unittest.TestCase):
             2, load_fn.count("setDshNavCount(null)"),
             "loadDshPlugins 的两条失败路径未都重置徽标 —— 残留旧数字会谎报结果")
 
-    def test_plugins_deduped_across_profiles(self):
+    def test_nav_count_loaded_at_startup_not_on_page_visit(self):
+        """徽标必须在**启动时**就有值，不能等用户点进该页（2026-11-05 用户反馈）。
+
+        现象：管理组五项里只有 DSH 插件显示 `0`，其余四项启动即有数字。
+        用户的原话是「默认是没有数字的，只有点进去才会有数字」——因为徽标停在
+        `<span id="count-dsh">0</span>` 这个**写死的初值**上，而真实值是 16。
+        `0` 不是占位符而是错误信息：它声称「一个插件都没有」。
+
+        上一版把这条当成「可接受的过渡态」写进规范（§2.3g 特例1），但同组其余
+        四项都在启动时就有值，一项显示假 `0` 只会让用户以为数据没读到 —— 实测
+        正是如此。`--dsh-plugins` 是只读快照命令，启动时拉一次完全可行。
+
+        判据：loadManagement() 成功路径里必须触发一次 DSH 计数加载。
+        """
+        load_fn = self._fn("loadManagement")
+        self.assertIn(
+            "loadDshNavCount", load_fn,
+            "启动快照加载后没有拉取 DSH 徽标 —— 该项会停在写死的 0",
+        )
+        # 必须存在一个「只取计数、不渲染整页」的轻量入口，避免为了一个数字
+        # 去渲染整页（那会在没进页时也跑一遍 DOM 重排）
+        self.assertIn(
+            "function loadDshNavCount", self.body,
+            "缺少 loadDshNavCount：不能为了徽标在启动时重渲染整页",
+        )
+
+    def test_nav_count_fetched_once_per_snapshot(self):
+        """重复刷新快照不应无限叠加请求：已加载过且非强制时直接返回。"""
+        fn = self._fn("loadDshNavCount")
+        self.assertTrue(
+            "DSH_NAV_LOADED" in fn or "force" in fn,
+            "loadDshNavCount 没有防重入/缓存标记，每次刷新都会多起一个子进程",
+        )
+
+    def test_plugins_deduped_across_profiles_impl(self):
         """同一插件跨 profile 只显示一行，不得按 profile 重复列出。
 
         实测 `@deepseek-ai/dsh-base`、`@deepseek-ai/dsh-web-app` 在 desktop 与
