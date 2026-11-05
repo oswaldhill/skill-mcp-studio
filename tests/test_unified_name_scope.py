@@ -202,5 +202,80 @@ class InventoryCanonicalScopeTest(unittest.TestCase):
             self.assertFalse(entry.endpoint_key)
 
 
+class CurrentConfigUniformKeyTest(unittest.TestCase):
+    """现行配置的约定：**全平台用端点自身的 name 作为 key**（2026-11-05 决定）。
+
+    背景：Codex 与 OpenCode 曾声明 ``unified_name: hermes-unified``，起因是它们
+    当时各有一条同名本地 stdio 桥。复核发现两处都已无该桥（Codex 的 hermes 段
+    早已不在、OpenCode 从未接入），保留 renamed key 只会让同一端点在配置里
+    出现两个名字。去掉后全平台统一为 ``hermes``。
+
+    这条断言守的是「别再悄悄加回 unified_name」：一个人加了、另一个人没加，
+    就会出现 Codex 叫 hermes-unified、VS Code 叫 hermes 的分裂。
+    若将来确实需要（某客户端又要接本地桥），请同时更新本用例与 config.yaml 注释。
+    """
+
+    def setUp(self):
+        from scanner import load_config
+
+        self.config = load_config(str(ROOT / "config.yaml"))
+
+    def test_no_client_declares_unified_name(self):
+        offenders = [
+            t.get("name")
+            for t in self.config.get("mcp_tools") or []
+            if t.get("unified_name")
+        ]
+        self.assertEqual(
+            offenders,
+            [],
+            f"这些客户端又声明了 unified_name，会导致同一端点在配置里出现两个名字：{offenders}",
+        )
+
+    def test_no_client_declares_profile_level_legacy_names(self):
+        # unified_name 的伴生物：本地桥以端点 name 存在时的 legacy 声明。
+        offenders = [
+            (t.get("name"), t.get("legacy_names"))
+            for t in self.config.get("mcp_tools") or []
+            if t.get("legacy_names")
+        ]
+        self.assertEqual(offenders, [], f"仍有客户端声明 legacy_names：{offenders}")
+
+    def test_active_endpoint_writes_the_endpoint_name_everywhere(self):
+        """统一端点写入每个客户端时都用端点 name，与是否设置了 active_profile 无关。
+
+        这是「去掉 unified_name」的直接行为验证：把 active_profile 设成统一端点
+        （原本会触发别名分支），写出的 key 仍必须是端点 name —— 否则不同客户端
+        会因 active_profile 的状态得到不同 key。
+        """
+        import json
+        import tempfile
+
+        from mcp_fixer import fix_mcp_tool
+
+        profile = {"name": "hermes", "url": "https://h.example.com/mcp"}
+        with tempfile.TemporaryDirectory() as tmp:
+            for fmt, key_path, initial in (
+                ("json", ["mcpServers"], '{"mcpServers": {}}'),
+                ("toml", ["mcp_servers"], ""),
+            ):
+                with self.subTest(fmt=fmt):
+                    path = Path(tmp) / f"cfg.{fmt}"
+                    path.write_text(initial, encoding="utf-8")
+                    tool = {
+                        "name": "X",
+                        "config_path": str(path),
+                        "format": fmt,
+                        "mcp_key_path": key_path,
+                    }
+                    result = fix_mcp_tool(tool, profile, use_unified_name=True)
+                    self.assertEqual(result["status"], "updated", result)
+                    body = path.read_text(encoding="utf-8")
+                    self.assertIn("hermes", body)
+                    self.assertNotIn("hermes-unified", body)
+                    if fmt == "json":
+                        self.assertIn("hermes", json.loads(body)["mcpServers"])
+
+
 if __name__ == "__main__":
     unittest.main()

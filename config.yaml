@@ -124,12 +124,16 @@ mcp_tools:
   config_path: ~/.codex/config.toml
   format: toml
   mcp_key_path: [mcp_servers]
-  # Codex 已有本地 hermes stdio 桥（~/.codex/config.toml 的 [mcp_servers.hermes]
-  # 指向 hermes 网关的 mcp_stdio_bridge.py）。统一端点必须用独立 key 写入，否则会
-  # 命中同名桥并把它改写成 HTTP 形态 —— 那既破坏本地桥，又因改写后 url 校验不过
-  # 而整条修复回滚（实测报 "validation failed; original configuration was rolled
-  # back"）。与 OpenCode 同一处理。
-  unified_name: hermes-unified
+  # 全平台统一用端点自身的 name（hermes）作为 MCP key（2026-11-05 用户决定）。
+  #
+  # 这里曾声明 unified_name: hermes-unified。起因是该客户端当时有一条同名本地
+  # stdio 桥（[mcp_servers.hermes] 指向 mcp_stdio_bridge.py），用独立 key 才能
+  # 避免把它改写成 HTTP 形态。现已核实 Codex 中不再有该 stdio 桥，且
+  # _render_toml / _render_json 遇到同名 stdio 条目会显式抛 McpEntryConflict
+  # 并保持用户配置不动 —— 这层保护不再需要靠「换个名字」实现。
+  #
+  # 改名的副作用：先前写入的 hermes-unified 段会变成残留，切换必须按
+  # 「先写新名字、再删旧名字」的顺序进行。
   fix_supported: true
   hooks_config_path: ~/.codex/hooks.json
 - name: Reasonix
@@ -159,13 +163,14 @@ mcp_tools:
   mcp_entry_type: remote
   # 引用型凭据注入位：OpenCode 读配置根的 "env"，据此设置 MCP server 的环境。
   mcp_root_env_style: env
-  # OpenCode 已有本地 hermes stdio 桥（指向 NAS 网关），统一端点用独立 key 写入，避免覆盖本地桥
-  unified_name: hermes-unified
-  # 本地 stdio 桥条目名为 "hermes"（hermes-bridge.py 指向 NAS 网关），与统一端点
-  # hermes-unified 并存属待收口遗留：声明为按工具 legacy 名，审计可见，
-  # --remove-legacy-mcp（活体验证安全门）清理。该名与其它客户端的正典名冲突，
-  # 故只能声明在工具级，不进 profile 的 legacy_names。
-  legacy_names: [hermes]
+  # 全平台统一用端点自身的 name（hermes）作为 MCP key（2026-11-05）。
+  #
+  # 这里曾声明 unified_name: hermes-unified + legacy_names: [hermes]，起因是
+  # 该客户端当时有一条名为 hermes 的本地 stdio 桥（hermes-bridge.py 指向 NAS
+  # 网关）。2026-11-05 复核 opencode.json：条目只有 CodeGraphContext(stdio) /
+  # hermes-unified / K8s-uat，**没有名为 hermes 的桥** —— 该桥从未接入本客户端，
+  # 声明已过时。去掉后与其它客户端同名；若将来真的把 hermes 桥接进来，
+  # 写入路径会显式抛 McpEntryConflict（不会静默覆盖）。
   fix_supported: true
   hooks_config_path: ~/.config/opencode/opencode.jsonc
 - name: DeepSeek Harness

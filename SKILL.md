@@ -87,7 +87,7 @@ An App, CLI, or initialized configuration is installation evidence. A Skills sym
 
 Supported MCP formats include JSON `mcpServers`, Codex TOML `[mcp_servers.*]`, Reasonix string arrays, direct remote URLs, controlled stdio launchers, and DSH `cordis_yaml`. Reports must never print credential values.
 
-Per-tool `unified_name` override: a tool may set `unified_name` in its `mcp_tools` entry to write the unified endpoint under a distinct server key instead of the profile name, protecting an existing local bridge from being clobbered on `--setup-all`.
+Per-tool `unified_name` override: a tool may set `unified_name` in its `mcp_tools` entry to write the unified endpoint under a distinct server key instead of the profile name, protecting an existing local bridge from being clobbered on `--setup-all`. This is opt-in per client and only applies to the active (unified) endpoint; when no client declares it — which is the current configuration, all clients use the endpoint name `hermes` — every client receives the same key. A same-named stdio entry is never silently overwritten regardless: the renderers raise `McpEntryConflict` and leave the user's config untouched.
 
 ## Status Model
 

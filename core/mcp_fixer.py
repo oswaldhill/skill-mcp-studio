@@ -217,11 +217,14 @@ def fix_mcp_tool(
         reason = tool.get("fix_unsupported_reason", "repair is not supported for this client")
         return _result(tool, "unsupported", reason)
 
-    # ``unified_name`` 是**统一 Hermes 端点**的别名（config.yaml：「统一端点用独立
-    # key 写入，避免覆盖本地桥」），只对统一端点成立。端点库里通常不止一个端点，
-    # 若无条件套用，每个端点都会被写成同一个 key、互相覆盖，最后只剩最后一个端点
-    # 的 URL —— 而审计阶段又会拿这个 key 去核对所有端点，于是把已正确接入的端点判为
-    # 未配置。``_endpoint_profiles`` 的既有约定也是「按各自的 name 写入」。
+    # ``unified_name`` 是客户端可选声明的**统一端点别名**：当该客户端里已有同名
+    # 本地桥、需要换一个 key 写入时用（现行 config.yaml 已无客户端声明该字段，
+    # 2026-11-05 全平台统一用端点自身的 name）。
+    #
+    # 它只对统一端点成立（``use_unified_name``）。端点库里通常不止一个端点，若无条件
+    # 套用，每个端点都会被写成同一个 key、互相覆盖，最后只剩最后一个端点的 URL ——
+    # 而审计阶段又会拿这个 key 去核对所有端点，于是把已正确接入的端点判为未配置。
+    # ``_endpoint_profiles`` 的既有约定也是「按各自的 name 写入」。
     name = tool.get("unified_name") if use_unified_name else None
     name = name or expected.get("name", "hermes")
     url = expected.get("url", "")
