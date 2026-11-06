@@ -1013,6 +1013,13 @@
   .pagination .pg-arrow { font-family: var(--mono); font-size: var(--fs-base); line-height: 1; }
   .pagination .pg-ellipsis { color: var(--faint); font-size: var(--fs-xs); padding: 0 var(--sp-1); user-select: none; }
   .pagination .pg-info { color: var(--faint); font-family: var(--mono); font-size: var(--fs-xs); margin-left: var(--sp-2); }
+  /* 结果范围（第 41-60 条 / 共 248 条）：等宽数字，避免位数变化时抖动 */
+  .pagination .pg-range { color: var(--muted); font-family: var(--mono); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; margin-left: var(--sp-2); }
+  /* 每页条数选择器：与按钮同圆角、同描边，内边距对齐 --sp-1/--sp-3 */
+  .pagination .pg-size { display: inline-flex; align-items: center; gap: var(--gap-1); color: var(--muted); font-size: var(--fs-xs); margin-left: var(--sp-1); }
+  .pagination .pg-size-sel { font-family: var(--mono); font-size: var(--fs-xs); color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-control); padding: var(--sp-0c) var(--sp-2); cursor: pointer; }
+  .pagination .pg-size-sel:hover { border-color: var(--accent-border); }
+  .pagination .pg-size-sel:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
 
   /* 表格内路径分行 */
   .path-lines { display: flex; flex-direction: column; gap: var(--gap-1); font-size: var(--fs-2xs); }
@@ -2626,6 +2633,23 @@ const iconForKind = (kind) => `<span class="pi-ico">${ICONS.grid}</span>`;
 function loadStore(key, def) { try { const v = localStorage.getItem(key); return v == null ? def : v; } catch (e) { return def; } }
 function saveStore(key, val) { try { localStorage.setItem(key, val); } catch (e) { /* 隐私模式忽略 */ } }
 
+// 每页条数选项（全站统一，2026-11-06 用户要求「每一页显示几个这种配置」）。
+//
+// 位置很关键：必须定义在**第一个使用点之前**。本文件是单个顶层脚本，
+// `const` 有暂时性死区 —— 第 3459 行的 `SKILL_PAGE_SIZE = loadPageSize(...)`
+// 若跑在这些常量之前，会抛 ReferenceError 并让**整页脚本崩溃**
+// （2026-11-06 实测踩中，E2E 测试抓出：所有按钮都失去响应）。
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
+const PAGE_SIZE_DEFAULT = 20;
+
+// 不提供「全部」：技能表可能数百行，全量渲染会让首屏卡住；如需看全部，用搜索/筛选。
+// 持久化按「列表标识」分别记忆，避免改技能表把其他列表也改掉。
+function loadPageSize(key) {
+  const v = parseInt(loadStore("page-size-" + key, String(PAGE_SIZE_DEFAULT)), 10);
+  return PAGE_SIZE_OPTIONS.includes(v) ? v : PAGE_SIZE_DEFAULT;
+}
+function savePageSize(key, v) { saveStore("page-size-" + key, String(v)); }
+
 // ---------------- Toast 栈（参考 InstallToast：进度 → 完成） ----------------
 function showToast(kind, text, opts = {}) {
   const root = $("toast-root");
@@ -3456,7 +3480,8 @@ let SKILL_SEG = null;
 let SKILL_VIEW = null;
 let SKILL_CAT = null;
 let SKILL_PAGE = null;
-const SKILL_PAGE_SIZE = 20;
+// 每页条数改为用户可配置（2026-11-06），按 "skills" 分别记住
+let SKILL_PAGE_SIZE = loadPageSize("skills");
 function skillSeg() { if (SKILL_SEG == null) SKILL_SEG = loadStore("skill-seg", "all"); return SKILL_SEG; }
 function skillView() { if (SKILL_VIEW == null) SKILL_VIEW = loadStore("skill-view", "list"); return SKILL_VIEW; }
 function skillCat() { if (SKILL_CAT == null) SKILL_CAT = loadStore("skill-cat", "all"); return SKILL_CAT; }
@@ -3722,11 +3747,24 @@ function renderSkillPager(totalCount, pageCount, page) {
   const el = $("skills-pagination");
   if (!el) return;
   if (pageCount <= 1) { el.innerHTML = ""; el.classList.add("hidden"); return; }
-  el.innerHTML = paginationBar(page - 1, pageCount, { total: totalCount });
+  el.innerHTML = paginationBar(page - 1, pageCount, { total: totalCount, perPage: SKILL_PAGE_SIZE });
   el.classList.remove("hidden");
   el.querySelectorAll("[data-sp]").forEach((b) => {
     b.onclick = () => { SKILL_PAGE = parseInt(b.dataset.sp, 10) + 1; renderSkillList(); };
   });
+  const sel = el.querySelector(".pg-size-sel");
+  if (sel) {
+    sel.onchange = () => {
+      const v = parseInt(sel.value, 10);
+      if (!PAGE_SIZE_OPTIONS.includes(v)) return;
+      SKILL_PAGE_SIZE = v;
+      savePageSize("skills", v);
+      // 换每页条数后回到第 1 页：否则可能停在越界页（原来第 13 页、改成 100 条后只剩 3 页）
+      SKILL_PAGE = 1;
+      saveStore("skill-page", "1");
+      renderSkillList();
+    };
+  }
 }
 
 function renderSkillCatChips(list) {
@@ -4239,7 +4277,6 @@ function _supportsMcp(c) {
 
 // ---------------- 设置（通用配置） ----------------
 // IDE/Agent 分页
-const AGENTS_PER_PAGE = 15;
 let _agentsPage = 0;
 let _agentsView = loadStore("agent-view", "cards"); // cards | list
 let _agentsTypeFilter = loadStore("agent-type-filter", "all"); // all | 具体分类
@@ -4262,7 +4299,16 @@ const PAGINATION_WINDOW = 2;
 
 function paginationBar(page, pages, opts) {
   const o = opts || {};
-  if (!pages || pages <= 1) return "";
+  if (!pages || pages <= 1) {
+    // 单页时页码部分不渲染，但**结果范围与每页条数选择器仍要出现**
+    // （2026-11-06）：只有 1 页时用户更需要知道「共几个」和能调大每页条数。
+    if (o.total == null) return "";
+    const per0 = o.perPage || 0;
+    const tail = per0 > 0
+      ? `<span class="pg-range">共 ${o.total} 条</span><label class="pg-size">每页 <select class="pg-size-sel" aria-label="每页显示条数">${PAGE_SIZE_OPTIONS.map((n) => `<option value="${n}"${n === per0 ? " selected" : ""}>${n} 条/页</option>`).join("")}</select></label>`
+      : `<span class="pg-range">共 ${o.total} 条</span>`;
+    return `<div class="pagination">${tail}</div>`;
+  }
   const cur = Math.min(Math.max(0, page | 0), pages - 1);
   const out = [];
   out.push(`<button type="button" class="ghost sm pg-prev" data-sp="${cur - 1}" ${cur === 0 ? "disabled" : ""} aria-label="上一页"><span class="pg-arrow">‹</span> 上一页</button>`);
@@ -4278,21 +4324,23 @@ function paginationBar(page, pages, opts) {
   }
 
   out.push(`<button type="button" class="ghost sm pg-next" data-sp="${cur + 1}" ${cur >= pages - 1 ? "disabled" : ""} aria-label="下一页">下一页 <span class="pg-arrow">›</span></button>`);
+
+  // 结果范围：让用户知道「这一页到底是哪几条」（2026-11-06 用户要求）。
+  // 例：第 41-60 条 / 共 248 条。total 可为 0，此时显示 0-0。
   if (o.total != null) {
-    out.push(`<span class="pg-info">共 ${o.total} 个</span>`);
+    const per = o.perPage || 0;
+    const from = Math.min(o.total, cur * per + 1);
+    const to = Math.min(o.total, (cur + 1) * per);
+    const rangeText = per > 0 ? `第 ${from}-${to} 条 / 共 ${o.total} 条` : `共 ${o.total} 条`;
+    out.push(`<span class="pg-range">${rangeText}</span>`);
+    // 每页条数选择器：只在调用方提供 onPageSize（即可持久化）时渲染，
+    // 避免在只读场景（如升级确认框）出现改了不生效的控件。
+    if (per > 0) {
+      const opts = PAGE_SIZE_OPTIONS.map((n) => `<option value="${n}"${n === per ? " selected" : ""}>${n} 条/页</option>`).join("");
+      out.push(`<label class="pg-size">每页 <select class="pg-size-sel" aria-label="每页显示条数">${opts}</select></label>`);
+    }
   }
   return `<div class="pagination">${out.join("")}</div>`;
-}
-
-// 兼容旧调用名（_paginationBar/_paginatedTable 在本次改造中保留，内部走统一组件）
-function _paginatedTable(rows, page, perPage) {
-  const total = rows.length;
-  const pages = Math.max(1, Math.ceil(total / perPage));
-  if (page >= pages) page = pages - 1;
-  if (page < 0) page = 0;
-  const start = page * perPage;
-  const slice = rows.slice(start, start + perPage);
-  return { slice, pagination: _paginationBar(page, pages), total, pages };
 }
 
 const TYPE_COLORS = {
@@ -8139,7 +8187,7 @@ async function openMergePreview() {
 
 // 合并预览分页状态（临时，仅存于当前打开的预览框）
 // 每页 8 行，避免弹窗默认出现垂直滚动条
-const MERGE_PAGE_SIZE = 8;
+let MERGE_PAGE_SIZE = loadPageSize("merge");
 let _mergePage = 1;
 
 function renderMergePreview(data) {
@@ -8248,16 +8296,28 @@ function renderMergeRows(rows) {
   }
 
   if (pager) {
-    if (pageCount <= 1) { pager.innerHTML = ""; return; }
-    const prevD = _mergePage <= 1 ? "disabled" : "";
-    const nextD = _mergePage >= pageCount ? "disabled" : "";
-    pager.innerHTML = paginationBar(_mergePage - 1, pageCount, { total: rows.length });
+    // 单页时也要渲染：每页条数选择器在只有一页时仍需可改（否则用户没法调整）。
+    // 这依赖 paginationBar 的「pages<=1 返回空串」——所以单页这里改用它，
+    // 让 total/perPage 照常输出，只由 paginationBar 决定页码部分为空。
+    pager.innerHTML = paginationBar(_mergePage - 1, pageCount, { total: rows.length, perPage: MERGE_PAGE_SIZE })
+      || `<div class="pagination"><span class="pg-range">共 ${rows.length} 条</span><label class="pg-size">每页 <select class="pg-size-sel" aria-label="每页显示条数">${PAGE_SIZE_OPTIONS.map((n) => `<option value="${n}"${n === MERGE_PAGE_SIZE ? " selected" : ""}>${n} 条/页</option>`).join("")}</select></label></div>`;
     pager.querySelectorAll("[data-sp]").forEach((b) => {
       b.onclick = () => {
         _mergePage = parseInt(b.dataset.sp, 10) + 1;
         renderMergeRows(rows);
       };
     });
+    const sel = pager.querySelector(".pg-size-sel");
+    if (sel) {
+      sel.onchange = () => {
+        const v = parseInt(sel.value, 10);
+        if (!PAGE_SIZE_OPTIONS.includes(v)) return;
+        MERGE_PAGE_SIZE = v;
+        savePageSize("merge", v);
+        _mergePage = 1;
+        renderMergeRows(rows);
+      };
+    }
   }
 }
 

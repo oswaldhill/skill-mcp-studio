@@ -1895,8 +1895,20 @@ class PaginationConsistencyTest(unittest.TestCase):
         import subprocess
 
         src = _src()
-        i = src.index("const PAGINATION_WINDOW = 2;")
+        # 需要一并执行三块：每页条数常量、页码窗口常量、渲染函数。
+        # 起点取最早出现的那个常量（2026-11-06 常量前移过一次，不能写死顺序）。
+        # 精确取三块，不要取区间：区间里夹着 DOM 相关的顶层语句（addEventListener 等），
+        # 在 node 里会因 document 未定义而失败（2026-11-06 实测）。
         fstart = src.index("function paginationBar(page, pages, opts) {")
+        lines = src.splitlines()
+        def find_line(prefix: str) -> int:
+            return next(k for k, line in enumerate(lines) if line.startswith(prefix))
+
+        blocks = [
+            "\n".join(lines[find_line("const PAGE_SIZE_OPTIONS"):find_line("function savePageSize")]),
+            lines[find_line("const PAGINATION_WINDOW")],
+        ]
+        i = fstart
         depth, j = 0, fstart
         while True:
             if src[j] == "{":
@@ -1906,14 +1918,19 @@ class PaginationConsistencyTest(unittest.TestCase):
                 if depth == 0:
                     break
             j += 1
-        code = src[i : j + 1]
-        probe = code + """
+        code = "\n".join(blocks) + "\n" + src[fstart : j + 1]
+        # 被提取的片段会间接调用 loadStore → localStorage，需要最小桩
+        probe = (
+            'globalThis.localStorage = { getItem: () => null, setItem: () => {} };\n'
+            'var loadStore = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } };\n'
+            'var saveStore = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };\n'
+        ) + code + """
 const out = [];
 for (const [p, n] of [[2,13],[0,5],[6,13]]) {
   const h = paginationBar(p, n, { total: 10 });
   out.push(String(h).includes("pg-num"));
 }
-const single = paginationBar(0, 1, { total: 1 });
+const single = String(paginationBar(0, 1, { total: 1, perPage: 20 }));
 console.log(JSON.stringify({ ok: out, single }));
 """
         res = subprocess.run(
@@ -1924,4 +1941,30 @@ console.log(JSON.stringify({ ok: out, single }));
 
         data = _json.loads(res.stdout.strip().splitlines()[-1])
         self.assertTrue(all(data["ok"]), "多页时应渲染出页码按钮")
-        self.assertEqual(data["single"], "", "单页时应返回空串")
+        # 单页时页码部分为空，但「共 N 条」与每页条数选择器仍须出现
+        # （2026-11-06：第一版返回空串，只有 1 页时用户看不到任何计数与选择器）
+        self.assertIn("共 1 条", data["single"], "单页时应显示总数")
+        self.assertIn("pg-size-sel", data["single"], "单页时仍应可调整每页条数")
+        self.assertNotIn("pg-num", data["single"], "单页时不应出现页码按钮")
+
+    def test_shows_range_and_page_size_selector(self):
+        """分页必须显示「当前第几到第几 / 共多少」和「每页几条」可切换
+        （2026-11-06 用户要求：「还缺少当前显示几个、每一页显示几个这种配置」）。
+
+        改造前只有一句「共 248 个」，用户看不出当前这页覆盖了哪 20 个，
+        也无法改变每页条数。
+
+        判据（可机检）：
+        1. 渲染函数接受 perPage 与 total，产出「第 X-Y 条 / 共 N 条」；
+        2. 存在每页条数选择器 `.pg-size`，且选项来自统一常量（不得各页写死）；
+        3. 选择器变化时回到第 1 页（否则用户可能落在越界页）。
+        """
+        src = _src()
+        i = src.find("function paginationBar(")
+        self.assertGreater(i, 0)
+        body = src[i : src.find("\nfunction ", i + 10)]
+        self.assertIn("perPage", body, "分页渲染没有接收每页条数")
+        self.assertIn("pg-size", body, "缺少每页条数选择器")
+        self.assertIn("pg-range", body, "缺少「当前显示第几条到第几条」")
+        # 选项必须来自统一常量，不允许各页硬编码
+        self.assertIn("PAGE_SIZE_OPTIONS", src, "每页条数选项没有统一常量")

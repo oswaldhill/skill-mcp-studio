@@ -1586,12 +1586,20 @@
             <tr><td>当前页</td><td><code>.pg-num.current</code></td><td>实心 <code>--accent</code> + <code>--on-accent</code> 文字；不只靠颜色区分，另带 <code>aria-current="page"</code></td></tr>
             <tr><td>省略号</td><td><code>.pg-ellipsis</code></td><td><code>--faint</code>，不可点、<code>user-select: none</code></td></tr>
             <tr><td>翻页</td><td><code>.pg-prev</code> / <code>.pg-next</code></td><td>首/末页 <code>disabled</code>，不隐藏（位置稳定）</td></tr>
-            <tr><td>计数</td><td><code>.pg-info</code></td><td><code>共 N 个</code>，<code>--mono</code>，靠右</td></tr>
+            <tr><td>结果范围</td><td><code>.pg-range</code></td><td><code>第 41-60 条 / 共 248 条</code>，<code>--mono</code> + <code>tabular-nums</code></td></tr>
+            <tr><td>每页条数</td><td><code>.pg-size</code> / <code>.pg-size-sel</code></td><td>下拉，选项来自 <code>PAGE_SIZE_OPTIONS</code></td></tr>
           </tbody>
         </table>
       </div>
       <ul>
         <li><strong>页码窗口</strong>：当前页前后各 2 页 + 首尾两页，其余折叠为省略号，13 页不会铺满一行</li>
+        <li><strong>结果范围与每页条数（2026-11-06 用户要求）</strong>：只有「共 N 个」不够，用户看不出当前覆盖哪几条，
+          也无法改每页条数。分页条右侧固定给出 <code>第 41-60 条 / 共 248 条</code> 与 <code>每页 [20 条/页 ▾]</code></li>
+        <li><strong>每页条数取值</strong>：<code>PAGE_SIZE_OPTIONS = [10, 20, 50, 100]</code>，<strong>不提供「全部」</strong>
+          （技能表可能数百行，全量渲染会卡住首屏；要看全部请用搜索/筛选）</li>
+        <li><strong>持久化</strong>：按列表标识分别记忆（<code>page-size-skills</code> / <code>page-size-merge</code>）</li>
+        <li><strong>切换后回到第 1 页</strong>：否则可能停在越界页（原第 13 页、改成 100 条后只剩 3 页）</li>
+        <li><strong>单页时</strong>页码按钮不渲染，但范围与选择器<strong>必须出现</strong>（第一版返回空串导致整条消失，已修）</li>
         <li><strong>形状一致性</strong>：与 <code>.btn-soft</code> 同圆角（<code>--r-control</code>）与描边（<code>--line</code>）</li>
         <li><strong>单页不渲染</strong>：<code>pages &lt;= 1</code> 返回空串，调用方隐藏容器</li>
         <li><strong>交互协议</strong>：按钮带 <code>data-sp="&lt;0 基页码&gt;"</code>，不再有 <code>data-pg</code> / <code>data-upg-pg</code> / <code>data-mp-pg</code> 这类各自为政的私有协议</li>
