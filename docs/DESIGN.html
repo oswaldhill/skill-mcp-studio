@@ -1571,11 +1571,30 @@
         <li>开启态轨道变 <code>--accent-strong</code>，旋钮右移</li>
       </ul>
 
-      <h3 id="s2-5d">2.5d 分页（<code>.pagination</code>）<a class="anchor" href="#s2-5d" aria-label="锚点">#</a></h3>
+      <h3 id="s2-5d">2.5d 分页（<code>.pagination</code>，2026-11-06 统一）<a class="anchor" href="#s2-5d" aria-label="锚点">#</a></h3>
+      <p><strong>全站只有一套分页</strong>，由 <code>paginationBar(page, pages, { total })</code> 渲染（<code>page</code> 为 0 基）。
+      改造前并存 3 种实现，其中两套<strong>只有上一页/下一页、没有页码可点</strong>，用户只能一页页翻。</p>
+      <pre>┌ .pagination ─────────────────────────────────────────────────┐
+│  ‹ 上一页   1  2  …  5  [6]  7  …  13   下一页 ›   共 248 个 │
+└──────────────────────────────────────────────────────────────┘
+                        [6] = 当前页（实心强调色）</pre>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>元素</th><th>类</th><th>规则</th></tr></thead>
+          <tbody>
+            <tr><td>页码</td><td><code>.pg-num</code></td><td>等宽 <code>min-width: 32px</code>（换位不抖动），<code>tabular-nums</code></td></tr>
+            <tr><td>当前页</td><td><code>.pg-num.current</code></td><td>实心 <code>--accent</code> + <code>--on-accent</code> 文字；不只靠颜色区分，另带 <code>aria-current="page"</code></td></tr>
+            <tr><td>省略号</td><td><code>.pg-ellipsis</code></td><td><code>--faint</code>，不可点、<code>user-select: none</code></td></tr>
+            <tr><td>翻页</td><td><code>.pg-prev</code> / <code>.pg-next</code></td><td>首/末页 <code>disabled</code>，不隐藏（位置稳定）</td></tr>
+            <tr><td>计数</td><td><code>.pg-info</code></td><td><code>共 N 个</code>，<code>--mono</code>，靠右</td></tr>
+          </tbody>
+        </table>
+      </div>
       <ul>
-        <li>按钮尺寸：<code>padding: 4px 9px</code>，<code>--fs-xs</code>（比标准 <code>.sm</code> 更紧凑）</li>
-        <li>当前页不可点，用 <code>--accent-bg</code> 高亮</li>
-        <li>与表格底边对齐，不悬浮</li>
+        <li><strong>页码窗口</strong>：当前页前后各 2 页 + 首尾两页，其余折叠为省略号，13 页不会铺满一行</li>
+        <li><strong>形状一致性</strong>：与 <code>.btn-soft</code> 同圆角（<code>--r-control</code>）与描边（<code>--line</code>）</li>
+        <li><strong>单页不渲染</strong>：<code>pages &lt;= 1</code> 返回空串，调用方隐藏容器</li>
+        <li><strong>交互协议</strong>：按钮带 <code>data-sp="&lt;0 基页码&gt;"</code>，不再有 <code>data-pg</code> / <code>data-upg-pg</code> / <code>data-mp-pg</code> 这类各自为政的私有协议</li>
       </ul>
 
       <h3 id="s2-5e">2.5e 路径字段行（<code>.path-field-row</code>）<a class="anchor" href="#s2-5e" aria-label="锚点">#</a></h3>

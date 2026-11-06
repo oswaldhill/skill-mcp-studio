@@ -547,12 +547,6 @@
   .skill-search { display: flex; align-items: center; gap: var(--gap-4); margin-bottom: var(--sp-5); }
   .skill-search input { flex: 1; min-width: 200px; }
   .skill-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--gap-5); align-items: stretch; }
-  .skill-pager { display: flex; align-items: center; justify-content: center; gap: var(--gap-5); margin-top: var(--sp-6); }
-  .skill-pager .pg-info { color: var(--faint); font-family: var(--mono); font-size: var(--fs-xs); }
-  .skill-pager .pg-btn { display: inline-flex; align-items: center; gap: var(--gap-1); border: 1px solid var(--line); background: var(--panel); box-shadow: none; color: var(--muted); font-size: var(--fs-xs); padding: var(--sp-1) var(--sp-5); border-radius: var(--r-control); cursor: pointer; transition: border-color .14s var(--ease), color .14s var(--ease), background .14s var(--ease); }
-  .skill-pager .pg-btn:hover:not(:disabled) { border-color: var(--accent-border); color: var(--accent); background: var(--accent-bg); }
-  .skill-pager .pg-btn:disabled { opacity: .45; cursor: default; }
-  .skill-pager .pg-arrow { font-family: var(--mono); font-size: var(--fs-base); line-height: 1; }
   .skill-card { height: 100%; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-card); padding: var(--sp-5) var(--sp-6); display: flex; flex-direction: column; gap: var(--gap-3); cursor: pointer; box-shadow: var(--shadow-card); transition: border-color .18s var(--ease), box-shadow .18s var(--ease); box-sizing: border-box; }
   .skill-card:hover { border-color: var(--line-strong); box-shadow: var(--shadow-card-hover); }
   .skill-card .sk-top { display: flex; align-items: center; justify-content: space-between; gap: var(--gap-3); }
@@ -1005,13 +999,20 @@
   .auth-badge { font-family: var(--mono); font-size: var(--fs-2xs); color: var(--muted); white-space: nowrap; }
   .auth-badge.is-ref { color: var(--accent); }
 
-  .pagination { display: flex; align-items: center; gap: var(--gap-2); justify-content: center; margin-top: var(--sp-6); flex-wrap: wrap; }
-  .pagination button { padding: var(--sp-1) var(--sp-3b); font-size: var(--fs-xs); }
-  .pagination .current { font-weight: 600; color: var(--accent); border-color: var(--accent-border); background: var(--accent-bg); }
-  .pagination .pg-ellipsis { color: var(--faint); font-size: var(--fs-xs); padding: 0 var(--sp-0b); }
-  .pagination .pg-jump { display: inline-flex; align-items: center; gap: var(--gap-1); font-size: var(--fs-xs); color: var(--muted); margin-left: var(--sp-2); }
-  .pagination .pg-input { width: 52px; padding: var(--sp-0c) var(--sp-2); font-size: var(--fs-xs); font-family: var(--mono); border: 1px solid var(--line); border-radius: var(--r-control); background: var(--panel); color: var(--text); }
-  .pagination .pg-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
+  /* 全站唯一分页（DESIGN.md §2.5d）。改造前有 3 种样式并存，此处为唯一实现。
+     形状一致性：与 .btn-soft / .ghost 同一套圆角（--r-control）与描边（--line），
+     数字按钮等宽（min-width）以保证页码换位时布局不跳动（CLS）。 */
+  .pagination { display: flex; align-items: center; gap: var(--gap-1); justify-content: center; margin-top: var(--sp-6); flex-wrap: wrap; }
+  .pagination .pg-num { min-width: 32px; justify-content: center; font-variant-numeric: tabular-nums; }
+  .pagination .pg-prev,
+  .pagination .pg-next { justify-content: center; font-variant-numeric: tabular-nums; }
+  .pagination .pg-prev,
+  .pagination .pg-next { padding-left: var(--sp-5); padding-right: var(--sp-5); }
+  /* 当前页：实心强调色 + --on-accent 文字（对比度达标，不做仅靠颜色区分）。 */
+  .pagination .pg-num.current { font-weight: 600; color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
+  .pagination .pg-arrow { font-family: var(--mono); font-size: var(--fs-base); line-height: 1; }
+  .pagination .pg-ellipsis { color: var(--faint); font-size: var(--fs-xs); padding: 0 var(--sp-1); user-select: none; }
+  .pagination .pg-info { color: var(--faint); font-family: var(--mono); font-size: var(--fs-xs); margin-left: var(--sp-2); }
 
   /* 表格内路径分行 */
   .path-lines { display: flex; flex-direction: column; gap: var(--gap-1); font-size: var(--fs-2xs); }
@@ -1597,8 +1598,6 @@
   .upg-table .t-ver { font-family: var(--mono); color: var(--muted); white-space: nowrap; text-align: right; overflow: hidden; text-overflow: ellipsis; }
   .upg-table .t-ver.to { color: var(--accent); }
   .upg-table .t-arrow { color: var(--muted); text-align: center; padding-left: 0; padding-right: 0; }
-  .upg-pager { display: flex; align-items: center; justify-content: center; gap: var(--gap-3); margin-top: var(--sp-4); }
-  .upg-pager .pg-info { font-size: var(--fs-xs); color: var(--muted); }
   .upg-warn { margin-top: var(--sp-4); }
   .upg-modal .actions { margin-top: var(--sp-4); padding-top: var(--sp-3); border-top: 1px solid var(--line); }
   /* 进度阶段：两端对齐计数 + 进度条 + 当前行高亮 */
@@ -1934,7 +1933,7 @@
     .switch .sw-knob { transition: none !important; }
     button, .card, .skill-card, .nav-item, .tag-btn, .settings-tab, .agent-card, .settings-card { transition: none; }
     .usage-row, .chip.more, .chev, .fold-caret, .nest-toggle, .task-fold, .merge-changes-fold { transition: none; }
-    .chg-card, .chg-btn, .pg-btn, .skill-pager { transition: none; }
+    .chg-card, .chg-btn { transition: none; }
     /* 升级模态：进度条填充与行状态过渡（v0.31.0 补齐） */
     .upg-bar-fill { transition: none !important; }
     .upg-row, .upg-done-item { transition: none; }
@@ -2122,7 +2121,7 @@
         <span class="legend-note"></span>
       </div>
       <div id="skills-list" class="skill-cards"></div>
-      <div id="skill-pager"></div>
+      <div id="skills-pagination"></div>
     </section>
 
     <!-- ===== MCP（业务：每客户端挂载与清单） ===== -->
@@ -3718,18 +3717,16 @@ function renderSkillList() {
   renderSkillPager(shown.length, pageCount, skillPage());
 }
 
+// 技能表分页：统一走 paginationBar（2026-11-06）。page 传 0 基。
 function renderSkillPager(totalCount, pageCount, page) {
-  const el = $("skill-pager");
+  const el = $("skills-pagination");
   if (!el) return;
   if (pageCount <= 1) { el.innerHTML = ""; el.classList.add("hidden"); return; }
-  const prevDisabled = page <= 1 ? "disabled" : "";
-  const nextDisabled = page >= pageCount ? "disabled" : "";
-  el.innerHTML = `<div class="skill-pager">
-    <button type="button" class="pg-btn ${prevDisabled}" data-pg="prev" ${prevDisabled} aria-label="上一页"><span class="pg-arrow">‹</span> 上一页</button>
-    <span class="pg-info">第 ${page} / ${pageCount} 页 · 共 ${totalCount} 个</span>
-    <button type="button" class="pg-btn ${nextDisabled}" data-pg="next" ${nextDisabled} aria-label="下一页">下一页 <span class="pg-arrow">›</span></button>
-  </div>`;
+  el.innerHTML = paginationBar(page - 1, pageCount, { total: totalCount });
   el.classList.remove("hidden");
+  el.querySelectorAll("[data-sp]").forEach((b) => {
+    b.onclick = () => { SKILL_PAGE = parseInt(b.dataset.sp, 10) + 1; renderSkillList(); };
+  });
 }
 
 function renderSkillCatChips(list) {
@@ -4247,27 +4244,47 @@ let _agentsPage = 0;
 let _agentsView = loadStore("agent-view", "cards"); // cards | list
 let _agentsTypeFilter = loadStore("agent-type-filter", "all"); // all | 具体分类
 
-// 分页组件：页码数字（带省略）+ 上一页/下一页 + 跳转输入框
-function _paginationBar(page, pages) {
-  if (pages <= 1) return '<div class="pagination"></div>';
-  const btns = [];
-  btns.push(`<button class="ghost sm" data-sp="${page-1}" ${page===0?'disabled':''}>上一页</button>`);
-  // 页码窗口：当前页前后各 2 个，两端保留，中间用省略号
-  const win = 2;
+// 全站唯一的分页组件（DESIGN.md §2.5d，2026-11-06 统一）。
+//
+// 改造前项目里有 4 处、3 种分页：`.pagination`（有页码）与另外两套只有
+// 上一页/下一页的实现（已删除）。用户截图指出后者**没有页码可点**，
+// 只能一页页翻。现在全部走这一个函数。
+//
+// 设计取舍（管理台，非落地页）：
+// - 页码是最主要的跳转方式，永远可见；上一页/下一页只是补充；
+// - 页码窗口：当前页前后各 2 页，两端保留，中间用省略号，避免 13 页铺满一行；
+// - `page` 用 0 基（内部状态），`data-sp` 也传 0 基；显示时 +1；
+// - 只有一页时不渲染（返回空串，调用方负责隐藏容器）；
+// - 单个按钮的文字只有数字或箭头，不塞计数文案，计数单独放 `.pg-info`。
+//
+// 交互协议：调用方监听自己容器内 `[data-sp]` 的 click，读 dataset.sp 作为 0 基页码。
+const PAGINATION_WINDOW = 2;
+
+function paginationBar(page, pages, opts) {
+  const o = opts || {};
+  if (!pages || pages <= 1) return "";
+  const cur = Math.min(Math.max(0, page | 0), pages - 1);
+  const out = [];
+  out.push(`<button type="button" class="ghost sm pg-prev" data-sp="${cur - 1}" ${cur === 0 ? "disabled" : ""} aria-label="上一页"><span class="pg-arrow">‹</span> 上一页</button>`);
+
   const nums = [];
   for (let i = 0; i < pages; i++) {
-    if (i === 0 || i === pages - 1 || (i >= page - win && i <= page + win)) nums.push(i);
+    if (i === 0 || i === pages - 1 || (i >= cur - PAGINATION_WINDOW && i <= cur + PAGINATION_WINDOW)) nums.push(i);
     else if (nums[nums.length - 1] !== "…") nums.push("…");
   }
-  nums.forEach((n) => {
-    if (n === "…") btns.push('<span class="pg-ellipsis">…</span>');
-    else btns.push(`<button class="ghost sm ${n===page?'current':''}" data-sp="${n}">${n+1}</button>`);
-  });
-  btns.push(`<button class="ghost sm" data-sp="${page+1}" ${page>=pages-1?'disabled':''}>下一页</button>`);
-  btns.push(`<span class="pg-jump">跳至 <input type="number" class="pg-input" id="pg-jump-input" min="1" max="${pages}" value="${page+1}" aria-label="跳转页码" /> 页</span>`);
-  return `<div class="pagination">${btns.join("")}</div>`;
+  for (const n of nums) {
+    if (n === "…") out.push('<span class="pg-ellipsis" aria-hidden="true">…</span>');
+    else out.push(`<button type="button" class="ghost sm pg-num${n === cur ? " current" : ""}" data-sp="${n}" ${n === cur ? 'aria-current="page"' : ""} aria-label="第 ${n + 1} 页">${n + 1}</button>`);
+  }
+
+  out.push(`<button type="button" class="ghost sm pg-next" data-sp="${cur + 1}" ${cur >= pages - 1 ? "disabled" : ""} aria-label="下一页">下一页 <span class="pg-arrow">›</span></button>`);
+  if (o.total != null) {
+    out.push(`<span class="pg-info">共 ${o.total} 个</span>`);
+  }
+  return `<div class="pagination">${out.join("")}</div>`;
 }
 
+// 兼容旧调用名（_paginationBar/_paginatedTable 在本次改造中保留，内部走统一组件）
 function _paginatedTable(rows, page, perPage) {
   const total = rows.length;
   const pages = Math.max(1, Math.ceil(total / perPage));
@@ -7193,11 +7210,8 @@ function renderEndpointStatus() {
         <td class="t-arrow">→</td>
         <td class="t-ver to">${escapeHtml(String(verOf(n, "remote")))}</td>
       </tr>`).join("");
-      const pager = pageCount > 1 ? `<div class="upg-pager">
-        <button type="button" class="pg-btn ${upgPage <= 0 ? "disabled" : ""}" data-upg-pg="prev" ${upgPage <= 0 ? "disabled" : ""}><span class="pg-arrow">‹</span> 上一页</button>
-        <span class="pg-info">第 ${upgPage + 1} / ${pageCount} 页 · 共 ${total} 个</span>
-        <button type="button" class="pg-btn ${upgPage >= pageCount - 1 ? "disabled" : ""}" data-upg-pg="next" ${upgPage >= pageCount - 1 ? "disabled" : ""}>下一页 <span class="pg-arrow">›</span></button>
-      </div>` : "";
+      // 统一分页（2026-11-06）：原来只有上一页/下一页，没有页码可点
+      const pager = paginationBar(upgPage, pageCount, { total: total });
       return `<table class="upg-table">
         <colgroup><col class="c-name"><col class="c-ver"><col class="c-arrow"><col class="c-ver"></colgroup>
         <thead><tr>
@@ -7244,11 +7258,10 @@ function renderEndpointStatus() {
     mountModal(confirmHtml);
     // 分页点击（重渲染表格区，不动弹框其他部分）
     const bindPager = () => {
-      document.querySelectorAll("[data-upg-pg]").forEach((b) => {
+      document.querySelectorAll("#upg-confirm-body [data-sp]").forEach((b) => {
         b.onclick = () => {
           if (b.disabled) return;
-          upgPage = b.dataset.upgPg === "next"
-            ? Math.min(pageCount - 1, upgPage + 1) : Math.max(0, upgPage - 1);
+          upgPage = Math.min(pageCount - 1, Math.max(0, parseInt(b.dataset.sp, 10)));
           const body = $("upg-confirm-body");
           if (body) body.innerHTML = renderConfirmTable();
           bindPager();
@@ -8238,14 +8251,10 @@ function renderMergeRows(rows) {
     if (pageCount <= 1) { pager.innerHTML = ""; return; }
     const prevD = _mergePage <= 1 ? "disabled" : "";
     const nextD = _mergePage >= pageCount ? "disabled" : "";
-    pager.innerHTML = `<div class="skill-pager">
-      <button type="button" class="pg-btn ${prevD}" data-mp-pg="prev" ${prevD}><span class="pg-arrow">‹</span> 上一页</button>
-      <span class="pg-info">第 ${_mergePage} / ${pageCount} 页 · 共 ${rows.length} 个</span>
-      <button type="button" class="pg-btn ${nextD}" data-mp-pg="next" ${nextD}>下一页 <span class="pg-arrow">›</span></button>
-    </div>`;
-    pager.querySelectorAll("[data-mp-pg]").forEach((b) => {
+    pager.innerHTML = paginationBar(_mergePage - 1, pageCount, { total: rows.length });
+    pager.querySelectorAll("[data-sp]").forEach((b) => {
       b.onclick = () => {
-        _mergePage = b.dataset.mpPg === "next" ? _mergePage + 1 : Math.max(1, _mergePage - 1);
+        _mergePage = parseInt(b.dataset.sp, 10) + 1;
         renderMergeRows(rows);
       };
     });
@@ -8783,14 +8792,7 @@ document.addEventListener("click", (e) => {
   }
   const homeLink = e.target.closest("[data-open-url]");
   if (homeLink) { openExternal(homeLink.dataset.openUrl); return; }
-  const pgBtn = e.target.closest("[data-pg]");
-  if (pgBtn && !pgBtn.disabled) {
-    const dir = pgBtn.dataset.pg;
-    SKILL_PAGE = dir === "next" ? skillPage() + 1 : Math.max(1, skillPage() - 1);
-    saveStore("skill-page", SKILL_PAGE);
-    renderSkillList();
-    return;
-  }
+  // 分页点击由 renderSkillPager 自己绑定（统一到 paginationBar 的 [data-sp] 协议）。
   const kebab = e.target.closest(".kebab");
   if (kebab) {
     if (kebab.classList.contains("skill-kebab")) { toggleSkillMenu(kebab, kebab.dataset.skill); return; }

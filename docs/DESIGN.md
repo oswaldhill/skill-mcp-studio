@@ -608,7 +608,7 @@ fs-xl 粗体 tabular-nums + `.upg-count-label` muted 说明）+
 定列宽：技能 `col.c-name` 取剩余宽度 / 版本 `col.c-ver` 各 22% /
 箭头 `col.c-arrow` 1.75rem 仅容符号；四列：技能 `.t-name` mono
 单行省略 / 当前 `.t-ver` muted 右对齐 / 箭头 `.t-arrow` 居中 /
-远端 `.t-ver.to` accent；每页 8 行，>8 时 `.upg-pager` 分页器
+远端 `.t-ver.to` accent；每页 8 行，>8 时用统一分页器（§2.5d）
 复用 pg-btn/pg-info 语言「第 i / N 页 · 共 M 个」，`margin-top`
 取 `sp-4`）。
 
@@ -973,13 +973,40 @@ HTML 里写死的 `0` 上 —— 其余四项启动即有数字，唯独它显�
 - 旋钮：16px 圆点，`--on-solid` 底，`transition: transform`
 - 开启态轨道变 `--accent-strong`，旋钮右移
 
-### 2.5d 分页（`.pagination`）
+### 2.5d 分页（`.pagination`，2026-11-06 统一）
 
-表格底部的分页控件。
+**全站只有一套分页**，由 `paginationBar(page, pages, { total })` 渲染（`page` 为
+0 基）。改造前并存 3 种实现，其中两套只有上一页/下一页、没有页码可点，用户只能一页页
+翻（原话：「统一一下分页组件，要求有具体的页码可以切换」）。
 
-- 按钮尺寸：`padding: 4px 9px`，`--fs-xs`（比标准 `.sm` 更紧凑）
-- 当前页不可点，用 `--accent-bg` 高亮
-- 与表格底边对齐，不悬浮
+结构（管理台语境：页码是主跳转方式，翻页按钮是补充）：
+
+```
+┌ .pagination ─────────────────────────────────────────────────┐
+│  ‹ 上一页   1  2  …  5  [6]  7  …  13   下一页 ›   共 248 个 │
+└──────────────────────────────────────────────────────────────┘
+                        [6] = 当前页（实心强调色）
+```
+
+| 元素 | 类 | 规则 |
+|---|---|---|
+| 页码 | `.pg-num` | 等宽 `min-width: 32px`（换位不抖动），`tabular-nums` |
+| 当前页 | `.pg-num.current` | 实心 `--accent` + `--on-accent` 文字；**不只靠颜色区分**，另带 `aria-current="page"` |
+| 省略号 | `.pg-ellipsis` | `--faint`，不可点、`user-select: none` |
+| 翻页 | `.pg-prev` / `.pg-next` | 首/末页 `disabled`，不隐藏（位置稳定） |
+| 计数 | `.pg-info` | `共 N 个`，`--mono`，靠右 |
+
+**页码窗口**：当前页前后各 2 页 + 首尾两页，其余折叠为省略号 —— 13 页不会铺满一行。
+
+**形状一致性**：与 `.btn-soft` 同圆角（`--r-control`）与描边（`--line`）；
+当前页是唯一使用实心强调色的分页元素，不与页面其它强调色元素争抢注意力。
+
+**单页不渲染**：`pages <= 1` 时返回空串，调用方隐藏容器 —— 不要显示一个
+只剩禁用按钮的空分页条。
+
+**交互协议**：按钮带 `data-sp="<0 基页码>"`，调用方在自己的容器内绑定
+`[data-sp]` 的 click。不再有 `data-pg` / `data-upg-pg` / `data-mp-pg` 这类
+各自为政的私有协议。
 
 ### 2.5e 路径字段行（`.path-field-row`）
 
@@ -1163,7 +1190,7 @@ toast 反馈成功/失败。
 | `main` | `padding` | `var(--sp-9) var(--sp-9a) var(--sp-9f)` |
 | `.card` | `padding` | `var(--sp-7)` |
 | `.list-row` | `padding` | `var(--sp-4) var(--sp-6)` |
-| `.pagination button` | `padding` | `var(--sp-1) var(--sp-3b)` |
+| `.pagination .pg-num` | `min-width` | `32px` |
 | `.path-field-row button` | `padding` | `var(--sp-1) var(--sp-3)` |
 | `.chg-btn` | `min-height` | `32px` |
 | `.insight-dialog` | `width` | `min(1040px, 100%)` |

@@ -430,7 +430,8 @@ class HardNumbersContractTest(unittest.TestCase):
         ("main", "padding", "var(--sp-9) var(--sp-9a) var(--sp-9f)"),
         (".card", "padding", "var(--sp-7)"),
         (".list-row", "padding", "var(--sp-4) var(--sp-6)"),
-        (".pagination button", "padding", "var(--sp-1) var(--sp-3b)"),
+        # 2026-11-06 统一分页：旧的内边距档位被等宽页码取代（DESIGN.md §2.5d）
+        (".pagination .pg-num", "min-width", "32px"),
         (".path-field-row button", "padding", "var(--sp-1) var(--sp-3)"),
         (".chg-btn", "min-height", "32px"),
         (".insight-dialog", "width", "min(1040px, 100%)"),
@@ -1839,3 +1840,88 @@ class SkillVersionUiContractTest(unittest.TestCase):
         self.assertIn("--remove-market-source", src)
         # 默认源可删改的说明
         self.assertIn("可删可改", src)
+
+
+class PaginationConsistencyTest(unittest.TestCase):
+    """全站只能有一套分页组件（2026-11-06 用户要求「统一一下分页组件」）。
+
+    ## 现状（改造前）
+
+    项目里同时跑了 4 处、3 种样式的分页：
+    - `.pagination`（_paginationBar）：页码 + 上一页/下一页 + 跳转输入框；
+    - `.skill-pager`（技能表）：只有「‹ 上一页 | 第 3 / 13 页 · 共 248 个 | 下一页 ›」；
+    - `.upg-pager`（升级确认框）、`.skill-pager`（合并预览）：同 `.skill-pager`。
+
+    用户截图指出最后这种**没有页码可点**，只能一页页翻。
+
+    ## 判据
+
+    1. 只存在一个分页渲染函数 `paginationBar`；
+    2. 它必须产出页码按钮（`pg-num`）；
+    3. 源码里不得再出现另外三套分页的类名或 `data-*-pg` 私有协议。
+    """
+
+    def test_single_pagination_renderer(self):
+        src = _src()
+        self.assertEqual(
+            src.count("function paginationBar("), 1,
+            "分页渲染函数必须唯一（paginationBar）",
+        )
+
+    def test_renderer_emits_page_numbers(self):
+        src = _src()
+        i = src.find("function paginationBar(")
+        self.assertGreater(i, 0)
+        body = src[i:src.find("\nfunction ", i + 10)]
+        self.assertIn("pg-num", body, "分页控件缺少可点击的页码")
+        self.assertIn("上一页", body)
+        self.assertIn("下一页", body)
+
+    def test_no_competing_pagination_markup(self):
+        src = _src()
+        for stale in ("skill-pager", "upg-pager", "pg-btn", "data-upg-pg", "data-mp-pg"):
+            self.assertNotIn(
+                stale, src,
+                f"仍存在另一套分页实现：{stale}（应统一到 .pagination）",
+            )
+
+    def test_renderer_actually_runs(self):
+        """分页函数必须真的能执行（2026-11-06 实测踩过的坑）。
+
+        本次改造中我把常量名 `PAGINATION_WINDOW` 写成了 `PAGINATION_WIND`，
+        静态断言全绿，但一调用就 ReferenceError。只查字符串存在**抓不住**
+        这类拼写错误，必须实际执行一次。
+        """
+        import subprocess
+
+        src = _src()
+        i = src.index("const PAGINATION_WINDOW = 2;")
+        fstart = src.index("function paginationBar(page, pages, opts) {")
+        depth, j = 0, fstart
+        while True:
+            if src[j] == "{":
+                depth += 1
+            elif src[j] == "}":
+                depth -= 1
+                if depth == 0:
+                    break
+            j += 1
+        code = src[i : j + 1]
+        probe = code + """
+const out = [];
+for (const [p, n] of [[2,13],[0,5],[6,13]]) {
+  const h = paginationBar(p, n, { total: 10 });
+  out.push(String(h).includes("pg-num"));
+}
+const single = paginationBar(0, 1, { total: 1 });
+console.log(JSON.stringify({ ok: out, single }));
+"""
+        res = subprocess.run(
+            ["node", "-e", probe], capture_output=True, text=True, timeout=30,
+        )
+        self.assertEqual(res.returncode, 0, f"分页函数执行报错：\n{res.stderr}")
+        import json as _json
+
+        data = _json.loads(res.stdout.strip().splitlines()[-1])
+        self.assertTrue(all(data["ok"]), "多页时应渲染出页码按钮")
+        self.assertEqual(data["single"], "", "单页时应返回空串")
