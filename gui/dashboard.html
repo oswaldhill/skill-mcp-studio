@@ -1555,12 +1555,11 @@
   }
   .skill-table th.st-name { width: 18%; padding-left: var(--sp-9e); }
   .skill-table th.st-cat { width: 10%; }
-  .skill-table th.st-ver { width: 8%; }
+  .skill-table th.st-sync { width: 10%; }
   .skill-table th.st-usage { width: auto; }
-  .skill-table th.st-upd { width: 12%; }
   .skill-table th.st-status { width: 11%; text-align: right; }
   .skill-table th.st-ops { width: 4%; text-align: right; }
-  .skill-table td.st-ver { font-family: var(--mono); color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+  .skill-table td.st-sync { white-space: nowrap; }
   /* 统一升级模态（v0.31.0 三阶段：确认 → 进度 → 完成；2026-10-23
    * taste-skill 重设计——视觉锚点（display 字体技能名/大数字）+ 层次
    * 分层（主句 text / 次要 muted）+ 留白节奏，取值全 token） */
@@ -2232,6 +2231,13 @@ let ENDPOINT_STATUS = null;
 let SNAPSHOT_DIFF_CACHE = null;
 // 技能更新检查结果（--market check；v0.31.0）：{skill: {state, local, remote, note}}
 let SKILL_UPDATES = null;
+// 检查结果的持久化（2026-11-06 用户反馈「远端为什么又没有信息了」）。
+//
+// 原来 SKILL_UPDATES 只存在内存里，App 一重启就回到 null，整列变「-」。
+// 用户只能凭记忆回想「我是不是没点过检查」。结果写入 localStorage，
+// 启动时回填，并记住这份结果是什么时候查的。
+const SKILL_UPDATES_STORE = "sms-skill-updates";
+let SKILL_UPDATES_CHECKED_AT = "";
 let ENDPOINT_CHECKED_AT = 0;
 
 // ---------------- theme（Light / Dark / System，参考 skills-manager 设置页） ----------------
@@ -3465,6 +3471,60 @@ function nestedSkillName(relPath) {
   return segs.length ? segs[segs.length - 1] : relPath;
 }
 
+// 同步状态格（DESIGN.md §2.3e，2026-11-06）。
+//
+// 代替原来的「本地 / 远端」两列日期。两列原本是**不同的量**
+// （本地 = SKILL.md mtime，远端 = 上游仓库基准提交时间），并排显示会被读成
+// 「本地旧、远端新」。这里只回答一个问题：**这个技能和上游谁新**。
+//
+// 三态（外加两态）：远端较新 / 本地较新 / 一致 / 未知 / 未检查。
+// 具体日期降级到 title，需要时悬停可查。
+// 启动时回填上次的检查结果（2026-11-06）。
+//
+// 不回填的表现是：每次重启 App，技能表「同步」列全变「未检查」，
+// 用户以为工具又坏了。回填后至少能看到「上次查的结论」，并把时间放进 title。
+function restoreSkillUpdates() {
+  try {
+    const raw = loadStore(SKILL_UPDATES_STORE, "");
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || !parsed.map) return;
+    SKILL_UPDATES = parsed.map;
+    SKILL_UPDATES_CHECKED_AT = parsed.checkedAt || "";
+  } catch (e) { /* 旧格式/损坏：忽略，走「未检查」 */ }
+}
+
+function syncCell(upd, meta) {
+  const localVer = (meta && meta.version) || "";
+  const localTime = (meta && meta.updated_at) || "";
+  const localText = localVer || (localTime
+    ? new Date(localTime).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
+    : "未知");
+  if (!upd) {
+    return `<span class="tag" title="还没有执行过更新检查：点工具栏「检查更新」后这里会显示本地与上端的同步关系">未检查</span>`;
+  }
+  const remoteText = upd.remote
+    || (upd.remoteTime
+      ? new Date(upd.remoteTime).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
+      : "未知");
+  const what = upd.sourceForm === "repo" ? "上游仓库等基准" : "上游该技能路径";
+  // 后端标记 stale = 本轮没拉到真实远端，结论基于**可能过期**的本地基准。
+  // 不提示的话，「一致」会被当成确定事实。
+  const staleNote = upd.stale ? "\n注意：本轮未拉到真实远端，基准可能过期" : "";
+  const tip = `本地：${localText}\n${what}：${remoteText}${staleNote}${upd.note ? "\n" + upd.note : ""}`;
+  if (upd.state === "outdated") {
+    // 可点击升级：沿用 tag-upgradable + data-skill-upgrade 的既有接线
+    return `<span class="tag warn tag-upgradable" data-skill-upgrade="${escapeHtml((meta && meta.name) || "")}" role="button" tabindex="0" title="${escapeHtml(tip + "\n远端有新提交，点击升级")}">远端较新</span>`;
+  }
+  if (upd.state === "repo_outdated") {
+    return `<span class="tag warn" title="${escapeHtml(tip + "\n上游有新提交，请在仓库里同步（不走市场升级）")}">远端较新</span>`;
+  }
+  if (upd.state === "current") {
+    return `<span class="tag ok" title="${escapeHtml(tip)}">一致</span>`;
+  }
+  return `<span class="tag" title="${escapeHtml(tip)}">未知</span>`;
+}
+
 function renderSkillList() {
   const skills = (SNAP && SNAP.skills) || {};
   const list = skills.skills || [];
@@ -3586,9 +3646,8 @@ function renderSkillList() {
         <thead><tr>
           <th class="st-name">名称</th>
           <th class="st-cat">分类</th>
-          <th class="st-ver">本地</th>
+          <th class="st-sync" title="该技能与上游的同步关系（悬停每一行可看具体时间）">同步</th>
           <th class="st-usage">用途</th>
-          <th class="st-upd">远端</th>
           <th class="st-status">启用</th>
           <th class="st-ops">操作</th>
         </tr></thead>
@@ -3607,59 +3666,20 @@ function renderSkillList() {
       // v0.31.0：无 version 显示最后更新时间（lock 的 updatedAt，MM-DD 短格式，
       // title 悬停全时间）——用户需求「对于没有版本的请显示最后的更新时间」
       const m = (meta[s] || {});
+      const upd = SKILL_UPDATES ? (SKILL_UPDATES[s] || null) : null;
+      // 「本地 / 远端」两列已合并为单列「同步」（DESIGN.md §2.3e，2026-11-06）。
+      // 原两列是**两个不同的量**：本地是 SKILL.md 的 mtime、远端是上游仓库基准
+      // 的提交时间（仓库形态技能全部同一个值）。并排显示成同样的 MM/DD，
+      // 读者必然把「07/17 vs 11/02」读成「本地旧、远端新」，而它们根本不可比。
+      // 现在只给关系结论，具体时间降级到 title 悬停可查。
       const ver = m.version || (m.updated_at
         ? new Date(m.updated_at).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })
         : "");
-      const upd = SKILL_UPDATES ? (SKILL_UPDATES[s] || null) : null;
-      // v0.31.0（用户反馈）：不设独立升级按钮——「有更新」tag 本身可点击
-      // （cursor:pointer + data-skill-upgrade），点击弹升级确认；升级操作
-      // 另融入行尾 kebab 菜单（见 toggleSkillMenu）。
-      // v0.31.0（用户反馈）：outdated/current tag 都显示远端版本号或提交
-      // 时间（「可更新的标签可以修改成时间或者版本号」）。
-      const remoteLabel = upd
-        ? (upd.remote
-            || (upd.remoteTime
-                ? new Date(upd.remoteTime).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })
-                : ""))
-        : "";
-      const updCell = upd
-        ? (upd.state === "outdated"
-            ? `<span class="tag warn tag-upgradable" data-skill-upgrade="${escapeHtml(s)}" role="button" tabindex="0" title="有更新：本地 ${upd.local || "?"} → 远端 ${upd.remote || (upd.remoteTime || "?")}，点击升级">${escapeHtml(remoteLabel || "有更新")}</span>`
-            : upd.state === "current"
-              ? (() => {
-                  // v0.31.0：「最新」显示远端版本号或提交时间（用户需求
-                  // 「最新版需要显示最新版本是什么时间或者版本号」）
-                  const remote = upd.remote
-                    || (upd.remoteTime
-                        ? new Date(upd.remoteTime).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })
-                        : "");
-                  // 2026-11-05（用户反馈）：「本地」列是该技能自己的最后更新时间，
-                  // 「远端」列是**整仓库上游基准**的提交时间 —— 两个不同的量。
-                  // 并排显示成同样的 MM/DD 会让「07/21 vs 11/02」看起来像「本地旧、
-                  // 远端新」，实际只是两个计时起点不同。所以 tip 必须说清基准是什么，
-                  // 并在后端标记 stale（没拉到真实远端）时透出「可能过期」。
-                  const repoForm = upd.sourceForm === "repo";
-                  const baseWhat = repoForm ? "整仓库上游基准" : "上游最新提交";
-                  const staleNote = upd.stale ? "；注意：本轮未拉到真实远端，基准可能过期" : "";
-                  const tip = upd.remote
-                    ? `与远端一致（${upd.remote}）${staleNote}`
-                    : (upd.remoteTime
-                        ? `与远端一致（${baseWhat} ${upd.remoteTime}）${staleNote}`
-                        : "与远端一致");
-                  return `<span class="tag ok" title="${escapeHtml(tip)}">${escapeHtml(remote || "最新")}</span>`;
-                })()
-              : upd.state === "repo_outdated"
-                // v0.31.3：整仓库来源的技能上游有新提交。tag 不可点击——
-                // 它的升级通道是同步整个仓库，不是 npx 重装单技能。
-                ? `<span class="tag warn" title="${escapeHtml(upd.note || "仓库形态来源：上游有新提交，请同步仓库")}">待同步</span>`
-                : `<span class="tag" title="${escapeHtml(upd.note || "无来源信息")}">未知</span>`)
-        : '<span class="muted">-</span>';
       return `<tr class="skill-row" data-skill="${escapeHtml(s)}" tabindex="0" aria-label="查看 ${escapeHtml(s)} 详情" title="查看详情">
         <td class="st-name"><div class="st-name-cell">${nameCell}</div></td>
         <td class="st-cat"><span class="sk-cat">${escapeHtml(r.cat)}</span></td>
-        <td class="st-ver" title="${escapeHtml(m.version ? ("版本 " + m.version) : (m.updated_at ? ("最后更新 " + m.updated_at) : "无版本与更新时间"))}">${escapeHtml(ver || "-")}</td>
+        <td class="st-sync">${syncCell(upd, m)}</td>
         <td class="st-usage ${r.home ? "has-home" : "wrap"}" title="${escapeHtml((meta[s] && meta[s].description) || "")}">${usageCell(s, r)}</td>
-        <td class="st-upd">${updCell}</td>
         <td class="st-status"><span class="st-count ${r.countCls}" title="${r.enabled} / ${r.total} 个客户端已启用">${r.enabled}/${r.total} 启用</span></td>
         <td class="st-ops">${skillKebab(s)}</td>
       </tr>${nestRow}`;
@@ -7059,6 +7079,10 @@ function renderEndpointStatus() {
                           stale: Boolean(row.stale) };
       }
       SKILL_UPDATES = map;
+      SKILL_UPDATES_CHECKED_AT = data.checked_at || new Date().toISOString();
+      try {
+        saveStore(SKILL_UPDATES_STORE, JSON.stringify({ checkedAt: SKILL_UPDATES_CHECKED_AT, map }));
+      } catch (e) { /* 配额满/隐私模式：静默降级为「仅本次会话有效」 */ }
       renderSkillList();
       const s = data.summary || {};
       const cached = data.cache_hit ? "（缓存）" : "";
@@ -9470,6 +9494,7 @@ window.addEventListener("unhandledrejection", (ev) => {
 initNavGroups();
 initSkillToolbar();
 scheduleUsageAutoRefresh();
+restoreSkillUpdates();     // 上次的更新检查结果（localStorage），避免每次重启都显示「未检查」
 loadPatrolSettings();      // 后台巡检设置来自 config.yaml，不是 localStorage
 loadManagement();
 </script>

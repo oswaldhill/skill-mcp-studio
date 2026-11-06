@@ -1655,10 +1655,16 @@ class SkillVersionUiContractTest(unittest.TestCase):
 
     def test_skill_table_has_version_and_update_columns(self):
         src = _src()
-        # 列名语义化（2026-10-23 评审修复）：两列都可能显示日期，
-        # 用「本地 / 远端」区隔，避免用户分不清哪个日期是本地
-        self.assertIn('<th class="st-ver">本地</th>', src, "技能表缺本地版本列")
-        self.assertIn('<th class="st-upd">远端</th>', src, "技能表缺远端更新列")
+        # 2026-11-06 用户反馈后合并：「本地 / 远端」两列是**两个不同的量**
+        # （本地 = SKILL.md mtime，远端 = 上游仓库基准提交时间），并排显示会让
+        # 读者把「07/17 vs 11/02」误读成「本地旧、远端新」。
+        # 现在合并为单列「同步」，只给关系结论；具体时间降级到 title。
+        # 本断言的意图仍是「技能表必须暴露版本/同步信息」，只是载体变了。
+        self.assertNotIn('<th class="st-ver">本地</th>', src,
+                         "「本地」列已按用户要求合并，不得单独出现")
+        self.assertNotIn('<th class="st-upd">远端</th>', src,
+                         "「远端」列已按用户要求合并，不得单独出现")
+        self.assertIn('<th class="st-sync"', src, "技能表缺合并后的同步列")
         # 评审修复六项的可机检约束（2026-10-23）
         css = _css()
         self.assertIn(".upg-bar-fill { transition: none !important; }", css,
@@ -1674,7 +1680,7 @@ class SkillVersionUiContractTest(unittest.TestCase):
         # 全量检查空态覆盖 4 维度 + 端点，不只端点
         self.assertIn("尚未检查：点右上「重新全量检查」", src,
                       "全量检查空态文案应覆盖整个检查范围，不只端点连通性")
-        self.assertIn("st-ver", _css(), "缺 .st-ver 列样式（mono 字号）")
+        self.assertIn("st-sync", _css(), "缺 .st-sync 列样式")
 
     def test_check_updates_button_and_data_flow(self):
         src = _src()
@@ -1711,10 +1717,12 @@ class SkillVersionUiContractTest(unittest.TestCase):
         self.assertIn("confirmText || (danger", src, "confirmModal 应支持自定义确认文案")
         # 「最新」/「有更新」tag 都显示远端版本号或提交时间（用户需求）
         self.assertIn("remoteTime", src, "检查结果缺 remoteTime（远端提交时间）")
-        self.assertIn('escapeHtml(remote || "最新")', src,
-                      "「最新」tag 应直接显示远端版本号/时间（无信息才回退「最新」）")
-        self.assertIn('escapeHtml(remoteLabel || "有更新")', src,
-                      "outdated tag 应直接显示远端版本号/时间（无远端信息才回退「有更新」文字）")
+        # 2026-11-06：渲染从「显示日期」改为「显示关系」，但「远端信息必须出现在
+        # 界面上」这条意图不变 —— 现在它在同步列的 title 里（含完整时间）。
+        self.assertIn("远端较新", src, "同步列缺「远端较新」态（有更新）")
+        self.assertIn("一致", src, "同步列缺「一致」态")
+        self.assertRegex(src, r"function syncCell\(",
+                         "缺 syncCell —— 同步列的渲染函数")
         # 确认框带远端信息
         self.assertIn("upg-ver-num", src, "升级确认框应有版本对比条（当前 → 远端）")
         # GUI 入口（v0.31.1）：回滚与远程同步必须有可达的界面，

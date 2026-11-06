@@ -1141,12 +1141,28 @@
     <!-- ═══ 2.3e ═══ -->
     <section id="s2-3e">
       <h3 id="s2-3e">2.3e 技能表列（<code>.skill-table</code>，v0.31.0 增两列）<a class="anchor" href="#s2-3e" aria-label="锚点">#</a></h3>
-      <p>七列：名称 / 分类 / <strong>版本</strong>（<code>st-ver</code>，8%，mono，<code>skill_meta.version</code>，
-      无版本显示 <code>-</code>）/ 用途 / <strong>更新</strong>（<code>st-upd</code>，9%，检查后三态 tag
-      （技能行内只可能出现这三态；<code>missing</code> 的技能不在列表里）：
-      有更新 <code>tag warn</code>（title 含本地→远端版本）/ 最新 <code>tag ok</code> / 未知中性 <code>tag</code>，
-      未检查显示 <code>-</code>）/ 启用 / 操作。嵌套展开行 <code>colspan="7"</code>。更新数据来自
-      <code>--market check</code>（版本比对，只读），结果缓存于前端 <code>SKILL_UPDATES</code>。</p>
+      <p>六列：名称 / 分类 / <strong>同步</strong>（<code>st-sync</code>，10%，见下「列合并纪律」）/
+      用途 / 启用 / 操作。嵌套展开行 <code>colspan="6"</code>。更新数据来自
+      <code>--market check</code>（版本比对，只读），结果缓存于前端 <code>SKILL_UPDATES</code>，
+      并持久化到 localStorage（<code>sms-skill-updates</code>）供下次启动回填。</p>
+
+      <p><strong>列合并纪律（2026-11-06 用户反馈）</strong>：原「本地 / 远端」两列已合并为单列「同步」。
+      用户看到本地 <code>07/17</code>、远端 <code>11/02</code> 后指出「两者完全没有关系」—— 他是对的：
+      本地是 <code>SKILL.md</code> 的 mtime，远端是上游仓库基准的提交时间（仓库形态技能全部同值），
+      并排显示成同样的 MM/DD 必然被读成「本地旧、远端新」。现在只回答「谁新」。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>状态</th><th>含义</th><th>视觉</th></tr></thead>
+          <tbody>
+            <tr><td><code>未检查</code></td><td>还没执行过检查</td><td>中性 <code>tag</code></td></tr>
+            <tr><td><code>远端较新</code></td><td>上游有新提交（可点击升级）</td><td><code>tag warn</code> + <code>tag-upgradable</code></td></tr>
+            <tr><td><code>一致</code></td><td>与上游基准一致</td><td><code>tag ok</code></td></tr>
+            <tr><td><code>未知</code></td><td>无法判定（无来源/查询失败）</td><td>中性 <code>tag</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>精确时间降级到 <code>title</code>：悬停显示「本地：… / 上游…：…」外加状态说明；后端标记 <code>stale</code>
+      时追加「基准可能过期」。</p>
 
       <p><strong>检查结果四态（v0.31.1 用户实测缺陷修复）</strong>：<code>outdated</code>（有更新）/
       <code>current</code>（已最新）/ <code>unknown</code>（无法检测）/

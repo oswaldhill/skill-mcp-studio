@@ -35,6 +35,12 @@ def _src() -> str:
     return page_source()
 
 
+def _html() -> str:
+    from tests._gui_source import page_html
+
+    return page_html()
+
+
 def _call_sites(src: str):
     """返回 [(行号, 行文本)] 形式的 showToast 调用点。"""
     out = []
@@ -219,3 +225,89 @@ class RealProgressStepsTest(unittest.TestCase):
             steps, 2,
             f"一键修复应至少为 Skills / MCP 两个维度各报步（实际 {steps} 处）",
         )
+
+
+class UpdateCheckPersistenceTest(unittest.TestCase):
+    """更新检查结果必须持久化，且未检查时明确说「未检查」（2026-11-06 用户反馈）。
+
+    现象：技能表「远端」整列显示 `-`，用户问「为什么又没有信息了」。
+    实查后端数据完整（249 条里 0 条缺 remote_time），问题在前端：
+    `SKILL_UPDATES` 只存在内存里（`let SKILL_UPDATES = null`），App 一重启就
+    回到 null，整列变 `-`。而 `-` 既不说明「没查过」也不说明「查了没结果」，
+    用户只能靠记忆回想。
+
+    判据：
+    1. 检查结果写入本地存储，启动时回填；
+    2. 未检查时显示「未检查」而不是中性的 `-`；
+    3. 回填要带时间戳，让用户知道这份结果是哪一轮的。
+    """
+
+    def test_results_are_persisted_and_restored(self):
+        src = _src()
+        self.assertIn("SKILL_UPDATES_STORE", src,
+                      "检查结果没有持久化 key，重启后会全部丢失")
+        # 写入
+        self.assertRegex(src, r"saveStore\(\s*SKILL_UPDATES_STORE",
+                         "检查完成后没有写入本地存储")
+        # 读取（启动/渲染时回填）。assertRegex 在任何位置都能命中函数体里的那一次，
+        # 抓不住「启动时没调用」——所以额外要求启动段真的调用了回填函数。
+        self.assertRegex(src, r"loadStore\(\s*SKILL_UPDATES_STORE",
+                         "没有读取本地存储的检查结果")
+        startup = src[src.find("// startup"):]
+        self.assertIn(
+            "restoreSkillUpdates()", startup,
+            "启动流程里没有调用 restoreSkillUpdates —— 重启后仍是「未检查」",
+        )
+
+    def test_unchecked_state_is_explicit(self):
+        """未检查时不得显示中性的 `-`。"""
+        src = _src()
+        i = src.find('data-action="skill-check-updates"')
+        self.assertGreater(i, 0)
+        # 表头或空状态要说明「未检查」；只查关键词存在，措辞可调
+        self.assertIn("未检查", src, "界面没有「未检查」这个状态词")
+
+    def test_restore_records_the_check_time(self):
+        """回填必须带上「这份结果是什么时候查的」。"""
+        src = _src()
+        i = src.find("SKILL_UPDATES_STORE")
+        self.assertGreater(i, 0)
+        self.assertIn("checkedAt", src,
+                      "持久化的结果没有记录检查时间，用户无法判断新旧")
+
+
+class SyncStatusColumnTest(unittest.TestCase):
+    """「本地 / 远端」两个日期不得并排（2026-11-06 用户反馈）。
+
+    现象：本地列显示 `07/17`、远端列显示 `11/02`，用户问「两者完全没有关系，
+    这个是不正确的」。
+
+    实查两列本就是**两个不同的量**：
+    - 本地 = 该技能 SKILL.md 的 mtime（文件最后修改时间）；
+    - 远端 = 上游仓库基准的提交时间（仓库形态技能全部是同一个值）。
+    并排显示成同样的 MM/DD，读者自然会把它当成「本地旧、远端新」。
+
+    用户的决定：**合并成一列状态**，不并排两个日期。
+
+    判据：
+    1. 表头不再同时出现「本地」「远端」两列；
+    2. 存在一个同步状态列，能表达 一致 / 本地较新 / 远端较新；
+    3. 精确日期降级到 title（悬停可查），不占主视觉。
+    """
+
+    def test_no_side_by_side_local_remote_headers(self):
+        src = _html()
+        head = src[src.find('<table class="skill-table">'):]
+        head = head[:head.find("</thead>")]
+        self.assertNotIn(">本地<", head, "仍有「本地」列与远端并排")
+        self.assertNotIn(">远端<", head, "仍有「远端」列与本地并排")
+
+    def test_sync_status_column_exists(self):
+        src = _html()
+        self.assertIn("st-sync", src, "缺少合并后的同步状态列")
+
+    def test_status_expresses_local_ahead(self):
+        """必须能表达「本地改过、上游没变」，否则用户无法判断谁新。"""
+        src = _src()
+        for word in ("本地较新", "远端较新", "一致"):
+            self.assertIn(word, src, f"同步状态缺少「{word}」这一态")
