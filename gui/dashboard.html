@@ -7089,16 +7089,28 @@ function renderEndpointStatus() {
       if (s.rate_limited) {
         modalNotice("warn", "请注意", `GitHub 配额已用尽（每小时 ${s.total || 0} 次重置）：本轮部分技能未检查，稍后重试或设 GITHUB_TOKEN`);
       } else {
-        // v0.31.1：把「登记失效」也报出来（此前它被并进「有更新」，
-        // 导致这里说有 4 个、技能列表只画得出 2 行）。
-        const miss = s.missing ? ` · 登记失效 ${s.missing}` : "";
+        // 措辞（2026-11-06 用户反馈）：「登记失效」四个字读不出含义，用户看到
+        // 弹框问「为什么会有检查失败的情况」。改成能自解释的说法：装过、但目录
+        // 已经不存在了（登记残留）。
+        const miss = s.missing ? ` · 已卸载但登记残留 ${s.missing}` : "";
         // v0.31.3：整仓库来源的「待同步」单独报，不计入「有更新」；
         // 两者的升级通道不同（同步仓库 vs npx 重装）。
         const repoPending = s.repo_outdated ? ` · 仓库待同步 ${s.repo_outdated}` : "";
+
+        // 图标语义（2026-11-06 用户反馈）：**「有更新」不是警告**。
+        // 它是正常且值得高兴的状态（有东西可以升级），用橙色感叹号三角会让人
+        // 误以为「出错了」，用户正是这么问的。
+        // 只有两类真需要提醒：登记失效（本地有历史残留）、未知（结论不完整）。
+        const needsAttention = Boolean(s.missing || s.unknown);
+        const summaryLine = `有更新 ${s.outdated || 0} · 最新 ${s.current || 0} · 未知 ${s.unknown || 0}${repoPending}${miss}`;
+        // 有更新时补一句「下一步做什么」，让它是可操作的提示而不是一句计数。
+        const nextStep = s.outdated
+          ? `\n\n${s.outdated} 个技能可升级：点工具栏「检查更新」旁的「一键升级」，或在技能行点「远端较新」。`
+          : "";
         modalNotice(
-          s.outdated || s.repo_outdated || s.missing ? "warn" : "ok",
+          needsAttention ? "warn" : "ok",
           `检查完成${cached}`,
-          `有更新 ${s.outdated || 0} · 最新 ${s.current || 0} · 未知 ${s.unknown || 0}${repoPending}${miss}`);
+          summaryLine + nextStep);
       }
     } catch (e) {
       modalNotice("err", "操作失败", "检查返回无法解析：" + e);

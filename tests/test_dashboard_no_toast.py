@@ -311,3 +311,60 @@ class SyncStatusColumnTest(unittest.TestCase):
         src = _src()
         for word in ("本地较新", "远端较新", "一致"):
             self.assertIn(word, src, f"同步状态缺少「{word}」这一态")
+
+
+class CheckResultIconSemanticsTest(unittest.TestCase):
+    """「有更新」不是警告，不得用警示图标（2026-11-06 用户反馈）。
+
+    用户看到「检查完成」弹框带橙色感叹号三角，问「为什么会有检查失败的情况」。
+    实际结果完全成功（有更新 2 · 最新 243 · 未知 3 · 登记失效 1）—— 他把**警示
+    图标**读成了「失败了」。
+
+    「有更新」是**正常且值得高兴**的状态：有东西可以升级。真正需要提醒的只有：
+    - 登记失效（装过又被删，登记残留）；
+    - 未知（查不到上游，结论不完整）。
+
+    判据：
+    1. 只有 outdated 时用 ok（不是 warn）；
+    2. 有 missing / unknown 时才用 warn；
+    3. 「登记失效」的措辞要能自解释（不能只写四个字让人猜）。
+    """
+
+    def _check_block(self) -> str:
+        src = _src()
+        i = src.find("async function runSkillCheckUpdates")
+        self.assertGreater(i, 0)
+        return src[i:src.find("\n  async function ", i + 20)]
+
+    def test_outdated_alone_is_ok_not_warn(self):
+        body = self._check_block()
+        # 判定表达式里不得把 outdated 当作警告条件
+        import re
+        # 目标是「检查完成」那一条，不是 catch 里的 err 分支
+        m = re.search(r"modalNotice\(\s*\n?\s*([^,]*?),\s*\n?\s*`检查完成", body, re.S)
+        self.assertIsNotNone(m, "找不到「检查完成」的 modalNotice 调用")
+        cond = m.group(1)
+        self.assertNotIn("s.outdated", cond,
+                         "「有更新」被当成警告条件 —— 它是正常状态，不是错误")
+        # kind 可能走中间变量（形如 `needsAttention ? "warn" : "ok"`），
+        # 此时要追到它的定义去校验 —— 否则只改一处定义就能绕过整条断言。
+        var = re.match(r"\s*([A-Za-z_$][\w$]*)\s*\?", cond)
+        scope = body
+        if var:
+            m2 = re.search(rf"const\s+{var.group(1)}\s*=\s*([^;]+);", body)
+            self.assertIsNotNone(m2, f"找不到 {var.group(1)} 的定义")
+            scope = m2.group(1)
+            self.assertNotIn("s.outdated", scope,
+                             "「有更新」进了警告条件（经中间变量）")
+        self.assertIn("s.missing", scope, "登记失效应进警告条件")
+        self.assertIn("s.unknown", scope, "未知应进警告条件")
+
+    def test_missing_label_is_self_explanatory(self):
+        body = self._check_block()
+        # 旧的「登记失效」四个字读不出含义；新措辞要说明是「装过又删了」
+        self.assertNotIn("登记失效 ${s.missing}", body,
+                         "仍用「登记失效」这种需要猜的措辞")
+        self.assertTrue(
+            ("已卸载" in body) or ("目录不存在" in body) or ("残留" in body),
+            "缺少能自解释的措辞（应说明是「装过、目录已不存在」）",
+        )

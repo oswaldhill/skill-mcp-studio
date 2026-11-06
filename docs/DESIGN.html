@@ -1173,6 +1173,22 @@
       把它也算进去，于是<strong>列表说 2 个、弹框说 4 个</strong>。该态不提供「升级」动作
       （无本地内容可覆盖，点了只会得到一条失败），文案用 <code>.list-meta.is-err</code> 承载。</p>
 
+      <p><strong>结果图标的语义（2026-11-06 用户反馈）</strong>：<code>检查完成</code> 弹框的图标只表达
+      「你是否需要处理」，<strong>不表达「检查是否成功」</strong>（检查要么成功要么报错，不存在「部分失败」）。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>情况</th><th>图标</th><th>理由</th></tr></thead>
+          <tbody>
+            <tr><td>仅有 <code>outdated</code></td><td><strong><code>ok</code></strong></td><td>「有更新」是正常且可操作的状态，不是错误；警示图标会让用户误以为检查失败</td></tr>
+            <tr><td>有 <code>missing</code> / <code>unknown</code></td><td><code>warn</code></td><td>本地有历史残留 / 结论不完整，确实需要留意</td></tr>
+            <tr><td>CLI 非零</td><td><code>err</code></td><td>真正的失败（另一条分支）</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>措辞同步：<code>missing</code> 在界面上写「<strong>已卸载但登记残留</strong>」，不写「登记失效」——
+      后者用户读不出含义（实测被问「为什么会有检查失败的情况」）。有更新时追加一句可操作的下一步，
+      让弹框是「结论 + 动作」而不是一串计数。</p>
+
       <p><strong>计数口径纪律（v0.31.1）</strong>：任何「有多少个可升级」的呈现（工具栏 toast、
       市场页汇总行、一键升级弹框标题与表格）必须同源，一律取 <code>summary.outdated</code>；
       且 <code>missing</code> 单独报数、不混入前者。前端另有一道防线：一键升级只处理
