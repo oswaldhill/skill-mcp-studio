@@ -368,3 +368,67 @@ class CheckResultIconSemanticsTest(unittest.TestCase):
             ("已卸载" in body) or ("目录不存在" in body) or ("残留" in body),
             "缺少能自解释的措辞（应说明是「装过、目录已不存在」）",
         )
+
+
+class InlineBusyLifecycleTest(unittest.TestCase):
+    """`setInlineBusy` 开的进度框必须被关掉（2026-11-06 用户实测缺陷）。
+
+    ## 现象
+
+    点「刷新」后，操作已经完成、弹框也已确认，但**「正在刷新…」的全屏进度框
+    一直不走**，把界面锁死。
+
+    ## 根因
+
+    上一版把 8 处「正在执行…」从 toast 改成 `setInlineBusy()`，它内部调
+    `showBusy()` 开全屏 dialg；而关掉它的 `hideBusy()` **只在 `runCli` 收到
+    progress 参数时才调用**。`setInlineBusy` 是独立打开的，于是**没有任何路径负责关闭**。
+
+    那不是「偶尔没关」，是必然泄漏：每个调用点都漏。
+
+    ## 判据
+
+    1. `setInlineBusy` 必须返回可关闭的句柄，或存在成对语义；
+    2. 每个调用 `setInlineBusy` 的函数，必须在 `finally`（或等价路径）里
+       调用 `hideBusy()` —— 异常路径也必须关闭，否则一次失败就永久锁屏。
+    """
+
+    def _functions_with(self, needle: str) -> list:
+        """找出**函数体内直接调用** needle 的函数。
+
+        只认「直接调用」：父函数常经子函数间接使用 busy，把那些也算进来会
+        误报（实测第一版就把 render / skillDisplayName 这类纯渲染函数列成违规）。
+        """
+        src = _src()
+        starts = [m for m in re.finditer(r"\n(?:async\s+)?function\s+(\w+)\s*\(", src)]
+        out = []
+        for idx, m in enumerate(starts):
+            start = m.start()
+            end = starts[idx + 1].start() if idx + 1 < len(starts) else len(src)
+            body = src[start:end]
+            if needle in body:
+                out.append((m.group(1), body))
+        return out
+
+    def test_every_busy_open_is_closed(self):
+        offenders = []
+        for name, body in self._functions_with("setInlineBusy("):
+            if name == "setInlineBusy":
+                continue  # 定义本身
+            if "hideBusy()" not in body:
+                offenders.append(name)
+        self.assertEqual(
+            offenders, [],
+            "这些函数开了进度框却从不关闭（界面会永久锁死）：%r" % (offenders,),
+        )
+
+    def test_close_happens_in_finally(self):
+        """关闭必须放 finally：异常路径不关 = 一次失败就永久锁屏。"""
+        bad = []
+        for name, body in self._functions_with("setInlineBusy("):
+            if name == "setInlineBusy" or "hideBusy()" not in body:
+                continue
+            fin = body.find("finally")
+            if fin < 0 or "hideBusy()" not in body[fin:]:
+                bad.append(name)
+        self.assertEqual(bad, [], "这些函数的 hideBusy() 不在 finally 里：%r" % (bad,))

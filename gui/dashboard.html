@@ -2352,6 +2352,11 @@ function modalNotice(kind, title, message) {
 // 统一走已有的 showBusy —— 它是带计时与「取消」的进度层，比吐司更合适；
 // 保留这个名字是为了让调用点语义清晰（「这里是过程反馈，不是结果通知」），
 // 将来若换成按钮内的行内 spinner，只改这一处即可。
+//
+// 必须与 hideBusy() 成对使用：本函数打开的是**全屏 dialog**，忘了关就会锁死
+// 整个界面（2026-11-06 用户实测：点刷新后进度框一直不走）。
+// 调用约定：打开后立刻 try/finally，把 hideBusy() 放 finally —— 异常路径
+// 同样要关，否则一次失败就永久锁屏。
 function setInlineBusy(label) {
   showBusy(label);
 }
@@ -3836,7 +3841,12 @@ function showSkillDetail(skill) {
 async function setSkillState(skill, client, enable) {
   if (!tauriInvoke) { modalNotice("warn", "请注意", "浏览器预览模式：写入需在桌面 App 内执行"); return; }
   setInlineBusy(`${enable ? "启用" : "禁用"} ${skill} @ ${client}…`);
-  const res = await runCli([enable ? "--enable-skill" : "--disable-skill", skill, "--client", client]);
+  let res = null;
+  try {
+    res = await runCli([enable ? "--enable-skill" : "--disable-skill", skill, "--client", client]);
+  } finally {
+    hideBusy();   // 必须关：showBusy 是全屏 dialog，漏关会锁死界面
+  }
   if (res && res.code === 0) {
     modalNotice("ok", "已完成", `${enable ? "已启用" : "已禁用"} ${skill} @ ${client}`);
     await refreshBlocks(["skills", "agents"]);
@@ -3856,7 +3866,8 @@ function skillDisplayName(skill) {
 async function backupSkill(skill) {
   if (!tauriInvoke) { modalNotice("warn", "请注意", "浏览器预览模式：写入需在桌面 App 内执行"); return; }
   setInlineBusy(`备份 ${skill}…`);
-  const res = await runCli(["--backup-skill", skill]);
+  let res = null;
+  try { res = await runCli(["--backup-skill", skill]); } finally { hideBusy(); }
   if (res && res.code === 0) modalNotice("ok", "已完成", `${skill} 已备份`);
   else modalNotice("err", "操作失败", cliErrDetail(res));
 }
@@ -3864,7 +3875,8 @@ async function backupSkill(skill) {
 async function exportSkill(skill) {
   if (!tauriInvoke) { modalNotice("warn", "请注意", "浏览器预览模式：写入需在桌面 App 内执行"); return; }
   setInlineBusy(`导出 ${skill}…`);
-  const res = await runCli(["--export-skill", skill]);
+  let res = null;
+  try { res = await runCli(["--export-skill", skill]); } finally { hideBusy(); }
   if (res && res.code === 0) modalNotice("ok", "已完成", `${skill} 已导出 zip`);
   else modalNotice("err", "操作失败", cliErrDetail(res));
 }
@@ -3901,7 +3913,8 @@ function openRenameSkillModal(skill) {
     const args = ["--rename-skill", skill];
     if (newName) args.push("--new-name", newName);
     if (newDesc) args.push("--new-description", newDesc);
-    const res = await runCli(args);
+    let res = null;
+    try { res = await runCli(args); } finally { hideBusy(); }
     if (res && res.code === 0) {
       modalNotice("ok", "已完成", `${skill} 元数据已保存`);
       await refreshBlocks(["skills", "agents"]);
@@ -5743,6 +5756,7 @@ async function doRescan(btnEl) {
   } finally {
     LOADING = false;
     if (btn) { btn.disabled = false; btn.textContent = orig; }
+    hideBusy();   // 必须关：全屏 dialog 漏关会锁死界面
   }
 }
 // ---------------- 局部刷新（只刷新该操作产生的内容） ----------------
@@ -5854,6 +5868,7 @@ async function refreshWithBtn(btnEl) {
   } finally {
     LOADING = false;
     if (btn) { btn.disabled = false; btn.textContent = orig; }
+    hideBusy();   // 必须关：全屏 dialog 漏关会锁死界面
   }
   modalNotice(ok ? "ok" : "err", ok ? "刷新完成" : "刷新失败", ok ? `${label}已刷新` : "请查看页面横幅了解原因");
 }
@@ -5911,6 +5926,7 @@ async function reprobeEndpoints(btnEl) {
   } finally {
     LOADING = false;
     if (btn) { btn.disabled = false; btn.textContent = orig; }
+    hideBusy();   // 必须关：全屏 dialog 漏关会锁死界面
   }
   modalNotice(ok ? "ok" : "err", ok ? "全量检查完成" : "全量检查失败", ok ? "4 维度对比与端点探活均已完成，结果见下方「端点状态」区。" : "检查未能完成，请查看页面横幅了解原因。");
 }
@@ -8080,7 +8096,14 @@ async function importConfigAction() {
 
 async function openMergePreview() {
   setInlineBusy("正在生成合并预览（dry-run）…");
-  const preview = await runCli(["--fix-skills", "--dry-run", "--format", "json"], "生成链接修复预览（只读 dry-run）");
+  // 整个流程包在 try/finally 里：下面有三条提前 return，任何一条漏关都会
+  // 把全屏进度框永久留在屏幕上（2026-11-06 实测）。
+  let preview = null;
+  try {
+    preview = await runCli(["--fix-skills", "--dry-run", "--format", "json"], "生成链接修复预览（只读 dry-run）");
+  } finally {
+    hideBusy();
+  }
   if (!preview || preview.code !== 0) { modalNotice("err", "操作失败", (preview && preview.stderr) || "预览失败"); return; }
   let data;
   try { data = JSON.parse(preview.stdout || "{}"); }
