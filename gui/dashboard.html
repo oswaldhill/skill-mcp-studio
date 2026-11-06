@@ -3500,32 +3500,42 @@ function restoreSkillUpdates() {
 }
 
 function syncCell(upd, meta) {
+  // 框内显示**版本号或提交日期**，一致性交给框色（2026-11-06 用户要求：
+  // 「不应该直接显示一致，而是显示最新版本信息；没有版本的显示最新提交日期」；
+  // 「是否一致应该用框的颜色展示，框和文字同一个内容太累赘」）。
+  //
+  // 状态 → 框色：
+  //   一致      → tag ok（绿）
+  //   远端较新  → tag warn（黄），可点击升级
+  //   未知      → 中性 tag
+  //   未检查    → 中性 tag
   const localVer = (meta && meta.version) || "";
   const localTime = (meta && meta.updated_at) || "";
-  const localText = localVer || (localTime
-    ? new Date(localTime).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
-    : "未知");
+  const fmt = (iso) => new Date(iso).toLocaleString("zh-CN", {
+    year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+  });
+  const localText = localVer || (localTime ? fmt(localTime) : "未知");
   if (!upd) {
-    return `<span class="tag" title="还没有执行过更新检查：点工具栏「检查更新」后这里会显示本地与上端的同步关系">未检查</span>`;
+    return `<span class="tag" title="还没有执行过更新检查：点工具栏「检查更新」后这里会显示版本或提交日期">未检查</span>`;
   }
-  const remoteText = upd.remote
-    || (upd.remoteTime
-      ? new Date(upd.remoteTime).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
-      : "未知");
-  const what = upd.sourceForm === "repo" ? "上游仓库等基准" : "上游该技能路径";
-  // 后端标记 stale = 本轮没拉到真实远端，结论基于**可能过期**的本地基准。
-  // 不提示的话，「一致」会被当成确定事实。
+  const remoteText = upd.remote || (upd.remoteTime ? fmt(upd.remoteTime) : "未知");
+  const what = upd.sourceForm === "repo" ? "上游仓库基准" : "上游该技能路径";
+  // 后端标记 stale = 本轮没拉到真实远端，结论基于可能过期的本地基准
   const staleNote = upd.stale ? "\n注意：本轮未拉到真实远端，基准可能过期" : "";
   const tip = `本地：${localText}\n${what}：${remoteText}${staleNote}${upd.note ? "\n" + upd.note : ""}`;
+  // 框内文字：优先版本号，其次提交日期（短格式 MM/DD，完整时间在 title 里）
+  const shortDate = upd.remoteTime
+    ? new Date(upd.remoteTime).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })
+    : "";
+  const label = upd.remote || shortDate || "未知";
   if (upd.state === "outdated") {
-    // 可点击升级：沿用 tag-upgradable + data-skill-upgrade 的既有接线
-    return `<span class="tag warn tag-upgradable" data-skill-upgrade="${escapeHtml((meta && meta.name) || "")}" role="button" tabindex="0" title="${escapeHtml(tip + "\n远端有新提交，点击升级")}">远端较新</span>`;
+    return `<span class="tag warn tag-upgradable" data-skill-upgrade="${escapeHtml((meta && meta.name) || "")}" role="button" tabindex="0" title="${escapeHtml(tip + "\n远端有新提交，点击升级")}">${escapeHtml(label)}</span>`;
   }
   if (upd.state === "repo_outdated") {
-    return `<span class="tag warn" title="${escapeHtml(tip + "\n上游有新提交，请在仓库里同步（不走市场升级）")}">远端较新</span>`;
+    return `<span class="tag warn" title="${escapeHtml(tip + "\n上游有新提交，请在仓库里同步（不走市场升级）")}">${escapeHtml(label)}</span>`;
   }
   if (upd.state === "current") {
-    return `<span class="tag ok" title="${escapeHtml(tip)}">一致</span>`;
+    return `<span class="tag ok" title="${escapeHtml(tip)}">${escapeHtml(label)}</span>`;
   }
   return `<span class="tag" title="${escapeHtml(tip)}">未知</span>`;
 }

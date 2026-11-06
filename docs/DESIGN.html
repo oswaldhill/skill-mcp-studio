@@ -1152,15 +1152,18 @@
       并排显示成同样的 MM/DD 必然被读成「本地旧、远端新」。现在只回答「谁新」。</p>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>状态</th><th>含义</th><th>视觉</th></tr></thead>
+          <thead><tr><th>状态</th><th>框色</th><th>框内文字</th></tr></thead>
           <tbody>
-            <tr><td><code>未检查</code></td><td>还没执行过检查</td><td>中性 <code>tag</code></td></tr>
-            <tr><td><code>远端较新</code></td><td>上游有新提交（可点击升级）</td><td><code>tag warn</code> + <code>tag-upgradable</code></td></tr>
-            <tr><td><code>一致</code></td><td>与上游基准一致</td><td><code>tag ok</code></td></tr>
-            <tr><td><code>未知</code></td><td>无法判定（无来源/查询失败）</td><td>中性 <code>tag</code></td></tr>
+            <tr><td>一致</td><td><code>tag ok</code>（绿）</td><td>远端版本号；无版本号则提交日期 MM/DD</td></tr>
+            <tr><td>远端较新</td><td><code>tag warn</code>（黄）+ <code>tag-upgradable</code></td><td>同上（可点击升级）</td></tr>
+            <tr><td>未知</td><td>中性 <code>tag</code></td><td>「未知」</td></tr>
+            <tr><td>未检查</td><td>中性 <code>tag</code></td><td>「未检查」</td></tr>
           </tbody>
         </table>
       </div>
+      <p><strong>框内显示内容 = 数据，框色 = 结论</strong>（2026-11-06 用户要求：「不应该直接显示一致，而是显示最新版本或提交日期」；
+      「是否一致应该用框的颜色展示，框和文字同一个内容太累赘」）。框内<strong>不得</strong>出现「一致」「远端较新」这类状态词——
+      只有「未知」「未检查」这两个没有数据可显示的态才用文字。</p>
       <p>精确时间降级到 <code>title</code>：悬停显示「本地：… / 上游…：…」外加状态说明；后端标记 <code>stale</code>
       时追加「基准可能过期」。</p>
 

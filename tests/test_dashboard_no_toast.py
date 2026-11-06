@@ -117,8 +117,6 @@ class SpecDocumentTest(unittest.TestCase):
         self.assertIn("modalNotice", spec)
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 class ProgressModalTest(unittest.TestCase):
@@ -432,3 +430,52 @@ class InlineBusyLifecycleTest(unittest.TestCase):
             if fin < 0 or "hideBusy()" not in body[fin:]:
                 bad.append(name)
         self.assertEqual(bad, [], "这些函数的 hideBusy() 不在 finally 里：%r" % (bad,))
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+class SyncCellContentTest(unittest.TestCase):
+    """同步列：**框内显示版本/日期，一致性用框颜色表达**（2026-11-06 用户要求）。
+
+    用户反馈两点：
+    1. 「这里不应该直接显示"一致"，而是应该显示最新的版本信息；没有版本信息的，
+       就显示最新提交的日期信息」；
+    2. 「"是否一致"应该用框的颜色来展示，不然框和里面的文字展示同一个内容
+       有点累赘了」。
+
+    ## 判据
+
+    | 状态 | 框色 | 框内文字 |
+    |---|---|---|
+    | 一致 | `ok`（绿） | 远端版本号，无版本号则提交日期 |
+    | 远端较新 | `warn`（黄） | 同上，可点击升级 |
+    | 未知 | 中性 | 「未知」 |
+    | 未检查 | 中性 | 「未检查」 |
+
+    框内**不得**再出现「一致」「远端较新」这类状态词，那是框色的活。
+    """
+
+    def _sync_cell(self) -> str:
+        src = _src()
+        i = src.find("function syncCell(")
+        self.assertGreater(i, 0)
+        return src[i:src.find("\nfunction ", i + 10)]
+
+    def test_current_state_shows_version_or_date_not_the_word(self):
+        body = self._sync_cell()
+        self.assertNotRegex(
+            body, r">\s*一致\s*<",
+            "框内仍显示「一致」二字，一致性应由框色表达",
+        )
+        self.assertIn("upd.remote", body, "框内没有取远端版本号")
+        self.assertIn("remoteTime", body, "缺少「无版本号时显示提交日期」的回退")
+
+    def test_state_is_encoded_by_tag_color(self):
+        body = self._sync_cell()
+        self.assertRegex(body, r'state === "current"[\s\S]{0,200}?tag ok',
+                         "「一致」没有用 ok 色表达")
+        self.assertRegex(body, r'state === "(outdated|repo_outdated)"[\s\S]{0,260}?tag warn',
+                         "「有更新」没有用 warn 色表达")
+        self.assertIn("tag-upgradable", body, "可升级态丢失了点击升级入口")
