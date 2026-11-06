@@ -186,6 +186,17 @@ def inventory_client(
 ) -> List[McpEntry]:
     """Load then classify one client's MCP entries (convenience wrapper)."""
     entries = list_client_mcp_entries(tool)
+    # WorkBuddy deliberately uses its native Agent name as the server key.
+    # Resolve only an exact, unambiguous URL; never attach arbitrary aliases.
+    if str(tool.get("name", "")).lower() in {"workbuddy", "codebuddy"}:
+        aliases = [e for e in entries if e.key == "WorkBuddy" and e.url and not e.command]
+        if aliases:
+            matches = [e for e in endpoint_entries if e.get("url") == aliases[0].url]
+            preferred = [e for e in matches if e.get("key") == canonical_endpoint_key]
+            match = preferred[0] if preferred else (matches[0] if len(matches) == 1 else None)
+            if match:
+                canonical_name = "WorkBuddy"
+                canonical_endpoint_key = str(match.get("key", match.get("name")))
     return classify_entries(
         entries,
         endpoint_entries=endpoint_entries,

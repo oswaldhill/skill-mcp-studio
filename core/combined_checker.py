@@ -262,6 +262,9 @@ def check_agents(
             active_key = config.get("active_profile")
             if endpoint_key is not None and endpoint_key != active_key:
                 unified_alias = None
+        if (normalized_name(tool.get('name', '')) in ('workbuddy', 'codebuddy')
+                and servers.get('WorkBuddy', {}).get('url') == expected_url):
+            unified_alias = 'WorkBuddy'
         mcp = inspect_mcp_configuration(
             servers,
             expected_name=unified_alias or expected_name,

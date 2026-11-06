@@ -586,3 +586,9 @@ variables → Actions 配置以下 secrets：
 ## 变更
 
 历史变更见 [`CHANGELOG.md`](CHANGELOG.md)。
+
+### 原生 MCP 身份治理
+
+管理台 MCP 页新增 WorkBuddy / DeepSeek Harness 原生接入、预览修复、私有备份与回滚、
+双真实对话验收。仅宿主原生 MCP 发起请求，按原始工具历史核验设备、Agent、当前对话与任务绑定。
+详见 [能力说明与 CLI 工作流](docs/NATIVE-MCP-IDENTITY.md)。

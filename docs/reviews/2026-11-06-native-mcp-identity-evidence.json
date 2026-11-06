@@ -1,0 +1,290 @@
+{
+  "schema_version": 1,
+  "date": "2026-11-06",
+  "scope": "explicit_session_tool_argument",
+  "all_call_propagation_verified": false,
+  "queue_action": "none",
+  "runs": [
+    {
+      "kind": "native-identity",
+      "run_id": "b005ca78a342d693d32b511e46676ade",
+      "status": "verified_for_declared_scope",
+      "ok": true,
+      "checks": {
+        "native_sources": true,
+        "same_adapter": true,
+        "different_native_ids": true,
+        "same_device": true,
+        "same_native_client": true,
+        "same_project": true
+      },
+      "scope": "explicit_session_tool_argument",
+      "all_call_propagation_verified": false,
+      "task_binding_changed": false,
+      "slots": {
+        "B": {
+          "adapter_id": "workbuddy",
+          "native_session_id": "7a4b5817-8159-435e-8e54-cc9e81b46d94",
+          "device": {
+            "id": "8a19e8da-448c-573c-ac1d-44713876ec35",
+            "display_name": "MacBook Pro",
+            "registered": true
+          },
+          "client": {
+            "name": "WorkBuddy",
+            "version": "1.0.0",
+            "source": "client_info",
+            "protocol_version": "2025-11-25"
+          },
+          "project": {
+            "project_id": "01a0b798-bee8-7973-be72-3687380c4323",
+            "repo_fingerprint": "cc64ea341fd06cc078d2aab5434c4d8e95acde35f47a5a3f706ee954aef37c9a"
+          },
+          "binding": {
+            "status": "unbound",
+            "task_id": null,
+            "binding_revision": 0
+          },
+          "evidence_source": "native_host_tool_history",
+          "reporting_mode": "explicit_session_tool_argument",
+          "source_calls": [
+            {
+              "call_id": "call_00_Qeydmbp7vb1RtvqpGTyV0708",
+              "tool": "hermes_continuity_auth_check",
+              "arguments": {},
+              "result_hash": "445afbc2c0c240ed5908b6982c5d44c76f78f37513ac05d512cb6ecf39c1bbc5"
+            },
+            {
+              "call_id": "call_00_ZYVf02w8ADwgnM7zIT7u1886",
+              "tool": "hermes_continuity_project_resolve_identity",
+              "arguments": {
+                "repository_key": "v1|codeup.aliyun.com/oswaldhill/PuddingHomeLan|.",
+                "subproject_root": "."
+              },
+              "result_hash": "aa358125bc5e4c45665e6623acfe6b28ba816791b0abcc62f35984fd48ad2391"
+            },
+            {
+              "call_id": "call_00_s1OkMKJyufCXRN0Pu8km8895",
+              "tool": "hermes_continuity_session_binding_get",
+              "arguments": {
+                "native_session_id": "7a4b5817-8159-435e-8e54-cc9e81b46d94",
+                "project_id": "01a0b798-bee8-7973-be72-3687380c4323",
+                "repo_fingerprint": "cc64ea341fd06cc078d2aab5434c4d8e95acde35f47a5a3f706ee954aef37c9a"
+              },
+              "result_hash": "f91adfd7cb1166c0e45579e854cb90d3de91ff48e41a07889cafef8e87cf157c"
+            }
+          ],
+          "evidence_hash": "96c3619e8673cba27ec2d53b85447e8caf3174c6c80a05cfc929a3fb93efe1dc"
+        },
+        "A": {
+          "adapter_id": "workbuddy",
+          "native_session_id": "142f0f84-4369-48ad-8264-34f345377602",
+          "device": {
+            "id": "8a19e8da-448c-573c-ac1d-44713876ec35",
+            "display_name": "MacBook Pro",
+            "registered": true
+          },
+          "client": {
+            "name": "WorkBuddy",
+            "version": "1.0.0",
+            "source": "client_info",
+            "protocol_version": "2025-11-25"
+          },
+          "project": {
+            "project_id": "01a0b798-bee8-7973-be72-3687380c4323",
+            "repo_fingerprint": "cc64ea341fd06cc078d2aab5434c4d8e95acde35f47a5a3f706ee954aef37c9a"
+          },
+          "binding": {
+            "status": "unbound",
+            "task_id": null,
+            "binding_revision": 0
+          },
+          "evidence_source": "native_host_tool_history",
+          "reporting_mode": "explicit_session_tool_argument",
+          "source_calls": [
+            {
+              "call_id": "call_00_2137wgV0dX9LUYgjv3Yr3221",
+              "tool": "hermes_continuity_auth_check",
+              "arguments": {},
+              "result_hash": "445afbc2c0c240ed5908b6982c5d44c76f78f37513ac05d512cb6ecf39c1bbc5"
+            },
+            {
+              "call_id": "call_00_ET_32eklV4qfs7vI9I4NbZu7832",
+              "tool": "hermes_continuity_project_resolve_identity",
+              "arguments": {
+                "repository_key": "v1|codeup.aliyun.com/oswaldhill/PuddingHomeLan|.",
+                "subproject_root": "."
+              },
+              "result_hash": "aa358125bc5e4c45665e6623acfe6b28ba816791b0abcc62f35984fd48ad2391"
+            },
+            {
+              "call_id": "call_00_ET_mVrwLrbQwZEoa83Fhm9G7936",
+              "tool": "hermes_continuity_session_binding_get",
+              "arguments": {
+                "native_session_id": "142f0f84-4369-48ad-8264-34f345377602",
+                "project_id": "01a0b798-bee8-7973-be72-3687380c4323",
+                "repo_fingerprint": "cc64ea341fd06cc078d2aab5434c4d8e95acde35f47a5a3f706ee954aef37c9a"
+              },
+              "result_hash": "f91adfd7cb1166c0e45579e854cb90d3de91ff48e41a07889cafef8e87cf157c"
+            }
+          ],
+          "evidence_hash": "8105c6143a4af41d6d85a8c08b5513fac5db34d17d2cc07fb255866df0188904"
+        }
+      }
+    },
+    {
+      "kind": "native-identity",
+      "run_id": "8f32ca34f6a84e086f241e0c15c3af08",
+      "status": "verified_for_declared_scope",
+      "ok": true,
+      "checks": {
+        "native_sources": true,
+        "same_adapter": true,
+        "different_native_ids": true,
+        "same_device": true,
+        "same_native_client": true,
+        "same_project": true
+      },
+      "scope": "explicit_session_tool_argument",
+      "all_call_propagation_verified": false,
+      "task_binding_changed": false,
+      "slots": {
+        "A": {
+          "adapter_id": "deepseek-harness",
+          "native_session_id": "session-95320dc1-aed7-4184-8202-b77f567399eb",
+          "device": {
+            "id": "8a19e8da-448c-573c-ac1d-44713876ec35",
+            "display_name": "MacBook Pro",
+            "registered": true
+          },
+          "client": {
+            "name": "DeepSeek Harness",
+            "version": "0.0.1",
+            "source": "client_info",
+            "protocol_version": "2026-07-28"
+          },
+          "project": {
+            "project_id": "01a0b798-bee8-7973-be72-3687380c4323",
+            "repo_fingerprint": "cc64ea341fd06cc078d2aab5434c4d8e95acde35f47a5a3f706ee954aef37c9a"
+          },
+          "binding": {
+            "status": "unbound",
+            "task_id": null,
+            "binding_revision": 0
+          },
+          "evidence_source": "native_host_tool_history",
+          "reporting_mode": "explicit_session_tool_argument",
+          "source_calls": [
+            {
+              "call_id": "call_4566a87b96d6493b88f5925c",
+              "tool": "hermes_continuity_auth_check",
+              "arguments": {},
+              "result_hash": "880bb90303938efdf889dc2a55eca2ca3bae4b020f155d6e86b16660d366883d"
+            },
+            {
+              "call_id": "call_30c1ac69e81e4f61b13ae189",
+              "tool": "hermes_continuity_project_resolve_identity",
+              "arguments": {
+                "repository_key": "v1|codeup.aliyun.com/oswaldhill/PuddingHomeLan|.",
+                "subproject_root": "."
+              },
+              "result_hash": "aa358125bc5e4c45665e6623acfe6b28ba816791b0abcc62f35984fd48ad2391"
+            },
+            {
+              "call_id": "call_30615df4b0474dfa8c15fe95",
+              "tool": "hermes_continuity_session_binding_get",
+              "arguments": {
+                "project_id": "01a0b798-bee8-7973-be72-3687380c4323",
+                "repo_fingerprint": "cc64ea341fd06cc078d2aab5434c4d8e95acde35f47a5a3f706ee954aef37c9a",
+                "native_session_id": "session-95320dc1-aed7-4184-8202-b77f567399eb"
+              },
+              "result_hash": "f91adfd7cb1166c0e45579e854cb90d3de91ff48e41a07889cafef8e87cf157c"
+            }
+          ],
+          "evidence_hash": "a03a35fcdacea1325b500e9664e021f1be5693beb526435c9b994ac846d9a3bf"
+        },
+        "B": {
+          "adapter_id": "deepseek-harness",
+          "native_session_id": "session-27e40315-4ad6-4cf1-b11c-61e6cbab2f4f",
+          "device": {
+            "id": "8a19e8da-448c-573c-ac1d-44713876ec35",
+            "display_name": "MacBook Pro",
+            "registered": true
+          },
+          "client": {
+            "name": "DeepSeek Harness",
+            "version": "0.0.1",
+            "source": "client_info",
+            "protocol_version": "2026-07-28"
+          },
+          "project": {
+            "project_id": "01a0b798-bee8-7973-be72-3687380c4323",
+            "repo_fingerprint": "cc64ea341fd06cc078d2aab5434c4d8e95acde35f47a5a3f706ee954aef37c9a"
+          },
+          "binding": {
+            "status": "unbound",
+            "task_id": null,
+            "binding_revision": 0
+          },
+          "evidence_source": "native_host_tool_history",
+          "reporting_mode": "explicit_session_tool_argument",
+          "source_calls": [
+            {
+              "call_id": "call_b54db38acc0e407faff982fd",
+              "tool": "hermes_continuity_auth_check",
+              "arguments": {},
+              "result_hash": "880bb90303938efdf889dc2a55eca2ca3bae4b020f155d6e86b16660d366883d"
+            },
+            {
+              "call_id": "call_8a8af3577b39456191067433",
+              "tool": "hermes_continuity_project_resolve_identity",
+              "arguments": {
+                "repository_key": "v1|codeup.aliyun.com/oswaldhill/PuddingHomeLan|.",
+                "subproject_root": "."
+              },
+              "result_hash": "aa358125bc5e4c45665e6623acfe6b28ba816791b0abcc62f35984fd48ad2391"
+            },
+            {
+              "call_id": "call_282901b575404733947e0a1d",
+              "tool": "hermes_continuity_session_binding_get",
+              "arguments": {
+                "project_id": "01a0b798-bee8-7973-be72-3687380c4323",
+                "repo_fingerprint": "cc64ea341fd06cc078d2aab5434c4d8e95acde35f47a5a3f706ee954aef37c9a",
+                "native_session_id": "session-27e40315-4ad6-4cf1-b11c-61e6cbab2f4f"
+              },
+              "result_hash": "f91adfd7cb1166c0e45579e854cb90d3de91ff48e41a07889cafef8e87cf157c"
+            }
+          ],
+          "evidence_hash": "782c8e1e8bf0967bb1152068be19156767a34d367a3b6f4d713f1ac002709958"
+        }
+      }
+    }
+  ],
+  "first_workbuddy_attempt": {
+    "slot": "A",
+    "status": "rejected",
+    "error_code": "native_rpc_error_or_invalid_result",
+    "cause": "repository_key suffix was stripped by host Agent",
+    "resolution": "explicit full-key instruction; same native conversation reloaded Skill and reran three native read operations successfully",
+    "queue_action": "none"
+  },
+  "old_queue": {
+    "total": 362,
+    "pending": 228,
+    "acked": 134,
+    "unchanged_against_prior_reconciliation": true,
+    "safe_metadata_sha256": "552250dd5a08fe2d02c8c98d5fb06d71a4f1c04fd5ca78031d61e38ce793ea2a"
+  },
+  "deepseek_app_asar_sha256": "f21d83abfb33d463822a52c439cc9b15c8245dbce4ae4cf9424c90eae8eba94f",
+  "checks": {
+    "python_unit_tests": 1609,
+    "python_skipped": 2,
+    "rust_tests": 12,
+    "node_helper_tests": 6,
+    "ci_parity": "passed_with_environment_baseline_2",
+    "clean_environment": "passed",
+    "gui_cli_consistency": "passed_offline_fixture",
+    "ruff": "passed",
+    "desktop_app_rebuilt": false
+  }
+}

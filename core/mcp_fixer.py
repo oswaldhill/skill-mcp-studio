@@ -217,6 +217,10 @@ def fix_mcp_tool(
         reason = tool.get("fix_unsupported_reason", "repair is not supported for this client")
         return _result(tool, "unsupported", reason)
 
+    if tool.get('native_identity_adapter'):
+        return _result(tool, 'unchanged',
+            '该宿主由原生身份适配器管理；请使用 --native-plan / --native-apply（尚未进行原生验收）')
+
     # ``unified_name`` 是客户端可选声明的**统一端点别名**：当该客户端里已有同名
     # 本地桥、需要换一个 key 写入时用（现行 config.yaml 已无客户端声明该字段，
     # 2026-11-05 全平台统一用端点自身的 name）。
@@ -228,6 +232,17 @@ def fix_mcp_tool(
     name = tool.get("unified_name") if use_unified_name else None
     name = name or expected.get("name", "hermes")
     url = expected.get("url", "")
+    # A native identity repair owns its alias/runtime Header. A generic repair
+    # must not fetch a secret, add a duplicate hermes key, or flatten Cordis insert.
+    from config_codec import native_managed_connection
+    if os.path.isfile(path):
+        try:
+            with open(path, encoding='utf-8') as current:
+                if native_managed_connection(tool, current.read(), url):
+                    return _result(tool, 'unchanged',
+                        '原生身份配置保持不变；名称、凭据与验收请使用 --native-plan / --native-apply')
+        except (OSError, UnicodeError):
+            pass
     # 鉴权：按端点的 ``auth_mode`` 决定写法（见 auth_secret 模块头）：
     #
     # * ``token``（默认）—— 与历史行为完全一致：``auth_token`` 明文以 Bearer 头

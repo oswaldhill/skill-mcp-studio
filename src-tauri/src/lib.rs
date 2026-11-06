@@ -511,6 +511,20 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
     // stage-5 write commands the management console actually wires up.
     const ALLOWED: &[&str] = &[
         "--management",
+        "--native-identity",
+        "--native-plan",
+        "--native-apply",
+        "--native-rollback",
+        "--native-start",
+        "--native-capture",
+        "--native-verify",
+        "--native-runs",
+        "--native-show",
+        "--native-endpoint",
+        "--native-if-match",
+        "--native-repository-key",
+        "--native-slot",
+        "--native-session",
         "--version",
         // 端点连通性独立出口（v0.24.0）：审计只判配置，端口通断由这条命令单独检查。
         // 不登记进来的话，前端「检查端点连通性」按钮会直接撞上安全边界。

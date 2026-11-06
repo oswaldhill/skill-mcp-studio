@@ -113,6 +113,49 @@ from config_backups import list_config_backups, restore_config_backup
 from mcp_entry_removal import remove_class, remove_entries
 
 
+def _run_native_identity(args, config, config_path):
+    """Native control plane: no endpoint probe, Hook, transport fallback or outbox."""
+    from native_identity import NativeIdentityService, NativeIdentityError, HOSTS
+    from native_evidence import EvidenceError
+    service = NativeIdentityService()
+    try:
+        if args.native_rollback:
+            result = service.rollback(args.native_rollback)
+        elif args.native_capture:
+            result = service.capture(args.native_capture, args.native_slot, args.native_session or '')
+        elif args.native_verify:
+            result = service.verify(args.native_verify)
+        elif args.native_show:
+            result = service.show_run(args.native_show)
+        elif args.native_runs:
+            result = {'runs': service.runs()}
+        else:
+            endpoint = load_profile(config, args.native_endpoint, config_path)['profile']
+            if args.native_identity:
+                result = {'hosts': [service.inspect(host, endpoint) for host in HOSTS],
+                          'runs': service.runs(), 'queue_action': 'none'}
+            elif args.native_start:
+                result = service.start_verification(args.native_start, endpoint,
+                                                    args.native_repository_key or '')
+            else:
+                host = args.native_plan or args.native_apply
+                if args.native_plan or args.dry_run:
+                    result = service.plan(host, endpoint)
+                else:
+                    result = service.apply(host, endpoint, args.native_if_match or '')
+        print(json.dumps({'kind': 'native-identity', **result}, ensure_ascii=False, indent=2))
+        return 1 if result.get('ok') is False or result.get('status') in ('blocked', 'failed') else 0
+    except (NativeIdentityError, EvidenceError) as exc:
+        print(json.dumps({'kind': 'native-identity', 'error_code': str(exc),
+                          'queue_action': 'none'}, ensure_ascii=False))
+        return 2
+    except (OSError, ValueError, KeyError):
+        # Never include raw YAML/JSON, source output, credentials or file contents.
+        print(json.dumps({'kind': 'native-identity', 'error_code': 'native_operation_failed',
+                          'queue_action': 'none'}))
+        return 2
+
+
 def _run_all_profiles(args, config, config_path) -> int:
     """Iterate every profile, run check_agents once each, emit a summary matrix."""
     if getattr(args, "profile", None):
@@ -2084,6 +2127,22 @@ def build_parser() -> argparse.ArgumentParser:
         """.strip()
     )
 
+    native = parser.add_mutually_exclusive_group()
+    native.add_argument('--native-identity', action='store_true', help='只读原生MCP身份能力与验收状态')
+    native.add_argument('--native-plan', metavar='HOST', help='只读计划：WorkBuddy / DeepSeek Harness')
+    native.add_argument('--native-apply', metavar='HOST', help='按已审阅plan hash应用原生配置与Skill')
+    native.add_argument('--native-rollback', metavar='RECEIPT', help='回滚本模块回执对应变更（拒绝覆盖并发修改）')
+    native.add_argument('--native-start', metavar='HOST', help='创建双真实对话验收挑战，不自动启动或重启宿主')
+    native.add_argument('--native-capture', metavar='RUN', help='从指定宿主原始工具历史读取验收证据')
+    native.add_argument('--native-verify', metavar='RUN', help='回读A/B原生证据并比较真实对话身份')
+    native.add_argument('--native-runs', action='store_true', help='列出本模块验收记录')
+    native.add_argument('--native-show', metavar='RUN', help='读取验收指令及已采集槽位，继续原验收')
+    parser.add_argument('--native-endpoint', metavar='KEY', help='端点库中的key，不接受配置文件重定向')
+    parser.add_argument('--native-if-match', metavar='HASH', help='计划中的原配置指纹')
+    parser.add_argument('--native-repository-key', metavar='KEY', help='验收时用于远端解析的规范仓库身份')
+    parser.add_argument('--native-slot', choices=['A', 'B'], help='双真实对话验收槽位')
+    parser.add_argument('--native-session', metavar='ID', help='来自当前宿主的真实对话ID（非路径）')
+
     parser.add_argument(
         "--report", action="store_true",
         help="生成 Markdown 报告文件（scan-report.md）"
@@ -3413,6 +3472,10 @@ def main() -> int:
     config_path = args.config or os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "config.yaml"
     )
+
+    if any(getattr(args, 'native_' + name, None) for name in
+           ('identity', 'plan', 'apply', 'rollback', 'start', 'capture', 'verify', 'runs', 'show')):
+        return _run_native_identity(args, config, config_path)
 
     # 阶段一 endpoint profile 抽象：解析 --profile / active_profile，选择目标端点。
     if args.list_profiles:

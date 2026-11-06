@@ -50,6 +50,37 @@ def parse_cordis_yaml(text: str) -> Any:
     return yaml.load(text, Loader=CordisLoader)
 
 
+def iter_cordis_mcp_entries(value, inherited_disabled=False):
+    """Walk loader collections (including insert), not arbitrary model/config data."""
+    if isinstance(value, list):
+        for item in value:
+            yield from iter_cordis_mcp_entries(item, inherited_disabled)
+    elif isinstance(value, dict):
+        disabled = inherited_disabled or value.get('disabled') is True
+        cfg = value.get('config')
+        if isinstance(cfg, dict) and isinstance(cfg.get('serverName'), str):
+            yield {**value, 'disabled': True} if disabled else value
+        for key in ('insert', 'entries', 'plugins'):
+            if isinstance(value.get(key), list):
+                yield from iter_cordis_mcp_entries(value[key], disabled)
+
+
+def native_managed_connection(tool, text, url):
+    """Protect native identity entries from generic placeholder/alias rewriting."""
+    name = str(tool.get('name', '')).lower().replace(' ', '')
+    try:
+        if name in ('workbuddy', 'codebuddy'):
+            entry = json.loads(text).get('mcpServers', {}).get('WorkBuddy', {})
+            return entry.get('url') == url and not entry.get('command')
+        if name in ('deepseekharness', 'dsh') and tool.get('format') == 'cordis_yaml':
+            return any(e['config'].get('url') == url
+                       and e['config'].get('transport') == 'streamable-http'
+                       for e in iter_cordis_mcp_entries(parse_cordis_yaml(text)))
+    except (ValueError, TypeError, AttributeError, yaml.YAMLError):
+        pass
+    return False
+
+
 def _split_toml_server_section(section: str) -> "tuple[str, str]":
     """Split ``<name>[.<sub.table>]`` into ``(server_name, sub_table_path)``.
 

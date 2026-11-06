@@ -156,3 +156,12 @@ python3 scan.py --skills --mcp --hooks --probe-mcp --report
 ```
 
 Deployment-specific endpoint details (network reachability, DNS, and reverse-proxy routing) belong to the individual profile repository referenced through `profile_sources`, not to this skill document.
+
+## Native MCP identity governance
+
+WorkBuddy and DeepSeek Harness native identity work uses `--native-identity`,
+`--native-plan`, `--native-apply` and the native two-conversation verification flow.
+Read [the capability contract](docs/NATIVE-MCP-IDENTITY.md) first. Do not run a generic
+endpoint probe as proof of these hosts, restore Hooks/bridges, auto-restart active
+hosts, or replay old queues. Keep configuration, device authentication, native
+Agent name, conversation identity and task binding separate.

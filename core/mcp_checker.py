@@ -68,8 +68,11 @@ def _load_cordis_yaml(text: str) -> Dict[str, Dict[str, Any]]:
         return servers
     if not isinstance(data, list):
         return servers
-    for entry in data:
+    from config_codec import iter_cordis_mcp_entries
+    for entry in iter_cordis_mcp_entries(data):
         if not isinstance(entry, dict):
+            continue
+        if entry.get('disabled') is True:
             continue
         config = entry.get("config") if isinstance(entry.get("config"), dict) else {}
         server_name = config.get("serverName") or entry.get("serverName")

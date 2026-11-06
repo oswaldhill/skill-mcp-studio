@@ -205,8 +205,19 @@ class TrunkHasNoPhantomEndpointTest(unittest.TestCase):
         from profile_loader import list_profiles
         from scanner import load_config
 
-        merged = list_profiles(load_config(str(self.TRUNK)))
-        self.assertTrue(merged, "合并后一个端点都没有 —— 覆盖层可能缺失，先确认 profile_sources")
+        # Trunk intentionally has no personal topology. Supply a declared fixture
+        # overlay instead of depending on the developer's ~/.skills-manager data.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = dict(self.config)
+            config["profile_sources"] = ["fixture-profiles.yaml"]
+            (root / "config.yaml").write_text(yaml.safe_dump(config))
+            (root / "fixture-profiles.yaml").write_text(yaml.safe_dump({
+                "active_profile": "fixture-native",
+                "profiles": {"fixture-native": {"name": "fixture-native",
+                    "url": "https://mcp.example.test/mcp", "transport": "streamable-http"}}}))
+            merged = list_profiles(load_config(str(root / "config.yaml")))
+        self.assertTrue(merged, "声明的覆盖层未被合并")
 
 
 if __name__ == "__main__":

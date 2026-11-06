@@ -330,6 +330,12 @@
   .card:hover { border-color: var(--line-strong); box-shadow: var(--shadow-card-hover); }
   .card .title { display: flex; align-items: center; gap: var(--gap-3); font-weight: 600; }
   .card .type { color: var(--muted); font-size: var(--fs-xs); margin-top: var(--sp-0b); }
+  .native-identity-card { margin-bottom: var(--sp-5); }
+  .native-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: var(--gap-5); margin: var(--sp-4) 0; }
+  .native-fields label { display: flex; flex-direction: column; gap: var(--gap-3); font-size: var(--fs-sm); }
+  .native-fields input, .native-fields select, .native-fields textarea { width: 100%; min-width: 0; box-sizing: border-box; padding: var(--sp-2); border: 1px solid var(--line); border-radius: var(--r-card); background: var(--panel); color: var(--text); }
+  .native-fields textarea { min-height: 150px; resize: vertical; font-family: var(--mono); }
+  .native-result { max-height: 320px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
   .card .rows { margin-top: var(--sp-4); display: flex; flex-direction: column; gap: var(--gap-2); font-size: var(--fs-sm); }
   .card .rows .row .k { flex: 0 0 74px; }
   .card.card-dim { opacity: .62; }
@@ -2137,6 +2143,10 @@
         <div class="hd"><h2>MCP</h2><div class="hint">每客户端挂载与 MCP 清单；「自动」= 未显式声明 mcp_attach，按端点库全集期望；端点库请在「设置」中管理</div></div>
         <div class="page-actions"><button class="btn-soft" data-action="refresh-mcp">刷新 MCP</button></div>
       </div>
+      <details class="card native-identity-card">
+        <summary>原生 MCP 接入与身份治理 · WorkBuddy / DeepSeek</summary>
+        <div id="native-identity-panel"></div>
+      </details>
       <div id="mcp-clients"></div>
     </section>
 
@@ -4119,6 +4129,123 @@ function renderMcp() {
   const endpoints = mcp.endpoints || [];
   $("count-mcp").textContent = endpoints.length;
   renderMcpClients(mcp, endpoints);
+  if (!NATIVE_IDENTITY.endpoint) NATIVE_IDENTITY.endpoint = (SNAP && SNAP.active_profile) || "";
+  renderNativeIdentity();
+}
+
+const NATIVE_IDENTITY = { hosts: [], endpoint: "", adapter: "workbuddy", repository: "" };
+
+function nativeIdentityMarkup(state, endpoints) {
+  const esc = escapeHtml;
+  const host = state.adapter || "workbuddy";
+  const rows = (state.hosts || []).map(h => `<tr><td>${esc(h.name)}</td><td>${esc(h.app_version || "未发现")}</td><td>${esc(h.config_state)}</td><td>${esc(h.authentication)}</td><td>${esc(h.conversation)}</td><td>${esc(h.trust)}</td></tr>`).join("");
+  const options = (endpoints || []).map(e => `<option value="${esc(e.key)}" ${e.key === state.endpoint ? "selected" : ""}>${esc(e.label || e.name || e.key)}</option>`).join("");
+  const plan = state.plan;
+  const run = state.run;
+  const result = state.result;
+  return `<p class="hint">配置、设备认证、Agent 名称、当前对话和任务分别核对。实际请求只由宿主原生 MCP 发起；不恢复 Hook、桥接或旧队列。</p>
+    <div class="native-fields">
+      <label>宿主<select id="native-host" aria-label="原生宿主"><option value="workbuddy" ${host === "workbuddy" ? "selected" : ""}>WorkBuddy</option><option value="deepseek-harness" ${host === "deepseek-harness" ? "selected" : ""}>DeepSeek Harness</option></select></label>
+      <label>端点<select id="native-endpoint" aria-label="原生验收端点"><option value="">当前活动端点</option>${options}</select></label>
+      <label>验收仓库身份<input id="native-repository" aria-label="验收仓库身份" placeholder="v1|git.example/team/repo|." value="${esc(state.repository || "")}" /></label>
+    </div>
+    <div class="card-link"><button class="btn-soft" data-action="native-inspect">只读检查</button><button class="btn-soft" data-action="native-plan">预览修复</button><button class="btn-soft" data-action="native-apply" ${!plan || plan.status !== "ready" ? "disabled" : ""}>应用已预览修复</button><button class="btn-soft" data-action="native-rollback" ${!state.receipt || state.receipt.adapter_id !== host ? "disabled" : ""}>回滚本次修复</button></div>
+    ${state.error ? `<p role="alert" class="hint">${esc(state.error)}</p>` : ""}
+    <div class="table-scroll"><table><thead><tr><th>宿主</th><th>应用版本</th><th>配置</th><th>认证</th><th>对话</th><th>信任</th></tr></thead><tbody>${rows || '<tr><td colspan="6">尚未检查；配置状态不会自动计作原生认证。</td></tr>'}</tbody></table></div>
+    ${plan ? `<p class="hint">修复计划：${esc(plan.status)} · ${esc((plan.changes || []).join(" / ") || "无变更")} ${esc(plan.error_code || "")}</p>` : ""}
+    <p class="hint">有配置变更时，在宿主正常面板完成信任，并等待全部活动对话结束后重载。本工具不会修改信任账本或自动重启宿主。应用配置后仍需真实对话验收。</p>
+    <div class="card-link"><button class="btn-soft" data-action="native-start">生成双对话验收</button>
+      <select id="native-run-history" aria-label="历史验收"><option value="">选择历史验收</option>${(state.runs || []).map(r => `<option value="${esc(r.run_id)}">${esc(r.adapter_id)} · ${esc(r.run_id)} · ${esc(r.status)}</option>`).join("")}</select><button class="btn-soft" data-action="native-resume">恢复验收</button></div>
+    ${run ? `<p class="hint">验收编号 ${esc(run.run_id)} · 将 A、B 指令分别交给两个独立真实对话。编号仅用于关联验收，不能充当聊天 ID。</p>
+      <div class="native-fields">${["A", "B"].map(slot => `<div><label>对话 ${slot} 指令<textarea readonly aria-label="对话${slot}验收指令">${esc((run.prompts || {})[slot] || "")}</textarea></label><label>宿主返回的真实对话 ID<input id="native-session-${slot}" aria-label="对话${slot}真实ID" value="${esc(((run.slots || {})[slot] || {}).native_session_id || "")}" /></label><button class="btn-soft" data-action="native-capture-${slot}">读取 ${slot} 原始工具证据</button></div>`).join("")}</div>
+      <div class="card-link"><button class="btn-soft" data-action="native-verify">回读并比较两条对话</button></div>` : ""}
+    ${result ? `<p role="status">${result.ok === true ? "双对话验收通过（显式会话参数）" : "验收尚未通过"}</p><pre class="native-result">${esc(JSON.stringify(result, null, 2))}</pre>` : ""}
+    <p class="hint">原始证据来自指定宿主、指定会话的工具历史；Agent 摘要不作为 RPC 回执。未证明所有通用调用自动携带对话 ID；unbound 保持未绑定。</p>`;
+}
+
+function renderNativeIdentity() {
+  const holder = $("native-identity-panel");
+  if (holder) holder.innerHTML = nativeIdentityMarkup(NATIVE_IDENTITY, ((SNAP || {}).mcp || {}).endpoints || []);
+}
+
+document.addEventListener("change", event => {
+  if (!["native-host", "native-endpoint", "native-repository"].includes(event.target.id)) return;
+  NATIVE_IDENTITY.adapter = $("native-host").value;
+  NATIVE_IDENTITY.endpoint = $("native-endpoint").value;
+  NATIVE_IDENTITY.repository = $("native-repository").value.trim();
+  NATIVE_IDENTITY.plan = null;
+  NATIVE_IDENTITY.run = null;
+  NATIVE_IDENTITY.result = null;
+  renderNativeIdentity();
+});
+
+async function nativeIdentityCall(args) {
+  const res = await runCli([...args, "--format", "json"]);
+  if (!res) throw new Error("需要桌面 CLI 才能执行此操作");
+  let data;
+  try { data = JSON.parse(res.stdout); } catch (_) { throw new Error("原生身份命令没有返回有效回执"); }
+  if (data.error_code) throw new Error(data.error_code);
+  if (res.code !== 0 && !data.status) throw new Error("原生身份操作失败");
+  return data;
+}
+
+async function nativeIdentityAction(action, button) {
+  if (button.disabled) return;
+  NATIVE_IDENTITY.adapter = $("native-host").value;
+  NATIVE_IDENTITY.endpoint = $("native-endpoint").value;
+  NATIVE_IDENTITY.repository = $("native-repository").value.trim();
+  const endpoint = NATIVE_IDENTITY.endpoint ? ["--native-endpoint", NATIVE_IDENTITY.endpoint] : [];
+  const host = NATIVE_IDENTITY.adapter;
+  const label = button.textContent;
+  button.disabled = true;
+  button.textContent = "处理中…";
+  NATIVE_IDENTITY.error = "";
+  try {
+    if (action === "native-inspect") {
+      const data = await nativeIdentityCall(["--native-identity", ...endpoint]);
+      NATIVE_IDENTITY.hosts = data.hosts || [];
+      NATIVE_IDENTITY.runs = data.runs || [];
+    } else if (action === "native-plan") {
+      NATIVE_IDENTITY.plan = await nativeIdentityCall(["--native-plan", host, ...endpoint]);
+    } else if (action === "native-apply") {
+      const plan = NATIVE_IDENTITY.plan;
+      if (!plan || plan.adapter_id !== host) throw new Error("请先重新预览该宿主修复");
+      if (!await confirmModal("应用原生身份修复", "仅应用已预览的原生配置与身份 Skill，先保存私有备份。不会重启宿主、恢复 Hook/桥接或处理旧队列。", false)) return;
+      NATIVE_IDENTITY.receipt = await nativeIdentityCall(["--native-apply", host, "--native-if-match", plan.plan_hash, ...endpoint]);
+      NATIVE_IDENTITY.plan = null;
+    } else if (action === "native-rollback") {
+      if (!await confirmModal("回滚原生身份修复", "仅撤销本次回执对应变更；如有后续编辑将拒绝覆盖。旧队列不受影响。", false)) return;
+      await nativeIdentityCall(["--native-rollback", NATIVE_IDENTITY.receipt.receipt_id]);
+      NATIVE_IDENTITY.receipt = null;
+    } else if (action === "native-resume") {
+      const id = $("native-run-history").value;
+      if (!id) throw new Error("请选择历史验收");
+      NATIVE_IDENTITY.run = await nativeIdentityCall(["--native-show", id]);
+      NATIVE_IDENTITY.plan = null;
+      NATIVE_IDENTITY.adapter = NATIVE_IDENTITY.run.adapter_id;
+      NATIVE_IDENTITY.repository = NATIVE_IDENTITY.run.repository_key;
+      NATIVE_IDENTITY.result = null;
+    } else if (action === "native-start") {
+      NATIVE_IDENTITY.run = await nativeIdentityCall(["--native-start", host, ...endpoint,
+        "--native-repository-key", NATIVE_IDENTITY.repository]);
+      NATIVE_IDENTITY.result = null;
+    } else if (action.startsWith("native-capture-")) {
+      const slot = action.slice(-1);
+      if (!NATIVE_IDENTITY.run) throw new Error("请先生成验收指令");
+      const data = await nativeIdentityCall(["--native-capture", NATIVE_IDENTITY.run.run_id,
+        "--native-slot", slot, "--native-session", $("native-session-" + slot).value.trim()]);
+      NATIVE_IDENTITY.run.slots = NATIVE_IDENTITY.run.slots || {};
+      NATIVE_IDENTITY.run.slots[slot] = data.observation;
+    } else if (action === "native-verify") {
+      NATIVE_IDENTITY.result = await nativeIdentityCall(["--native-verify", NATIVE_IDENTITY.run.run_id]);
+    }
+  } catch (err) {
+    NATIVE_IDENTITY.error = String(err.message || err);
+  } finally {
+    button.disabled = false;
+    button.textContent = label;
+    renderNativeIdentity();
+  }
 }
 
 function renderMcpClients(mcp, endpoints) {
@@ -8892,7 +9019,8 @@ document.addEventListener("click", (e) => {
   const act = e.target.closest("[data-action]");
   if (act) {
     const a = act.dataset.action;
-    if (a === "add-agent") renderAddPanel();
+    if (a.startsWith("native-")) nativeIdentityAction(a, act);
+    else if (a === "add-agent") renderAddPanel();
     else if (a === "refresh-audit") refreshWithBtn(act);
     // MCP 页刷新：与其它页同一个 refreshWithBtn（禁用按钮 → 重新拉快照 → 提示）。
     // 单独一个 action 名而不是复用 "refresh"，是为了让「哪一页的哪个按钮」
@@ -9190,6 +9318,19 @@ async function fixSkillsFor(name) {
 }
 
 async function fixMcpFor(name) {
+  const adapter = /^(workbuddy|codebuddy)$/i.test(name) ? "workbuddy" : /^(deepseek harness|dsh)$/i.test(name) ? "deepseek-harness" : null;
+  if (adapter) {
+    NATIVE_IDENTITY.adapter = adapter;
+    NATIVE_IDENTITY.plan = null;
+    NATIVE_IDENTITY.run = null;
+    NATIVE_IDENTITY.result = null;
+    $("nav-mcp").click();
+    const panel = $("native-identity-panel");
+    panel.closest("details").open = true;
+    renderNativeIdentity();
+    panel.scrollIntoView({ block: "center", behavior: "smooth" });
+    return;
+  }
   console.info("[ops] fix-mcp target=", name, "from:", new Error().stack?.split("\n")[2]?.trim() || "unknown");
   const ok = await confirmModal("修复 MCP 配置", `将对 ${name} 写入统一 Hermes MCP 配置（带备份）。继续？`, false);
   if (!ok) return;

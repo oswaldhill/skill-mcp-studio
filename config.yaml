@@ -110,10 +110,8 @@ mcp_tools:
   config_path: ~/.workbuddy/mcp.json
   format: json
   mcp_key_path: [mcpServers]
-  # 引用型凭据（auth_mode=env/keychain/file）需要把真值注入客户端进程环境。
-  # 该客户端支持配置根上的 "env" 块，客户端启动时读取它 —— 声明后
-  # --fix-mcp 会把值写进去，${env:VAR} 插值才真正生效。
-  mcp_root_env_style: env
+  # 原生身份适配器管理凭据注入；5.9.3 不支持根 env 插值。
+  native_identity_adapter: workbuddy
   fix_supported: true
   hooks_config_path: ~/.workbuddy/settings.json
 - name: Codex
@@ -186,14 +184,17 @@ mcp_tools:
     # 最小 PATH（没有 /opt/homebrew/bin），只写裸名 dsh 会被误判成「仅配置」。
     app_bundles: [/Applications/DeepSeek Harness.app, /Applications/DeepSeek AI Assistant.app]
     commands: [dsh, /opt/homebrew/bin/dsh]
-    config_paths: [~/.dsh/settings.yaml, ~/.dsh/profiles/web/cordis.patch.yml, ~/.dsh/mcp.json]
-  config_path: ~/.dsh/profiles/web/cordis.patch.yml
+    config_paths: [~/.dsh/settings.yaml, ~/.dsh/profiles/desktop/cordis.patch.yml, ~/.dsh/profiles/web/cordis.patch.yml, ~/.dsh/mcp.json]
+  config_path: ~/.dsh/profiles/desktop/cordis.patch.yml
   format: cordis_yaml
   mcp_key_path: [hermes]
-  # 多路径回退：本机实际统一端点写在 ~/.dsh/mcp.json（标准 json mcpServers），
-  # 而远端 cordis 机器写在 cordis.patch.yml（cordis_yaml）。任一命中即判 configured，
-  # 主路径仍是 cordis.patch.yml（--fix-mcp 写入目标不变）。
+  # 桌面原生配置为主；web 与旧 JSON 仅作为只读发现候选。
+  # 原生身份写入由 native adapter 管理，不走通用 --fix-mcp。
+  native_identity_adapter: deepseek-harness
   config_candidates:
+    - path: ~/.dsh/profiles/web/cordis.patch.yml
+      format: cordis_yaml
+      key_path: [hermes]
     - path: ~/.dsh/mcp.json
       format: json
       key_path: [mcpServers]
