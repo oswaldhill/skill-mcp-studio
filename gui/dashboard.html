@@ -2501,30 +2501,30 @@ function cliFailLines(res) {
   return lines.join("\n").slice(0, 1600) || stripAnsi(res.stderr || "").trim().slice(0, 1600);
 }
 
-async function runTaskModal(title, run, refresh, stages) {
-  // 分步阶段（可选）：真实命令是一次性返回，这里用阶段列表给出过程反馈，
-  // 每个阶段按时间依次点亮，最后停在实际完成前的状态上等待真实结果。
-  const stageList = (Array.isArray(stages) && stages.length) ? stages : null;
-  let stageTimer = null;
-  let stageIndex = -1;
-  mountModal(`<div class="modal-backdrop"><div class="modal cfm-card task-card">
-    <div class="task-spinner"></div>
+async function runTaskModal(title, run, refresh) {
+  // 单步任务的一体化弹框：过程与结果**同一个框**，结束后原地转态。
+  //
+  // 2026-11-06 用户要求「逐条都改成真实逐条进度」之前的写法：stages 是一串写死
+  // 的文案，setInterval 每 800ms 点亮一条 —— 命令早已跑完，进度条还在爬；命令
+  // 失败时它却已经把「校验回写」点亮成绿色。**那不是进度，是动画。**
+  //
+  // 现在 run 收到一个 `step` 回调：调用方在**真实动作完成处**调用 step(文字, ok)，
+  // 界面才追加一行。没有真实动作可报时（例如一次 CLI 调用就结束），就不报 —
+  // 界面显示「正在执行…」，绝不编造步骤。
+  //
+  // 第四个参数 `stages`（写死的环节列表）已删除：它曾经的唯一用途就是「假装
+  // 推进」，删掉它才能保证没人再往回调里塞一份与真实执行无关的文案。
+  mountModal(`<div class="modal-backdrop"><div class="modal cfm-card progress-card task-card">
+    <div class="prog-spinner" aria-hidden="true"></div>
     <div class="cfm-title">${escapeHtml(title)}</div>
-    ${stageList
-      ? `<div class="task-stages">${stageList.map((s, i) => `<div class="task-stage" data-si="${i}"><span class="ts-dot"></span><span class="ts-label">${escapeHtml(s)}</span></div>`).join("")}</div>`
-      : `<div class="cfm-msg">正在执行…</div>`}
+    <div class="prog-body" id="prog-body"></div>
+    <div class="cfm-msg prog-count" id="prog-count">正在执行…</div>
   </div></div>`);
-  if (stageList) {
-    stageIndex = 0;
-    paintStage(0, stageList.length);
-    stageTimer = setInterval(() => {
-      stageIndex = Math.min(stageIndex + 1, stageList.length - 1);
-      paintStage(stageIndex, stageList.length);
-    }, 800);
-  }
+  _progressSteps = [];
+
   let ok = false, message = "", detail = "";
   try {
-    const r = (await run()) || {};
+    const r = (await run(progressStep)) || {};
     ok = !!r.ok;
     message = r.message || (ok ? "完成" : "失败");
     detail = stripAnsi(r.detail || "");
@@ -2533,23 +2533,7 @@ async function runTaskModal(title, run, refresh, stages) {
     message = "工具运行失败";
     detail = stripAnsi(String((err && err.message) || err));
   }
-  if (stageTimer) { clearInterval(stageTimer); stageTimer = null; }
-  const icon = ok ? ICONS.check : ICONS.cross;
-  const resCls = ok ? "ok" : "err";
-  const statusWord = ok ? "成功" : "失败";
-  const detailHtml = detail
-    ? `<details class="task-fold" ${ok ? "" : "open"}><summary>查看详情</summary><div class="task-detail">${escapeHtml(detail)}</div></details>`
-    : "";
-  mountModal(`<div class="modal-backdrop"><div class="modal cfm-card task-card">
-    <div class="task-result ${resCls}">${icon}</div>
-    <div class="task-status ${resCls}">${statusWord}</div>
-    <div class="cfm-msg">${escapeHtml(message)}</div>
-    ${detailHtml}
-    <div class="actions">
-      <button class="primary" id="task-close">完成</button>
-    </div>
-  </div></div>`);
-  $("task-close").onclick = closeModal;
+  progressFinish(ok ? (title + " · 完成") : (title + " · 未完成"), ok, [message, detail].filter(Boolean).join("\n"));
   // 兜底：局部刷新全部数据块（--management --only），不再回落到全量审计。
   //
   // 历史问题：兜底曾是 loadInternal(false)，即整份 --management 重扫全部技能与
@@ -2566,14 +2550,6 @@ async function runTaskModal(title, run, refresh, stages) {
   const ALL_BLOCKS = ["agents", "skills", "mcp", "endpoints", "mainstream", "settings"];
   const doRefresh = (typeof refresh === "function") ? refresh : () => refreshBlocks(ALL_BLOCKS);
   doRefresh();
-}
-
-function paintStage(idx, total) {
-  document.querySelectorAll(".task-stage").forEach((el) => {
-    const i = parseInt(el.dataset.si, 10);
-    el.classList.toggle("done", i < idx);
-    el.classList.toggle("active", i === idx && idx < total);
-  });
 }
 
 const CLASS_TRANSLATE = { attached: "已挂载", legacy: "旧通道", unmanaged: "未纳管" };
@@ -3923,7 +3899,7 @@ async function confirmDeleteSkill(skill) {
     if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
     if (res.code === 0) return { ok: true, message: `${skill} 已移入 _trash/（备份在 _backup/）` };
     return { ok: false, message: "删除失败", detail: cliErrDetail(res) };
-  }, () => refreshBlocks(["skills", "agents"]), ["备份到 _backup/", "移入 _trash/ 回收目录", "刷新技能清单"]);
+  }, () => refreshBlocks(["skills", "agents"]));
 }
 
 // ---------------- MCP 端点凭据（设置页 · v0.31.4 之后） ----------------
@@ -5337,7 +5313,7 @@ function renderSettings() {
         }
         return { ok: false, message: "保存 Hook 事件选择失败",
                  detail: cliFailLines(res) || cliErrDetail(res) };
-      }, () => refreshBlocks(["settings"]), ["读取当前选择", "写入 config.yaml", "校验回写"]);
+      }, () => refreshBlocks(["settings"]));
     });
   }
   el.querySelectorAll("[data-patrol-toggle]").forEach((b) => {
@@ -5367,7 +5343,7 @@ function renderSettings() {
         if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
         if (res.code === 0) return { ok: true, message: `已${label}（写入 overlay）` };
         return { ok: false, message: "切换失败", detail: cliFailLines(res) || cliErrDetail(res) };
-      }, () => refreshBlocks(["settings", "agents"]), ["校验 key 存在性", "写入 overlay", "刷新快照"]);
+      }, () => refreshBlocks(["settings", "agents"]));
     });
   }
   // 自动发现开关
@@ -5380,7 +5356,7 @@ function renderSettings() {
         if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
         if (res.code === 0) return { ok: true, message: `自动发现已${want ? "开启" : "关闭"}（写入 overlay）` };
         return { ok: false, message: "切换失败", detail: cliFailLines(res) || cliErrDetail(res) };
-      }, () => refreshBlocks(["settings"]), ["写入 overlay", "刷新快照"]);
+      }, () => refreshBlocks(["settings"]));
     });
   });
   applyScale(currentScale(), false);
@@ -5657,7 +5633,7 @@ async function _applyHookPreset() {
     if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
     if (res.code === 0) return { ok: true, message: "已对 " + _hookTmplClient + " 应用预设「" + (labels[preset] || preset) + "」" };
     return { ok: false, message: "应用预设失败", detail: cliFailLines(res) || cliErrDetail(res) };
-  }, async () => { await loadHookTemplates(); refreshBlocks(["agents", "mainstream"]); }, ["备份原配置", "应用预设", "校验回写", "刷新状态"]);
+  }, async () => { await loadHookTemplates(); refreshBlocks(["agents", "mainstream"]); });
 }
 async function _saveHookTemplates() {
   if (!_hookTmplClient || !_hookTmplData) return;
@@ -5693,7 +5669,7 @@ async function _saveHookTemplates() {
     const total = changes.length + (defChanged ? 1 : 0);
     if (failed) return { ok: false, message: failed + " 项保存失败", detail: (total - failed) + " 项成功" };
     return { ok: true, message: "已保存 " + total + " 项（" + parts.join(" / ") + "）" };
-  }, async () => { await loadHookTemplates(); refreshBlocks(["agents", "mainstream"]); }, ["备份原配置", "逐项写入", "校验回写", "刷新状态"]);
+  }, async () => { await loadHookTemplates(); refreshBlocks(["agents", "mainstream"]); });
 }
 
 function showSkeleton() {
@@ -6371,16 +6347,19 @@ function renderEndpointStatus() {
     const beforeCount = before.length;
     if (btn) btn.disabled = true;
 
-    const res = await runTaskModal(`合并 ${fold.length} 个技能到 ${keep}`, async () => {
+    const res = await runTaskModal(`合并 ${fold.length} 个技能到 ${keep}`, async (step) => {
+      step(`复核判据并开始合并 ${fold.length} 个技能`, true);
       const r = await runCli(["--merge-skills", "--merge-keep", keep,
         "--merge-fold", fold.join(","), "--format", "json"]);
       if (!r) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
       let d = null;
       try { d = JSON.parse(r.stdout || "{}"); } catch (e) { d = null; }
       if (!d) return { ok: false, message: "返回无法解析", detail: cliErrDetail(r) };
-      if (d.status === "ok") {
-        return { ok: true, message: d.message, detail: (d.steps || []).map((x) => x.message).join("\n") };
-      }
+      // 后端 steps 是**真实执行记录**（每条对应一个归并动作），逐条上报，
+      // 而不是拼成一段详情文本：用户要看「第几个技能备份了、移到哪了」。
+      for (const st of (d.steps || [])) step(st.message || "已处理一个技能", !st.failed);
+      for (const f of (d.failed || [])) step(f.message || "失败", false);
+      if (d.status === "ok") return { ok: true, message: d.message };
       return { ok: false, message: d.message || "执行失败", detail: (d.failed || []).map((f) => f.message).join("\n") };
     }, async () => {
       // 执行后重新统计并核对：该组应从 actionable 里消失，且组数确实减少。
@@ -6415,18 +6394,18 @@ function renderEndpointStatus() {
     if (!tauriInvoke) { modalNotice("warn", "请注意", "浏览器预览模式：写入需在桌面 App 内执行"); return; }
     if (btn) btn.disabled = true;
 
-    await runTaskModal(`全部合并（${act.length} 组）`, async () => {
+    await runTaskModal(`全部合并（${act.length} 组）`, async (step) => {
+      step(`逐组复核判据（共 ${act.length} 组）`, true);
       const r = await runCli(["--merge-skills", "--merge-fold", "all", "--format", "json"]);
       if (!r) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
       let d = null;
       try { d = JSON.parse(r.stdout || "{}"); } catch (e) { d = null; }
       if (!d) return { ok: false, message: "返回无法解析", detail: cliErrDetail(r) };
-      if (d.status === "ok") {
-        return { ok: true, message: d.message, detail: (d.steps || []).map((x) => x.message).join("\n") };
-      }
+      // 同 runMergeGroup：后端 steps 是真实执行记录，逐条上报。
+      for (const st of (d.steps || [])) step(st.message || "已处理一组", !st.failed);
+      if (d.status === "ok") return { ok: true, message: d.message };
       return { ok: false, message: d.message || "执行失败", detail: (d.steps || []).map((x) => x.message).join("\n") };
-          // 同 runMergeGroup：阶段只描述归并本身，重跑由它自己的进度框承担。
-    }, async () => { await verifyMergeAll(); }, ["逐组复核判据", "备份到 _backup/", "移入 _trash/ 回收目录"]);
+    }, async () => { await verifyMergeAll(); });
 
     if (btn) btn.disabled = false;
   }
@@ -6930,7 +6909,7 @@ function renderEndpointStatus() {
           if (!res) return { ok: false, message: "工具未能执行" };
           if (res.code === 0) return { ok: true, message: "token 已保存（下次检查更新按 5000 次/小时）" };
           return { ok: false, message: "保存失败", detail: cliErrDetail(res) };
-        }, () => loadGithubTokenStatus(), ["写入本机文件"]);
+        }, () => loadGithubTokenStatus());
       };
     }
     const clearBtn = body.querySelector("[data-gt-clear]");
@@ -6943,7 +6922,7 @@ function renderEndpointStatus() {
           if (!res) return { ok: false, message: "工具未能执行" };
           if (res.code === 0) return { ok: true, message: "token 已清除" };
           return { ok: false, message: "清除失败", detail: cliErrDetail(res) };
-        }, () => loadGithubTokenStatus(), ["删除本机文件"]);
+        }, () => loadGithubTokenStatus());
       };
     }
   }
@@ -7016,7 +6995,7 @@ function renderEndpointStatus() {
           if (!res) return { ok: false, message: "工具未能执行" };
           if (res.code === 0) return { ok: true, message: `源 ${id} 已删除` };
           return { ok: false, message: "删除失败", detail: cliErrDetail(res) };
-        }, () => loadMarketSources(), ["删除并备份"]);
+        }, () => loadMarketSources());
       };
     });
     body.querySelectorAll("[data-ms-toggle]").forEach((b) => {
@@ -7032,7 +7011,7 @@ function renderEndpointStatus() {
           if (!res) return { ok: false, message: "工具未能执行" };
           if (res.code === 0) return { ok: true, message: `源 ${id} 已${enable ? "启用" : "停用"}` };
           return { ok: false, message: "操作失败", detail: cliErrDetail(res) };
-        }, () => loadMarketSources(), ["写入配置"]);
+        }, () => loadMarketSources());
       };
     });
     const addBtn = body.querySelector("[data-ms-add]");
@@ -7051,7 +7030,7 @@ function renderEndpointStatus() {
           if (!res) return { ok: false, message: "工具未能执行" };
           if (res.code === 0) return { ok: true, message: `源 ${id} 已添加` };
           return { ok: false, message: "添加失败", detail: cliErrDetail(res) };
-        }, () => loadMarketSources(), ["校验并写入"]);
+        }, () => loadMarketSources());
       };
     }
   }
@@ -8039,7 +8018,7 @@ function exportConfigAction() {
     if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
     if (res.code === 0) return { ok: true, message: `已导出到 ${path}` };
     return { ok: false, message: "导出失败", detail: cliFailLines(res) || cliErrDetail(res) };
-  }, null, ["打包生效配置", "脱敏端点密钥", "写出 JSON"]);
+  }, null);
 }
 
 async function importConfigAction() {
@@ -8060,8 +8039,7 @@ async function importConfigAction() {
       return { ok: true, message: lines[0] || `已从 ${path} 导入`, detail: lines.slice(1).join("\n") || "" };
     }
     return { ok: false, message: "导入失败", detail: cliFailLines(res) || cliErrDetail(res) };
-  }, () => refreshBlocks(["settings", "agents"]),
-    ["校验导出包", "合并写入（自动备份）", "刷新快照"]);
+  }, () => refreshBlocks(["settings", "agents"]));
 }
 
 async function openMergePreview() {
@@ -9065,7 +9043,7 @@ async function confirmRemoveClient(name) {
     if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
     if (res.code === 0) return { ok: true, message: `${name} 已移出管理` };
     return { ok: false, message: "移出失败", detail: cliErrDetail(res) };
-  }, () => refreshBlocks(["agents", "skills", "mainstream"]), ["本机停用", "删除配置文件", "删除 skills 链接", "刷新管理快照"]);
+  }, () => refreshBlocks(["agents", "skills", "mainstream"]));
 }
 
 async function fixSkillsFor(name) {
@@ -9077,7 +9055,7 @@ async function fixSkillsFor(name) {
     if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
     if (res.code === 0) return { ok: true, message: `${name} 的 Skills 链接已修复` };
     return { ok: false, message: "Skills 修复失败", detail: cliFailLines(res) || cliErrDetail(res) };
-  }, () => refreshBlocks(["agents", "skills"]), ["扫描 Skills 目录", "重建链接（带备份）", "刷新技能状态"]);
+  }, () => refreshBlocks(["agents", "skills"]));
 }
 
 async function fixMcpFor(name) {
@@ -9089,7 +9067,7 @@ async function fixMcpFor(name) {
     if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
     if (res.code === 0) return { ok: true, message: `${name} 的 MCP 配置已修复` };
     return { ok: false, message: "MCP 配置修复失败", detail: cliFailLines(res) || cliErrDetail(res) };
-  }, () => refreshBlocks(["agents", "mcp"]), ["读取 MCP 配置", "写入统一端点", "校验配置"]);
+  }, () => refreshBlocks(["agents", "mcp"]));
 }
 
 async function cleanLegacyMcp(name) {
@@ -9107,7 +9085,7 @@ async function cleanLegacyMcp(name) {
       return { ok: false, message: `${name} 未安装，无法清理` };
     }
     return { ok: false, message: "清理未完成", detail: cliFailLines(res) || "未识别到清理结果标记" };
-  }, () => refreshBlocks(["agents", "mcp"]), ["备份原配置", "移除旧通道条目", "校验回写", "刷新 MCP 状态"]);
+  }, () => refreshBlocks(["agents", "mcp"]));
 }
 
 // ---------------- MCP 条目删除 / 批量清理 / 从备份恢复（阶段五） ----------------
@@ -9170,7 +9148,7 @@ async function fixHooksFor(name) {
     if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
     if (res.code === 0) return { ok: true, message: `${name} 的 Hook 已配置` };
     return { ok: false, message: "Hook 写入失败", detail: cliFailLines(res) || cliErrDetail(res) };
-  }, () => refreshBlocks(["agents", "mainstream"]), ["读取 Hook 配置", "写入标准模板", "校验回写", "刷新状态"]);
+  }, () => refreshBlocks(["agents", "mainstream"]));
 }
 
 async function removeHooksFor(name) {
@@ -9181,7 +9159,7 @@ async function removeHooksFor(name) {
     if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
     if (res.code === 0) return { ok: true, message: `${name} 的 Hook 已移除` };
     return { ok: false, message: "Hook 移除失败", detail: cliFailLines(res) || cliErrDetail(res) };
-  }, () => refreshBlocks(["agents", "mainstream"]), ["备份原配置", "移除 Hook 条目", "校验回写", "刷新状态"]);
+  }, () => refreshBlocks(["agents", "mainstream"]));
 }
 
 async function fixHooksAll() {
@@ -9192,7 +9170,7 @@ async function fixHooksAll() {
     if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
     if (res.code === 0) return { ok: true, message: "Hook 批量写入完成" };
     return { ok: false, message: "Hook 批量写入失败", detail: cliFailLines(res) || cliErrDetail(res) };
-  }, () => refreshBlocks(["agents", "mainstream"]), ["读取全部 Hook 配置", "批量写入标准模板", "校验回写", "刷新状态"]);
+  }, () => refreshBlocks(["agents", "mainstream"]));
 }
 
 async function runSnapshot() {
@@ -9213,7 +9191,7 @@ async function runSnapshot() {
       renderChangesResult(el, diff);
     }
     return { ok: true, message: "快照对比完成" };
-  }, () => {}, ["运行 --snapshot", "解析 diff", "渲染变更详情"]);
+  }, () => {});
 }
 
 // 缓存最近一次 diff，供「修复 / 保持」按钮取变更指纹（避免二次请求）
@@ -9308,7 +9286,7 @@ async function fixChange(dim, name, type) {
     if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
     if (res.code === 0) return { ok: true, message: "Hook 写入完成" };
     return { ok: false, message: "Hook 写入失败", detail: cliFailLines(res) || cliErrDetail(res) };
-  }, () => refreshBlocks(["agents", "mainstream"]), ["读取 Hook 配置", "写入标准模板", "校验回写"]);
+  }, () => refreshBlocks(["agents", "mainstream"]));
 }
 
 async function removeMcpEntry(name, key, high, reason) {
@@ -9325,7 +9303,7 @@ async function removeMcpEntry(name, key, high, reason) {
     const res = await runCli(args);
     if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
     return mcpResultToTask(res, `已删除 ${key}`);
-  }, () => refreshBlocks(["agents", "mcp"]), ["读取 MCP 配置", "备份原配置", "移除条目", "校验回写"]);
+  }, () => refreshBlocks(["agents", "mcp"]));
 }
 
 async function removeMcpClassEntries(name, cls) {
@@ -9345,7 +9323,7 @@ async function removeMcpClassEntries(name, cls) {
     const res = await runCli(args);
     if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
     return mcpResultToTask(res, `${label}已清理`);
-  }, () => refreshBlocks(["agents", "mcp"]), ["读取 MCP 配置", "备份原配置", "移除条目", "校验回写"]);
+  }, () => refreshBlocks(["agents", "mcp"]));
 }
 
 async function showConfigBackups(name) {
@@ -9384,7 +9362,7 @@ async function restoreConfigBackup(name, path) {
     const res = await runCli(["--restore-config-backup", path, "--client", name, "--format", "json"]);
     if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
     return mcpResultToTask(res, `已还原 ${name} 的配置`);
-  }, () => refreshBlocks(["agents", "mcp"]), ["校验备份归属", "备份当前配置", "写回备份内容", "解析校验"]);
+  }, () => refreshBlocks(["agents", "mcp"]));
 }
 
 async function cleanupConfigFor(name) {
@@ -9400,27 +9378,51 @@ async function cleanupConfigFor(name) {
       return { ok: true, message: `${name} 删除完成` };
     }
     return { ok: false, message: "删除失败", detail: cliErrDetail(res) };
-  }, () => refreshBlocks(["agents", "skills", "mainstream"]), ["定位配置", "定位 skills 链接", "本机停用", "删除文件", "校验"]);
+  }, () => refreshBlocks(["agents", "skills", "mainstream"]));
 }
 
 async function fixAllSkillsMcp() {
   console.info("[ops] fix-all skills+mcp");
   const ok = await confirmModal("一键修复所有", "将对所有已安装客户端的 Skills 链接与 MCP 配置执行修复（带备份，未安装/无需修复的自动跳过）。继续？", false);
   if (!ok) return;
-  await runTaskModal("一键修复所有 Skills 与 MCP", async () => {
-    const r1 = await runCli(["--fix-skills"]);
-    const r2 = await runCli(["--fix-mcp"]);
+  // 逐条真实进度（2026-11-06）：每个「客户端 × 维度」跑一次 CLI，跑完才报一行。
+  //
+  // 为什么不沿用「--fix-skills / --fix-mcp 各跑一次」：那样整个过程只有两个
+  // 真实动作，用户看不出修了哪些客户端、哪个失败；之前的 stages 数组只是按
+  // 时间点亮的动画。改动后每一步都对应一次真实 CLI 调用，成败来自退出码。
+  const agents = ((SNAP && SNAP.agents) || []).filter((a) => a.installed && a.mcp_config_path !== undefined);
+  const clients = agents.filter((a) => a.installed);
+  if (!clients.length) {
+    modalNotice("info", "提示", "没有已安装的客户端需要修复。");
+    return;
+  }
+  await runTaskModal("一键修复所有 Skills 与 MCP", async (step) => {
     const errs = [];
-    const oks = [];
-    if (!r1) errs.push("Skills 修复：run_cli 无返回");
-    else if (r1.code !== 0) errs.push("Skills 修复失败：" + (cliFailLines(r1) || cliErrDetail(r1)));
-    else oks.push("Skills 链接已修复");
-    if (!r2) errs.push("MCP 修复：run_cli 无返回");
-    else if (r2.code !== 0) errs.push("MCP 修复失败：" + (cliFailLines(r2) || cliErrDetail(r2)));
-    else oks.push("MCP 配置已修复");
-    if (errs.length) return { ok: false, message: "一键修复未全部完成", detail: errs.join("\n") };
-    return { ok: true, message: "所有客户端的 Skills 与 MCP 已修复", detail: oks.join("\n") };
-  }, () => refreshBlocks(["agents", "skills", "mcp"]), ["修复 Skills 链接", "写入统一 MCP 配置", "刷新状态"]);
+    let done = 0;
+    for (const a of clients) {
+      const name = a.name;
+      // Skills 维度：只有声明了技能目录的客户端才修（否则 CLI 会报 unsupported）
+      if (Array.isArray(a.skills_paths) && a.skills_paths.length) {
+        const r = await runCli(["--fix-skills", "--client", name]);
+        const good = !!(r && r.code === 0);
+        step(`${name} · Skills ${good ? "已修复" : "失败"}`, good);
+        if (good) done++;
+        else errs.push(`${name} Skills：${(r && (cliFailLines(r) || cliErrDetail(r))) || "run_cli 无返回"}`);
+      }
+      // MCP 维度：只有声明了 MCP 配置路径的客户端才修
+      if (a.mcp_config_path) {
+        const r = await runCli(["--fix-mcp", "--client", name]);
+        const good = !!(r && r.code === 0);
+        step(`${name} · MCP ${good ? "已修复" : "失败"}`, good);
+        if (good) done++;
+        else errs.push(`${name} MCP：${(r && (cliFailLines(r) || cliErrDetail(r))) || "run_cli 无返回"}`);
+      }
+    }
+    if (errs.length) {
+      return { ok: false, message: `已完成 ${done} 项，${errs.length} 项未完成`, detail: errs.join("\n") };
+    }
+    return { ok: true, message: `已完成 ${done} 项修复` };
+  }, () => refreshBlocks(["agents", "skills", "mcp"]));
 }
 
 // ---------------- sample (browser preview) ----------------

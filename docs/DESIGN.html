@@ -1513,6 +1513,15 @@
         <li><code>.progress-card</code> / <code>.prog-list</code> / <code>.prog-dot</code> 是进度态的语义类；结果态复用 <code>.notice-card</code>，
           原地替换的落点用 <code>data-progress-replace</code> 属性标记（<strong>不引入样式类</strong>）</li>
       </ul>
+      <p><strong>进度必须是真实的（2026-11-06 用户要求）</strong>：<code>runTaskModal</code> 曾经收一个 <code>stages</code>
+      字符串数组，<code>setInterval</code> 每 800ms 点亮一条：命令早已跑完，进度条还在爬；命令失败时它却已经把「校验回写」点亮成绿色。
+      <strong>那不是进度，是动画。</strong>现在只收 <code>(title, run, refresh)</code>，<code>run</code> 收到 <code>step</code> 回调，
+      调用方在真实动作完成处调用它。</p>
+      <ul>
+        <li><strong>没有真实动作可报时不报</strong>：一次 CLI 调用就结束的任务显示「正在执行…」，绝不编造步骤</li>
+        <li><strong>批量场景必须逐条</strong>：一键修复所有 = 每个「客户端 × 维度」一行；合并 = 后端返回的每条执行记录一行</li>
+        <li>写死的 <code>stages</code> 参数已删除，避免有人再往里塞与执行无关的文案</li>
+      </ul>
       <p><strong>实现约定</strong>：统一入口 <code>modalNotice(kind, title, message)</code>，内部走 <code>mountModal</code> 进入 top layer。</p>
       <ul>
         <li><code>.notice-card</code>：信息弹框容器；<code>.notice-ok</code> / <code>.notice-warn</code> / <code>.notice-err</code> 按 kind 换图标色</li>

@@ -44,6 +44,17 @@ def _call_sites(src: str):
     return out
 
 
+def _strip_js_comments(code: str) -> str:
+    """剥掉 JS 的行注释与块注释（保留字符串内的内容不动，够用即可）。
+
+    为什么要剥：断言「不得出现 setInterval」时要排除解释历史的注释，
+    否则把历史原因写清楚反而会让测试失败。
+    """
+    code = re.sub(r"/\*[\s\S]*?\*/", "", code)
+    return re.sub(r"(?m)//.*$", "", code)
+
+
+
 class NoToastForMessagesTest(unittest.TestCase):
     def test_no_showtoast_calls_remain(self):
         offenders = [
@@ -157,4 +168,54 @@ class ProgressModalTest(unittest.TestCase):
         self.assertEqual(
             body.count('modalNotice("ok"'), 0,
             "批量循环内仍在逐条弹成功框，用户要一个个关掉",
+        )
+
+
+class RealProgressStepsTest(unittest.TestCase):
+    """进度必须是**真实逐条**的，不能是「按时间点亮」的假阶段（2026-11-06 用户要求）。
+
+    用户原话：「我希望逐条都改成真实逐条进度」。
+
+    此前 runTaskModal 的 stages 数组是一串写死的文案，setInterval 每 800ms 点亮
+    一条，与实际执行毫无关系：命令早就跑完了，进度条还在慢慢爬；命令失败时，
+    它却已经把「校验回写」点亮成绿色。那不是进度，是动画。
+
+    判据：
+    1. runTaskModal 不再用定时器假装推进；
+    2. 它把「报告一步」的回调交给调用方，由调用方在**真实动作完成处**调用；
+    3. 批量场景（一键修复所有）把每个客户端作为独立一步。
+    """
+
+    def test_task_modal_has_no_fake_stage_timer(self):
+        # 只看**代码**（剥掉注释）：注释里会提到 setInterval 解释历史，那不算违规。
+        src = _src()
+        i = src.find("async function runTaskModal")
+        self.assertGreater(i, 0)
+        body = _strip_js_comments(src[i:src.find("\nfunction ", i + 10)])
+        self.assertNotIn(
+            "setInterval", body,
+            "runTaskModal 仍在用定时器「假装」推进进度 —— 它与真实执行无关",
+        )
+
+    def test_task_modal_accepts_a_step_reporter(self):
+        src = _src()
+        i = src.find("async function runTaskModal")
+        body = _strip_js_comments(src[i:src.find("\nfunction ", i + 10)])
+        # 形如 `await run(progressStep)`：把报告入口交给调用方
+        self.assertRegex(
+            body, r"run\(\s*progressStep\s*\)",
+            "runTaskModal 没有把「报告一步」的入口交给调用方",
+        )
+
+    def test_fix_all_reports_each_client_as_a_step(self):
+        """一键修复所有：每个客户端 = 一行真实进度。"""
+        src = _src()
+        i = src.find("async function fixAllSkillsMcp")
+        self.assertGreater(i, 0)
+        body = src[i:src.find("\nasync function ", i + 10)]
+        # 它通过 runTaskModal 拿到的 `step` 回调逐条上报；每个「客户端 × 维度」一行
+        steps = body.count("step(`${name}")
+        self.assertGreaterEqual(
+            steps, 2,
+            f"一键修复应至少为 Skills / MCP 两个维度各报步（实际 {steps} 处）",
         )

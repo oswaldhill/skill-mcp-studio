@@ -308,7 +308,9 @@ class ComponentRegistrationTest(unittest.TestCase):
     # 2026-10-14：`mcp-badge-legend` 已随 IDE/Agent 页图例撤销而不再使用，按规则收紧。
     GHOST_BASELINE = frozenset({
         "al-group-name", "btn-agent-detail", "btn-mt-settings", "ff-label",
-        "input", "kv", "panel", "pf-add", "pf-rm", "ts-label",
+        # 2026-11-06：`ts-label` 随「假阶段进度」（task-stage 那套）一起删除，
+        # 已无任何 markup/CSS 引用，按「只许减少」的规则从这里移除。
+        "input", "kv", "panel", "pf-add", "pf-rm",
     })
 
     def test_no_ghost_classes_used_in_markup(self):

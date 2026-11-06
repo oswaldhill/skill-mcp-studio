@@ -41,15 +41,22 @@ class TestRerunProgress(unittest.TestCase):
                       "busy 时必须把进度文案传给 runCli，才会 showBusy")
 
     def test_stage_list_excludes_rerun(self):
-        """合并的阶段框不得包含"重跑"：它发生在结果之后，会让最后一项停住。"""
+        """合并的进度不得包含"重跑"，但必须报出「复核判据」这一步。
+
+        2026-11-06 起进度不再是写死的 stages 数组，而是调用方在真实动作完成处
+        调用的 `step(...)`。断言随之绑到 step 调用：
+        - 不得出现「重跑」：它发生在结果之后，会让最后一项一直停着；
+        - 必须出现「复核判据」：这是执行前真实发生的动作，漏报就等于骗人。
+        """
         for fn in ("runMergeGroup", "runMergeAll"):
             body = _fn(fn)
-            stages = re.findall(r"\[([^\]]*)\]\)", body)
-            joined = " ".join(stages)
+            steps = re.findall(r"step\(([^)]*)\)", body)
+            joined = " ".join(steps)
             self.assertNotIn("重跑", joined,
-                             f"{fn} 的阶段列表不应包含重跑（它有自己的进度框）")
+                             f"{fn} 的进度不应包含重跑（它有自己的进度框）")
             self.assertIn("复核判据", joined,
-                          f"{fn} 的阶段列表应仍描述归并过程")
+                          f"{fn} 应把「复核判据」作为真实一步报出来")
+            self.assertTrue(steps, f"{fn} 没有任何真实进度上报")
 
     def test_verify_functions_call_rerun(self):
         """核对必须基于重跑后的新数据，不能拿旧快照自证。"""
