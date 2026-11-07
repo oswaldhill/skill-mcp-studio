@@ -145,7 +145,35 @@ security find-certificate -a -c "oswaldhill Local Development" -Z | grep "SHA-1"
 
 清理方法：钥匙串访问里删掉多余的那条（保留带私钥的一条）。
 
-### 5.4 构建仍然失败
+### 5.4 `security import` 报 `MAC verification failed`
+
+用 OpenSSL 3.x 手工生成的 p12 导不进 macOS，报：
+
+```
+SecKeychainItemImport: MAC verification failed during PKCS12 import (wrong password?)
+```
+
+密码是对的。原因是**算法不兼容**：
+
+- OpenSSL 3.x 默认导出 **AES-256 + SHA-256** 的现代 p12
+- macOS 的 `security import` 只认旧格式（RC2/3DES + SHA-1 MAC）
+
+**导出时必须加 `-legacy`**：
+
+```bash
+openssl pkcs12 -export -legacy -out out.p12 -inkey key.pem -in cert.pem
+```
+
+同理，**读取** macOS 用 `security export` 导出的 p12 时也要加 `-legacy`
+（它用 RC2-40-CBC，OpenSSL 3.x 默认禁用）：
+
+```bash
+openssl pkcs12 -legacy -in in.p12 -nodes -out out.pem
+```
+
+`scripts/export-signing-identity.sh` 已处理这两个方向，无需手工干预。
+
+### 5.5 构建仍然失败
 
 确认配置指向的名称与钥匙串里的**完全一致**（含大小写和空格）：
 
