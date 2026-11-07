@@ -120,7 +120,7 @@ def write_markdown_report(
     Args:
         scan_result: run_scan() 的返回结果
         output_path: 输出文件路径，默认为 scan-report.md
-        combined_result: unified MCP/hooks 检查结果（可选）
+        combined_result: unified Skills/MCP 检查结果（可选）
         frontmatter_audit: SKILL.md frontmatter 契约审计结果（可选）
 
     Returns:

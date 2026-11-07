@@ -48,8 +48,6 @@ def _non_compliant_result():
                 "mcp_configured": False,
                 "mcp_initialize_ok": False,
                 "mcp_tools_list_ok": False,
-                "hooks_configured": True,
-                "hooks_required": False,
                 "legacy_channels": [],
                 "capabilities": {},
             }

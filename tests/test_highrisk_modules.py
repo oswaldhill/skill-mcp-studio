@@ -22,7 +22,6 @@ sys.path.insert(0, str(ROOT / "core"))
 import workspace_cleaner  # noqa: E402
 import version_checker  # noqa: E402
 import git_sync  # noqa: E402
-import hooks_checker  # noqa: E402
 
 
 class WorkspaceCleanerTest(unittest.TestCase):
@@ -122,48 +121,6 @@ class GitSyncTest(unittest.TestCase):
     def test_is_git_repo_false(self):
         with tempfile.TemporaryDirectory() as tmp:
             self.assertFalse(git_sync.is_git_repo(tmp))
-
-
-class HooksCheckerTest(unittest.TestCase):
-    """真实 hook 配置检测（history: combined_checker 测试用空 required_capabilities 短路了 hooks 分支）。"""
-
-    def test_detects_any_configured_hook(self):
-        """v0.29.0：任意非空命令都算已配置（不区分来源，不再识别特定工具签名）。"""
-        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
-            import json
-
-            json.dump({
-                "hooks": {
-                    "Stop": [{"command": "my-tool on stop"}],
-                    "Start": [{"command": "echo hello"}],
-                }
-            }, f)
-            path = f.name
-        try:
-            res = hooks_checker.check_hooks(path)
-            self.assertTrue(res["hooks_configured"])
-            # 两事件都有非空命令 → 都检测到（字典序）
-            self.assertEqual(res["events"], ["Start", "Stop"])
-        finally:
-            os.unlink(path)
-
-    def test_no_hooks_when_missing_file(self):
-        res = hooks_checker.check_hooks("/nonexistent/hooks.json")
-        self.assertFalse(res["hooks_configured"])
-        self.assertEqual(res["events"], [])
-
-    def test_empty_command_is_not_configured(self):
-        """空命令不算已配置。"""
-        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
-            import json
-
-            json.dump({"hooks": {"Stop": [{"command": ""}]}}, f)
-            path = f.name
-        try:
-            res = hooks_checker.check_hooks(path)
-            self.assertFalse(res["hooks_configured"])
-        finally:
-            os.unlink(path)
 
 
 if __name__ == "__main__":

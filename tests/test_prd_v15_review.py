@@ -132,9 +132,9 @@ class ClaimsMatchCodeTest(unittest.TestCase):
         gui = (ROOT / "gui" / "dashboard.html").read_text(encoding="utf-8")
         pages = set(re.findall(r'data-page="([a-z-]+)"', gui))
         self.assertEqual(
-            {"overview", "agents", "skills", "mcp", "hooks", "changes", "dsh", "settings"},
+            {"overview", "agents", "skills", "mcp", "changes", "dsh", "settings"},
             pages,
-            "PRD §5.3 说八页，dashboard 的 data-page 集合变了就要同步改文档",
+            "PRD §5.3 说七页，dashboard 的 data-page 集合变了就要同步改文档",
         )
 
     def test_registry_count_claim_is_true(self):

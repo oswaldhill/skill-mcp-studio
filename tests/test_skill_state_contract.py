@@ -169,7 +169,6 @@ class ResultOkStrictTest(unittest.TestCase):
             "mcp_configured": True,
             "mcp_initialize_ok": True,
             "mcp_tools_list_ok": True,
-            "hooks_configured": True,
             "capabilities": {},
             "legacy_channels": [],
         }

@@ -35,7 +35,6 @@ from tool_registry import (
     read_cli_versions,
 )
 from tool_registry import effective_tools as _tool_registry_effective_tools
-from hooks_inventory import inventory_for_tool
 
 
 def _drift_payload(config_path: str, missing: List[str]) -> Dict[str, Any]:
@@ -164,7 +163,6 @@ def _agent_entry(tool: Dict[str, Any], config: Dict[str, Any], scan_result: Dict
     # counts as explicit too) is the authoritative signal; absence = default-all.
     resolved_attach = resolve_client_attach(tool, config)
     has_explicit = bool(tool.get("mcp_attach"))
-    hooks_inv = inventory_for_tool(tool, config)
     return {
         "name": tool.get("name", "Unknown"),
         "type": tool_type,
@@ -179,19 +177,6 @@ def _agent_entry(tool: Dict[str, Any], config: Dict[str, Any], scan_result: Dict
         "config_paths": install["config_paths"],
         # 客户端 MCP 配置文件路径（与 install 证据的 config_paths 区分）
         "mcp_config_path": tool.get("config_path", ""),
-        # Hook 管理域（参照 mcp 系列字段命名）：inventory_for_tool 从
-        # config["hooks"]["clients"] 读取，产出 hooks 状态与清单。
-        "hooks_config_path": hooks_inv["hooks_config_path"],
-        "hooks_configured": hooks_inv["hooks_configured"],
-        "hook_events": hooks_inv["hook_events"],
-        "hooks_fix_supported": hooks_inv["hooks_fix_supported"],
-        "hooks_inventory": hooks_inv["hooks_inventory"],
-        "missing_key_events": hooks_inv.get("missing_key_events", []),
-        # Hook 能力域（2026-10-12）：供「IDE / Agent → 详情 → Hook 配置」展示该客户端
-        # 支持哪些事件、配置落在哪些分层作用域（user/project/local）。写入校验同源。
-        "hooks_scopes": hooks_inv.get("hooks_scopes", []),
-        "hooks_supported_events": hooks_inv.get("hooks_supported_events", []),
-        "hooks_event_format": hooks_inv.get("hooks_event_format", ""),
         "aliases": tool.get("aliases", []) or [],
         "mcp_attach": resolved_attach,
         "has_explicit_attach": has_explicit,
@@ -532,7 +517,6 @@ def build_management_snapshot(
         for mt in mainstream_list:
             inst = detect_installation(mt)
             norm = "".join(c for c in mt["name"].lower() if c.isalnum())
-            hooks_inv = inventory_for_tool(mt, config)
             # 复用 _agent_entry：设置页的 IDE/Agent 卡片要在**卡片上**直接显示
             # 「详情里那些内容」（2026-10-12 用户要求）—— Skills/MCP 摘要必须与
             # agents 面板同源，否则两处口径会漂移。原先卡片只有 APP/CLI/CONFIG。
@@ -552,16 +536,6 @@ def build_management_snapshot(
                 "registered": norm in registered_names,
                 "installed": bool(inst["installed"]),
                 "install_state": inst["install_state"],
-                # Hook 管理域（与 agents 块对齐）
-                "hooks_config_path": hooks_inv["hooks_config_path"],
-                "hooks_configured": hooks_inv["hooks_configured"],
-                "hook_events": hooks_inv["hook_events"],
-                "hooks_fix_supported": hooks_inv["hooks_fix_supported"],
-                "hooks_inventory": hooks_inv["hooks_inventory"],
-                "missing_key_events": hooks_inv.get("missing_key_events", []),
-                "hooks_scopes": hooks_inv.get("hooks_scopes", []),
-                "hooks_supported_events": hooks_inv.get("hooks_supported_events", []),
-                "hooks_event_format": hooks_inv.get("hooks_event_format", ""),
                 # Skills / MCP 摘要域：供设置页卡片直接展示（不必点开「详情」）
                 "skills_dir_found": _extra.get("skills_dir_found", False),
                 "skills_total": _extra.get("skills_total", 0),
@@ -590,45 +564,9 @@ def build_management_snapshot(
         _platform_label = _sys
         _default_scan = ["~/.config/*/skills", "~/.*/skills"]
 
-    # Hook 事件管理域：GUI 的「Hook」设置 tab 要列出**所有标准事件**供勾选，
-    # 并显示当前生效的「要写入的事件」列表。两者此前都不在快照里 ——
-    # 标准清单在 config.yaml 的 hooks.events，生效清单在 settings.hook_events。
-    _hooks_cfg = config.get("hooks") or {}
-    _hook_events_catalog = [
-        {
-            "name": e.get("name", ""),
-            "description": e.get("description", ""),
-            # group：规范词表的分类（会话生命周期 / 工具调用 / …）。词表已扩到
-            # 47 项，GUI 需要靠它分组渲染，否则是一张难读的长表。
-            "group": e.get("group", ""),
-        }
-        for e in (_hooks_cfg.get("events") or [])
-        if e.get("name")
-    ]
-    _hook_events_selected = list((config.get("settings") or {}).get("hook_events") or [])
-    _hook_clients_summary = [
-        {
-            "name": cl.get("name", ""),
-            "config_path": cl.get("config_path", ""),
-            "event_format": cl.get("event_format"),
-            "entry_style": cl.get("entry_style", "nested"),
-            "fix_supported": bool(cl.get("fix_supported", False)),
-            # declared_events 自 2026-10-12 起是该客户端的**能力全集**，GUI 用它算
-            # 某个规范事件会写到哪些客户端（先按 event_format 转成该客户端的名字，
-            # 再看是否落在集合里）—— 不再只看 fix_supported。
-            "declared_events": cl.get("events") or [],
-            "scopes": cl.get("scopes") or [],
-        }
-        for cl in (_hooks_cfg.get("clients") or [])
-        if cl.get("name")
-    ]
-
     settings_snapshot = {
         "active_profile": config.get("active_profile", ""),
         "unified_skills_dir": config.get("unified_skills_dir", "~/.skills"),
-        "hook_events_catalog": _hook_events_catalog,
-        "hook_events_selected": _hook_events_selected,
-        "hook_clients": _hook_clients_summary,
         "auto_discover": {
             "enabled": bool((config.get("auto_discover") or {}).get("enabled", False)),
             "scan_paths": (config.get("auto_discover") or {}).get("scan_paths", []),

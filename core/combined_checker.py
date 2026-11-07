@@ -1,8 +1,7 @@
-"""Combine installation, Skills, MCP, hooks, and live capability results."""
+"""Combine installation, Skills, MCP, and live capability results."""
 
 from typing import Any, Dict, List, Optional
 
-from hooks_checker import check_hooks
 from mcp_checker import inspect_mcp_configuration, load_mcp_servers, summarize_records
 from mcp_fixer import _merged_legacy_names
 from mcp_probe import probe_mcp
@@ -220,13 +219,6 @@ def check_agents(
     }
     required = expected.get("required_capabilities", {}) or {}
     capability_groups = list(required.keys())
-    # hooks 只在端点显式声明 hooks_required 时才适用（v0.29.0 解耦：不再寄生
-    # 在能力组键名上）。纯工具端点（如 K8s/Kuboard，无 hooks_required）没有
-    # hooks 概念，不应被「客户端未配 hook」拖累其合规判定。
-    # 注：读 expected（profile 顶层）而非 required（required_capabilities 字典）——
-    # hooks_required 是 profile 级布尔字段，不在 required_capabilities 内；设计
-    # 原文写 required.get(...) 会恒为 False，此处修正为 expected.get(...)。
-    hooks_required = bool(expected.get("hooks_required", False))
     registry = effective_tools(config)
     # Stage-5 P2: per-client attachment narrows which clients are expected to
     # mount THIS endpoint.  Only when at least one client declares ``mcp_attach``
@@ -271,9 +263,6 @@ def check_agents(
             expected_url=expected_url,
             legacy_names=_merged_legacy_names(expected, tool),
         )
-        hooks = check_hooks(tool.get("hooks_config_path", "")) if tool.get("hooks_config_path") else {
-            "hooks_configured": False, "events": []
-        }
         configured_and_probed = mcp["mcp_configured"] and live_probe
         tool_names = probe["tool_names"] if configured_and_probed else []
         capabilities = {
@@ -299,9 +288,6 @@ def check_agents(
             "hermes_memory_available": capabilities.get("hermes_memory", False),
             "tdai_available": capabilities.get("tdai", False),
             "hermes_available": capabilities.get("hermes", False),
-            "hooks_configured": hooks["hooks_configured"],
-            "hooks_required": hooks_required,
-            "hook_events": hooks["events"],
             "legacy_channels": mcp["legacy_channels"],
             **_skill_state_fields(tool.get("name", ""), scan_result, tool),
         }
@@ -348,7 +334,7 @@ def result_ok(result: Dict[str, Any], *, strict_skill_state: bool = False) -> bo
 
     下列情形判为非合规（``False``）：
 
-    - 任一已安装客户端缺必需配置项（skills / MCP 配置 / hooks）；
+    - 任一已安装客户端缺必需配置项（skills / MCP 配置）；
     - 任一已安装客户端仍留有遗留通道；
     - 存在 unmanaged（未纳管却已安装）客户端。
 
@@ -364,7 +350,6 @@ def result_ok(result: Dict[str, Any], *, strict_skill_state: bool = False) -> bo
         if not (
             record.get("skills_compliant")
             and record.get("mcp_configured")
-            and (record.get("hooks_configured") or not record.get("hooks_required", True))
         ):
             return False
         if record.get("legacy_channels"):
@@ -391,7 +376,7 @@ def format_combined_report(result: Dict[str, Any]) -> str:
         "  Endpoint: " + result["endpoint"],
         (
             "  Summary: installed={installed} skills={skills_compliant} configured={mcp_configured} "
-            "connected={mcp_connected} full={full_capabilities} hooks={hooks_configured} "
+            "connected={mcp_connected} full={full_capabilities} "
             "legacy={legacy_channels} unmanaged={unmanaged_mcp}"
         ).format(**summary),
         "-" * 88,
@@ -402,9 +387,9 @@ def format_combined_report(result: Dict[str, Any]) -> str:
         status = "OK" if record["mcp_tools_list_ok"] else ("CONFIG" if record["mcp_configured"] else "MISSING")
         legacy = ",".join(record["legacy_channels"]) or "none"
         lines.append(
-            "  {name:<16} skills={skills!s:<5} mcp={status:<7} hooks={hooks!s:<5} legacy={legacy}".format(
+            "  {name:<16} skills={skills!s:<5} mcp={status:<7} legacy={legacy}".format(
                 name=record["name"], skills=record["skills_compliant"], status=status,
-                hooks=record["hooks_configured"], legacy=legacy,
+                legacy=legacy,
             )
         )
     for record in result.get("unmanaged", []):
@@ -429,7 +414,7 @@ def format_combined_markdown(result: Dict[str, Any]) -> str:
         (
             "Installed: **{installed}** · Skills compliant: **{skills_compliant}** · "
             "MCP configured: **{mcp_configured}** · Connected: **{mcp_connected}** · "
-            "Full capabilities: **{full_capabilities}** · Hooks: **{hooks_configured}** · "
+            "Full capabilities: **{full_capabilities}** · "
             "Legacy channels: **{legacy_channels}**"
         ).format(**summary),
         f"Unmanaged installed clients: **{summary.get('unmanaged_mcp', 0)}**",
@@ -444,16 +429,16 @@ def format_combined_markdown(result: Dict[str, Any]) -> str:
     if groups == list(CAPABILITY_DISPLAY_NAMES):
         header = (
             "| Client | Installed | Skills | MCP configured | Initialize | Tools list | "
-            "Hermes memory | TDAI | Hermes | Hooks | Legacy channels |"
+            "Hermes memory | TDAI | Hermes | Legacy channels |"
         )
-        separator = "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|"
+        separator = "|---|---:|---:|---:|---:|---:|---:|---:|---:|---|"
     else:
         prefix = "| Client | Installed | Skills | MCP configured | Initialize | Tools list | "
         if cap_headers:
-            header = prefix + " | ".join(cap_headers) + " | Hooks | Legacy channels |"
+            header = prefix + " | ".join(cap_headers) + " | Legacy channels |"
         else:
-            header = prefix + "Hooks | Legacy channels |"
-        separator = "|" + "---|" * (6 + len(groups) + 2)
+            header = prefix + "Legacy channels |"
+        separator = "|" + "---|" * (6 + len(groups) + 1)
     lines.extend([header, separator])
 
     for record in result["records"]:
@@ -465,7 +450,7 @@ def format_combined_markdown(result: Dict[str, Any]) -> str:
             record["name"], record["installed"], record["skills_compliant"],
             record["mcp_configured"], record["mcp_initialize_ok"],
             record["mcp_tools_list_ok"],
-        ] + capability_values + [record["hooks_configured"], legacy]
+        ] + capability_values + [legacy]
         lines.append("| " + " | ".join(str(value) for value in values) + " |")
     if result.get("unmanaged"):
         lines.extend([

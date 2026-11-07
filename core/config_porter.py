@@ -14,7 +14,7 @@
 | 键 | 通道 | 依据 |
 |---|---|---|
 | ``active_profile`` / ``auto_discover`` / ``unified_skills_dir`` / ``disabled_tools`` / ``profiles`` | overlay（``apply_profile_sources`` 合并生效） | ``--set-active-profile`` / ``--set-auto-discover`` / ``--set-unified-dir`` 同通道 |
-| ``settings.*`` / ``hooks.default_command`` / ``hooks.clients[].template`` | text-rewrite trunk ``config.yaml``（保注释） | ``--set-setting`` / ``--set-hook-template`` 同通道（``core/config_text.py``） |
+| ``settings.*`` | text-rewrite trunk ``config.yaml``（保注释） | ``--set-setting`` 同通道（``core/config_text.py``） |
 | ``discovered_tools`` | ``data/discovered_tools.yaml`` | ``--add-client`` 同通道 |
 
 ## 安全
@@ -45,9 +45,6 @@ from typing import Any, Dict, List, Optional
 import yaml
 
 from config_text import (
-    _find_client_template_span,
-    _rewrite_client_template,
-    _set_default_command_in_text,
     _set_setting_in_text,
 )
 from file_atomic import atomic_write, backup_path
@@ -67,11 +64,10 @@ _EXPORT_CONFIG_KEYS = (
     "auto_discover",
     "unified_skills_dir",
     "settings",
-    "hooks",
     "disabled_tools",
 )
 # settings 段里允许 text-rewrite 的键（与 --set-setting 的白名单一致）。
-_IMPORTABLE_SETTINGS_KEYS = ("patrol_enabled", "patrol_interval_minutes", "hook_events")
+_IMPORTABLE_SETTINGS_KEYS = ("patrol_enabled", "patrol_interval_minutes")
 
 
 def _default_config_path() -> str:
@@ -264,7 +260,7 @@ def import_config(
     """合并导入：按各键正典通道分流写入（见模块 docstring 的通道纪律表）。
 
     - overlay 键 → ``_overlay_target``（与 ``--set-unified-dir`` 同通道）；
-    - settings / hooks → text-rewrite trunk（保注释）；
+    - settings → text-rewrite trunk（保注释）；
     - discovered → 按 name 去重合并；
     - 导入值优先、不删除本地已有键；导入前对将改的文件各生成一份备份。
     """
@@ -312,7 +308,7 @@ def import_config(
 
     overlay_dirty = bool(changes)
 
-    # ── 2. settings / hooks → text-rewrite trunk（保注释）────────────────
+    # ── 2. settings → text-rewrite trunk（保注释）─────────────────────────
     #    语义值相同则跳过（不做 text-rewrite）：既避免 changes 虚报，也避免
     #    引号风格差异（'' → ""）造成的无意义写盘与备份。
     trunk_raw = ""
@@ -334,37 +330,6 @@ def import_config(
             if key in imported_settings and imported_settings[key] != current_settings.get(key):
                 new_raw = _set_setting_in_text(new_raw, key, imported_settings[key])
                 changes.append(f"settings.{key}")
-
-    imported_hooks = imported_config.get("hooks") or {}
-    current_hooks = trunk_parsed.get("hooks") or {}
-    if isinstance(imported_hooks, dict) and isinstance(current_hooks, dict):
-        if (
-            "default_command" in imported_hooks
-            and imported_hooks.get("default_command") != current_hooks.get("default_command")
-        ):
-            new_raw = _set_default_command_in_text(
-                new_raw, str(imported_hooks.get("default_command") or "")
-            )
-            changes.append("hooks.default_command")
-        imported_clients = imported_hooks.get("clients") or []
-        if isinstance(imported_clients, list):
-            for client in imported_clients:
-                if not isinstance(client, dict) or not client.get("name"):
-                    continue
-                cname = str(client["name"])
-                template = client.get("template") or {}
-                if not isinstance(template, dict) or not template:
-                    continue
-                # 逐事件合并（导入事件覆盖同名，本地其他事件保留——「不删除」原则）；
-                # 全部事件值均已一致时跳过（不写盘）。
-                span = _find_client_template_span(new_raw, cname)
-                current = dict(span[2]) if span else {}
-                merged_tpl = dict(current)
-                merged_tpl.update(template)
-                if merged_tpl == current:
-                    continue
-                new_raw = _rewrite_client_template(new_raw, cname, merged_tpl)
-                changes.append(f"hooks.clients[{cname}].template（{len(template)} 事件）")
 
     trunk_dirty = new_raw != trunk_raw
 

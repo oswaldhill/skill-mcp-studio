@@ -3,13 +3,13 @@
 
 def resolve_modes(args):
     explicit = any((
-        args.full, args.skills, args.mcp, args.hooks, args.probe_mcp,
+        args.full, args.skills, args.mcp, args.probe_mcp,
         args.report, args.sync, args.clean, args.push, args.fix,
         args.fix_skills, args.fix_mcp, args.remove_legacy_mcp,
         args.setup_all,
         args.hermes, args.ai_memory, args.all_profiles,
         # Stage-4 (按需加载与启停): toggle / audit / list modes run as their own
-        # early-return paths; they are explicit modes so the default skill/mcp/hook
+        # early-return paths; they are explicit modes so the default skill/mcp
         # checks do not also kick in.
         getattr(args, "enable_skill", None), getattr(args, "disable_skill", None),
         getattr(args, "audit_skill_states", False),
@@ -26,29 +26,25 @@ def resolve_modes(args):
         getattr(args, "add_client", None),
         getattr(args, "set_unified_dir", None),
         # 设置读写（2026-10-12）：--get-setting / --set-setting 都是独立出口，
-        # 不应连带启用 skills/mcp/hooks 默认检查（那会让写设置的退出码继承审计结论）。
+        # 不应连带启用 skills/mcp 默认检查（那会让写设置的退出码继承审计结论）。
         getattr(args, "get_setting", None),
         getattr(args, "set_setting", None),
     ))
     if not explicit:
         args.skills = True
         args.mcp = True
-        args.hooks = True
     if args.full:
         args.skills = True
         args.mcp = True
-        args.hooks = True
         args.probe_mcp = True
         args.report = True
     if args.hermes:
         args.mcp = True
     if args.ai_memory:
         args.mcp = True
-        args.hooks = True
     if args.all_profiles:
         # 遍历全部 profile：等同于对每个 profile 做一次 unified 检查 + 活体探测。
         args.mcp = True
-        args.hooks = True
         args.probe_mcp = True
     if args.fix:
         args.fix_skills = True
@@ -58,7 +54,6 @@ def resolve_modes(args):
     if args.setup_all:
         args.skills = True
         args.mcp = True
-        args.hooks = True
         args.probe_mcp = True
         args.fix_skills = True
         args.fix_mcp = True

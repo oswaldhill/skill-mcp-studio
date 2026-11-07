@@ -867,7 +867,7 @@
 
       <h3 id="s2-3b">2.3b 卡片标签列对齐（<code>.ac-path-row</code> / <code>.ac-meta-row</code>）<a class="anchor" href="#s2-3b" aria-label="锚点">#</a></h3>
       <p>Agent 卡片里有两组「标签 + 值」行：<strong>路径区</strong>（APP / CLI / CONFIG）与
-        <strong>能力摘要区</strong>（Skills / MCP / Hook）。两组必须<strong>逐项同构</strong>，否则值区起点会差十几像素，
+        <strong>能力摘要区</strong>（Skills / MCP）。两组必须<strong>逐项同构</strong>，否则值区起点会差十几像素，
         一眼看出错位（2026-10-12 用户截图反馈「最好保持对齐」）。</p>
       <ul>
         <li>行布局：两组同为 <code>grid</code> + <code>grid-template-columns: 58px minmax(0, 1fr)</code>
@@ -878,7 +878,7 @@
         <li><strong>值区排版</strong>：容器 <code>flex</code> + <code>nowrap</code>，首个值
             <code>flex: 1 1 auto; min-width: 0</code>，其余（状态标签）<code>flex: 0 0 auto</code>
             —— 状态标签恒贴右成一条竖线；路径列表改单列 <code>grid</code> 使路径等宽。
-            <strong>不用两栏 grid</strong>：Hook 行有 3 个子元素，第 3 个会被挤到第二行（渲染实测）。</li>
+            <strong>不用两栏 grid</strong>：值区那一行可以有 2 个子元素，两栏 grid 会把第 2 个挤到第二行（渲染实测）。</li>
         <li><strong>路径底色默认透明</strong>，<code>:hover</code> 才浮出胶囊：一张卡片近十个灰块会读成表单输入框。</li>
         <li><strong>分隔线跨卡片对齐</strong>：卡片内有<strong>两条</strong>整宽分隔线
             （能力区上沿、底栏上沿），两条都必须对齐。机制是<strong>锚定底部</strong>：
@@ -898,8 +898,8 @@
         <li><strong><code>.ac-path-val.is-dim</code> 只改颜色不改形状</strong>：
             <code>color: var(--faint)</code> + <code>background: transparent</code> +
             <code>border-color: transparent</code>。根因：它曾设 <code>border-color: var(--line)</code>，
-            而默认胶囊透明无边框，于是同一卡片里 Skills 成方框、MCP/Hook 是纯文本。
-            现规定淡化只表达「注册表默认值、非本机状态」，且三行在未安装时<strong>统一淡化</strong>。</li>
+            而默认胶囊透明无边框，于是同一卡片里 Skills 成方框、MCP 是纯文本。
+            现规定淡化只表达「注册表默认值、非本机状态」，且<strong>两行（Skills / MCP）</strong>在未安装时<strong>统一淡化</strong>，不允许只淡化其中一行。</li>
         <li><strong>状态色语义</strong>：仅「全部写入」用 <code>.tag.ok</code>；部分写入用中性（绿色表示「已就绪」，<code>8/21</code> 不是）。</li>
         <li><strong>未安装客户端：路径胶囊用淡化变体</strong> <code>.ac-path-val.is-dim</code>
             （<code>color: var(--faint)</code> + <code>background: transparent</code>）——
@@ -910,10 +910,9 @@
         字号 / 字重 / 大小写 / 颜色）：只改一侧必然失败，要改就两边一起改，并同步 §2.9 的硬数字。</p>
       <h3 id="s2-3c">2.3c IDE / Agent 列表视图的列与图例（<code>.agent-list-table</code>）<a class="anchor" href="#s2-3c" aria-label="锚点">#</a></h3>
       <p>列表视图（<code>.agent-list-table</code>）的列序固定为：
-        <code>名称 | 类型 | 安装 | APP | CLI | CONFIG | 技能目录 | MCP | Hook | 操作</code>。
-        MCP 与 Hook 两列的四态口径：MCP = <code>ok</code> 全部已设置 / <code>warn</code> 部分 /
-        <code>err</code> 未设置 / 中性 不支持或无端点；Hook = <code>ok</code> 全部已配置 /
-        中性 部分已配置 / <code>warn</code> 未配置 / 中性 未收录配置或仅审计。</p>
+        <code>名称 | 类型 | 安装 | APP | CLI | CONFIG | 技能目录 | MCP | 操作</code>。
+        MCP 列的四态口径：<code>ok</code> 全部已设置 / <code>warn</code> 部分 /
+        <code>err</code> 未设置 / 中性 不支持或无端点。</p>
 
       <blockquote>
         <p><strong>IDE/Agent 页的两条图例已整块撤销</strong>（2026-10-14 用户要求：「目前如果全部有图例的话
@@ -950,7 +949,7 @@
             <tr><td><code>.th-tip .tt-item</code></td>
                 <td>图例条目：图标/色点 + 标签，<code>inline-flex</code> 对齐</td></tr>
             <tr><td><code>.th-tip .tt-dot</code></td>
-                <td>8px 纯色点（MCP / Hook 的四态图例用），变体 <code>.ok</code> <code>.warn</code>
+                <td>8px 纯色点（MCP 的四态图例用），变体 <code>.ok</code> <code>.warn</code>
                     <code>.err</code> <code>.na</code> <code>.neutral</code> 与 <code>.legend-swatch</code> 同色系</td></tr>
           </tbody>
         </table>
@@ -980,8 +979,6 @@
             <tr><td>技能目录</td><td>图例行：<code>link.ok</code> 已指向统一技能目录 /
                 <code>folder.warn</code> 独立目录 / <code>cross.err</code> 无目录 / <code>minus</code> 不适用</td></tr>
             <tr><td>MCP</td><td><code>N / M = 已设置端点数 / 声明挂载的端点总数</code> + 色点图例行（四态）</td></tr>
-            <tr><td>Hook</td><td><code>N / M = 已配置事件数 / 支持的事件数（只看有无配置，不看内容）</code>
-                + 色点图例行（四态）+ 「N 档」为分层作用域</td></tr>
           </tbody>
         </table>
       </div>
@@ -991,13 +988,13 @@
         不用字符/emoji），图例一律走上面的图标名标记。</p>
 
       <p><strong>状态列内容居中</strong>（2026-10-14 用户反馈「安装 技能目录等内容，没有和上面的标题栏
-        居中对齐」）：<code>.agent-list-table</code> 的第 3 / 7 / 8 / 9 列（安装、技能目录、MCP、Hook）
+        居中对齐」）：<code>.agent-list-table</code> 的第 3 / 7 / 8 列（安装、技能目录、MCP）
         <code>th</code> 与 <code>td</code> 一律 <code>text-align: center</code>。</p>
 
       <blockquote>
-        <p>为什么居中：这四列的单元格是<strong>单枚徽标或短标签</strong>，左对齐时徽标贴着单元格左缘，
+        <p>为什么居中：这三列的单元格是<strong>单枚徽标或短标签</strong>，左对齐时徽标贴着单元格左缘，
            而列头文字 + 问号图标整体更宽，视觉上徽标「偏左」。居中后列头与内容的轴线一致
-           （实测四列内容中心与列中心偏差均为 0.0px）。名称 / 类型列保持左对齐（长文本），
+           （实测三列内容中心与列中心偏差均为 0.0px）。名称 / 类型列保持左对齐（长文本），
            操作列保持右对齐（按钮组）。</p>
       </blockquote>
 
@@ -1015,20 +1012,10 @@
                 <code>folder</code>(<code>.warn</code>) / <code>cross</code>(<code>.err</code>) / <code>minus</code>(中性)</td></tr>
             <tr><td>MCP</td><td><code>N/M</code> <code>.tag.ok</code>·<code>.tag.warn</code>·<code>.tag.err</code> /
                 不支持·<code>0</code> 中性 <code>.tag</code></td></tr>
-            <tr><td>Hook</td><td><code>N/M</code> <code>.tag.ok</code>·中性 <code>.tag</code> / 未配置
-                <code>.tag.warn</code> / 未收录·仅审计 中性 <code>.tag</code>；档数注记 <code>.al-scope</code>
-                （<strong>去盒化</strong>裸文本，见下）</td></tr>
             <tr><td>APP / CLI / CONFIG</td><td><code>.al-metric</code> 圆形计数徽标（可点，另有 <code>.hit</code> 高亮态）</td></tr>
           </tbody>
         </table>
       </div>
-
-      <p><strong><code>.al-scope</code> 去盒化</strong>（2026-10-15 层级重构）：Hook 列的「N 档」分层作用域注记
-        此前是虚线描边徽标，与实底状态胶囊（<code>.tag</code>）并排时同一格出现<strong>两种盒子</strong>：
-        虚线那个并不显得「更弱」，反而像「另一种东西」，视觉噪音与主状态抢权重。档数是元信息
-        （该客户端 Hook 配置分几档作用域），不是主状态；按密集数据表原则（<strong>盒子只承载主信息</strong>）
-        降为 <code>--faint</code> mono 裸文本，紧跟胶囊之后。主次一眼可分：实底胶囊 = 状态，裸文本 = 注记。
-        列宽也因此从 122px 收窄到 104px。</p>
 
       <p><code>.al-ico</code>：20×20 圆形，与 <code>.al-metric</code> <strong>同尺寸、同边框、同底色族</strong>
         （量级一致），<code>svg</code> 12×12；变体 <code>.ok</code>/<code>.warn</code>/<code>.err</code>
@@ -1038,7 +1025,7 @@
       <blockquote>
         <p><strong>为什么这两列最终用图标而不是文字胶囊</strong>（演进记录，三轮都是用户反馈驱动）：
            ① 最初用 <code>.ok-true</code>/<code>.ok-false</code>/<code>.ok-na</code> —— 纯着色文字，
-           与同行 MCP/Hook 的 <code>.tag</code> 胶囊混形态；② 统一成 <code>.tag</code> 胶囊后，用户仍嫌
+           与同行 MCP 的 <code>.tag</code> 胶囊混形态；② 统一成 <code>.tag</code> 胶囊后，用户仍嫌
            「<strong>胶囊里的文字显得也比较突兀</strong>」：这两列在多数行上取值相同（「已安装」「链接统一目录」），
            同一串中文逐行重复，又长又抢眼，而同行其它列都是紧凑徽标（数字 / 短标签 <code>2/2</code>），
            长文字让这两列成了整行最重的元素；③ 最终定为<strong>图标徽标</strong> —— 能一眼扫完，与数字徽标同量级。</p>
@@ -1056,8 +1043,8 @@
       <p><strong>列宽治理：<code>table-layout: fixed</code> + 紧列定宽 + 文本列弹性</strong>
         （2026-10-14 量化诊断后整改）。默认 <code>auto</code> 布局下，浏览器把表格<strong>全部宽度</strong>
         按内容比例分摊给每一列。后果：只装一枚 20px 图标徽标的列（安装、技能目录）被分到 89–125px，
-        Hook 列被分到 186px，1440px 窗口下整表约 <strong>65% 是横向空白</strong>，徽标孤零零悬在列中央。
-        解法：<code>.agent-list-table { table-layout: fixed }</code>，8 个紧列给定宽，
+        1440px 窗口下整表约 <strong>65% 是横向空白</strong>，徽标孤零零悬在列中央。
+        解法：<code>.agent-list-table { table-layout: fixed }</code>，7 个紧列给定宽，
         名称与类型两个文本列不设宽（吸收剩余空间）。</p>
 
       <div class="table-wrap">
@@ -1070,8 +1057,7 @@
             <tr><td>CONFIG (6)</td><td>70px</td><td>24px 徽标，表头词更长</td></tr>
             <tr><td>技能目录 (7)</td><td>82px</td><td>20px 徽标，表头含问号图标</td></tr>
             <tr><td>MCP (8)</td><td>78px</td><td>54px（<code>27/27</code> 胶囊）+ 20px</td></tr>
-            <tr><td>Hook (9)</td><td>104px</td><td>84px（胶囊 + 档数注记并排，去盒化后实测）+ 20px</td></tr>
-            <tr><td>操作 (10)</td><td>124px</td><td>96px（详情按钮 + kebab）+ 20px</td></tr>
+            <tr><td>操作 (9)</td><td>124px</td><td>96px（详情按钮 + kebab）+ 20px</td></tr>
           </tbody>
         </table>
       </div>
@@ -1090,15 +1076,15 @@
     <section id="s2-3d">
       <h3 id="s2-3d">2.3d 图例（<code>.skill-legend</code>）的放置与对齐<a class="anchor" href="#s2-3d" aria-label="锚点">#</a></h3>
       <p><strong>位置：一律放在所说明内容的「上方」</strong>（2026-10-14 用户定案）。页面级图例涉及
-        Skills 页、IDE/Agent 页（MCP + Hook 两条）、MCP 页、一键合并预览弹窗，共 5 处。</p>
+        Skills 页、MCP 页、一键合并预览弹窗，共 3 处。</p>
       <blockquote>
-        <p>走过一次弯路：曾把这 5 处全移到内容最下方（理由是「图例是读数据之后的对照说明」），
+        <p>走过一次弯路：曾把这 3 处全移到内容最下方（理由是「图例是读数据之后的对照说明」），
         用户看到实际渲染后判定「还是放在上面好看」，于是全部回退。教训：这类「放上还是放下」的取舍，
         语义上两边都讲得通，<strong>必须看实际渲染再定</strong>。不变量由
         <code>LegendPlacementAndAlignmentTest.test_legends_come_before_their_content</code> 钉住。</p>
       </blockquote>
       <p><strong>标签列必须定宽</strong>：<code>.skill-legend .legend-label { min-width: calc(var(--sp-9) + var(--sp-3a)) }</code>（31px）。
-        同一页会叠放多条图例，标签名字长短不一（<code>MCP</code> 3 字符 vs <code>Hook</code> 4 字符），
+        同一页会叠放多条图例，标签名字长短不一，
         不定宽时各自第一个色点<strong>错开 2px</strong>（实测）；定宽后严格对齐。与 §2.3b 的 58px 同一思路。</p>
       <p><strong>每条 <code>.legend-swatch</code> 都必须带语义 class</strong>：</p>
       <div class="table-wrap"><table>
@@ -1117,25 +1103,6 @@
         不变量由 <code>LegendPlacementAndAlignmentTest</code> 守住：色点必须有语义 class、各变体必须有
         background、标签列必须定宽、图例必须排在内容之前。</p>
       </blockquote>
-      <p><strong>Hook 列判据：只看有没有配置，不看配置内容</strong>（2026-10-13 用户要求）。某事件下只要存在任意
-        hook 条目即算「已配置」——命令内容、是否第三方工具，一概不参与判定；「缺关键事件」同理 = 该客户端支持
-        但完全没有配置的事件。此前只统计「命中特定工具命令签名」的事件，于是同一事件被别的工具占着时报「未配置」，
-        而客户端其实配了。</p>
-      <div class="table-wrap"><table>
-        <thead><tr><th>情形</th><th>Hook 列显示</th><th>说明</th></tr></thead>
-        <tbody>
-          <tr><td>已登记且全部配置</td><td><code>N/M</code>（<code>.tag.ok</code>）</td><td>N=已配置事件数，M=支持事件数</td></tr>
-          <tr><td>已登记且部分配置</td><td><code>N/M</code>（<strong>中性</strong> <code>.tag</code>）</td><td>绿色表示「已就绪」，部分配置不是就绪</td></tr>
-          <tr><td>已登记但未配置</td><td><code>未配置</code>（<code>.tag.warn</code>）</td><td></td></tr>
-          <tr><td>已登记但插件型（<code>fix_supported=false</code>）</td><td><code>仅审计</code></td><td>不支持模板注入</td></tr>
-          <tr><td><strong>未登记 Hook 配置路径</strong></td><td><strong><code>未收录</code></strong>（<strong>不是</strong>「不支持」）</td><td>尚未收录其 Hook 配置路径</td></tr>
-        </tbody></table></div>
-      <p><strong>「未收录」与「不支持」必须分开</strong>：未登记只表示还没收录它的 Hook 配置路径，不等于
-        该客户端没有 Hook 能力。实测 22 个已安装客户端里只有 6 个登记了 <code>hooks.clients</code>，
-        一律显示「不支持」会对多数行过度断言。与 Hook 业务页 <code>_hooksEntries</code> 同口径。</p>
-      <p><strong>分层作用域徽标 <code>.al-scope</code></strong>：跟在状态标签后，形如 <code>4 档</code>，
-        <code>title</code> 给出"分层作用域 N 档"；与 <code>.al-metric</code> 同族但更弱
-        （<code>--faint</code> 字色 + 虚线边框 + 透明底、不做 accent 高亮、不加 hover），因为它是元信息而非可点计数。</p>
     </section>
 
     <!-- ═══ 2.3e ═══ -->
@@ -1337,15 +1304,15 @@
     </section>
 
     <section id="s2-3g">
-      <h3 id="s2-3g">2.3g DSH 插件页（<code>page-dsh</code>，v0.31.4 新增第八页）<a class="anchor" href="#s2-3g" aria-label="锚点">#</a></h3>
+      <h3 id="s2-3g">2.3g DSH 插件页（<code>page-dsh</code>，v0.31.4 新增第七页）<a class="anchor" href="#s2-3g" aria-label="锚点">#</a></h3>
 
       <p><strong>为什么要有这一页</strong>：本工具的 Skills / MCP 是它自己的模型（符号链接 + 端点库），
       而 DSH（DeepSeek Harness）的插件是另一套：cordis 载入器的 bundle 体系。用户在 DSH 里装了插件、
       改了补丁层，却没有一个地方能一眼看清「现在到底会加载什么」。本页补这个空白。
-      <strong>它是第八页</strong>，归入<strong>「管理」组</strong>（位于「Hook」之后、「系统」组之前）。</p>
+      <strong>它是第七页</strong>，归入<strong>「管理」组</strong>（位于「MCP」之后、「系统」组之前）。</p>
 
       <p><strong>分组的判据是「什么在支配什么」</strong>：管理组各项都是「本工具去检查和管理的对象」
-      （IDE/Agent / Skills / MCP / Hook / DSH 插件 各有自己的清单与启用状态），而系统组的「变更详情」
+      （IDE/Agent / Skills / MCP / DSH 插件 各有自己的清单与启用状态），而系统组的「变更详情」
       是审计输出、「设置」是本工具的通用配置——它们描述的是<strong>工具自身</strong>而非被管理对象。
       DSH 插件虽然来自另一套 bundle 模型，但与 Skills/MCP 同为「装了哪些、哪些在生效」的资源清单，
       因此属于管理组，不应混进系统域。</p>
@@ -1427,7 +1394,7 @@
       路由之前，否则 <code>--format json</code> 会被快照出口截走）。进页时按需拉一次并缓存到
       <code>DSH_DATA</code>，「重新读取」按钮强制重拉；已拉过不重复拉，避免每次切页起子进程。</p>
 
-      <p><strong>侧栏计数徽标（<code>.nav-item .count</code>）</strong>：管理组五个导航项右侧的计数徽标
+      <p><strong>侧栏计数徽标（<code>.nav-item .count</code>）</strong>：管理组四个导航项右侧的计数徽标
       <strong>口径必须一致</strong>——显示「该页要管理的对象<strong>总数</strong>」，不是筛选后的可见数、
       也不是启用数：</p>
 
@@ -1438,7 +1405,6 @@
             <tr><td>IDE / Agent</td><td><code>visible.length</code>（<code>install_state !== "none"</code>）</td><td>受管客户端数</td></tr>
             <tr><td>Skills</td><td><code>skills.skill_count</code></td><td>统一技能数</td></tr>
             <tr><td>MCP</td><td><code>endpoints.length</code></td><td>MCP 端点条目数</td></tr>
-            <tr><td>Hook</td><td><code>_hooksEntries().length</code></td><td>Hook 条目数</td></tr>
             <tr><td>DSH 插件</td><td><code>summary.plugins</code></td><td>插件总数（已启用 + 装了未启用 + 来源失效）</td></tr>
           </tbody>
         </table>
@@ -1484,13 +1450,13 @@
       <p><strong>行内状态点（<code>.dot</code> 三态）</strong>：<code>.dot.ok</code>（<code>--ok</code> + <code>--ring-ok</code> 环）/
         <code>.dot.warn</code>（<code>--warn</code> + <code>--ring-warn</code>）/ <code>.dot.err</code>（<code>--err</code> + <code>--ring-err</code>）/
         <code>.dot.faint</code>（透明底 + <code>--line-strong</code> 内描边）。9px 圆点，<code>--r-pill</code>。
-        用途：表格或列表里一行一个语义状态（如 Hook 接入情况）。
+        用途：表格或列表里一行一个语义状态（如 MCP 端点连通情况）。
         <strong>颜色只是辅助</strong>：同一行必须有文字列说明状态，点上加 <code>aria-hidden="true"</code>。
         <strong>不用 emoji 当状态图标</strong>。
         这四种是既有写法，不要另造 <code>.dot-ok</code> / <code>.dot-idle</code> 之类的平行类。</p>
 
       <p><strong>「数据区错误」与「操作结果」必须分开</strong>：数据区自身状态（面板加载失败、清单为空）<strong>就地</strong>说明；
-        一次操作的结果（保存设置 / 修复 Skills / 写入 Hook）走 <strong>弹框</strong>（<code>runTaskModal</code> 的
+        一次操作的结果（保存设置 / 修复 Skills / 写入 MCP）走 <strong>弹框</strong>（<code>runTaskModal</code> 的
         <code>.task-card</code>，含 <code>.task-result</code> ok/err 与 <code>.task-fold</code> 折叠详情）。
         把 CLI 整段 stdout 铺成页面级 <code>.banner</code> 会变成一大片文本（实测保存设置失败时贴了 1600 字符扫描报告）；
         <code>.banner</code> 只留给非阻塞的页面级告知（如自动发现新客户端）。
@@ -1683,7 +1649,6 @@
             <tr><td>概览</td><td>刷新审计</td><td><code>refresh</code></td></tr>
             <tr><td>IDE / Agent</td><td>刷新审计</td><td><code>refresh-audit</code></td></tr>
             <tr><td><strong>MCP</strong></td><td><strong>刷新 MCP</strong></td><td><code>refresh-mcp</code></td></tr>
-            <tr><td>Hook</td><td>一键写入 Hook</td><td><code>fix-hooks-all</code></td></tr>
             <tr><td>变更详情</td><td>运行快照对比</td><td><code>run-snapshot</code></td></tr>
             <tr><td>DSH 插件</td><td>重新读取</td><td><code>refresh-dsh</code></td></tr>
           </tbody>
@@ -1769,7 +1734,7 @@
     <section id="s2-10">
       <h3 id="s2-10">2.10 设置页（<code>.settings-tab</code> / <code>.settings-card</code>）<a class="anchor" href="#s2-10" aria-label="锚点">#</a></h3>
       <p>设置页用分段 tab（<code>.settings-tab</code>）+ 卡片分组（<code>.settings-card</code>）。
-        <strong>五个 tab 与各自的卡片归属</strong>（新增设置项必须落到下表的某一 tab，不要新开 tab）：</p>
+        <strong>四个 tab 与各自的卡片归属</strong>（新增设置项必须落到下表的某一 tab，不要新开 tab）：</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>tab</th><th>卡片</th></tr></thead>
@@ -1784,8 +1749,7 @@
                 （<code>#webdav-sync-card</code>，规划中）：远端 URL + 凭据状态行（脱敏）、推/拉按钮（写操作需确认）、
                 同步范围说明。同步范围固定为个人配置层（<code>local_overrides</code> / <code>market_sources</code> /
                 <code>discovered_tools</code> / <code>skill_versions</code>），<strong>凭据与技能包本体永不同步</strong></td></tr>
-            <tr><td>IDE / Agent <code>agents</code></td><td>IDE / Agent 默认路径；<strong>卡片/列表上的能力摘要</strong>（Skills / MCP / Hook 三行，无需点开详情）；客户端详情内的「Hook 配置」（分层作用域 / 命名规范 / 支持事件）</td></tr>
-            <tr><td><strong>Hook <code>hooks</code></strong></td><td>要写入的 Hook 事件（勾选，按分类分组）</td></tr>
+            <tr><td>IDE / Agent <code>agents</code></td><td>IDE / Agent 默认路径；<strong>卡片/列表上的能力摘要</strong>（Skills / MCP 两行，无需点开详情）</td></tr>
             <tr><td>MCP <code>mcp</code></td><td><strong>活动端点</strong>（下拉切换）、<strong>自动发现</strong>（开关 + 扫描路径只读）、MCP 端点库</td></tr>
           </tbody>
         </table>
@@ -1830,51 +1794,6 @@
         同步范围固定为<strong>个人配置层</strong>（<code>local_overrides</code> / <code>market_sources</code> /
         <code>discovered_tools</code> / <code>skill_versions</code>），<strong>凭据与技能包本体永不同步</strong>。</p>
 
-      <p><strong>Hook tab（<code>hooks</code>）</strong>：<strong>管理「要写入哪些生命周期事件」</strong>，
-        不是展示各 IDE 的接入状态。理由：Skill / MCP 两个 tab 管的都是配置本身，Hook 也应一致；
-        各客户端接入状态与写入/移除属于 <strong>Hook 业务页</strong>。</p>
-      <p>一张卡：<strong>要写入的 Hook 事件</strong> —— 列出 <code>hooks.events</code> 全部<strong>规范事件</strong>
-        （勾选框 + 事件名 + 说明 + 「写往」几个客户端），保存写入 <code>settings.hook_events</code>；
-        未勾选任何事件 = 不写入（<strong>停用</strong>）。<strong>默认全选</strong>（出厂即列出全部规范事件）；卡片头部提供 <strong>「全选」/「清空」</strong> —— 二者只改<strong>本地勾选态</strong>，仍需点「保存」才落盘。词表已扩到 47 项（各客户端官方事件集的并集），
-        故按 <code>group</code> <strong>分组渲染</strong>，分组表头用 <code>.hook-group-row</code>
-        （<code>--panel-2</code> 底色 + <code>--faint</code> 字 + <code>--fs-2xs</code>）。</p>
-      <p><strong>「客户端事件命名规范」表已移入「IDE / Agent → 详情」</strong>：客户端清单、hook 配置
-        文件路径、命名规范、分层作用域本就是「这个客户端」的属性，与 APP/CLI/CONFIG 路径同类；
-        两处各维护一份必然漂移。<strong>不要在 Hook tab 重新加回该表</strong>。</p>
-      <p><strong>IDE / Agent 详情新增「Hook 配置」区块</strong>（<code>.ad-section</code>，与安装路径 / Skills / MCP 并列）：
-        <code>配置文件</code> / <code>分层作用域</code>（每档一行：标签左 + 路径右，复用
-        <code>.ad-entries</code>、<code>.ad-entry</code>、<code>.ad-e-key</code>、<code>.ad-e-loc</code>）/
-        <code>事件命名</code> / <code>支持事件</code> / <code>事件清单</code>（作用域路径用 <code>.ad-e-loc-full</code> <strong>完整显示</strong>、允许换行、不做省略号截断）（复用 <code>.ad-pills</code> +
-        <code>.ad-pill</code>，<strong>已写入</strong>的换成 <code>.tag.ok</code>；颜色只是辅助，事件名本身可读）/
-        <code>缺关键事件</code>（仅非空时渲染）。写入动作复用详情页脚「写入 Hook」（CLI <code>--fix-hooks</code>）。</p>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>层</th><th>位置</th><th>作用</th></tr></thead>
-          <tbody>
-            <tr><td>规范事件词表</td><td><code>hooks.events</code></td><td>可勾选<strong>全集</strong>（47 项，含 <code>group</code> 分类）</td></tr>
-            <tr><td><strong>要写入的事件</strong></td><td><code>settings.hook_events</code></td><td><strong>唯一决定写入什么</strong></td></tr>
-            <tr><td>客户端能力全集</td><td><code>hooks.clients[].events</code></td><td>该客户端<strong>支持</strong>的全部事件（用它自己的命名）</td></tr>
-            <tr><td>命名 / 条目形态</td><td><code>event_format</code> / <code>entry_style</code></td><td>规范名 → 该客户端名；条目结构（嵌套 / 扁平）</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <ul>
-        <li>写入只看 <code>settings.hook_events</code>，<strong>不再读 <code>template</code></strong>
-            （template 仅作键不存在时的回落，以及提供命令文案）。</li>
-        <li><strong>能力校验（2026-10-12 变更）</strong>：写入前按该客户端 <code>events</code> 过滤，
-            <strong>只写它认的事件</strong>。此前「勾了就一定写得上」（用兜底命令硬写），会把 Cursor 独有的
-            <code>BeforeTabFileRead</code> 写进根本不认识它的 Claude Code。现在跳过并回报
-            <code>skipped</code> —— 这<strong>不是</strong>「静默漏写」：GUI 只在客户端详情里列出它支持的事件。</li>
-        <li><strong>未配置</strong>（键不存在）与<strong>空列表</strong>语义不同：前者回落 template，
-            后者是明确的停用选择，不得回落。</li>
-        <li><strong>条目形态按客户端声明</strong>（<code>entry_style</code>），两套<strong>不可混用</strong>：
-            Cursor 是扁平 <code>{type, command, matcher}</code>；Claude Code / TRAE / Codex / WorkBuddy
-            是嵌套 <code>{matcher, hooks: [{type, command}]}</code>。</li>
-        <li>「缺关键事件」审计由<strong>写入意图</strong>推导（<code>settings.hook_events</code> ∩ 能力，
-            或回落 <code>template</code> 键），<strong>不是</strong>由能力全集推导 —— 否则 Claude Code 会把
-            29 个「支持但本次没打算写」的事件全报成缺失（假警报）。</li>
-        <li>只增不减：客户端已有的非 ai-memory hook 必须原样保留。</li>
-      </ul>
     </section>
 
     <!-- ═══ 2.11 ═══ -->
@@ -1903,16 +1822,16 @@
         <li>口径（受管 = 已装 + 仅配置 + 未安装）不得因文案调整而改变，由 <code>tests/test_dashboard_overview_stats.py</code> 守住</li>
       </ul>
 
-      <h3 id="s2-11">2.11 概览页「全量检查」区（4 维度 + 端点，v0.30.0）<a class="anchor" href="#s2-11" aria-label="锚点">#</a></h3>
+      <h3 id="s2-11">2.11 概览页「全量检查」区（3 维度 + 端点，v0.30.0）<a class="anchor" href="#s2-11" aria-label="锚点">#</a></h3>
       <p>概览页的「全量检查」按钮跑<strong>与托盘后台巡检同一条</strong> <code>--snapshot</code>
-      命令（4 维度变更对比：IDE/Agent · MCP · Skill · Hook）+ 端点库整体探活
+      命令（3 维度变更对比：IDE/Agent · MCP · Skill）+ 端点库整体探活
       （<code>--endpoint-status</code> 无 <code>--profile</code>，<strong>不绑定活动端点</strong>）。
       两处同源：概览页显示「检测到变更」⇔ 托盘红点（同一 <code>has_changes</code> 判据）。
       2026-10-22 用户反馈：「首页的检查应该显示后台全量检查的内容，和状态栏的功能统一」。</p>
       <ul>
         <li><strong>统一 UI（2026-10-22 用户反馈）</strong>：变更明细<strong>行内展开</strong>在该维度行内
           （<code>.note</code> 小字，每条 <code>name: detail</code>），<strong>不设「变更详情」跳转链接</strong>；
-          4 维度与端点合并<strong>同一张 kv 表</strong>。</li>
+          3 维度与端点合并<strong>同一张 kv 表</strong>。</li>
         <li>verdict 三态：全部连通（ok 绿）/ 部分不通（err 红）/ 全部不通（err 红）；
           每端点行用 <code>.tag.ok</code> / <code>.tag.err</code>（有 CSS 定义，勿用幽灵类 endpoint-verdict）。</li>
         <li>单端点错误以 <code>.note</code> 缩在该端点行内（不弹页面级 banner——banner 只留给

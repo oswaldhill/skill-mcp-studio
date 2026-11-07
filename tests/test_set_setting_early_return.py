@@ -2,16 +2,20 @@
 
 ## 为什么需要这条门禁
 
-用户截图：设置页保存 Hook 事件时报「保存 Hook 事件失败」，错误详情是**整段
-1600 字符的技能扫描报告**。根因不是写入失败 —— CLI 明明打印了
-`✅ hook_events = [...]`，但它是**主流程末尾**的一段，于是：
+用户截图：设置页保存时报「保存失败」，错误详情是**整段 1600 字符的技能扫描
+报告**。根因不是写入失败 —— CLI 明明打印了 `✅ patrol_enabled = True`，但它是
+**主流程末尾**的一段，于是：
 
 1. 一次纯设置写入会顺带把 11 阶段审计跑完（慢、输出噪声大）；
 2. 退出码**继承审计结论** —— 本机有 6 个技能目录缺失，`result_ok` 为假，
    `main()` 返回 1 → GUI 判「保存失败」并把 stdout 当错误详情展示。
 
-修法：与 `--get-setting` / `--list-hooks` / `--snapshot` 同为**早返回出口**，
-退出码只反映写入本身。本文件把这两条钉死，防止回退成「主流程末尾的一段」。
+修法：与 `--get-setting` / `--snapshot` 同为**早返回出口**，退出码只反映写入
+本身。本文件把这两条钉死，防止回退成「主流程末尾的一段」。
+
+> v0.33.0：Hook 功能（含 `settings.hook_events`）已整体移除，故本文件把示例键
+> 从 `hook_events` 换成仍在白名单里的 `patrol_enabled`（`scan._run_set_setting`
+> 允许 `patrol_enabled` / `patrol_interval_minutes`）。门禁意图不变。
 """
 import os
 import subprocess
@@ -51,23 +55,23 @@ class SetSettingEarlyReturnTest(unittest.TestCase):
     def test_cli_modes_treats_set_setting_as_explicit(self):
         """`resolve_modes` 必须把 set_setting 视为显式模式。
 
-        否则它会连带启用 skills/mcp/hooks 默认检查 —— 那正是退出码被审计结论
+        否则它会连带启用 skills/mcp 默认检查 —— 那正是退出码被审计结论
         污染、以及输出里混入整段扫描报告的来源。
         """
         from cli_modes import resolve_modes  # noqa: E402
 
         class _A:
             def __init__(self, **kw):
-                for n in ("full skills mcp hooks probe_mcp report sync clean push fix "
+                for n in ("full skills mcp probe_mcp report sync clean push fix "
                           "fix_skills fix_mcp remove_legacy_mcp setup_all hermes "
                           "ai_memory all_profiles").split():
                     setattr(self, n, False)
                 for k, v in kw.items():
                     setattr(self, k, v)
 
-        a = resolve_modes(_A(set_setting="hook_events=Stop"))
-        self.assertFalse(a.skills or a.mcp or a.hooks,
-                         "set_setting 被当成隐式模式，会连带跑 skills/mcp/hooks 检查")
+        a = resolve_modes(_A(set_setting="patrol_enabled=true"))
+        self.assertFalse(a.skills or a.mcp,
+                         "set_setting 被当成隐式模式，会连带跑 skills/mcp 检查")
 
     def test_exit_code_reflects_write_not_audit(self):
         """真跑一次：写入必须退出 0，且输出里不得混入审计报告。
@@ -77,8 +81,8 @@ class SetSettingEarlyReturnTest(unittest.TestCase):
         """
         import yaml
         cur = yaml.safe_load((ROOT / "config.yaml").read_text(encoding="utf-8"))
-        val = ",".join(cur["settings"]["hook_events"])
-        r = _run(["--set-setting", "hook_events=" + val])
+        val = "true" if cur["settings"]["patrol_enabled"] else "false"
+        r = _run(["--set-setting", "patrol_enabled=" + val])
         self.assertEqual(r.returncode, 0,
                          f"--set-setting 应退出 0，实际 {r.returncode}；stdout 尾部：\n{r.stdout[-600:]}")
         for noise in ("Skills 统一化检查报告", "Phase 1", "Phase 7", "frontmatter 契约审计"):

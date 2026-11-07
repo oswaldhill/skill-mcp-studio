@@ -1,8 +1,8 @@
 {
   "_meta": {
     "purpose": "PRD ↔ 实现 对照矩阵的单一数据源。markdown 清单与门禁断言都由它派生，避免三处各写一份。",
-    "updated": "2026-10-25",
-    "prd_version": "v1.7",
+    "updated": "2026-11-07",
+    "prd_version": "v1.8",
     "status_vocab": {
       "done": "✅ 已实现",
       "partial": "🟡 部分实现",
@@ -649,28 +649,6 @@
       "note": ""
     },
     {
-      "id": "6.4-02",
-      "prd": "§6.4",
-      "capability": "Hook 命令模板（按事件编辑 + 预设）",
-      "type": "写",
-      "status": "done",
-      "evidence": [
-        {
-          "kind": "flag",
-          "value": "--set-hook-template"
-        },
-        {
-          "kind": "flag",
-          "value": "--apply-hook-preset"
-        },
-        {
-          "kind": "flag",
-          "value": "--list-hook-templates"
-        }
-      ],
-      "note": ""
-    },
-    {
       "id": "6.4-03",
       "prd": "§6.4",
       "capability": "自动发现开关（写 overlay）",
@@ -845,57 +823,6 @@
         }
       ],
       "note": "reduced-motion 覆盖动画；aria-hidden 43 处"
-    },
-    {
-      "id": "6.6-01",
-      "prd": "§6.6（补）",
-      "capability": "Hook 页：事件词表 + 每客户端接入状态",
-      "type": "读",
-      "status": "done",
-      "evidence": [
-        {
-          "kind": "flag",
-          "value": "--list-hooks"
-        },
-        {
-          "kind": "gui",
-          "value": "data-page=\"hooks\""
-        }
-      ],
-      "note": "PRD §6 原缺 Hook 页需求，本次补入"
-    },
-    {
-      "id": "6.6-02",
-      "prd": "§6.6（补）",
-      "capability": "Hook 写入 / 移除（带备份）",
-      "type": "写（业务）",
-      "status": "done",
-      "evidence": [
-        {
-          "kind": "flag",
-          "value": "--fix-hooks"
-        },
-        {
-          "kind": "flag",
-          "value": "--remove-hooks"
-        }
-      ],
-      "note": ""
-    },
-    {
-      "id": "6.6-03",
-      "prd": "§6.6（补）",
-      "capability": "Hook 漂移检测与关键事件缺失提示",
-      "type": "读",
-      "status": "done",
-      "evidence": [
-        {
-          "kind": "symbol",
-          "file": "gui/dashboard.html",
-          "value": "missing_key_events"
-        }
-      ],
-      "note": ""
     },
     {
       "id": "6.7-01",
@@ -1294,24 +1221,6 @@
         }
       ],
       "note": "WebDAV 只搬用户自己的配置小层，不搬技能资产与凭据"
-    },
-    {
-      "id": "8-03",
-      "prd": "§8",
-      "capability": "不内置任何特定工具的 Hook 命令",
-      "type": "边界",
-      "status": "done",
-      "evidence": [
-        {
-          "kind": "flag",
-          "value": "--apply-hook-preset"
-        },
-        {
-          "kind": "flag",
-          "value": "--set-hook-template"
-        }
-      ],
-      "note": "v0.29.0 剥离 ai-memory 后确立；用户自定义模板"
     },
     {
       "id": "8-04",

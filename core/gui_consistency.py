@@ -31,9 +31,6 @@ REQUIRED_RECORD_FIELDS = [
     "mcp_initialize_ok",
     "mcp_tools_list_ok",
     "capabilities",
-    "hooks_configured",
-    "hooks_required",
-    "hook_events",
     "legacy_channels",
     # Stage-4 (L5): the dashboard renders per-skill enable/disable state, so
     # the snapshot contract guarantees these fields on every record.

@@ -564,13 +564,6 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
         "--migrate-skill-links",
         "--mcp",
         "--remove-legacy-mcp",
-        // Hook 管理域（A 阶段）：生命周期 hook 的列出 / 写入 / 移除。
-        "--list-hooks",
-        "--list-hook-templates",
-        "--set-hook-template",
-        "--apply-hook-preset",
-        "--fix-hooks",
-        "--remove-hooks",
         // 变更检测（B 阶段）：产出持久化快照并与上次对比（只读不探活）。
         "--snapshot",
         // 后台巡检设置（D 阶段）：读写 config.yaml 的 settings 段。
@@ -1200,7 +1193,7 @@ mod tests {
     #[test]
     fn snapshot_has_changes_reads_structured_field() {
         assert_eq!(
-            snapshot_has_changes(r#"{"has_changes": true, "summary": {"hooks": 2}}"#),
+            snapshot_has_changes(r#"{"has_changes": true, "summary": {"skills": 2}}"#),
             Some(true)
         );
         assert_eq!(
@@ -1220,7 +1213,7 @@ mod tests {
     fn snapshot_has_changes_returns_none_when_unparsable() {
         // 解析失败必须与「确实无变更」区分开：返回 None 让调用方保持不变
         // 而不是把状态误清成「无变更」。
-        assert_eq!(snapshot_has_changes("检测到变更：hooks=2"), None);
+        assert_eq!(snapshot_has_changes("检测到变更：skills=2"), None);
         assert_eq!(snapshot_has_changes(""), None);
         assert_eq!(snapshot_has_changes("{不合法 JSON"), None);
         // 合法 JSON 但缺字段，同样视为没读懂

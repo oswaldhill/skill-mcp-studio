@@ -161,14 +161,28 @@ class PrdCrossReferenceTest(unittest.TestCase):
         self.assertIn("技能关闭", self.prd)
         self.assertIn("§6.2.1", self.prd)
 
-    def test_prd_sections_66_to_68_exist(self):
-        """v1.6 补齐的三页需求必须还在，且矩阵里有对应条目。"""
-        for sec in ("6.6 Hook", "6.7 变更详情", "6.8 概览"):
+    def test_prd_sections_67_to_68_exist(self):
+        """v1.6 补齐的页面需求必须还在，且矩阵里有对应条目。
+
+        v0.33.0：Hook 功能整体移除，§6.6「Hook（生命周期事件）」在 PRD 里已标
+        「已作废」，矩阵中对应的 6.6-* 条目也一并删除。因此本断言只覆盖仍然
+        有效的两页（§6.7 变更详情 / §6.8 概览）；同时**反向守护** §6.6 不得被
+        悄悄改回「有效需求」——它必须仍明确标注作废。
+        """
+        for sec in ("6.7 变更详情", "6.8 概览"):
             self.assertIn(f"### {sec}", self.prd, f"PRD 缺少 §{sec}")
         ids = {r["id"] for r in self.data["rows"]}
-        for prefix in ("6.6-", "6.7-", "6.8-"):
+        for prefix in ("6.7-", "6.8-"):
             self.assertTrue(any(i.startswith(prefix) for i in ids),
                             f"矩阵缺少 {prefix} 条目")
+        # Hook 已移除：PRD 若还留着 6.6 章节，必须明确是「已作废」；
+        # 矩阵里也不得再出现 6.6-* 条目。
+        if "### 6.6 " in self.prd:
+            self.assertIn("已作废", self.prd.split("### 6.6 ", 1)[0][-200:] +
+                          self.prd.split("### 6.6 ", 1)[1][:120],
+                          "§6.6 Hook 章节必须标注已作废")
+        self.assertEqual([i for i in ids if i.startswith("6.6-")], [],
+                         "矩阵不应再有 6.6-Hook 条目（该需求已撤销）")
 
     def test_overview_no_longer_claims_probe_kpi(self):
         """§5.3 曾写概览含「MCP 探活」KPI，实际已移除——不得回退。"""

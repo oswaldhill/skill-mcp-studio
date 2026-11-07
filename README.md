@@ -1,8 +1,8 @@
 # Skill MCP Studio
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v0.32.0-blue" alt="version">
-  <img src="https://img.shields.io/badge/build-132-lightgrey" alt="build">
+  <img src="https://img.shields.io/badge/version-v0.33.0-blue" alt="version">
+  <img src="https://img.shields.io/badge/build-133-lightgrey" alt="build">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="license">
   <img src="https://img.shields.io/badge/python-%3E%3D3.11-3776AB" alt="python">
   <img src="https://img.shields.io/github/actions/workflow/status/oswaldhill/skill-mcp-studio/build-macos.yml?branch=develop&label=CI%20(macOS)" alt="CI">
@@ -23,17 +23,15 @@ Python 审计 CLI、一个纯前端八页管理台（Tauri 桌面壳）和 66 �
 
 在此之上还有四块**横切能力**（对应管理台的另外几页）：
 
-4. **生命周期 Hook** → 47 个规范事件词表、每客户端实际接入了哪些、一键写入/移除
-   （带备份），以及漂移检测；
-5. **变更追踪** → 后台巡检快照 diff（4 个维度），变更可接受 / 忽略，忽略清单幂等；
-6. **DSH 插件** → DeepSeek Harness 各 profile 的插件清单、`enabled` / `installed` /
+4. **变更追踪** → 后台巡检快照 diff（3 个维度），变更可接受 / 忽略，忽略清单幂等；
+5. **DSH 插件** → DeepSeek Harness 各 profile 的插件清单、`enabled` / `installed` /
    `broken` 三态与 patch 层结构（只读，明文密钥绝不回显）；
-7. **通用配置** → 统一技能目录、MCP 端点库、自动发现、Hook 命令模板、配置导入导出、
+6. **通用配置** → 统一技能目录、MCP 端点库、自动发现、配置导入导出、
    WebDAV 跨设备同步、版本信息。
 
 每条判断独立报告，互不混为一谈：
 
-> **MCP 配置 ≠ 连通性 ≠ 生命周期 hooks ≠ 技能启停一致性 ≠ DSH 插件启用状态**。
+> **MCP 配置 ≠ 连通性 ≠ 技能启停一致性 ≠ DSH 插件启用状态**。
 
 ---
 
@@ -51,9 +49,7 @@ Python 审计 CLI、一个纯前端八页管理台（Tauri 桌面壳）和 66 �
   登记失效 / 仓库待同步）、按 `owner/repo` 搜索安装与升级，升级前自动备份、可回滚。
 - **使用画像**：`load` / `browse` / `edit` / `last_used` / `never_used` 四类行为统计，
   用于回答「哪些技能长期没被用过」。
-- **生命周期 Hook**：47 事件规范词表 + 每客户端接入状态（写 `hooks.clients` 的集合
-  族）、写入/移除带备份、漂移检测。
-- **变更追踪**：后台巡检快照 diff（4 维度），变更可接受/忽略，忽略清单幂等。
+- **变更追踪**：后台巡检快照 diff（3 维度），变更可接受/忽略，忽略清单幂等。
 - **DSH 插件（只读）**：各 profile 的 cordis bundle 清单与载入顺序、三态判定、
   patch 层结构统计；`cordis.patch.yml` 的明文密钥**绝不回显**。
 - **配置搬运**：本地 + iCloud 导入导出；WebDAV 跨设备同步（只搬 3 个个人配置文件，
@@ -71,7 +67,7 @@ scan.py                  CLI 入口（多阶段主流程 + 各子命令早返回
 ├── core/                Python 领域逻辑（66 模块）
 │   ├── checker/fixer          Skills 检查与修复（symlink 对齐）
 │   ├── mcp_checker/mcp_fixer/mcp_probe   MCP 配置检查、修复、活体探测
-│   ├── combined_checker       每客户端综合审计（Skills + MCP + hooks）
+│   ├── combined_checker       每客户端综合审计（Skills + MCP）
 │   ├── profile_loader         endpoint profile 加载与三来源合并
 │   ├── management_snapshot     管理台快照（IDE/Skills/MCP 三面板）
 │   ├── endpoint_library/store  端点库 CRUD 与持久化
@@ -149,13 +145,13 @@ profiles:
 
 ```bash
 skill-mcp-studio --list-profiles
-skill-mcp-studio --profile my-mcp --skills --mcp --hooks
+skill-mcp-studio --profile my-mcp --skills --mcp
 ```
 
 ### 3. 首次只读审计（活体探测 + 报告）
 
 ```bash
-skill-mcp-studio --profile my-mcp --skills --mcp --hooks --probe-mcp --report
+skill-mcp-studio --profile my-mcp --skills --mcp --probe-mcp --report
 ```
 
 无参数执行是 **只读** 的；`--full` = 全部只读检查 + 报告，**绝不隐含** git pull /
@@ -171,7 +167,7 @@ cleanup / commit / push / 修复。
 **只读审计**
 
 ```text
---skills / --mcp / --hooks     分项只读检查
+--skills / --mcp               分项只读检查
 --probe-mcp                    执行 MCP initialize + tools/list
 --full                         全部只读检查 + 端点探测 + 报告
 --scan-only                    仅基础扫描 + 路径验证 + 变更追踪
@@ -185,14 +181,6 @@ cleanup / commit / push / 修复。
 --setup-all        一键设置并检查所有已安装 IDE/Agent 的 Skills + 统一 MCP
 --remove-legacy-mcp  备份并移除旧 Hermes/legacy MCP 条目
 --set-unified-dir PATH   写入 unified_skills_dir
-```
-
-**Hook 命令模板（v0.29.0）**
-
-```text
---list-hook-templates                     只读：列出各客户端 hook 模板与可用变量（JSON）
---set-hook-template EVENT=COMMAND [--client C]   写入单事件命令模板（text-rewrite 保注释）
---apply-hook-preset NAME [--client C]      应用预设（empty/logging/webhook/local-script/custom）
 ```
 
 **设置（通用配置）**
@@ -456,7 +444,7 @@ profiles:
 
 ![Skill MCP Studio 管理台](docs/images/dashboard.png)
 
-`gui/dashboard.html` 是八页管理台（**概览 · IDE/Agent · Skills · MCP · Hook · 变更详情 · DSH 插件 · 设置**），消费
+`gui/dashboard.html` 是七页管理台（**概览 · IDE/Agent · Skills · MCP · 变更详情 · DSH 插件 · 设置**），消费
 管理快照（`--management --format json`）：
 
 1. **概览**：六项配置侧 KPI（受管客户端 / 已安装 / 仅发现配置 / 未安装 / 统一技能 /
@@ -465,11 +453,10 @@ profiles:
 3. **Skills**：统一目录、技能清单、每客户端启用状态、一键合并（含预览与图例）、
    版本与五态更新检查、使用画像；
 4. **MCP**：每客户端挂载与条目分类（已挂载 / 旧通道 / 未纳管）+ 覆盖矩阵；
-5. **Hook**：47 事件词表、每客户端接入状态、写入 / 移除（带备份）、漂移检测；
-6. **变更详情**：后台巡检快照 diff（4 维度），变更接受 / 忽略 / 取消忽略；
-7. **DSH 插件**：各 profile 的插件清单、`enabled`/`installed`/`broken` 三态、
+5. **变更详情**：后台巡检快照 diff（3 维度），变更接受 / 忽略 / 取消忽略；
+6. **DSH 插件**：各 profile 的插件清单、`enabled`/`installed`/`broken` 三态、
    patch 层结构（只读；明文密钥脱敏，不提供启用/禁用入口）；
-8. **设置**：通用配置（统一技能目录、MCP 端点库增删改、自动发现、Hook 命令模板、
+7. **设置**：通用配置（统一技能目录、MCP 端点库增删改、自动发现、
    配置导入导出、WebDAV 同步、版本与关于）。
 
 通用 / 业务分离：通用配置在「设置」页、业务动作在对应管理页。产品需求单一权威见
@@ -534,7 +521,7 @@ cargo tauri build --target universal-apple-darwin
 | --- | --- |
 | push / PR 到 `master` | 构建 universal `.app` + `.dmg`，上传为 workflow artifact |
 | 手动 `workflow_dispatch` | 同上 |
-| push `v*` tag（如 `v0.32.0`） | 构建并**自动创建 GitHub Release**，上传 `.dmg` 与 `.app.zip` |
+| push `v*` tag（如 `v0.33.0`） | 构建并**自动创建 GitHub Release**，上传 `.dmg` 与 `.app.zip` |
 
 产物为**通用二进制（universal）**，原生运行于 Intel 与 Apple Silicon，无需 Rosetta。
 
@@ -565,7 +552,7 @@ variables → Actions 配置以下 secrets：
 | 决策 | [`docs/decisions/`](docs/decisions/) | 待决问题定案（D1–D22）、阶段四立项评估 |
 | 评审 | [`docs/reviews/`](docs/reviews/) | 评审整改清单与评审报告（均为时点留档） |
 | 交接与计划 | [`docs/superpowers/`](docs/superpowers/) | HANDOFF、实施计划、功能设计 |
-| 取证 | [`docs/research/`](docs/research/) | Hook 事件能力表等调研取证 |
+| 取证 | [`docs/research/`](docs/research/) | 客户端能力调研取证 |
 
 各文档的有效性状态（当前有效 / 历史归档 / 已被取代）以 [`docs/README.md`](docs/README.md)
 为准；版本号以 `version.json` 为单一事实源，PRD 实现矩阵以

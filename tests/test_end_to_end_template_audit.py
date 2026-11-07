@@ -1,5 +1,5 @@
 """End-to-end proof for phase-2 DoD: a generic capability template drives a full
-four-question audit (install evidence -> Skills path -> MCP config+hooks ->
+four-question audit (install evidence -> Skills path -> MCP config ->
 endpoint liveness + capability-group coverage).
 
 The live HTTP handshake itself is covered against a real subprocess server in
@@ -30,14 +30,6 @@ def _make_config(tmp: str) -> dict:
     mcp_json = os.path.join(tmp, "client-mcp.json")
     with open(mcp_json, "w", encoding="utf-8") as handle:
         json.dump({"mcpServers": {"generic-mcp": {"url": ENDPOINT_URL}}}, handle)
-
-    hooks_json = os.path.join(tmp, "client-hooks.json")
-    with open(hooks_json, "w", encoding="utf-8") as handle:
-        json.dump({
-            "hooks": {
-                "on_session_end": {"command": "memory-sync --write"},
-            }
-        }, handle)
 
     install_evidence = os.path.join(tmp, "client-installed.flag")
     with open(install_evidence, "w", encoding="utf-8") as handle:
@@ -75,7 +67,6 @@ def _make_config(tmp: str) -> dict:
                 "config_path": mcp_json,
                 "format": "json",
                 "mcp_key_path": ["mcpServers"],
-                "hooks_config_path": hooks_json,
             },
         ],
     }
@@ -125,11 +116,10 @@ class TemplateDrivenFourQuestionAuditTest(unittest.TestCase):
                 )
 
             record = result["records"][0]
-            # Q1 install evidence -> Q2 Skills path -> Q3 MCP config + hooks
+            # Q1 install evidence -> Q2 Skills path -> Q3 MCP config
             self.assertTrue(record["installed"], record["install_evidence"])
             self.assertTrue(record["skills_compliant"], "Skills path not compliant")
             self.assertTrue(record["mcp_configured"], "MCP config not detected")
-            self.assertTrue(record["hooks_configured"], "hooks not detected")
             # Q4 live endpoint: initialize + tools/list + capability coverage
             self.assertTrue(record["mcp_initialize_ok"])
             self.assertTrue(record["mcp_tools_list_ok"])

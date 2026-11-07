@@ -49,7 +49,6 @@ def rec(**overrides):
         "mcp_configured": True,
         "mcp_initialize_ok": True,
         "mcp_tools_list_ok": True,
-        "hooks_configured": True,
         "capabilities": {"memory": True},
         "legacy_channels": [],
     }
@@ -74,14 +73,6 @@ class TriStateTest(unittest.TestCase):
 
     def test_yellow_when_legacy_channels_present(self):
         self.assertEqual(classify_record(rec(legacy_channels=["hermes-nas"])), STATE_YELLOW)
-
-    def test_yellow_when_hooks_missing(self):
-        self.assertEqual(classify_record(rec(hooks_configured=False)), STATE_YELLOW)
-
-    def test_green_when_hooks_not_required(self):
-        # 纯工具端点 hooks_required=False：未配 hooks 不阻断 GREEN。
-        r = rec(hooks_configured=False, hooks_required=False, capabilities={})
-        self.assertEqual(classify_record(r), STATE_GREEN)
 
 
 class ConfigOnlyTest(unittest.TestCase):
@@ -145,7 +136,6 @@ class ConsistencyInvariantTest(unittest.TestCase):
             ([rec(mcp_configured=False)], []),
             ([rec(installed=False)], []),  # 什么都没装 -> 空真
             ([rec(legacy_channels=["h"])], []),
-            ([rec(hooks_configured=False)], []),
             ([rec()], [{"name": "Orphan"}]),  # unmanaged -> 不合规
         ]
         for records, unmanaged in cases:

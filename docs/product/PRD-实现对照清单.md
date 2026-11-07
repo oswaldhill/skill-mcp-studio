@@ -6,15 +6,15 @@
 > 因此这份清单不会因为「文档写了但代码没有」而失真，也不会因为代码改名而悄悄过期
 > （门禁会红）。
 >
-> 对照的 PRD 版本：**v1.7**（2026-10-25）。PRD 本身见
+> 对照的 PRD 版本：**v1.8**（2026-11-07，移除 Hook 后由 80 条减为 75 条）。PRD 本身见
 > [`PRD-产品需求文档.md`](./PRD-产品需求文档.md)。
 
 ## 1. 总览
 
 | 项 | 数量 |
 |---|---|
-| 对照条目 | **80** |
-| ✅ 已实现 | **66** |
+| 对照条目 | **75** |
+| ✅ 已实现 | **61** |
 | 🟡 部分实现 | **1** |
 | ⬜ 未实现（已立需求） | **8** |
 | 🚫 刻意不做 | **5** |
@@ -79,7 +79,6 @@
 | 6.3-05 | §6.3 | 客户端挂载端点调整 | 写（业务） | ✅ 已实现 | `--attach-endpoints` | — |
 | 6.3-06 | §6.3（补） | 端点活体探测（initialize + tools/list，HTTP 与 stdio） | 读 | ✅ 已实现 | `--endpoint-status`；`core/transport.py` → `def probe_stdio` | PRD §6.3 原表未列，本次补入 |
 | 6.4-01 | §6.4 | 统一技能目录（可改） | 写 | ✅ 已实现 | `--set-unified-dir` | — |
-| 6.4-02 | §6.4 | Hook 命令模板（按事件编辑 + 预设） | 写 | ✅ 已实现 | `--set-hook-template`；`--apply-hook-preset`；`--list-hook-templates` | — |
 | 6.4-03 | §6.4 | 自动发现开关（写 overlay） | 写 | ✅ 已实现 | `--set-auto-discover` | 与 §6.4 的 P-3 定案一致；重定向参数 --profile/--config 仍被 Rust 拒 |
 | 6.4-04 | §6.4 | 活动 endpoint（active_profile）切换 | 写 | ✅ 已实现 | `--set-active-profile` | 注意 --active-profile（无 set-）是被 Rust 拒绝的重定向参数，两者不同 |
 | 6.4-05 | §6.4 | 配置导入 / 导出（换机 / 分享） | 写 | ✅ 已实现 | `--export-config`；`--import-config` | 单 JSON、密钥脱敏、合并导入、导入前自动备份 |
@@ -92,9 +91,6 @@
 | 6.5-04 | §6.5 | Toast 栈（进度 → 成功 / 失败） | 读 | ✅ 已实现 | GUI `showToast` | — |
 | 6.5-05 | §6.5 | 全局 Esc 逐级关闭 | 读 | ✅ 已实现 | GUI `"Escape"` | — |
 | 6.5-06 | §6.5 | 可访问性（无 emoji 图标 / focus ring / reduced-motion） | 读 | ✅ 已实现 | GUI `prefers-reduced-motion` | reduced-motion 覆盖动画；aria-hidden 43 处 |
-| 6.6-01 | §6.6（补） | Hook 页：事件词表 + 每客户端接入状态 | 读 | ✅ 已实现 | `--list-hooks`；GUI `data-page="hooks"` | PRD §6 原缺 Hook 页需求，本次补入 |
-| 6.6-02 | §6.6（补） | Hook 写入 / 移除（带备份） | 写（业务） | ✅ 已实现 | `--fix-hooks`；`--remove-hooks` | — |
-| 6.6-03 | §6.6（补） | Hook 漂移检测与关键事件缺失提示 | 读 | ✅ 已实现 | `gui/dashboard.html` → `missing_key_events` | — |
 | 6.7-01 | §6.7（补） | 变更详情：快照 diff（4 维度） | 读 | ✅ 已实现 | `--snapshot`；GUI `renderChanges` | PRD §6 原缺变更详情页需求，本次补入 |
 | 6.7-02 | §6.7（补） | 变更接受 / 忽略 / 取消忽略（忽略清单幂等） | 写（本地） | ✅ 已实现 | `--ignore-change`；`--unignore-change`；`--list-ignored` | 忽略清单存本地 |
 | 6.8-01 | §6.8（补） | 概览：受管客户端 / 已安装 / 仅配置 / 未安装 / 统一技能 / 主流已纳入 六项 KPI | 读 | ✅ 已实现 | GUI `受管客户端`；GUI `主流已纳入` | PRD §6 原缺概览页需求，本次补入；**概览不含 MCP 探活 KPI**（探活已移至独立「端点状态」区，§5.3 已改正） |
@@ -118,7 +114,6 @@
 | 6.9-07 | §6.9 | 在 GUI 启用/禁用 DSH 插件、编辑 patch 层 | 边界 | 🚫 刻意不做 | 写 bundles / patch 属 DSH 自身配置写入面，需单独立项 | 只读是刻意边界：patch 文件含密钥，写入边界须另行设计 |
 | 8-01 | §8 | 不做技能市场 / 商店平台（只做消费方） | 边界 | 🚫 刻意不做 | 自建索引/排行/托管分发不做；--market search/install/upgrade 属消费方 | 判据：成为分发方=不做；仅消费上游=做 |
 | 8-02 | §8 | 不做多用户权限体系与云端托管 | 边界 | 🚫 刻意不做 | 本地工具；WebDAV 只搬用户自己的配置文件 | WebDAV 只搬用户自己的配置小层，不搬技能资产与凭据 |
-| 8-03 | §8 | 不内置任何特定工具的 Hook 命令 | 边界 | ✅ 已实现 | `--apply-hook-preset`；`--set-hook-template` | v0.29.0 剥离 ai-memory 后确立；用户自定义模板 |
 | 8-04 | §8 | 不内置 MCP server 远程入口 | 边界 | 🚫 刻意不做 | unified_mcp_server.py 已删除 | 留待后续专项立项 |
 | 8-05 | §8 | 运行时按会话加载（会话级注入） | 边界 | 🚫 刻意不做 | 启停已落地；会话级注入仍未做 | 属增值层，立项时独立决策 |
 

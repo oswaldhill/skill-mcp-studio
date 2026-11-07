@@ -18,7 +18,6 @@ FIXED_COLUMNS = [
     "mcp_configured",
     "mcp_initialize_ok",
     "mcp_tools_list_ok",
-    "hooks_configured",
     "legacy_channels",
 ]
 
@@ -71,7 +70,6 @@ def _record_rows(
             else:
                 row.append("")  # not required by this profile -> empty, not False
         row.extend([
-            record.get("hooks_configured", False),
             _legacy_cell(record),
         ])
         rows.append(row)

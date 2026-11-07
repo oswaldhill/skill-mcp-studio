@@ -166,6 +166,5 @@ def summarize_records(records: List[Dict[str, Any]]) -> Dict[str, int]:
         "full_capabilities": sum(
             all(record.get("capabilities", {}).values()) for record in connected
         ),
-        "hooks_configured": sum(bool(record.get("hooks_configured")) for record in installed),
         "legacy_channels": sum(len(record.get("legacy_channels", [])) for record in installed),
     }

@@ -361,7 +361,6 @@ class ResultOkTest(unittest.TestCase):
                     "mcp_configured": True,
                     "mcp_initialize_ok": True,
                     "mcp_tools_list_ok": True,
-                    "hooks_configured": True,
                     "legacy_channels": [],
                     "capabilities": {"hermes_memory": True},
                 }
@@ -386,7 +385,6 @@ class ResultOkTest(unittest.TestCase):
                     "mcp_configured": True,
                     "mcp_initialize_ok": True,
                     "mcp_tools_list_ok": True,
-                    "hooks_configured": True,
                     "legacy_channels": [],
                     "capabilities": {"hermes_memory": False},
                 }
@@ -419,29 +417,6 @@ class ResultOkTest(unittest.TestCase):
                     "mcp_configured": False,
                     "mcp_initialize_ok": False,
                     "mcp_tools_list_ok": False,
-                    "hooks_configured": False,
-                    "legacy_channels": [],
-                    "capabilities": {},
-                }
-            ],
-            "unmanaged": [],
-        }
-        self.assertTrue(result_ok(result))
-
-    def test_tool_endpoint_does_not_require_hooks(self):
-        # 纯工具端点（无 hooks_required）标记 hooks_required=False，
-        # 客户端未配 hook 也不阻断 ok（hooks 由端点显式声明，非默认）。
-        result = {
-            "probe": {"error": ""},
-            "records": [
-                {
-                    "installed": True,
-                    "skills_compliant": True,
-                    "mcp_configured": True,
-                    "mcp_initialize_ok": True,
-                    "mcp_tools_list_ok": True,
-                    "hooks_configured": False,
-                    "hooks_required": False,
                     "legacy_channels": [],
                     "capabilities": {},
                 }

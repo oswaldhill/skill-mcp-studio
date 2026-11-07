@@ -7,7 +7,7 @@
 判定只用「配置派生」字段，**绝不**看探活（连通性）结果：
 
 - 配置派生：``installed`` / ``skills_compliant`` / ``mcp_configured`` /
-  ``hooks_configured`` / ``hooks_required`` / ``legacy_channels``
+  ``legacy_channels``
 - 探活派生：``mcp_initialize_ok`` / ``mcp_tools_list_ok`` / ``capabilities`` /
   ``probe`` —— 这些**不参与颜色**，只在「端点状态」视图里用
 
@@ -16,7 +16,7 @@
 成功也不能把配置写错的客户端判成绿色。
 
     GREEN  == 配置完全合规
-    YELLOW == 配置无硬性错误，但存在需人工处理项（遗留通道 / 缺必需 hooks）
+    YELLOW == 配置无硬性错误，但存在需人工处理项（遗留通道待迁移）
     RED    == 配置存在硬性错误（skills 不合规 / MCP 未按预期配置）
     GRAY   == 未安装
 
@@ -81,7 +81,7 @@ def classify_record(record: Dict[str, Any]) -> str:
     """按**配置**给出 green/yellow/red/gray（不看探活）。
 
     ``record`` 需包含 ``installed``、``skills_compliant``、``mcp_configured``、
-    ``hooks_configured``、``hooks_required``、``legacy_channels``。
+    ``legacy_channels``。
 
     注意：``mcp_initialize_ok`` / ``mcp_tools_list_ok`` / ``capabilities`` 是
     探活派生字段，**故意不参与判定**。
@@ -95,17 +95,15 @@ def classify_record(record: Dict[str, Any]) -> str:
     if not record.get("mcp_configured"):
         return STATE_RED
 
-    # 配置完全合规 -> GREEN。hooks 只在端点适用时才是硬性要求
-    # （纯工具端点 record.hooks_required=False，未配 hooks 不阻断 green）。
+    # 配置完全合规 -> GREEN。
     if (
         record.get("skills_compliant")
         and record.get("mcp_configured")
-        and (record.get("hooks_configured") or not record.get("hooks_required", True))
         and not record.get("legacy_channels")
     ):
         return STATE_GREEN
 
-    # 其余：遗留通道待迁移 / 缺必需 hooks -> YELLOW。
+    # 其余：遗留通道待迁移 -> YELLOW。
     return STATE_YELLOW
 
 
@@ -124,9 +122,8 @@ def classify_result(result: Dict[str, Any]) -> Dict[str, Any]:
 def all_installed_compliant(result: Dict[str, Any]) -> bool:
     """从 GUI 三态独立重推 ``result_ok``（配置口径）。
 
-    配置审计里只有 GREEN 算合规：YELLOW 在本口径下必然意味着「有遗留通道」
-    或「缺必需 hooks」，两者都是失败，不再存在「因未探活而黄」的情形
-    （探活已完全移出审计）。
+    配置审计里只有 GREEN 算合规：YELLOW 在本口径下必然意味着「有遗留通道」，
+    即失败，不再存在「因未探活而黄」的情形（探活已完全移出审计）。
 
     这是 ``combined_checker.result_ok`` 的 GUI 侧孪生实现，两者在
     ``test_dashboard_states`` 中比对，以防漂移。

@@ -13,9 +13,9 @@
 
 一条变更由 ``(维度, 名称, 类型)`` 三元组唯一标识：
 
-- 维度：``agents`` / ``mcp`` / ``skills`` / ``hooks``
+- 维度：``agents`` / ``mcp`` / ``skills``
 - 名称：变更所属的客户端或条目名（``change["name"]``）
-- 类型：``change["type"]``，如 ``hooks_configured_changed``、``hook_events_removed``
+- 类型：``change["type"]``，如 ``mcp_configured_changed``、``skill_added``
 
 刻意**不把旧值/新值纳入指纹**：同一处配置反复改动仍算同一条变更，用户「保持」
 一次即长期有效。若纳入值，每次值变都会重新打扰一次，与「防骚扰」初衷相悖。
@@ -27,9 +27,9 @@
 ```yaml
 version: 1
 ignored:
-  - dim: hooks
+  - dim: mcp
     name: Cursor
-    type: hooks_configured_changed
+    type: mcp_inventory_changed
     ignored_at: '2026-10-10T09:00:00+00:00'
 ```
 

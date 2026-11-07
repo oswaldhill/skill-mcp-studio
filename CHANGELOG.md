@@ -7,6 +7,76 @@
 
 ## [Unreleased]
 
+## [v0.33.0] - 2026-11-07
+
+当前发布版本（build 133）。**移除生命周期 Hook 能力**：管理台由八页回落为七页。
+
+这是一次**不兼容的功能下线**（按语义化版本应为 major，但本项目尚未发 1.0，按 minor 处理）。
+移除而非隐藏的原因：Hook 与其余四块能力（Skills / MCP / DSH 插件 / 变更追踪）没有
+共享的数据模型，长期维护成本高于其价值；且它会把「配置是否合规」与「写入了哪些
+第三方命令」耦合在一起（见 `docs/DECISIONS` 的历史讨论）。
+
+### 移除
+
+- **CLI 的 9 个 Hook 参数**：`--hooks`、`--list-hooks`、`--fix-hooks`、`--remove-hooks`、
+  `--list-hook-templates`、`--set-hook-template`、`--apply-hook-preset`、
+  `--hooks-config-path`、`--client-hooks-config-path`。
+  `--full` 的语义同步收窄为 Skills + MCP + 端点探测 + 报告。
+- **`core/hooks_checker.py` / `hooks_fixer.py` / `hooks_inventory.py`** 三个模块整体删除，
+  连带清理 14 个 core 模块中的引用（见下方「修复」中两条静默失效）。
+- **管理台 Hook 页**：导航项、`<section id="page-hooks">`、设置页的「Hook 事件」勾选卡
+  与「Hook 命令模板」卡、IDE/Agent 列表的 Hook 列、客户端详情里的 Hook 配置区块、
+  变更面板的「修复」按钮（其唯一实现是 `--fix-hooks`）。**页面总数 8 → 7**。
+- **`config.yaml` 的 `hooks:` 段**（47 项规范事件词表、`hooks.clients` 能力声明、
+  `default_command`）、各 `mcp_tools[].hooks_config_path`、`settings.hook_events`。
+  文件由 652 行降至 280 行。
+- **快照 diff 的 hooks 维度**：4 维度 → 3 维度（agents / mcp / skills），
+  全量检查、变更详情页与托盘巡检的口径同步调整。
+
+### 修复
+
+- **合规判定静默降级**（移除过程中发现，非既有缺陷）：`combined_checker` 与
+  `dashboard_states.classify_record` 都有一处 `record.get("hooks_required", True)`。
+  record 不再产出该字段后，默认值 `True` 会让**所有原本合规的客户端被判为不合规**
+  （GREEN 降级成 YELLOW），且不抛任何异常、测试也不会红。两处判定逻辑已整体移除，
+  颜色与 `result_ok` 恢复一致。
+- **`multi_profile_reporter` 的 CSV 列错位**：`FIXED_COLUMNS` 去掉 `hooks_configured`
+  后表头与数据行同步修正；对应的测试期望由 10 字段改为 7 字段。
+- **`cli_modes.resolve_modes` 崩溃**：该函数直接读 `args.hooks`，参数删除后会抛
+  `AttributeError`，导致 `scan.py --version` 直接不可用。已改为只依据
+  `args.skills` / `args.mcp` 等现存属性分派各模式。
+
+### 文档
+
+- `README.md`：能力清单由「3 类问题 + 4 块横切」改为「3 类问题 + 3 块横切」，
+  删除 Hook 命令模板命令组与 `--hooks` 示例，管理台描述改为七页。
+- `docs/DESIGN.md`（1583 → 1437 行）与 `docs/DESIGN.html`（2120 → 2039 行）：
+  删除 Hook 列判据、`.al-scope` 分层作用域徽标、Hook tab、`.hook-group-row` 等
+  界面规范；IDE/Agent 表格列序由 10 列改为 9 列，状态列居中规则由
+  「第 3 / 7 / 8 / 9 列」改为「第 3 / 7 / 8 列」。
+- `docs/product/PRD-产品需求文档.md`（v1.8）：§5.3 页面结构改为七页，
+  §6.6「Hook（生命周期事件）」标记为**已作废**并保留说明，历史版本记录不动。
+- `docs/product/prd_impl_matrix.json`：删除 5 条 Hook 相关条目（80 → 75），
+  `PRD-实现对照清单.md` 状态计数同步（已实现 66 → 61）。
+
+### 测试
+
+- 删除 3 个纯 Hook 测试文件（`test_hook_capability_data` / `test_hook_events_config` /
+  `test_hook_interpolation`）；清理 24 个测试文件中的 hook 断言与夹具。
+- 三处不降强度的改写：`test_mcp_na_cells_are_tags` 按 GUI 实际产出收窄取值；
+  `test_al_scope_is_deboxed` 改为「规则在则查去盒化、规则不在则反查死引用」的双向断言；
+  `test_no_ai_memory_in_trunk_sources` 由只查 `hooks_fixer.py` 扩大为全量 `core/*.py` + `scan.py`。
+- 全量 **1542 项通过、2 项既有跳过**；`scripts/ci_parity.sh` 全部门禁通过。
+
+### 已知影响
+
+- **已写入客户端配置的 hook 条目不会被自动清除**。本机 Cursor（`~/.cursor/hooks.json`）、
+  WorkBuddy（`~/.workbuddy/settings.json`）、TRAE（`~/.trae-cn/hooks.json`）中此前由
+  本工具写入的 hook 配置会**原样保留并在客户端继续生效**。如需清除，须手工编辑这些
+  文件；本工具不再提供任何 hook 写入或移除入口。
+- 历史文档（`docs/superpowers/specs/*hook*`、`docs/research/hook-capability-*.json`、
+  `docs/方案-托盘常驻与Hook管理.md`）作为当时的设计与取证留档保留，不代表当前产品。
+
 ## [v0.32.0] - 2026-11-07
 
 当前发布版本（build 132）。两条主线：**原生 MCP 接入与身份治理**（让「谁以什么身份
@@ -2148,7 +2218,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.32.0...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.33.0...HEAD
+[v0.33.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.33.0
 [v0.32.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.32.0
 [v0.31.4]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.31.4
 [v0.31.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.31.3

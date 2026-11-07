@@ -139,7 +139,7 @@ class EndpointStatusWiringTest(unittest.TestCase):
         # 端点），不再只提端点；但中性 .empty 容器这一约束不变。
         self.assertIn('<div class="empty">尚未检查', self.src,
                       "未检查必须落到中性 .empty（不是 warn/err 色的行）")
-        self.assertIn("4 维度配置审计与端点连通性结果", self.src,
+        self.assertIn("3 维度配置审计与端点连通性结果", self.src,
                       "空态应说明全量检查覆盖范围（不只端点）")
 
     def test_failure_shows_endpoint_and_reason(self):
@@ -231,11 +231,11 @@ class RenderEndpointStatusExecTest(unittest.TestCase):
             ],
         }
         diff = {"has_changes": False, "is_first": False,
-                "summary": {"agents": 0, "mcp": 0, "skills": 0, "hooks": 0},
+                "summary": {"agents": 0, "mcp": 0, "skills": 0},
                 "dimensions": {}}
         html = self._exec(st, diff)
         self.assertIn("fc-grid", html)
-        self.assertIn("变更对比 · 4 维度", html)
+        self.assertIn("变更对比 · 3 维度", html)
         self.assertIn("端点连通性", html)
         self.assertIn("dot ok", html)
         self.assertIn("dot err", html)

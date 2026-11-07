@@ -1,13 +1,12 @@
-"""快照对比：4 维度变更检测。
+"""快照对比：3 维度变更检测。
 
 对比两次 management_snapshot 的差异，产出结构化变更清单。
 用于后台巡检（Phase D）和变更通知（Phase E）。
 
-4 个维度：
+3 个维度：
   1. IDE/Agent：安装状态翻转、新增/消失客户端
   2. MCP：端点挂载变化、inventory 条目增减
   3. Skill：链接形式变化、新增/删除技能
-  4. Hook：hooks_configured 翻转、hook_events 变化
 """
 
 import os
@@ -49,8 +48,6 @@ def _slim_snapshot(snap: Dict[str, Any]) -> Dict[str, Any]:
             "name": a.get("name"),
             "installed": a.get("installed"),
             "install_state": a.get("install_state"),
-            "hooks_configured": a.get("hooks_configured"),
-            "hook_events": a.get("hook_events"),
         }
 
     out["agents"] = [_slim_agent(a) for a in (snap.get("agents") or [])]
@@ -86,7 +83,7 @@ def _slim_snapshot(snap: Dict[str, Any]) -> Dict[str, Any]:
 def compare_snapshots(
     old: Optional[Dict[str, Any]], new: Dict[str, Any]
 ) -> Dict[str, Any]:
-    """对比两次快照，返回 4 维度变更清单。
+    """对比两次快照，返回 3 维度变更清单。
 
     返回结构::
 
@@ -97,9 +94,8 @@ def compare_snapshots(
                 "agents": [...],
                 "mcp": [...],
                 "skills": [...],
-                "hooks": [...],
             },
-            "summary": {"agents": N, "mcp": N, "skills": N, "hooks": N},
+            "summary": {"agents": N, "mcp": N, "skills": N},
         }
     """
     if old is None:
@@ -110,13 +106,11 @@ def compare_snapshots(
         "agents": [],
         "mcp": [],
         "skills": [],
-        "hooks": [],
     }
 
     _diff_agents(old, new_slim, changes["agents"])
     _diff_mcp(old, new_slim, changes["mcp"])
     _diff_skills(old, new_slim, changes["skills"])
-    _diff_hooks(old, new_slim, changes["hooks"])
 
     has_changes = any(len(v) > 0 for v in changes.values())
     return {
@@ -127,7 +121,6 @@ def compare_snapshots(
             "agents": len(changes["agents"]),
             "mcp": len(changes["mcp"]),
             "skills": len(changes["skills"]),
-            "hooks": len(changes["hooks"]),
         },
     }
 
@@ -251,50 +244,5 @@ def _diff_skills(
                     "old": old_enabled,
                     "new": new_enabled,
                     "detail": f"启用技能数 {old_enabled} -> {new_enabled}",
-                }
-            )
-
-
-def _diff_hooks(
-    old: Dict[str, Any], new: Dict[str, Any], out: List[Dict[str, Any]]
-) -> None:
-    """维度 4：Hook 配置翻转、事件变化。"""
-    old_map = _agent_map(old)
-    new_map = _agent_map(new)
-    for name in sorted(set(old_map) & set(new_map)):
-        o = old_map[name]
-        n = new_map[name]
-        old_cfg = o.get("hooks_configured")
-        new_cfg = n.get("hooks_configured")
-        if old_cfg != new_cfg:
-            out.append(
-                {
-                    "type": "hooks_configured_changed",
-                    "name": name,
-                    "old": old_cfg,
-                    "new": new_cfg,
-                    "detail": f"Hook 接入 {old_cfg} -> {new_cfg}",
-                }
-            )
-        old_ev = set(o.get("hook_events") or [])
-        new_ev = set(n.get("hook_events") or [])
-        added = sorted(new_ev - old_ev)
-        removed = sorted(old_ev - new_ev)
-        if added:
-            out.append(
-                {
-                    "type": "hook_events_added",
-                    "name": name,
-                    "events": added,
-                    "detail": f"新增事件: {', '.join(added)}",
-                }
-            )
-        if removed:
-            out.append(
-                {
-                    "type": "hook_events_removed",
-                    "name": name,
-                    "events": removed,
-                    "detail": f"移除事件: {', '.join(removed)}",
                 }
             )

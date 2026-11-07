@@ -55,17 +55,17 @@ class McpCheckerTest(unittest.TestCase):
              "mcp_initialize_ok": True, "mcp_tools_list_ok": True,
              "capabilities": {"hermes_memory": True,
                               "tdai": True, "hermes": True},
-             "hooks_configured": False, "legacy_channels": ["hermes-memory"]},
+             "legacy_channels": ["hermes-memory"]},
             {"installed": True, "skills_compliant": False, "mcp_configured": False,
              "mcp_initialize_ok": False, "mcp_tools_list_ok": False,
              "capabilities": {"hermes_memory": False,
                               "tdai": False, "hermes": False},
-             "hooks_configured": True, "legacy_channels": []},
+             "legacy_channels": []},
             {"installed": False, "skills_compliant": True, "mcp_configured": True,
              "mcp_initialize_ok": True, "mcp_tools_list_ok": True,
              "capabilities": {"hermes_memory": True,
                               "tdai": True, "hermes": True},
-             "hooks_configured": True, "legacy_channels": []},
+             "legacy_channels": []},
         ]
         summary = summarize_records(records)
         self.assertEqual(summary["installed"], 2)
@@ -73,7 +73,6 @@ class McpCheckerTest(unittest.TestCase):
         self.assertEqual(summary["mcp_configured"], 1)
         self.assertEqual(summary["mcp_connected"], 1)
         self.assertEqual(summary["full_capabilities"], 1)
-        self.assertEqual(summary["hooks_configured"], 1)
         self.assertEqual(summary["legacy_channels"], 1)
 
 
@@ -116,10 +115,6 @@ class McpCheckerTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "hermes-config.yaml"
             path.write_text(
-                "hooks:\n"
-                "  on_session_end:\n"
-                "  - command: /usr/bin/true\n"
-                "    timeout: 5\n"
                 "mcp_servers:\n"
                 "  hermes:\n"
                 "    url: https://mcp.example.com/mcp\n"
@@ -132,7 +127,7 @@ class McpCheckerTest(unittest.TestCase):
     def test_plain_yaml_empty_mapping_returns_no_servers(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "hermes-config.yaml"
-            path.write_text("hooks: {}\nmcp_servers: {}\n", encoding="utf-8")
+            path.write_text("mcp_servers: {}\n", encoding="utf-8")
             servers = load_mcp_servers(str(path), "yaml", ["mcp_servers"])
             self.assertEqual(servers, {})
 

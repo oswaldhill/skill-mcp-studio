@@ -26,7 +26,6 @@ class MarkdownReporterTest(unittest.TestCase):
                 "mcp_configured": 1,
                 "mcp_connected": 1,
                 "full_capabilities": 1,
-                "hooks_configured": 0,
                 "legacy_channels": 1,
             },
             "capability_groups": ["hermes_memory", "tdai", "hermes"],
@@ -42,7 +41,6 @@ class MarkdownReporterTest(unittest.TestCase):
                     "tdai": True,
                     "hermes": True,
                 },
-                "hooks_configured": False,
                 "legacy_channels": ["hermes-gateway"],
             }],
         }

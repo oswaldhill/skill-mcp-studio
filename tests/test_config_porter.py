@@ -45,11 +45,6 @@ auto_discover:
 settings:
   patrol_enabled: false
   patrol_interval_minutes: 15
-hooks:
-  default_command: ''
-  clients:
-  - name: Claude Code
-    template: {}
 profiles:
   generic-http:
     name: my-mcp
@@ -170,13 +165,6 @@ class ImportTest(unittest.TestCase):
                 "auto_discover": {"enabled": True},
                 "unified_skills_dir": "~/skills-prod",
                 "settings": {"patrol_enabled": True, "patrol_interval_minutes": 30},
-                "hooks": {
-                    "default_command": "notify {event}",
-                    "clients": [
-                        {"name": "Claude Code",
-                         "template": {"SessionStart": "echo {event} start"}}
-                    ],
-                },
                 "disabled_tools": None,
             },
             "profiles": {
@@ -205,17 +193,12 @@ class ImportTest(unittest.TestCase):
             self.assertEqual(ov["auto_discover"]["enabled"], True)
             self.assertEqual(ov["unified_skills_dir"], "~/skills-prod")
             self.assertEqual(ov["profiles"]["prod"]["url"], "https://prod/mcp")
-            # trunk 通道：settings / hooks（text-rewrite，保注释）
+            # trunk 通道：settings（text-rewrite，保注释）
             raw = env.trunk.read_text(encoding="utf-8")
             self.assertIn("schema_version: 1", raw)  # trunk 其余内容原样
             trunk = yaml.safe_load(raw)
             self.assertEqual(trunk["settings"]["patrol_enabled"], True)
             self.assertEqual(trunk["settings"]["patrol_interval_minutes"], 30)
-            self.assertEqual(trunk["hooks"]["default_command"], "notify {event}")
-            self.assertEqual(
-                trunk["hooks"]["clients"][0]["template"]["SessionStart"],
-                "echo {event} start",
-            )
             # 导入后生效（load_config 合并链）
             from scanner import load_config
             cfg = load_config(str(env.trunk))

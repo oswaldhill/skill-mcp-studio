@@ -207,10 +207,9 @@ def parse_reasonix_toml(text: str) -> Dict[str, Dict[str, Any]]:
     return servers
 
 
-# ── Hook-section parsing primitives ──────────────────────────────────
-# Shared by ``hooks_inventory`` and ``hooks_fixer``. These are generic
-# JSON/TOML traversal helpers (load a TOML file, walk a key path, extract
-# command strings from a hook section) and carry no tool-specific logic.
+# ── Generic config-file parsing primitives ───────────────────────────
+# Generic JSON/TOML traversal helpers (load a TOML file, walk a key path).
+# They carry no tool-specific logic.
 
 
 def _load_toml_file(filepath: str) -> Optional[Dict[str, Any]]:
@@ -234,27 +233,3 @@ def _find_in_dict(data: Any, key_path: List[str]) -> Any:
         else:
             return None
     return current
-
-
-def _extract_hook_commands(hook_section: Any) -> List[str]:
-    """从 hooks 配置段递归提取所有 command 字符串。
-
-    兼容两种结构：
-    - Claude Code: {"hooks": {"SessionStart": [{"matcher": "...", "hooks": [{"type":"command","command":"..."}]}]}}
-    - Codex:       {"hooks": {"SessionStart": [{"matcher": "...", "hooks": [{"type":"command","command":"..."}]}]}}
-    """
-    commands = []
-
-    def walk(node: Any):
-        if isinstance(node, dict):
-            cmd = node.get("command")
-            if isinstance(cmd, str):
-                commands.append(cmd)
-            for v in node.values():
-                walk(v)
-        elif isinstance(node, list):
-            for item in node:
-                walk(item)
-
-    walk(hook_section)
-    return commands

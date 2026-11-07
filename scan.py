@@ -48,9 +48,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "cor
 
 from config_text import (  # v0.30.0 抽取到 core（保注释 text-rewrite 通道）
     _set_setting_in_text,
-    _find_client_template_span,
-    _rewrite_client_template,
-    _set_default_command_in_text,
 )
 from scanner import run_scan, load_config
 from reporter import print_console_report, write_markdown_report
@@ -114,7 +111,7 @@ from mcp_entry_removal import remove_class, remove_entries
 
 
 def _run_native_identity(args, config, config_path):
-    """Native control plane: no endpoint probe, Hook, transport fallback or outbox."""
+    """Native control plane: no endpoint probe, transport fallback or outbox."""
     from native_identity import NativeIdentityService, NativeIdentityError, HOSTS
     from native_evidence import EvidenceError
     service = NativeIdentityService()
@@ -813,7 +810,6 @@ def _run_add_client(args, config, config_path) -> int:
         mcp_key_path=getattr(args, "client_mcp_key_path", None),
         mcp_attach=[k.strip() for k in mcp_attach.split(",")] if mcp_attach else None,
         install=install or None,
-        hooks_config_path=getattr(args, "client_hooks_config_path", None),
         dry_run=args.dry_run,
     )
     _print_store_result(result)
@@ -835,7 +831,6 @@ def _run_update_client(args, config, config_path) -> int:
         skills_path=getattr(args, "skills_path", None),
         mcp_config_path=getattr(args, "mcp_config_path", None),
         scan_dir=getattr(args, "scan_dir", None),
-        hooks_config_path=getattr(args, "hooks_config_path", None),
         dry_run=args.dry_run,
     )
     _print_store_result(result)
@@ -2182,7 +2177,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--full", action="store_true",
-        help="完整只读模式：Skills + MCP + Hooks + 端点探测 + 报告"
+        help="完整只读模式：Skills + MCP + 端点探测 + 报告"
     )
     parser.add_argument(
         "--hermes", action="store_true",
@@ -2190,7 +2185,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--ai-memory", action="store_true",
-        help="[已废弃] 旧 ai-memory 通道检查，已并入 --mcp 统一检查与 hooks 检查",
+        help="[已废弃] 旧 ai-memory 通道检查，已并入 --mcp 统一检查",
     )
     parser.add_argument(
         "--fix-ai-memory", action="store_true",
@@ -2214,7 +2209,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--skills", action="store_true", help="检查 IDE/Agent Skills 统一状态")
     parser.add_argument("--mcp", action="store_true", help="检查单一 Hermes MCP 配置")
-    parser.add_argument("--hooks", action="store_true", help="检查生命周期 hooks")
     parser.add_argument("--probe-mcp", action="store_true", help="执行 MCP initialize 和 tools/list")
     parser.add_argument(
         "--endpoint-status", action="store_true",
@@ -2230,30 +2224,6 @@ def build_parser() -> argparse.ArgumentParser:
         "--remove-legacy-mcp",
         action="store_true",
         help="直接备份并移除旧 Hermes/legacy MCP 条目（纯删除，配合 --client 定向清理单个客户端）",
-    )
-    parser.add_argument(
-        "--list-hooks", action="store_true",
-        help="列出各客户端生命周期 hook 配置状态（hook 接入情况）",
-    )
-    parser.add_argument(
-        "--list-hook-templates", action="store_true",
-        help="列出各客户端 Hook 命令模板（default_command + clients[].template + agent_slug，JSON）",
-    )
-    parser.add_argument(
-        "--set-hook-template", type=str, default=None, metavar="EVENT=COMMAND",
-        help="设置某客户端某事件的 Hook 命令模板（需配合 --client；空 COMMAND=清空该事件）；event 用 default 写全局 hooks.default_command（无需 --client）",
-    )
-    parser.add_argument(
-        "--apply-hook-preset", type=str, default=None, metavar="NAME",
-        help="应用 Hook 命令预设到客户端（empty/logging/webhook/local-script/custom；未指定 --client 则应用到所有 fix_supported 客户端）",
-    )
-    parser.add_argument(
-        "--fix-hooks", action="store_true",
-        help="写入生命周期 hook 命令模板（带备份，支持 --dry-run / --client）",
-    )
-    parser.add_argument(
-        "--remove-hooks", action="store_true",
-        help="移除该事件下全部 hook 条目（含第三方，带备份，支持 --dry-run / --client）",
     )
     parser.add_argument(
         "--snapshot", action="store_true",
@@ -2645,16 +2615,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="配合 --add-client：安装检测用的配置文件路径，逗号分隔（如 ~/.foo/mcp.json,~/.foo/settings.json）",
     )
     parser.add_argument(
-        "--client-hooks-config-path", type=str, default=None,
-        help="配合 --add-client：生命周期 hook 配置文件路径（如 ~/.foo/hooks.json）；登记后该客户端纳入 Hook 管理",
-    )
-    parser.add_argument(
         "--update-client", type=str, default=None, metavar="NAME",
-        help="更新已注册客户端的安装证据/目录设置（配合 --app-bundles/--commands/--config-paths/--skills-path/--mcp-config-path/--scan-dir/--hooks-config-path；写操作，支持 --dry-run）",
-    )
-    parser.add_argument(
-        "--hooks-config-path", type=str, default=None,
-        help="配合 --update-client：生命周期 hook 配置文件路径（A6）",
+        help="更新已注册客户端的安装证据/目录设置（配合 --app-bundles/--commands/--config-paths/--skills-path/--mcp-config-path/--scan-dir；写操作，支持 --dry-run）",
     )
     parser.add_argument(
         "--app-bundles", type=str, default=None,
@@ -2739,21 +2701,15 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _snapshot_totals(snap) -> dict:
-    """从完整快照里取 4 个维度的「当前数量」，供弹框展示系统规模。
+    """从完整快照里取 3 个维度的「当前数量」，供弹框展示系统规模。
 
     与 diff 的 summary（变更数）互补：无变更时 diff 必然全是 0，
     全 0 的界面看不出任何信息，所以另给一组当前状态数量。
     口径与 GUI 概览卡片保持一致，避免两处数字对不上。
     """
     agents = list(snap.get("agents") or [])
-    mainstream = list(snap.get("mainstream_tools") or [])
     skills = snap.get("skills") or {}
     mcp = snap.get("mcp") or {}
-    hooks_on = sum(
-        1
-        for a in agents + mainstream
-        if isinstance(a, dict) and a.get("hooks_configured")
-    )
     # MCP：已发现客户端的条目总数（inventory 展开后的条目数）
     mcp_entries = 0
     for c in mcp.get("clients") or []:
@@ -2763,129 +2719,7 @@ def _snapshot_totals(snap) -> dict:
         "agents": len(agents),
         "mcp": mcp_entries,
         "skills": len(skills.get("skills") or []),
-        "hooks": hooks_on,
     }
-
-
-def _run_hooks(args, config, config_path) -> int:
-    """Hook 管理域的统一出口：--list-hooks / --fix-hooks / --remove-hooks。
-
-    为什么必须早返回：这三个命令都支持 ``--format json``，而 GUI 会直接
-    JSON.parse 整个 stdout。它们原先排在通用快照路由
-    （``_run_single_profile_snapshot``）之后，带 ``--format json`` 时会被
-    快照截走 —— 实测 ``--list-hooks --format json`` 返回的是 4000 多行的
-    完整快照而不是 hook inventory。与 ``--snapshot`` / ``--get-setting``
-    是同一类缺陷（见各自注释）。
-
-    顺带收益：``--fix-hooks`` / ``--remove-hooks`` 是写操作，早返回后不再
-    继续跑后续无关阶段，更快且副作用面更小。
-
-    任何一段抛异常都映射到退出码 2（工具执行失败），与修复类写操作的既有
-    约定一致 —— GUI 按退出码判断成功与否。
-    """
-    _as_json = getattr(args, "format", None) == "json"
-    _failed = False
-
-    if getattr(args, "list_hooks", False):
-        if not _as_json:
-            print("")
-            print("=" * 60)
-            print("  Hook inventory (lifecycle hooks)")
-            print("=" * 60)
-        try:
-            from hooks_inventory import inventory_all
-            _tools = effective_tools(config)
-            _hook_results = inventory_all(config, _tools)
-            if _as_json:
-                print(json.dumps(_hook_results, ensure_ascii=False, indent=2))
-            else:
-                for r in _hook_results:
-                    _mark = "🟢" if r["hooks_configured"] else ("⚪" if not r["hooks_config_path"] else "⚠️")
-                    print(f"  {_mark} {r['name']} ({r['hooks_config_path']})")
-                    if r["hooks_configured"]:
-                        print(f"      ✅ 已接入: {', '.join(r['hook_events'])}")
-                    elif r["hooks_config_path"]:
-                        _missing = r.get("missing_key_events", [])
-                        if _missing:
-                            print(f"      ⚠️ 缺关键事件: {', '.join(_missing)}")
-                        else:
-                            print("      ⚠️ 未接入 hook")
-        except Exception as e:
-            if _as_json:
-                print(json.dumps({"error": str(e)}, ensure_ascii=False, indent=2))
-            else:
-                print(f"\n  ❌ Hook inventory failed: {e}")
-            _failed = True
-
-    if getattr(args, "fix_hooks", False):
-        if not _as_json:
-            print("")
-            print("=" * 60)
-            print("  Hook repair (lifecycle hooks)")
-            print("=" * 60)
-        try:
-            from hooks_fixer import fix_hooks_all
-            _tools = effective_tools(config)
-            _hook_fix_results = fix_hooks_all(
-                config, _tools, dry_run=args.dry_run, client=args.client or ""
-            )
-            if _as_json:
-                print(json.dumps(_hook_fix_results, ensure_ascii=False, indent=2))
-            else:
-                _marks = {
-                    "updated": "✅", "created": "✅", "unchanged": "✅",
-                    "dry-run": "🔍", "missing": "⚠️", "unsupported": "⏭️", "error": "❌",
-                }
-                for result in _hook_fix_results:
-                    _mark = _marks.get(result["status"], "•")
-                    print(f"  {_mark} {result['name']}: {result['status']} - {result['message']}")
-            if any(r.get("status") == "error" for r in _hook_fix_results):
-                _failed = True
-        except Exception as e:
-            if _as_json:
-                print(json.dumps({"error": str(e)}, ensure_ascii=False, indent=2))
-            else:
-                print(f"\n  ❌ Hook repair failed: {e}")
-            _failed = True
-
-    if getattr(args, "remove_hooks", False):
-        if not _as_json:
-            print("")
-            print("=" * 60)
-            print("  Hook removal (lifecycle hooks)")
-            print("=" * 60)
-        try:
-            from hooks_fixer import remove_hooks_tool
-            from hooks_inventory import hooks_client_config
-            _tools = effective_tools(config)
-            _hook_rm_results = []
-            for tool in _tools:
-                _tname = tool.get("name", "")
-                if not hooks_client_config(config, _tname):
-                    continue
-                if args.client and normalized_name(_tname) != normalized_name(args.client):
-                    continue
-                _hook_rm_results.append(remove_hooks_tool(tool, config, dry_run=args.dry_run))
-            if _as_json:
-                print(json.dumps(_hook_rm_results, ensure_ascii=False, indent=2))
-            else:
-                _marks = {
-                    "updated": "✅", "unchanged": "✅", "dry-run": "🔍",
-                    "missing": "⚠️", "error": "❌",
-                }
-                for result in _hook_rm_results:
-                    _mark = _marks.get(result["status"], "•")
-                    print(f"  {_mark} {result['name']}: {result['status']} - {result['message']}")
-            if any(r.get("status") == "error" for r in _hook_rm_results):
-                _failed = True
-        except Exception as e:
-            if _as_json:
-                print(json.dumps({"error": str(e)}, ensure_ascii=False, indent=2))
-            else:
-                print(f"\n  ❌ Hook removal failed: {e}")
-            _failed = True
-
-    return 2 if _failed else 0
 
 
 def _run_set_setting(args, config_path) -> int:
@@ -2893,11 +2727,11 @@ def _run_set_setting(args, config_path) -> int:
 
     独立早返回出口（2026-10-12 修正）。**为什么必须早返回**：此前它排在 11 阶段
     主流程的末尾，于是「写一个设置」会顺带把整个审计跑完，并**继承审计的退出码**
-    —— 实测本机有 6 个技能目录缺失，`--set-setting hook_events=...` 明明打印了
-    「✅ hook_events = [...]」，进程却以 **1** 退出。GUI 据此判「保存失败」，还把
+    —— 实测本机有 6 个技能目录缺失，`--set-setting patrol_enabled=true` 明明打印了
+    「✅ patrol_enabled = True」，进程却以 **1** 退出。GUI 据此判「保存失败」，还把
     1600 字符的技能扫描报告当成错误详情写在页面上（用户截图反馈）。
-    写入是否成功只应由写入本身决定，与无关的审计结论无关 —— 与 ``--list-hooks`` /
-    ``--get-setting`` / ``--snapshot`` 的早返回是同一类修正。
+    写入是否成功只应由写入本身决定，与无关的审计结论无关 —— 与 ``--get-setting`` /
+    ``--snapshot`` 的早返回是同一类修正。
 
     退出码：0=写入成功；2=参数或写入失败（与修复类写操作的既有约定一致）。
     """
@@ -2911,20 +2745,13 @@ def _run_set_setting(args, config_path) -> int:
         if len(_parts) != 2:
             raise ValueError(f"格式错误，需 KEY=VALUE，得到: {args.set_setting}")
         _key, _val = _parts[0].strip(), _parts[1].strip()
-        _allowed = {"patrol_enabled", "patrol_interval_minutes", "hook_events"}
+        _allowed = {"patrol_enabled", "patrol_interval_minutes"}
         if _key not in _allowed:
             raise ValueError(f"不支持的设置键: {_key}（允许: {', '.join(sorted(_allowed))}）")
         if _key == "patrol_enabled":
             _val_norm = _val.lower() in ("true", "1", "yes", "on")
         elif _key == "patrol_interval_minutes":
             _val_norm = max(5, int(_val))
-        elif _key == "hook_events":
-            # 逗号分隔；空字符串 = 清空列表（--fix-hooks 将无事件可写，等同停用）。
-            # 事件名不做白名单校验：各客户端命名规范不同，且 hooks.events 本身就是
-            # 可编辑的规范清单；非法名由写入阶段按各客户端能力过滤。
-            _items = [x.strip() for x in _val.split(",") if x.strip()]
-            _seen = set()
-            _val_norm = [x for x in _items if not (x in _seen or _seen.add(x))]
         else:
             _val_norm = _val
         # 读取磁盘原文并做**文本级**改写。为什么不用 yaml.safe_dump：那会把整份配置
@@ -2943,163 +2770,6 @@ def _run_set_setting(args, config_path) -> int:
         return 0
     except Exception as e:
         print(f"\n  ❌ Set setting failed: {e}")
-        return 2
-
-
-def _run_list_hook_templates(args, config) -> int:
-    """列出各客户端 Hook 命令模板（default_command + clients[].template + agent_slug）。
-
-    独立早返回出口（与 --get-setting 同类）：只读、支持 --format json，GUI 的
-    「写入命令模板」卡片据此填充输入。v0.29.0 起 template 由用户自定义。
-    """
-    _as_json = getattr(args, "format", None) == "json"
-    hooks = config.get("hooks", {}) or {}
-    out = {
-        "default_command": hooks.get("default_command", ""),
-        "clients": [
-            {
-                "name": c.get("name", ""),
-                "agent_slug": c.get("agent_slug", ""),
-                "fix_supported": c.get("fix_supported", False),
-                "template": c.get("template", {}) or {},
-                "events": c.get("events") or [],
-            }
-            for c in hooks.get("clients", []) or []
-        ],
-    }
-    if _as_json:
-        print(json.dumps(out, ensure_ascii=False, indent=2))
-        return 0
-    print("")
-    print("=" * 60)
-    print("  Hook command templates")
-    print("=" * 60)
-    print(f"  default_command: {out['default_command']!r}")
-    for c in out["clients"]:
-        print(f"  {c['name']} (agent={c['agent_slug'] or '-'}, fix_supported={c['fix_supported']})")
-        tmpl = c["template"] or {}
-        if tmpl:
-            for ev, cmd in tmpl.items():
-                print(f"    {ev}: {cmd!r}")
-        else:
-            print("    (template 为空，用户自行填写)")
-    return 0
-
-
-# ── Hook 命令模板预设（v0.29.0，设计 §4.2）──────────────────────────────
-# 命令含变量 {event}/{agent}/{server_url}，存原样；由 hooks_fixer 写入客户端时插值。
-# empty=清空、custom=保留现有，二者不下发具体命令。
-HOOK_PRESETS = {
-    "logging": "echo {event} triggered >> ~/.hook.log",
-    "webhook": 'curl -s -X POST <your-endpoint>/hook -d \'{"event":"{event}","agent":"{agent}"}\'',
-    "local-script": "~/.local/bin/on-hook.sh {event} {agent}",
-}
-
-
-def _run_set_hook_template(args, config_path) -> int:
-    """--set-hook-template <event>=<command> [--client <name>]：设置单事件命令模板。
-
-    独立早返回出口（与 --set-setting 同模式）：text-rewrite config.yaml 保注释。
-    空 command = 从 template 移除该事件。
-
-    特例：event == "default" 时写 ``hooks.default_command`` 顶层字段（无 --client），
-    让 GUI 卡片的「默认命令」输入框可编辑。
-    """
-    from file_atomic import atomic_write, backup_path
-    print("")
-    print("=" * 60)
-    print("  Set hook template")
-    print("=" * 60)
-    try:
-        spec = args.set_hook_template
-        if "=" not in spec:
-            raise ValueError(f"格式错误，需 EVENT=COMMAND，得到: {spec}")
-        event, command = spec.split("=", 1)
-        event, command = event.strip(), command.strip()
-        with open(config_path, "r", encoding="utf-8") as fh:
-            raw = fh.read()
-        if event == "default":
-            new_raw = _set_default_command_in_text(raw, command)
-            bak = backup_path(config_path)
-            atomic_write(config_path, new_raw, 0o644)
-            print(f"  ✅ hooks.default_command = {command or '(空)'}")
-            if bak:
-                print(f"  备份: {bak}")
-            return 0
-        client = (args.client or "").strip()
-        if not client:
-            raise ValueError("--set-hook-template 需配合 --client <客户端名>（或 event=default 写全局默认命令）")
-        span = _find_client_template_span(raw, client)
-        if span is None:
-            raise ValueError(f"未找到客户端「{client}」的 template 段")
-        cur = span[2]
-        if command == "":
-            cur.pop(event, None)
-        else:
-            cur[event] = command
-        new_raw = _rewrite_client_template(raw, client, cur)
-        bak = backup_path(config_path)
-        atomic_write(config_path, new_raw, 0o644)
-        print(f"  ✅ {client}.template[{event}] = {command or '(清空)'}")
-        if bak:
-            print(f"  备份: {bak}")
-        return 0
-    except Exception as e:
-        print(f"\n  ❌ Set hook template failed: {e}")
-        return 2
-
-
-def _run_apply_hook_preset(args, config, config_path) -> int:
-    """--apply-hook-preset <name> [--client <name>]：应用预设到客户端模板。
-
-    empty=清空、custom=保留、logging/webhook/local-script=按事件填命令（含变量，
-    由 hooks_fixer 写入时插值）。未指定 --client 则应用到所有 fix_supported 客户端。
-    """
-    from file_atomic import atomic_write, backup_path
-    print("")
-    print("=" * 60)
-    print("  Apply hook preset")
-    print("=" * 60)
-    try:
-        preset = (args.apply_hook_preset or "").strip()
-        if preset not in {"empty", "logging", "webhook", "local-script", "custom"}:
-            raise ValueError(f"未知预设: {preset}（允许: empty/logging/webhook/local-script/custom）")
-        client = (args.client or "").strip()
-        hooks = config.get("hooks", {}) or {}
-        clients = hooks.get("clients", []) or []
-        if client:
-            targets = [c for c in clients if c.get("name", "").strip() == client]
-        else:
-            # 设计 §4.3：未指定 --client 则应用到所有 fix_supported 客户端
-            # （跳过 OpenCode 等无 template 字段的插件型客户端）
-            targets = [c for c in clients if c.get("fix_supported", False)]
-        if not targets:
-            raise ValueError(f"未找到匹配的客户端（--client {client!r}）")
-        with open(config_path, "r", encoding="utf-8") as fh:
-            raw = fh.read()
-        for c in targets:
-            cname = c.get("name", "").strip()
-            if preset == "custom":
-                print(f"  ⏭️ {cname}: custom（保留现有 template）")
-                continue
-            if preset == "empty":
-                raw = _rewrite_client_template(raw, cname, {})
-                print(f"  ✅ {cname}: empty（清空 template）")
-            else:
-                cmd_tmpl = HOOK_PRESETS[preset]
-                events = c.get("events") or []
-                if events and isinstance(events[0], dict):
-                    events = [e.get("name", "") if isinstance(e, dict) else e for e in events]
-                new_tpl = {ev: cmd_tmpl for ev in events if isinstance(ev, str) and ev.strip()}
-                raw = _rewrite_client_template(raw, cname, new_tpl)
-                print(f"  ✅ {cname}: {preset}（{len(new_tpl)} 个事件）")
-        bak = backup_path(config_path)
-        atomic_write(config_path, raw, 0o644)
-        if bak:
-            print(f"  备份: {bak}")
-        return 0
-    except Exception as e:
-        print(f"\n  ❌ Apply hook preset failed: {e}")
         return 2
 
 
@@ -3279,7 +2949,7 @@ def _parse_fingerprint(raw: str):
     parts = raw.split(":", 2)
     if len(parts) != 3 or not all(p.strip() for p in parts):
         raise ValueError(
-            f"格式错误，需 DIM:NAME:TYPE，得到: {raw}（例：hooks:Cursor:hooks_configured_changed）"
+            f"格式错误，需 DIM:NAME:TYPE，得到: {raw}（例：mcp:Cursor:mcp_entry_changed）"
         )
     return parts[0].strip(), parts[1].strip(), parts[2].strip()
 
@@ -3406,7 +3076,7 @@ def _run_snapshot_diff(args, config, config_path) -> int:
             print("  ✅ 无变更")
         else:
             _summary = _diff.get("summary", {})
-            print(f"  检测到变更：agents={_summary.get('agents', 0)} mcp={_summary.get('mcp', 0)} skills={_summary.get('skills', 0)} hooks={_summary.get('hooks', 0)}")
+            print(f"  检测到变更：agents={_summary.get('agents', 0)} mcp={_summary.get('mcp', 0)} skills={_summary.get('skills', 0)}")
             for _dim_name, _dim_changes in (_diff.get("dimensions") or {}).items():
                 if not _dim_changes:
                     continue
@@ -3434,10 +3104,10 @@ def main() -> int:
     repair_errors: List[str] = []
 
     # D-2: 旧参数仅作别名/废弃。--hermes 与旧通道别名不再运行旧多通道检查器
-    # （其语义已并入 --mcp 统一检查的 legacy_channels 与 hooks 字段）；
+    # （其语义已并入 --mcp 统一检查的 legacy_channels 字段）；
     # --fix 旧别名转发到 --fix-mcp。显式废弃告警，避免"失效门面"静默误导调用方。
     if args.hermes or args.ai_memory:
-        print("  ⚠️ --hermes/旧通道别名 已废弃，改用 --mcp（统一检查已含旧通道与 hooks）。")
+        print("  ⚠️ --hermes/旧通道别名 已废弃，改用 --mcp（统一检查已含旧通道）。")
     args.fix = args.fix or args.fix_skills
     args.fix_mcp = args.fix_mcp or args.fix_ai_memory
     args.hermes = False
@@ -3455,7 +3125,6 @@ def main() -> int:
         args.update = False
         args.skills = True
         args.mcp = False
-        args.hooks = False
         args.probe_mcp = False
 
     # --push 需要配合 --clean 使用
@@ -3598,15 +3267,6 @@ def main() -> int:
     if args.fix_skills and getattr(args, "format", None) == "json":
         return _run_fix_skills_preview(args, config, config_path)
 
-    # Hook 管理域（A 阶段）：三个命令都支持 --format json，GUI 直接
-    # JSON.parse 整个 stdout，必须排在通用快照路由之前。
-    if (
-        getattr(args, "list_hooks", False)
-        or getattr(args, "fix_hooks", False)
-        or getattr(args, "remove_hooks", False)
-    ):
-        return _run_hooks(args, config, config_path)
-
     # 忽略清单增删查（E 阶段）：--list-ignored 支持 --format json，
     # 必须排在通用快照路由之前，否则输出会被快照截走。
     if (
@@ -3620,18 +3280,6 @@ def main() -> int:
     # 菜单勾选态都按结构化字段取值，必须排在通用快照路由之前。
     if getattr(args, "get_setting", None):
         return _run_get_setting(args, config)
-
-    # 列出 Hook 命令模板（v0.29.0）：只读 + 支持 --format json，GUI「写入命令模板」
-    # 卡片据此填充；与 --get-setting 同为独立早返回出口。
-    if getattr(args, "list_hook_templates", False):
-        return _run_list_hook_templates(args, config)
-
-    # 设置 / 应用 Hook 命令模板（v0.29.0）：text-rewrite config.yaml 保注释，
-    # 与 --set-setting 同为独立早返回出口，不跑后续审计。
-    if getattr(args, "set_hook_template", None):
-        return _run_set_hook_template(args, config_path)
-    if getattr(args, "apply_hook_preset", None):
-        return _run_apply_hook_preset(args, config, config_path)
 
     # 写入单个 setting（2026-10-12）：与 --get-setting 同为独立出口 —— 写操作
     # 早返回后退出码只反映写入本身，不再被后续审计结论污染（见 _run_set_setting）。
@@ -3776,13 +3424,13 @@ def main() -> int:
         print(f"\n  ❌ Phase 3 异常: {e}")
         internal_errors.append(f"Phase 3: {e}")
 
-    # 阶段 7: Unified Skills/MCP/hooks 统一只读检查。Live probing 默认关，--full 开。
+    # 阶段 7: Unified Skills/MCP 统一只读检查。Live probing 默认关，--full 开。
     combined_result = None
-    if (args.mcp or args.hooks) and not args.setup_all:
+    if args.mcp and not args.setup_all:
         try:
             print("")
             print("=" * 60)
-            print("  Phase 7: Unified Skills/MCP/Hooks 统一检查")
+            print("  Phase 7: Unified Skills/MCP 统一检查")
             print("=" * 60)
             combined_result = check_agents(config, scan_result, live_probe=args.probe_mcp, profile=profile)
             print(format_combined_report(combined_result))
@@ -3889,8 +3537,6 @@ def main() -> int:
             print(f"\n  ❌ Legacy MCP cleanup failed: {e}")
             repair_errors.append(f"Legacy MCP cleanup: {e}")
 
-    # hook 三命令已在早期出口处理（_run_hooks），此处不再重复。
-
     # --get-setting / --set-setting 均已在早期出口处理，此处不再重复。
 
     # ================================================================
@@ -3969,7 +3615,7 @@ def main() -> int:
     # --setup-all verifies the state after both repair classes have completed.
     if args.setup_all:
         try:
-            print("\n  🔄 统一设置后复检 Skills、MCP、Hooks 和端点能力...\n")
+            print("\n  🔄 统一设置后复检 Skills、MCP 和端点能力...\n")
             if not args.dry_run:
                 scan_result = run_scan(
                     config_path=args.config,

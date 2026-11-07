@@ -26,7 +26,6 @@ def _result(profile, groups, ok=True):
                 "mcp_initialize_ok": True,
                 "mcp_tools_list_ok": True,
                 "capabilities": {g: True for g in groups},
-                "hooks_configured": True,
                 "legacy_channels": [],
             }
         ],
@@ -45,7 +44,7 @@ class MultiProfileReporterTest(unittest.TestCase):
         self.assertIn("hermes_memory,tdai,", output.splitlines()[0])
         # profile b has empty cells for the union groups
         row_b = output.splitlines()[2]
-        self.assertIn("b,Claude,True,True,True,True,True,,,True,", row_b)
+        self.assertIn("b,Claude,True,True,True,True,True,,,", row_b)
 
     def test_json_wraps_results(self):
         results = [_result("a", ["hermes_memory"])]

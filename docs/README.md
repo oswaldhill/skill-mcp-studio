@@ -128,11 +128,13 @@
 
 ## 九、`docs/research/` 取证（1 篇）
 
-Hook 事件能力表的调研取证索引，用于回答「为什么 `config.yaml` 里是这些事件」。
+客户端能力调研取证的索引。**注意：Hook 功能已于 v0.33.0 从产品中整体移除**，
+本目录下的 hook 取证与 `config.yaml` 的「hooks.events」事件词表均已不存在，
+下列条目仅作历史留档。
 
 | 文档 | 状态 | 一句话说明 |
 | --- | --- | --- |
-| [`README.md`](research/README.md) | 当前有效 | 三份 `hook-capability-*.json` 的来源与可信度分级索引（official / local / rebuilt 三档，其中 Cursor/TRAE 那份是重建件、可信度低于原始取证），并说明 `config.yaml` 的 `hooks.events` 47 项规范词表是它们的并集，改事件表须同步本目录 |
+| [`README.md`](research/README.md) | 历史归档 | 三份 `hook-capability-*.json` 的来源与可信度分级索引（official / local / rebuilt 三档，其中 Cursor/TRAE 那份是重建件、可信度低于原始取证）。Hook 功能移除后，它描述的事件词表已不再存在于 `config.yaml` |
 
 ---
 
@@ -146,7 +148,7 @@ Hook 事件能力表的调研取证索引，用于回答「为什么 `config.yam
 | `docs/方案介绍.html` | 产品方案的自包含 HTML 介绍页 |
 | `docs/images/dashboard.png` | 仓库根 README 引用的管理台截图 |
 | `docs/product/prd_impl_matrix.json` | PRD ↔ 实现矩阵的**单一数据源**（重建时 80 条），Markdown 清单与门禁断言都由它派生 |
-| `docs/research/hook-capability-*.json` | Hook 事件能力的三份原始/重建取证（Claude+WorkBuddy、Codex+OpenCode、Cursor+TRAE 重建件） |
+| `docs/research/hook-capability-*.json` | （历史）Hook 事件能力的三份原始/重建取证；功能已移除，仅存档 |
 | `docs/reviews/review-*.json` 与 `docs/reviews/评审报告-阶段五管理台.json` | 阶段五评审四个角度（架构 / UI-UX / 数据契约 / 功能覆盖）的智能体原始输出 |
 
 ## 附二、本目录之外的仓库文档

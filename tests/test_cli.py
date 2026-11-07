@@ -15,7 +15,6 @@ def args(**overrides):
         "full": False,
         "skills": False,
         "mcp": False,
-        "hooks": False,
         "probe_mcp": False,
         "report": False,
         "sync": False,
@@ -39,7 +38,6 @@ class CliModesTest(unittest.TestCase):
         result = resolve_modes(args())
         self.assertTrue(result.skills)
         self.assertTrue(result.mcp)
-        self.assertTrue(result.hooks)
         self.assertFalse(result.sync)
         self.assertFalse(result.clean)
         self.assertFalse(result.push)
@@ -50,7 +48,6 @@ class CliModesTest(unittest.TestCase):
         result = resolve_modes(args(full=True))
         self.assertTrue(result.skills)
         self.assertTrue(result.mcp)
-        self.assertTrue(result.hooks)
         self.assertTrue(result.probe_mcp)
         self.assertTrue(result.report)
         self.assertFalse(result.sync)
@@ -62,7 +59,6 @@ class CliModesTest(unittest.TestCase):
     def test_legacy_flags_map_to_new_modes(self):
         result = resolve_modes(args(hermes=True, ai_memory=True, fix=True))
         self.assertTrue(result.mcp)
-        self.assertTrue(result.hooks)
         self.assertTrue(result.fix_skills)
 
     def test_remove_legacy_requires_live_mcp_probe(self):
@@ -74,7 +70,6 @@ class CliModesTest(unittest.TestCase):
         result = resolve_modes(args(setup_all=True))
         self.assertTrue(result.skills)
         self.assertTrue(result.mcp)
-        self.assertTrue(result.hooks)
         self.assertTrue(result.probe_mcp)
         self.assertTrue(result.fix_skills)
         self.assertTrue(result.fix_mcp)
@@ -83,16 +78,14 @@ class CliModesTest(unittest.TestCase):
     def test_all_profiles_runs_full_probe_each_profile(self):
         result = resolve_modes(args(all_profiles=True))
         self.assertTrue(result.mcp)
-        self.assertTrue(result.hooks)
         self.assertTrue(result.probe_mcp)
 
     def test_migrate_skill_links_is_explicit_write_mode(self):
         # --migrate-skill-links is an early-return write mode like the stage-4
-        # toggles: the default skills/mcp/hooks checks must not also kick in.
+        # toggles: the default skills/mcp checks must not also kick in.
         result = resolve_modes(args(migrate_skill_links=True))
         self.assertFalse(result.skills)
         self.assertFalse(result.mcp)
-        self.assertFalse(result.hooks)
 
 
 if __name__ == "__main__":

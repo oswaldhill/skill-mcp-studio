@@ -309,7 +309,7 @@ class DshPageGuiTest(unittest.TestCase):
         """
         self.assertIn('id="count-dsh"', self.body, "DSH 插件导航项缺少 count 徽标")
         # 与同组各项同构：nav-item 内紧跟文字的 span.count + 唯一 id
-        for sibling in ("count-agents", "count-skills", "count-mcp", "count-hooks"):
+        for sibling in ("count-agents", "count-skills", "count-mcp"):
             self.assertIn(f'id="{sibling}"', self.body,
                           f"同组基准项 {sibling} 缺失，本断言的前提已不成立")
 
