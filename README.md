@@ -1,8 +1,8 @@
 # Skill MCP Studio
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v0.33.0-blue" alt="version">
-  <img src="https://img.shields.io/badge/build-133-lightgrey" alt="build">
+  <img src="https://img.shields.io/badge/version-v0.34.0-blue" alt="version">
+  <img src="https://img.shields.io/badge/build-134-lightgrey" alt="build">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="license">
   <img src="https://img.shields.io/badge/python-%3E%3D3.11-3776AB" alt="python">
   <img src="https://img.shields.io/github/actions/workflow/status/oswaldhill/skill-mcp-studio/build-macos.yml?branch=develop&label=CI%20(macOS)" alt="CI">
@@ -49,6 +49,8 @@ Python 审计 CLI、一个纯前端八页管理台（Tauri 桌面壳）和 66 �
   登记失效 / 仓库待同步）、按 `owner/repo` 搜索安装与升级，升级前自动备份、可回滚。
 - **使用画像**：`load` / `browse` / `edit` / `last_used` / `never_used` 四类行为统计，
   用于回答「哪些技能长期没被用过」。
+- **Git 技能源**：把「一个 Git 目录」作为技能来源登记（可来自远端 clone，也可以是本地已有
+  仓库，登记后是同一类对象）；递归发现技能、检查领先/落后、安全拉取（默认仅快进）、推送。
 - **变更追踪**：后台巡检快照 diff（3 维度），变更可接受/忽略，忽略清单幂等。
 - **DSH 插件（只读）**：各 profile 的 cordis bundle 清单与载入顺序、三态判定、
   patch 层结构统计；`cordis.patch.yml` 的明文密钥**绝不回显**。
@@ -308,6 +310,28 @@ cleanup / commit / push / 修复。
 --sync-webdav-push / --sync-webdav-pull   推送 / 拉取「个人配置」这一小层（非资产、非实时）
 ```
 
+**Git 技能源（v0.34.0）**
+
+```text
+--list-git-sources                        只读：列出已登记的 Git 源与状态（分支/提交/领先落后/技能数）
+--add-git-source PATH                     登记已存在的 Git 目录（不 clone、不移动；配 --git-source-id / --git-source-label）
+--remove-git-source ID                    从登记表移除（只移除登记，磁盘目录保留）
+--clone-git-source URL --git-source-target PATH   从远端 clone 一个新源（支持 --dry-run / --git-branch）
+--git-discover PATH                       只读：递归发现该目录下的技能（顶层计入数量，嵌套单独列出）
+--check-git-sources                       只读：fetch 后报告各源领先/落后（不改工作区）
+--pull-git-sources                        拉取各源（**默认仅快进**；脏工作区或已分叉时拒绝）
+--pull-git-sources --git-merge            允许合并（会产生合并提交；冲突时保留现场并报告）
+--push-git-sources                        推送各源本地提交（落后远端时拒绝）
+```
+
+> **安全边界**：`--pull-git-sources` 遇到未提交改动**直接拒绝**，不 stash、不覆盖；
+> 已与远端分叉时快进模式拒绝并提示 `--git-merge`；合并冲突**不自动 abort**，保留现场。
+> 所有写操作都支持 `--dry-run`。
+>
+> **技能发现口径**与统一库一致：仓库根下的直接子目录（含 `SKILL.md`）计入顶层数量，
+> 更深的目录进 `nested` 单独列出、不计入数量；`.git` / `node_modules` / `_trash`
+> 等目录一律跳过。配置文件 `data/git_sources.yaml`（本机个人配置，不入库）。
+
 **变更追踪的忽略清单**
 
 ```text
@@ -521,7 +545,7 @@ cargo tauri build --target universal-apple-darwin
 | --- | --- |
 | push / PR 到 `master` | 构建 universal `.app` + `.dmg`，上传为 workflow artifact |
 | 手动 `workflow_dispatch` | 同上 |
-| push `v*` tag（如 `v0.33.0`） | 构建并**自动创建 GitHub Release**，上传 `.dmg` 与 `.app.zip` |
+| push `v*` tag（如 `v0.34.0`） | 构建并**自动创建 GitHub Release**，上传 `.dmg` 与 `.app.zip` |
 
 产物为**通用二进制（universal）**，原生运行于 Intel 与 Apple Silicon，无需 Rosetta。
 

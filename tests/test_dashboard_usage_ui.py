@@ -97,12 +97,31 @@ def _strip_strings_and_comments(code: str) -> str:
                     i += 1
                     break
                 if code[i] == "$" and i + 1 < n and code[i + 1] == "{":
+                    # `${...}` 里可能嵌套字符串与**模板串**（例如
+                    # `data-x="${escapeHtml(c.name)}"` 之后又跟一个反引号字符串）。
+                    # 只按花括号计深度会把里面的 ` 当成模板结束，从而让整个
+                    # 状态机失步、把后面成百上千行真实代码吞成字符串——
+                    # 实测这让本文件的守卫过去一直在空转。这里必须感知引号。
                     depth, start = 1, i + 2
                     j = start
+                    in_str = None
                     while j < n and depth:
-                        if code[j] == "{":
+                        ch = code[j]
+                        if in_str:
+                            if ch == "\\":
+                                j += 2
+                                continue
+                            if ch == in_str:
+                                in_str = None
+                            j += 1
+                            continue
+                        if ch in ("'", '"', "`"):
+                            in_str = ch
+                            j += 1
+                            continue
+                        if ch == "{":
                             depth += 1
-                        elif code[j] == "}":
+                        elif ch == "}":
                             depth -= 1
                         j += 1
                     out.append(_strip_strings_and_comments(code[start:j - 1]))

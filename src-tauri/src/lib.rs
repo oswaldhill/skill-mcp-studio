@@ -564,6 +564,18 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
         "--migrate-skill-links",
         "--mcp",
         "--remove-legacy-mcp",
+        // Git 技能源（2026-11-07）：登记 / 检查 / 拉取 / 推送 / 发现。
+        // 都只操作本机 git 工作区，不接受任意路径写入以外的 shell 能力。
+        "--list-git-sources",
+        "--add-git-source",
+        "--remove-git-source",
+        "--git-source-id",
+        "--git-source-label",
+        "--check-git-sources",
+        "--pull-git-sources",
+        "--push-git-sources",
+        "--git-merge",
+        "--git-discover",
         // 变更检测（B 阶段）：产出持久化快照并与上次对比（只读不探活）。
         "--snapshot",
         // 后台巡检设置（D 阶段）：读写 config.yaml 的 settings 段。

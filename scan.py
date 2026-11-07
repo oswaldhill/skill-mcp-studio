@@ -261,6 +261,171 @@ def _endpoint_auth_fields_from_args(args) -> dict:
     return fields
 
 
+def _git_status_text(info: dict) -> str:
+    """把一条源状态压成一行可读摘要（GUI 用结构化字段，这里只给终端）。"""
+    if info.get("skipped"):
+        return "⏸ 已禁用"
+    if info.get("error"):
+        return f"✗ {info['error']}"
+    bits = [info.get("branch") or "?"]
+    if info.get("head"):
+        bits.append(info["head"])
+    ahead, behind = info.get("ahead") or 0, info.get("behind") or 0
+    if ahead and behind:
+        bits.append(f"↑{ahead} ↓{behind} 分叉")
+    elif ahead:
+        bits.append(f"↑{ahead}")
+    elif behind:
+        bits.append(f"↓{behind}")
+    else:
+        bits.append("最新")
+    if info.get("dirty"):
+        bits.append(f"脏({info.get('dirty_files', 0)})")
+    bits.append(f"{info.get('skill_count', 0)} 技能")
+    if info.get("nested_count"):
+        bits.append(f"+{info['nested_count']} 嵌套")
+    return " · ".join(bits)
+
+
+def _run_git_source_commands(args) -> int:  # noqa: C901 - 早返回分派，保持单点可读
+    """Git 技能源的一组早返回出口（登记 / 发现 / 检查 / 拉取 / 推送）。
+
+    写操作全部支持 ``--dry-run``；默认动作是**只读检查**。
+    返回退出码：0 全绿；1 有源失败；2 参数或执行错误。
+    """
+    import git_sources as gs
+    import git_sync_ops as ops
+
+    as_json = getattr(args, "format", None) == "json"
+
+    def emit(payload, code=0):
+        if as_json:
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        elif payload.get("message"):
+            print(f"  {payload['message']}")
+        return code
+
+    # ── 发现（纯只读，不需要登记）────────────────────────────────
+    if getattr(args, "git_discover", None):
+        found = gs.discover_skills(args.git_discover)
+        payload = {
+            "kind": "git-discover",
+            "path": os.path.abspath(os.path.expanduser(args.git_discover)),
+            "skill_count": len(found["top_level"]),
+            "skills": found["top_level"],
+            "nested": found["nested"],
+        }
+        if as_json:
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        else:
+            print(f"\n  目录：{payload['path']}")
+            print(f"  顶层技能 {payload['skill_count']} 个")
+            for name in found["top_level"]:
+                print(f"    · {name}")
+            if found["nested"]:
+                print("  嵌套技能（不计入顶层数量）：")
+                for top, items in found["nested"].items():
+                    print(f"    {top}/ → {len(items)} 个")
+        return 0
+
+    # ── 登记 / 移除 ────────────────────────────────────────────
+    if getattr(args, "add_git_source", None):
+        res = gs.add_source(
+            args.add_git_source,
+            source_id=getattr(args, "git_source_id", None) or "",
+            label=getattr(args, "git_source_label", None) or "",
+        )
+        return emit(res, 0 if res.get("ok") else 2)
+
+    if getattr(args, "remove_git_source", None):
+        res = gs.remove_source(args.remove_git_source)
+        return emit(res, 0 if res.get("ok") else 2)
+
+    # ── clone（从 Git 直接拉取）──────────────────────────────────
+    if getattr(args, "clone_git_source", None):
+        target = getattr(args, "git_source_target", None)
+        if not target:
+            return emit({"ok": False, "message": "缺少 --git-source-target"}, 2)
+        res = ops.clone_source(
+            args.clone_git_source,
+            target,
+            source_id=getattr(args, "git_source_id", None) or "",
+            branch=getattr(args, "git_branch", None) or "",
+            dry_run=bool(getattr(args, "dry_run", False)),
+        )
+        if not as_json and res.get("ok"):
+            print(f"  {res['message']}")
+            print(f"  可用 --add-git-source {res.get('target','')} 登记为技能源")
+        return emit(res, 0 if res.get("ok") else 1)
+
+    # ── 检查 / 拉取 / 推送（批量，走登记表）────────────────────
+    dry = bool(getattr(args, "dry_run", False))
+    if getattr(args, "check_git_sources", False):
+        results = [ops.check_source(e["id"], e["path"]) for e in gs.load_sources()
+                   if e.get("enabled", True)]
+        summary = {
+            "total": len(results),
+            "ok": sum(1 for r in results if r.get("ok")),
+            "failed": sum(1 for r in results if not r.get("ok")),
+        }
+        if as_json:
+            print(json.dumps({"kind": "git-check", "summary": summary, "results": results},
+                             ensure_ascii=False, indent=2))
+        else:
+            print("\n  Git 技能源检查：")
+            for r in results:
+                print(f"    [{r['status']}] {r['id']}: {r['message']}")
+            print(f"  共 {summary['total']} 个，{summary['ok']} 个正常，{summary['failed']} 个失败\n")
+        return 0 if summary["failed"] == 0 else 1
+
+    if getattr(args, "pull_git_sources", False):
+        mode = "merge" if getattr(args, "git_merge", False) else "ff-only"
+        results, summary = ops.run_on_all("pull", mode=mode, dry_run=dry)
+        if as_json:
+            print(json.dumps({"kind": "git-pull", "summary": summary, "results": results},
+                             ensure_ascii=False, indent=2))
+        else:
+            print(f"\n  Git 技能源拉取（{'合并' if mode == 'merge' else '仅快进'}"
+                  f"{'，预演' if dry else ''}）：")
+            for r in results:
+                print(f"    [{r['status']}] {r['id']}: {r['message']}")
+            print(f"  共 {summary['total']} 个，{summary['ok']} 个成功\n")
+        return 0 if summary["failed"] == 0 else 1
+
+    if getattr(args, "push_git_sources", False):
+        results, summary = ops.run_on_all("push", dry_run=dry)
+        if as_json:
+            print(json.dumps({"kind": "git-push", "summary": summary, "results": results},
+                             ensure_ascii=False, indent=2))
+        else:
+            print(f"\n  Git 技能源推送{'（预演）' if dry else ''}：")
+            for r in results:
+                print(f"    [{r['status']}] {r['id']}: {r['message']}")
+            print(f"  共 {summary['total']} 个，{summary['ok']} 个成功\n")
+        return 0 if summary["failed"] == 0 else 1
+
+    # ── 默认：列出全部源（只读）────────────────────────────────
+    results = gs.check_all(include_disabled=True)
+    summary = gs.summarize(results)
+    if as_json:
+        print(json.dumps({"kind": "git-sources", "summary": summary, "sources": results},
+                         ensure_ascii=False, indent=2))
+        return 0
+    print("\n  Git 技能源：")
+    if not results:
+        print("    （尚未登记任何 Git 源；用 --add-git-source <path> 添加）")
+    for info in results:
+        print(f"    - {info.get('id')}: {_git_status_text(info)}")
+        print(f"      {info.get('path', '')}")
+    if results:
+        print(
+            f"\n  共 {summary['total']} 个（启用 {summary['enabled']}）"
+            f" · 落后 {summary['behind']} · 领先 {summary['ahead']}"
+            f" · 脏 {summary['dirty']} · 技能 {summary['skills']}\n"
+        )
+    return 0
+
+
 def _run_list_endpoints(args, config, config_path) -> int:
     """Read-only: print the endpoint library table."""
     print("\n  端点库（endpoint library）:")
@@ -2697,6 +2862,60 @@ def build_parser() -> argparse.ArgumentParser:
         help="配合 --merge-skills：要归并的技能，逗号分隔；传 all 表示全部可执行组",
     )
 
+    # === Git 技能源（2026-11-07）：把「一个 Git 目录」作为技能来源登记与同步 ===
+    parser.add_argument(
+        "--list-git-sources", action="store_true",
+        help="只读：列出已登记的 Git 技能源及其状态（分支 / 提交 / 领先落后 / 技能数）",
+    )
+    parser.add_argument(
+        "--add-git-source", type=str, default=None, metavar="PATH",
+        help="把已存在的 Git 目录登记为技能源（不 clone；配合 --git-source-id/--git-source-label）",
+    )
+    parser.add_argument(
+        "--remove-git-source", type=str, default=None, metavar="ID",
+        help="从登记表移除 Git 源（只移除登记，磁盘目录保留）",
+    )
+    parser.add_argument(
+        "--git-source-id", type=str, default=None, metavar="ID",
+        help="配合 --add-git-source：自定义源 id（默认取目录名）",
+    )
+    parser.add_argument(
+        "--git-source-label", type=str, default=None, metavar="LABEL",
+        help="配合 --add-git-source：展示用名称",
+    )
+    parser.add_argument(
+        "--clone-git-source", type=str, default=None, metavar="URL",
+        help="从远端 clone 一个技能源到 --git-source-target（写操作，支持 --dry-run）",
+    )
+    parser.add_argument(
+        "--git-source-target", type=str, default=None, metavar="PATH",
+        help="配合 --clone-git-source：clone 目标目录",
+    )
+    parser.add_argument(
+        "--git-branch", type=str, default=None, metavar="BRANCH",
+        help="配合 --clone-git-source：指定分支",
+    )
+    parser.add_argument(
+        "--check-git-sources", action="store_true",
+        help="只读：fetch 后报告各 Git 源的领先/落后情况（不改变工作区）",
+    )
+    parser.add_argument(
+        "--pull-git-sources", action="store_true",
+        help="拉取各 Git 源（默认仅快进；分叉或脏工作区拒绝；支持 --dry-run）",
+    )
+    parser.add_argument(
+        "--push-git-sources", action="store_true",
+        help="推送各 Git 源的本地提交到远端（支持 --dry-run）",
+    )
+    parser.add_argument(
+        "--git-merge", action="store_true",
+        help="配合 --pull-git-sources：允许合并（默认仅 fast-forward，分叉即拒绝）",
+    )
+    parser.add_argument(
+        "--git-discover", type=str, default=None, metavar="PATH",
+        help="只读：递归发现某个目录下的技能（顶层计入数量，嵌套单独列出）",
+    )
+
     return parser
 
 
@@ -3155,6 +3374,15 @@ def main() -> int:
         return 0
 
     # 阶段五（通用管理台）：端点库 CRUD / 挂载 / MCP 清单（早返回，先于阶段一二三四）。
+    # Git 技能源（2026-11-07）：一组早返回出口，先于其它阶段（它们不需要扫描）。
+    _git_src_flags = (
+        "list_git_sources", "add_git_source", "remove_git_source",
+        "clone_git_source", "check_git_sources", "pull_git_sources",
+        "push_git_sources", "git_discover",
+    )
+    if any(getattr(args, name, None) for name in _git_src_flags):
+        return _run_git_source_commands(args)
+
     if getattr(args, "list_endpoints", False):
         return _run_list_endpoints(args, config, config_path)
     if getattr(args, "add_endpoint", None):

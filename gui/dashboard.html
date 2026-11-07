@@ -2177,6 +2177,8 @@ const escapeHtml = (v) => String(v == null ? "" : v)
   .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
 let SNAP = null;
+// Git 技能源（2026-11-07）：登记表 + 最近一次检查结果。
+let GIT_SOURCES = { loading: false, items: [], summary: null, error: "" };
 // 端点连通性结果 —— **独立于审计快照 SNAP**。
 // 审计只判配置（不探活），端点通断只由用户手动点「检查端点连通性」触发，
 // 结果暂存在这里，不写回 SNAP，免得端点状态又渗回审计区的颜色。
@@ -5120,8 +5122,22 @@ function renderSettings() {
     <div class="note" style="margin-top:var(--sp-4)">更新检查走 GitHub API（技能包本体在 GitHub 仓库）：未鉴权 60 次/小时，配置 token 后 5000 次/小时。token 存本机 data/github_token（不进 git）。</div>
   </div>`;
 
+  // 「Skill」：Git 技能源（2026-11-07）——把「一个 Git 目录」当技能来源。
+  // 目录既可以从远端 clone，也可以是本地已存在的仓库，登记后是同一类对象。
+  // 读写一律经 CLI（--list/add/remove/check/pull/push-git-sources）；异步加载渲染。
+  const gitSourcesCard = `<div class="settings-card" id="git-sources-card">
+    <h4>Git 技能源</h4>
+    <div id="git-sources-body"><div class="empty">加载中…</div></div>
+    <div class="form-actions" style="margin-top:var(--sp-4)">
+      <button class="btn-soft" data-action="git-source-add">登记本地目录</button>
+      <button class="btn-soft" data-action="git-source-check">检查更新</button>
+      <button class="btn-soft" data-action="git-source-pull">拉取</button>
+      <button class="btn-soft" data-action="git-source-push">推送</button>
+    </div>
+    <div class="note" style="margin-top:var(--sp-4)">把已存在的 Git 目录登记为技能源（不 clone、不移动）。拉取默认只做快进：工作区有未提交改动或已与远端分叉时会拒绝，不 stash、不覆盖你的改动；确需合并时用「合并拉取」。配置存本机 data/git_sources.yaml。</div>
+  </div>`;
+
   // 远程同步（WebDAV，v0.31.1）：个人配置跨设备同步。
-  //
   // 安全纪律：同步范围固定为个人配置层（local_overrides / market_sources /
   // discovered_tools / skill_versions），**凭据与技能包本体永不同步**。
   // 凭据走文件通道（与 github_token 同因：GUI 从 launchd 启动读不到 shell env），
@@ -5213,7 +5229,7 @@ function renderSettings() {
 
   el.innerHTML =
     `<div class="settings-tab-panel" data-panel="appearance">${appearanceCard}${patrolCard}${configPortCard}${_aboutCard}</div>` +
-    `<div class="settings-tab-panel hidden" data-panel="general">${skillsCard}${usageCard}${marketSourcesCard}${githubTokenCard}${webdavCard}</div>` +
+    `<div class="settings-tab-panel hidden" data-panel="general">${skillsCard}${gitSourcesCard}${usageCard}${marketSourcesCard}${githubTokenCard}${webdavCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="agents">${agentsCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="mcp">${mcpCard}</div>`;
 
@@ -5293,7 +5309,7 @@ function switchSettingsTab(tab) {
   document.querySelectorAll(".settings-tab-panel").forEach((p) => {
     p.classList.toggle("hidden", p.dataset.panel !== _settingsTab);
   });
-  if (_settingsTab === "general") { loadMarketSources(); loadGithubTokenStatus(); loadWebdavStatus(); }
+  if (_settingsTab === "general") { loadMarketSources(); loadGithubTokenStatus(); loadWebdavStatus(); loadGitSources(); }
   initWebdavActions();
 }
 
@@ -6417,6 +6433,157 @@ function renderEndpointStatus() {
     if (MARKET_DATA.loading) return;
     if (MARKET_DATA.sources) renderMarketSources({ sources: MARKET_DATA.sources }, "");
     loadMarketSources();
+  }
+
+  // ---------------- Git 技能源（2026-11-07）----------------
+  // 数据源：--list-git-sources --format json（只读）。所有写动作都经 runCli
+  // 转发到 CLI，GUI 自己不碰 git，也不解析仓库内容。
+  // 状态对象 GIT_SOURCES 在上方与 MARKET_DATA 同处声明（集中声明区）。
+
+  // 登记本地目录：只收「已存在的 Git 目录」，不做 clone（clone 走远端入口）。
+  function openAddGitSourceModal() {
+    mountModal(`<div class="modal-backdrop"><div class="modal modal-form">
+      <div class="form-title">登记 Git 技能源</div>
+      <div class="form-sub">填一个本机已存在的 Git 仓库目录。它可以是刚从远端 clone 的，也可以是一直在用的本地目录；登记后两者没有区别。</div>
+      <div class="form-field"><label>目录路径 *</label>
+        <input type="text" id="gs-path" placeholder="~/.my-skills" autocomplete="off" /></div>
+      <div class="form-field"><label>名称（可选）</label>
+        <input type="text" id="gs-label" placeholder="留空则用目录名" autocomplete="off" /></div>
+      <div id="gs-msg" class="note"></div>
+      <div class="form-actions">
+        <button class="btn-cancel" id="gs-cancel">取消</button>
+        <button class="btn-soft" id="gs-preview">先扫描</button>
+        <button id="gs-save" class="btn-save">登记</button>
+      </div>
+    </div></div>`);
+
+    $("gs-cancel").onclick = closeModal;
+    $("gs-preview").onclick = async () => {
+      const path = $("gs-path").value.trim();
+      if (!path) { $("gs-msg").textContent = "请先填写目录路径"; return; }
+      $("gs-msg").textContent = "扫描中…";
+      const res = await runCli(["--git-discover", path, "--format", "json"]);
+      let data = null;
+      try { data = JSON.parse(stripAnsi((res && res.stdout) || "{}")); } catch (e) { data = null; }
+      if (!data) { $("gs-msg").textContent = "扫描失败：" + (cliFailLines(res) || "无返回"); return; }
+      const nested = Object.keys(data.nested || {}).length;
+      $("gs-msg").textContent = `发现 ${data.skill_count} 个顶层技能` + (nested ? `，${nested} 个目录含嵌套技能（单独列出）` : "");
+    };
+    $("gs-save").onclick = async () => {
+      const path = $("gs-path").value.trim();
+      const label = $("gs-label").value.trim();
+      if (!path) { $("gs-msg").textContent = "请先填写目录路径"; return; }
+      const args = ["--add-git-source", path];
+      if (label) args.push("--git-source-label", label);
+      const res = await runCli(args);
+      closeModal();
+      if (res && res.code === 0) {
+        modalNotice("ok", "已登记", `${label || path} 已加入 Git 技能源`);
+        loadGitSources();
+      } else {
+        modalNotice("err", "登记失败", (res && (cliFailLines(res) || cliErrDetail(res))) || "未知错误");
+      }
+    };
+  }
+
+  async function confirmRemoveGitSource(id) {
+    if (!id) return;
+    const ok = await confirmModal("移除 Git 技能源",
+      `确认从登记表移除「${id}」？\n\n只移除登记，磁盘上的目录和技能不会被删除。`, false);
+    if (!ok) return;
+    const res = await runCli(["--remove-git-source", id]);
+    if (res && res.code === 0) {
+      modalNotice("ok", "已移除", `${id} 已从 Git 技能源移除（目录保留）`);
+      loadGitSources();
+    } else {
+      modalNotice("err", "移除失败", (res && (cliFailLines(res) || cliErrDetail(res))) || "未知错误");
+    }
+  }
+
+  async function loadGitSources() {
+    if (GIT_SOURCES.loading) return;
+    const body = $("git-sources-body");
+    if (!body) return;
+    GIT_SOURCES.loading = true;
+    try {
+      const res = await runCli(["--list-git-sources", "--format", "json"]);
+      if (!res || res.code !== 0) {
+        GIT_SOURCES.error = (res && (cliFailLines(res) || cliErrDetail(res)))
+          || "没能读取 Git 技能源（浏览器预览模式下不执行命令）";
+        renderGitSources();
+        return;
+      }
+      let data = null;
+      try {
+        data = JSON.parse(stripAnsi(res.stdout || "{}"));
+      } catch (e) {
+        GIT_SOURCES.error = "返回数据无法解析";
+        renderGitSources();
+        return;
+      }
+      GIT_SOURCES.items = data.sources || [];
+      GIT_SOURCES.summary = data.summary || null;
+      GIT_SOURCES.error = "";
+      renderGitSources();
+    } finally {
+      GIT_SOURCES.loading = false;
+    }
+  }
+
+  // 状态 → 标签样式。与后端 status 字段一一对应，不做字符串猜测。
+  function gitSourceTag(item) {
+    if (item.skipped) return { cls: "", text: "已禁用" };
+    if (item.error) return { cls: "warn", text: item.error };
+    if (item.dirty) return { cls: "warn", text: `有未提交改动 ${item.dirty_files || 0}` };
+    const a = item.ahead || 0, b = item.behind || 0;
+    if (a && b) return { cls: "warn", text: `已分叉 ↑${a} ↓${b}` };
+    if (b) return { cls: "warn", text: `落后 ${b}` };
+    if (a) return { cls: "ok", text: `领先 ${a}` };
+    return { cls: "ok", text: "最新" };
+  }
+
+  function renderGitSources() {
+    const body = $("git-sources-body");
+    if (!body) return;
+    if (GIT_SOURCES.error) {
+      body.innerHTML = `<div class="empty">${escapeHtml(GIT_SOURCES.error)}</div>`;
+      return;
+    }
+    const items = GIT_SOURCES.items || [];
+    if (!items.length) {
+      body.innerHTML = '<div class="empty">尚未登记 Git 技能源。点下方「登记本地目录」，把一个已存在的 Git 仓库加进来。</div>';
+      return;
+    }
+    const rows = items.map((it) => {
+      const tag = gitSourceTag(it);
+      const branch = it.branch || "-";
+      const head = it.head || "-";
+      const skills = it.skipped ? "-" : `${it.skill_count || 0}${it.nested_count ? ` +${it.nested_count} 嵌套` : ""}`;
+      return `<div class="ad-entry">
+        <span class="ad-e-key" title="${escapeHtml(it.path || "")}">${escapeHtml(it.label || it.id || "?")}</span>
+        <span class="ad-e-loc mono">${escapeHtml(branch)} · ${escapeHtml(head)}</span>
+        <span class="ad-e-loc">${escapeHtml(skills)} 技能</span>
+        <span class="tag ${tag.cls}">${escapeHtml(tag.text)}</span>
+        <button class="ad-clean" type="button" data-action="git-source-remove"
+          data-id="${escapeHtml(it.id || "")}">移除</button>
+      </div>`;
+    }).join("");
+    const s = GIT_SOURCES.summary || {};
+    const foot = s.total
+      ? `<div class="note" style="margin-top:var(--sp-3)">共 ${s.total} 个源（启用 ${s.enabled}）· 落后 ${s.behind} · 领先 ${s.ahead} · 有改动 ${s.dirty} · 技能 ${s.skills}</div>`
+      : "";
+    body.innerHTML = `<div class="ad-entries">${rows}</div>${foot}`;
+  }
+
+  // 统一的任务反馈：所有 git 源写动作都走这个壳（dry-run 可选）。
+  async function runGitSourceAction(title, args, okMsg) {
+    await runTaskModal(title, async () => {
+      const res = await runCli(args);
+      if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
+      const out = stripAnsi(res.stdout || "");
+      if (res.code === 0) return { ok: true, message: okMsg, detail: out };
+      return { ok: false, message: "操作未完成", detail: cliFailLines(res) || cliErrDetail(res) || out };
+    }, () => loadGitSources());
   }
 
   async function loadMarketSources() {
@@ -8563,6 +8730,12 @@ document.addEventListener("click", (e) => {
   if (act) {
     const a = act.dataset.action;
     if (a.startsWith("native-")) nativeIdentityAction(a, act);
+    else if (a === "git-source-check") runGitSourceAction("检查 Git 源更新", ["--check-git-sources", "--format", "json"], "检查完成");
+    else if (a === "git-source-pull") runGitSourceAction("拉取 Git 源（仅快进）", ["--pull-git-sources", "--format", "json"], "拉取完成");
+    else if (a === "git-source-merge-pull") runGitSourceAction("拉取 Git 源（允许合并）", ["--pull-git-sources", "--git-merge", "--format", "json"], "拉取完成");
+    else if (a === "git-source-push") runGitSourceAction("推送 Git 源", ["--push-git-sources", "--format", "json"], "推送完成");
+    else if (a === "git-source-add") openAddGitSourceModal();
+    else if (a === "git-source-remove") confirmRemoveGitSource(act.dataset.id);
     else if (a === "add-agent") renderAddPanel();
     else if (a === "refresh-audit") refreshWithBtn(act);
     // MCP 页刷新：与其它页同一个 refreshWithBtn（禁用按钮 → 重新拉快照 → 提示）。
@@ -9181,7 +9354,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.33.0", build: 133, build_number: 133, semver_ok: true, full: "v0.33.0 (build 133)" },
+  app: { name: "Skill MCP Studio", version: "0.34.0", build: 134, build_number: 134, semver_ok: true, full: "v0.34.0 (build 134)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

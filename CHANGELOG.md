@@ -7,6 +7,68 @@
 
 ## [Unreleased]
 
+## [v0.34.0] - 2026-11-07
+
+当前发布版本（build 134）。新增 **Git 技能源**：把「一个 Git 目录」当技能来源来登记、
+发现与同步。
+
+为什么需要：此前的仓库形态能力只认「统一库本身是 git 仓库」这一种情况。实际使用中
+技能来自多个 Git 目录——有人从远端 clone，有人把一直在用的本地目录加进来。二者在
+数据模型上是同一件事（都是一个 git 工作区），过去却没有地方统一管理。
+
+### 新增
+
+- **`core/git_sources.py`（只读半）**：登记表读写（`data/git_sources.yaml`）、技能发现、
+  状态检查。**永不联网**——全部是只读 git 子命令，`fetch` 也不做，保证「看一眼状态」
+  不会改变任何东西。
+- **`core/git_sync_ops.py`（写入半）**：clone / fetch / pull / merge / push 的唯一入口。
+  与只读模块分开，是沿用 `skill_repo_source` 的三条纪律。
+- **CLI 12 个参数**：`--list-git-sources`、`--add-git-source`、`--remove-git-source`、
+  `--git-source-id`、`--git-source-label`、`--clone-git-source`、`--git-source-target`、
+  `--git-branch`、`--check-git-sources`、`--pull-git-sources`、`--push-git-sources`、
+  `--git-merge`、`--git-discover`。除 `--git-discover` 外均支持 `--format json`。
+- **管理台「设置 → Skill → Git 技能源」卡片**：列出各源的分支/提交/技能数/状态，
+  提供登记、移除、检查、拉取、推送入口。写操作一律经 `run_cli` 转发 CLI。
+
+### 安全语义
+
+- **拉取默认只快进**：`--pull-git-sources` 用 `merge --ff-only`；分叉时拒绝并提示用
+  `--git-merge`。分叉不会静默产生合并提交。
+- **脏工作区一律拒绝**：有未提交改动时**不 stash、不覆盖**，直接返回 `status=dirty`。
+  实测确认用户改动与未拉入的内容都保持原样。
+- **冲突不猜**：合并冲突时返回 `status=conflict` 与冲突文件列表，**不自动 abort**，
+  保留现场让用户处理，也不谎报成功。
+- **推送前先判断**：落后远端时拒绝推送（`status=behind`），避免制造需要 force 的局面。
+- **登记不等于删目录**：`--remove-git-source` 只移除登记表条目，磁盘目录原样保留。
+- **配置损坏不静默**：`data/git_sources.yaml` 解析失败时抛错并点名文件，绝不返回
+  「没有任何源」——那会让用户以为配置丢了。
+
+### 技能发现口径
+
+与统一库**完全一致**，否则同一技能在两个页面会算出两个数：
+
+- 仓库根下的直接子目录（含 `SKILL.md`）→ 计入 `skill_count`；
+- 更深的目录 → 进 `nested` 单独列出，**不计入**数量；
+- `.git` / `node_modules` / `__pycache__` / `.venv` 与所有 `.` 开头目录跳过；
+- **`_trash` 跳过**：它是 `--delete-skill` 的软删除回收站，里面的 `SKILL.md` 是已删除
+  技能的残骸。实测不排除会凭空多出 17 个「嵌套技能」。
+
+### 测试
+
+- 新增 `tests/test_git_sources.py` 共 **30 项**，全部用真实临时 git 仓库（bare 远端 +
+  两个工作副本）跑，不 mock git：覆盖技能发现、登记校验（非 git 目录/重复 id/坏配置）、
+  current/behind/ahead/diverged 四态、快进拉取、**脏工作区拒绝且改动不被删除**、
+  分叉拒绝与显式合并、推送 dry-run 与落后拒绝、clone 非空目标拒绝。
+- 全量 **1572 项通过、2 项既有跳过**；`scripts/ci_parity.sh` 全部门禁通过。
+
+### 修复（过程中发现）
+
+- **`test_dashboard_usage_ui` 的静态守卫长期空转**：`_strip_strings_and_comments` 在处理
+  模板串 `${...}` 时只按花括号计深度，不感知引号，遇到 `${fn("x")}` 这类就失步，把后面
+  **成百上千行真实代码吞成字符串**。后果是 `MARKET_DATA` / `USAGE_DATA` / `ADVICE_DATA`
+  等声明从未被该守卫看见——它一直在只检查文件前半段。已改为感知引号，覆盖面恢复。
+  这是既有缺陷（HEAD 上同样存在），不是本次功能引入。
+
 ## [v0.33.0] - 2026-11-07
 
 当前发布版本（build 133）。**移除生命周期 Hook 能力**：管理台由八页回落为七页。
@@ -2218,7 +2280,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.33.0...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.34.0...HEAD
+[v0.34.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.34.0
 [v0.33.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.33.0
 [v0.32.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.32.0
 [v0.31.4]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.31.4
