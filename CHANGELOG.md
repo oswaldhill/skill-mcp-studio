@@ -7,8 +7,49 @@
 
 ## [Unreleased]
 
+## [v0.32.0] - 2026-11-07
+
+当前发布版本（build 132）。两条主线：**原生 MCP 接入与身份治理**（让「谁以什么身份
+调用了远端 MCP」变成可预览、可回滚、可复核的证据链）与**端点凭据来源**
+（token 不再只能明文落盘）。
+
 ### 新增
 
+- **原生 MCP 接入与身份治理（`--native-*`）**：把原生接入整改抽象成**版本限定的宿主
+  适配器**，首批支持 macOS WorkBuddy `5.9.3` 与 DeepSeek Harness `0.2.2-rc.1`；
+  宿主版本不匹配时**停止写入**，不尝试兼容未知基线。
+  - **控制面不联网**：本模块只做本地检查 / 计划 / 备份 / 写入 / 回读，不实现 MCP
+    网络客户端，不用终端代连，不触发 Hook、桥接、worker 或旧队列。CLI 原生分支在通用
+    审计与探测之前返回，既有通用端点探测**不属于**原生验收证据。
+  - **五步安全链**：只读检查 → 计划哈希（`--native-if-match`，计划过期即拒绝）→
+    私有备份 → 原子写 → 读回校验；回滚先校验全部受影响文件的**修复后哈希**，遇到
+    后续编辑一律拒绝覆盖。
+  - **身份四维核验**：设备（服务端 device key 映射）、Agent（原生 `clientInfo`，标注
+    `source=client_info` 且**不当作密码学认证**）、当前对话（由宿主现取，不能由本工具
+    生成）、项目（`project_resolve_identity` 返回 `matched` 且在授权名单内）、任务
+    （`session_binding_get` 显式会话参数；`unbound` 合法，**不自动创建或绑定**）。
+  - **双真实对话验收**：`--native-start` 生成 A/B 两份带随机 challenge 的指令 →
+    在两个真实对话里各加载专用技能、现取自身原生 session ID → `--native-capture`
+    以该 ID 作**精确历史选择器**读取宿主原始工具历史（WorkBuddy 读 JSONL，DSH 读
+    zstd 压缩 JSONL）→ `--native-verify` 再次回读两个源文件核对。不接受模型最终回答、
+    手工导入 JSON、旧 challenge 或错误工具回执作为证据；配置或应用版本变化即要求重验。
+  - WorkBuddy：连接键用 `WorkBuddy` 以保留原生 Agent 名称；5.9.3 不按根 env 声明替换
+    `Authorization`，故仅在明确 apply 且缺失有效 Header 时解析既有安全凭据，写入 0600
+    配置；已有 Header 原样保留，输出不含凭据。当前会话 ID 由原生技能加载时替换
+    `${CODEBUDDY_SESSION_ID}`，普通文件读取不算证明。
+  - DeepSeek Harness：主配置为 `~/.dsh/profiles/desktop/cordis.patch.yml`，识别
+    `insert` 及禁用父节点，保留原生 HTTP 插件、Cordis 表达式与原有 Header；使用外置
+    原生插件适配副本**仅**替换 `clientInfo.name`，9 个依赖仍引用原 App 同一模块实例
+    以免重复加载 scope 状态。**不修改 App ASAR**、不复制依赖、不构建第三方源码；适配前
+    校验原始入口 SHA-256 并保存补丁清单。
+  - **通用入口互斥**：`--fix-mcp` 对这两个已注册原生适配器只提示使用专用入口，避免
+    重新写入占位 Header 或重复连接。
+  - 本地状态目录 `~/.local/share/skill-mcp-studio/native-mcp`（0700），回执与备份
+    0600。管理台「MCP」页新增原生接入面板（预览 / 应用 / 回滚 / 历史验收恢复 / 双会话
+    证据比较），与 CLI 共用同一服务。
+  - **不主张**：不主张所有通用 MCP 调用都会自动携带对话 ID；本次验收证明的是显式
+    `native_session_id` 参数正确到达远端；读到 `unbound` 不能说明历史上从未绑定；一次
+    验收也不证明未来应用升级或凭据撤销后仍有效。
 - **端点凭据来源（`auth_mode`）：钥匙串 / 环境变量 / 凭据文件**（用户反馈：token
   此前只能明文存进端点库再抄进每个客户端的 `Authorization` 头，已经存进 macOS
   「登录」钥匙串的凭据在本工具里无处可用）。端点现在可声明凭据从哪来：
@@ -2107,7 +2148,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.31.4...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.32.0...HEAD
+[v0.32.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.32.0
 [v0.31.4]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.31.4
 [v0.31.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.31.3
 [v0.31.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.31.2

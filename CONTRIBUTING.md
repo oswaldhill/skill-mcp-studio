@@ -15,10 +15,22 @@
 git clone <repo> && cd skill-mcp-studio
 scripts/install-hooks.sh        # 启用提交门禁，见下节（只需一次）
 
-# 从源码直接运行 CLI（无需安装）
-python3 scan.py --help
-python3 scan.py --full            # 只读审计
+# 推荐：项目内 venv（解释器固定为 3.11，不污染系统、不依赖 PATH 顺序）
+python3.11 -m venv .venv
+.venv/bin/python -m pip install -e .
+.venv/bin/skill-mcp-studio --version
+
+# 或：用已确认的解释器从源码直接运行
+python3.11 scan.py --help
+python3.11 scan.py --full          # 只读审计
 ```
+
+> **macOS 注意**：`/usr/bin/python3` 是 Apple **Command Line Tools 自带**的 3.9.6，
+> 与本项目要求的 Python ≥ 3.11 不符。它随 CLT 一起分发（和 `git`、`clang` 同一个包），
+> **无法单独卸载**，也不应手动删除 —— 请让它不要在 PATH 里胜出即可：
+> Homebrew 的 `python@3.11` 把**不带版本号**的 `python3` 放在
+> `/opt/homebrew/opt/python@3.11/libexec/bin`（而不是 `.../python@3.11/bin`，
+> 后者只有 `python3.11`），PATH 需要指向 `libexec/bin` 才能让 `python3` 是 3.11。
 
 ### 启用提交门禁（clone 后必做一次）
 
