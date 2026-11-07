@@ -61,3 +61,11 @@ profiles-hermes-home/
 # 作为「本地源码插件」，所以**目录必须留在原地**，只是不纳入本仓库版本控制。
 # 2026-10-25 曾因 `git add -A` 误入库 15 个文件，v0.31.5 移出并显式忽略。
 dsh-plugin-model-guard/
+
+# 代码签名机密（2026-11-07）：.p12 含私钥，等同于签名能力，绝不入库。
+# 见 docs/CODE-SIGNING-HANDOFF.md
+*.p12
+*.pfx
+*.cer
+*.key
+oswaldhill-dev-signing*
