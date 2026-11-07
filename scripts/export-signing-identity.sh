@@ -169,4 +169,8 @@ cat <<EOF
       3. 新设备执行：bash import-signing-identity.sh <p12路径>
 
     安全提醒：.p12 等同于你的签名能力。用完请删除本机副本。
+
+    ⚠ 你刚才设置的 .p12 密码是：$P12PASS
+      请立刻记到密码管理器。新设备导入时必须用它；
+      输错会报「MAC verification failed」或直接失败。
 EOF
