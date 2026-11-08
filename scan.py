@@ -341,6 +341,12 @@ def _run_git_source_commands(args) -> int:  # noqa: C901 - 早返回分派，保
         res = gs.remove_source(args.remove_git_source)
         return emit(res, 0 if res.get("ok") else 2)
 
+    if getattr(args, "set_primary_git_source", None):
+        res = gs.set_primary(args.set_primary_git_source)
+        if not as_json and res.get("ok"):
+            print(f"  统一技能目录已指向「{res['id']}」：{res['path']}")
+        return emit(res, 0 if res.get("ok") else 2)
+
     # ── clone（从 Git 直接拉取）──────────────────────────────────
     if getattr(args, "clone_git_source", None):
         target = getattr(args, "git_source_target", None)
@@ -415,14 +421,20 @@ def _run_git_source_commands(args) -> int:  # noqa: C901 - 早返回分派，保
     if not results:
         print("    （尚未登记任何 Git 源；用 --add-git-source <path> 添加）")
     for info in results:
-        print(f"    - {info.get('id')}: {_git_status_text(info)}")
+        mark = "★ " if info.get("primary") else "  "
+        print(f"    {mark}{info.get('id')}: {_git_status_text(info)}")
         print(f"      {info.get('path', '')}")
     if results:
         print(
             f"\n  共 {summary['total']} 个（启用 {summary['enabled']}）"
             f" · 落后 {summary['behind']} · 领先 {summary['ahead']}"
-            f" · 脏 {summary['dirty']} · 技能 {summary['skills']}\n"
+            f" · 脏 {summary['dirty']} · 技能 {summary['skills']}"
         )
+        if summary.get("primary_missing"):
+            print("  ⚠️ 尚未指定统一技能目录（= 主 Git 源）；用 --set-primary-git-source <id> 指定")
+        else:
+            print(f"  统一技能目录：{summary['primary_path']}（源 {summary['primary_id']}）")
+        print("")
     return 0
 
 
@@ -2896,6 +2908,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="配合 --clone-git-source：指定分支",
     )
     parser.add_argument(
+        "--set-primary-git-source", type=str, default=None, metavar="ID",
+        help="把某 Git 源设为统一技能目录（同一时刻只有一个；等价于 --set-unified-dir 的新入口）",
+    )
+    parser.add_argument(
         "--check-git-sources", action="store_true",
         help="只读：fetch 后报告各 Git 源的领先/落后情况（不改变工作区）",
     )
@@ -3378,7 +3394,7 @@ def main() -> int:
     _git_src_flags = (
         "list_git_sources", "add_git_source", "remove_git_source",
         "clone_git_source", "check_git_sources", "pull_git_sources",
-        "push_git_sources", "git_discover",
+        "push_git_sources", "git_discover", "set_primary_git_source",
     )
     if any(getattr(args, name, None) for name in _git_src_flags):
         return _run_git_source_commands(args)

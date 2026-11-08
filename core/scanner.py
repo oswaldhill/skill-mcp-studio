@@ -95,7 +95,20 @@ def load_config(config_path: str = None) -> Dict[str, Any]:
     # cwd ≠ 仓库根时相对 overlay 条目曾整体静默失效）。
     from profile_loader import apply_profile_sources
 
-    return apply_profile_sources(config, config_path=config_path)
+    config = apply_profile_sources(config, config_path=config_path)
+
+    # 统一技能目录 = 主 Git 源（2026-11-08 合并）：此前它是与 Git 源并列的独立
+    # 配置项，实践里两者总指向同一个目录，分别维护必然漂移。现在统一目录由
+    # 「登记表里 primary 的那条」派生，此处注入生效配置——下游所有
+    # config["unified_skills_dir"] 读取点因此无需改造。
+    try:
+        from git_sources import apply_primary_to_config
+
+        config = apply_primary_to_config(config, config_path=config_path)
+    except Exception:  # noqa: BLE001 —— 派生失败不该锁死配置加载
+        pass
+
+    return config
 
 
 def load_discovered_tools() -> List[Dict[str, Any]]:

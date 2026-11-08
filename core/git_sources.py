@@ -26,6 +26,20 @@
 
 ``.git`` / ``node_modules`` / 以 ``.`` 开头的目录一律跳过。
 
+## 主源 = 统一技能目录（2026-11-08 合并）
+
+历史上「统一技能目录」（``unified_skills_dir``）与「Git 技能源」是两处独立配置，
+但实践里它们指向同一个目录——那既是技能聚合的地方，也是一个 git 工作区。两处
+分别维护必然漂移，因此**合并为一个概念**：
+
+- 登记表里带 ``primary: true`` 的那条就是**统一技能目录**；
+- ``unified_skills_dir`` 不再单独配置，由主源路径**派生**
+  （``scanner.load_config`` 在装配生效配置时注入，见 ``apply_primary_to_config``）；
+- 下游 38 处 ``config["unified_skills_dir"]`` 读取点**一行都不用改**。
+
+没有主源时（例如刚装好还没登记），退回 ``~/.skills-manager/skills`` 并在状态里
+如实标注 ``primary_missing``，不静默当成「已配置」。
+
 ## 配置位置
 
 ``data/git_sources.yaml``（gitignored，同 ``discovered_tools`` / ``market_sources``
@@ -109,6 +123,90 @@ def save_sources(sources: List[Dict[str, Any]], path: Optional[str] = None) -> s
     # 0600：配置里可能有私有的远端地址，按本机个人配置文件对待
     atomic_write(target, payload, 0o600)
     return backup
+
+
+# --------------------------------------------------------------------------
+# 主源（= 统一技能目录）
+# --------------------------------------------------------------------------
+# 无主源时的兜底目录。保留它而不是报错，是因为「刚装好、还没登记任何源」是合法
+# 初始态；但状态里必须如实标注 primary_missing，不能假装已经配好了。
+FALLBACK_UNIFIED_DIR = "~/.skills-manager/skills"
+
+
+def primary_source(sources: Optional[List[Dict[str, Any]]] = None) -> Optional[Dict[str, Any]]:
+    """返回主源条目（= 统一技能目录）。没有则 None。"""
+    items = sources if sources is not None else load_sources()
+    for item in items:
+        if item.get("primary"):
+            return item
+    return None
+
+
+def unified_dir_from_sources(sources: Optional[List[Dict[str, Any]]] = None) -> Tuple[str, Optional[Dict[str, Any]]]:
+    """由登记表派生统一技能目录，返回 ``(目录, 主源条目或 None)``。
+
+    两处配置合并的意义就在这里：统一目录不再是独立事实，永远跟着主源走。
+    """
+    primary = primary_source(sources)
+    if primary and primary.get("path"):
+        return primary["path"], primary
+    return os.path.expanduser(FALLBACK_UNIFIED_DIR), None
+
+
+def _ledger_for_config(config_path: Optional[str]) -> Optional[str]:
+    """由 config 路径推导同仓库的 ``data/git_sources.yaml``；未给则返回 None（用默认）。"""
+    if not config_path:
+        return None
+    base = os.path.dirname(os.path.abspath(config_path))
+    return os.path.join(base, "data", "git_sources.yaml")
+
+
+def apply_primary_to_config(config: Dict[str, Any], config_path: Optional[str] = None) -> Dict[str, Any]:
+    """把主源路径注入 ``config['unified_skills_dir']``（原地修改并返回）。
+
+    调用点在 ``scanner.load_config`` 末尾——那是全项目装配「生效配置」的唯一
+    出口，因此下游所有 ``config["unified_skills_dir"]`` 读取点都自动跟随主源，
+    无需逐处改造。
+
+    没有主源时**不覆盖**已有值（造数据/测试夹具里直接写 unified_skills_dir 的
+    情形必须继续可用），只在该键缺失时填兜底值。
+    """
+    try:
+        # config_path 是「配置根的目录」用于定位 data/；不传则用生产默认。
+        # 早先这里漏了转发，导致自定义配置永远读生产登记表——测试与多实例都会串。
+        ledger = _ledger_for_config(config_path)
+        sources = load_sources(ledger)
+    except ValueError:
+        # 登记表损坏不该让整个 CLI 起不来；保留配置原有值，由 --list-git-sources
+        # 单独报错，避免「一个坏文件锁死全部功能」。
+        return config
+    directory, primary = unified_dir_from_sources(sources)
+    if primary:
+        config["unified_skills_dir"] = directory
+    elif not config.get("unified_skills_dir"):
+        config["unified_skills_dir"] = directory
+    return config
+
+
+def set_primary(source_id: str, *, config_path: Optional[str] = None) -> Dict[str, Any]:
+    """把某个源设为统一技能目录（同一时刻只有一个主源）。
+
+    语义等价于旧的 ``--set-unified-dir``：改变统一目录，但入口从「写一个路径」
+    变成「选一个已登记的源」，保证统一目录始终是一个真实存在的 Git 工作区。
+    """
+    sources = load_sources(config_path)
+    target = _find_by_id(sources, source_id)
+    if not target:
+        return {"ok": False, "error": f"未找到源「{source_id}」"}
+    for item in sources:
+        if item is target:
+            item["primary"] = True
+            item.setdefault("enabled", True)
+            item["enabled"] = True  # 主源必须启用，否则统一目录会被当成禁用源跳过
+        else:
+            item.pop("primary", None)
+    backup = save_sources(sources, config_path)
+    return {"ok": True, "id": source_id, "path": target.get("path", ""), "backup": backup}
 
 
 # --------------------------------------------------------------------------
@@ -385,6 +483,7 @@ def check_all(*, config_path: Optional[str] = None, include_disabled: bool = Fal
                     "label": entry.get("label", ""),
                     "path": entry.get("path", ""),
                     "enabled": False,
+                    "primary": bool(entry.get("primary")),
                     "skipped": True,
                     "error": "",
                 }
@@ -394,6 +493,7 @@ def check_all(*, config_path: Optional[str] = None, include_disabled: bool = Fal
         info["id"] = entry.get("id", "")
         info["label"] = entry.get("label", "") or entry.get("id", "")
         info["enabled"] = bool(entry.get("enabled", True))
+        info["primary"] = bool(entry.get("primary"))
         info["skipped"] = False
         results.append(info)
     return results
@@ -409,8 +509,12 @@ def summarize(results: List[Dict[str, Any]]) -> Dict[str, int]:
     ahead = sum(1 for r in results if (r.get("ahead") or 0) > 0)
     skills = sum(int(r.get("skill_count") or 0) for r in results if not r.get("skipped"))
     failed = sum(1 for r in results if r.get("error"))
+    primary = next((r for r in results if r.get("primary")), None)
     return {
         "total": total,
+        "primary_id": (primary or {}).get("id", ""),
+        "primary_path": (primary or {}).get("path", ""),
+        "primary_missing": primary is None,
         "enabled": enabled,
         "ok": ok,
         "failed": failed,

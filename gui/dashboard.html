@@ -5085,10 +5085,8 @@ function renderSettings() {
     <div class="note" style="margin-top:var(--sp-4)">导出为单个 JSON（端点密钥自动脱敏，可安全放进 iCloud 或分享）；导入按「导入值优先、不删除本地已有项」合并，写入前自动备份。icloud 别名指向 iCloud Drive（仅 macOS）。</div>
   </div>`;
 
-  // 「通用」：Skills 统一目录（纯配置，路径类设置集中于此）
-  const skillsCard = settingsCard("Skills 统一目录",
-    kv("统一技能目录", `<code class="mono">${escapeHtml(sk.unified_dir || "未设置")}</code>`),
-    '<div class="card-link"><div class="grow note">修改后所有客户端将统一指向新目录。</div><button class="ghost" data-action="set-dir">更改目录</button></div>');
+  // 统一技能目录已并入「Git 技能源」卡片（2026-11-08）：二者本是同一目录，
+  // 分两张卡维护必然漂移。统一目录 = 登记表里标 primary 的那个源。
 
   // 「Skill」：统计是后台定时任务，间隔可配（0 = 关闭，只在手动点重新统计时跑）
   // 按钮先算好再插值（与上面 scaleBtns 同一写法）：模板里嵌 .map() 会让
@@ -5126,15 +5124,18 @@ function renderSettings() {
   // 目录既可以从远端 clone，也可以是本地已存在的仓库，登记后是同一类对象。
   // 读写一律经 CLI（--list/add/remove/check/pull/push-git-sources）；异步加载渲染。
   const gitSourcesCard = `<div class="settings-card" id="git-sources-card">
-    <h4>Git 技能源</h4>
-    <div id="git-sources-body"><div class="empty">加载中…</div></div>
+    <h4>统一技能目录与 Git 源</h4>
+    <div class="rows" style="font-size:var(--fs-sm)">
+      <div class="row"><span class="k">统一技能目录</span><span class="v"><code class="mono" id="git-unified-dir">${escapeHtml(sk.unified_dir || "未设置")}</code></span></div>
+    </div>
+    <div id="git-sources-body" style="margin-top:var(--sp-4)"><div class="empty">加载中…</div></div>
     <div class="form-actions" style="margin-top:var(--sp-4)">
       <button class="btn-soft" data-action="git-source-add">登记本地目录</button>
       <button class="btn-soft" data-action="git-source-check">检查更新</button>
       <button class="btn-soft" data-action="git-source-pull">拉取</button>
       <button class="btn-soft" data-action="git-source-push">推送</button>
     </div>
-    <div class="note" style="margin-top:var(--sp-4)">把已存在的 Git 目录登记为技能源（不 clone、不移动）。拉取默认只做快进：工作区有未提交改动或已与远端分叉时会拒绝，不 stash、不覆盖你的改动；确需合并时用「合并拉取」。配置存本机 data/git_sources.yaml。</div>
+    <div class="note" style="margin-top:var(--sp-4)">统一技能目录就是这里标记为「主源」的那个 Git 目录，所有客户端都指向它；它同时也参与检查与同步。要换统一目录，把另一个源设为主源即可。拉取默认只做快进：工作区有未提交改动或已与远端分叉时会拒绝，不 stash、不覆盖你的改动；确需合并时用「合并拉取」。配置存本机 data/git_sources.yaml。</div>
   </div>`;
 
   // 远程同步（WebDAV，v0.31.1）：个人配置跨设备同步。
@@ -5229,7 +5230,7 @@ function renderSettings() {
 
   el.innerHTML =
     `<div class="settings-tab-panel" data-panel="appearance">${appearanceCard}${patrolCard}${configPortCard}${_aboutCard}</div>` +
-    `<div class="settings-tab-panel hidden" data-panel="general">${skillsCard}${gitSourcesCard}${usageCard}${marketSourcesCard}${githubTokenCard}${webdavCard}</div>` +
+    `<div class="settings-tab-panel hidden" data-panel="general">${gitSourcesCard}${usageCard}${marketSourcesCard}${githubTokenCard}${webdavCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="agents">${agentsCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="mcp">${mcpCard}</div>`;
 
@@ -6486,6 +6487,16 @@ function renderEndpointStatus() {
     };
   }
 
+  // 把某个源设为统一技能目录（= 主源）。同一时刻只有一个主源。
+  async function setPrimaryGitSource(id) {
+    if (!id) return;
+    const item = (GIT_SOURCES.items || []).find((s) => s.id === id) || {};
+    const ok = await confirmModal("设为统一技能目录",
+      `确认把「${item.label || id}」设为统一技能目录？\n\n${item.path || ""}\n\n所有客户端的技能目录都会指向它。`, false);
+    if (!ok) return;
+    await runGitSourceAction(`设为统一目录：${id}`, ["--set-primary-git-source", id, "--format", "json"], "统一技能目录已更新");
+  }
+
   async function confirmRemoveGitSource(id) {
     if (!id) return;
     const ok = await confirmModal("移除 Git 技能源",
@@ -6554,20 +6565,30 @@ function renderEndpointStatus() {
       body.innerHTML = '<div class="empty">尚未登记 Git 技能源。点下方「登记本地目录」，把一个已存在的 Git 仓库加进来。</div>';
       return;
     }
+    let primaryPath = "";
     const rows = items.map((it) => {
       const tag = gitSourceTag(it);
       const branch = it.branch || "-";
       const head = it.head || "-";
       const skills = it.skipped ? "-" : `${it.skill_count || 0}${it.nested_count ? ` +${it.nested_count} 嵌套` : ""}`;
+      if (it.primary) primaryPath = it.path || "";
+      const primaryTag = it.primary ? '<span class="tag ok">主源 · 统一目录</span>' : "";
+      const primaryBtn = it.primary ? ""
+        : `<button class="ad-clean" type="button" data-action="git-source-set-primary"
+             data-id="${escapeHtml(it.id || "")}">设为主源</button>`;
       return `<div class="ad-entry">
         <span class="ad-e-key" title="${escapeHtml(it.path || "")}">${escapeHtml(it.label || it.id || "?")}</span>
         <span class="ad-e-loc mono">${escapeHtml(branch)} · ${escapeHtml(head)}</span>
         <span class="ad-e-loc">${escapeHtml(skills)} 技能</span>
+        ${primaryTag}
         <span class="tag ${tag.cls}">${escapeHtml(tag.text)}</span>
+        ${primaryBtn}
         <button class="ad-clean" type="button" data-action="git-source-remove"
           data-id="${escapeHtml(it.id || "")}">移除</button>
       </div>`;
     }).join("");
+    const unifiedEl = $("git-unified-dir");
+    if (unifiedEl) unifiedEl.textContent = primaryPath || "未指定（请把某个源设为主源）";
     const s = GIT_SOURCES.summary || {};
     const foot = s.total
       ? `<div class="note" style="margin-top:var(--sp-3)">共 ${s.total} 个源（启用 ${s.enabled}）· 落后 ${s.behind} · 领先 ${s.ahead} · 有改动 ${s.dirty} · 技能 ${s.skills}</div>`
@@ -8736,6 +8757,7 @@ document.addEventListener("click", (e) => {
     else if (a === "git-source-push") runGitSourceAction("推送 Git 源", ["--push-git-sources", "--format", "json"], "推送完成");
     else if (a === "git-source-add") openAddGitSourceModal();
     else if (a === "git-source-remove") confirmRemoveGitSource(act.dataset.id);
+    else if (a === "git-source-set-primary") setPrimaryGitSource(act.dataset.id);
     else if (a === "add-agent") renderAddPanel();
     else if (a === "refresh-audit") refreshWithBtn(act);
     // MCP 页刷新：与其它页同一个 refreshWithBtn（禁用按钮 → 重新拉快照 → 提示）。
@@ -9354,7 +9376,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.34.0", build: 134, build_number: 134, semver_ok: true, full: "v0.34.0 (build 134)" },
+  app: { name: "Skill MCP Studio", version: "0.34.1", build: 135, build_number: 135, semver_ok: true, full: "v0.34.1 (build 135)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

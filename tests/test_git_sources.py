@@ -336,6 +336,104 @@ class CloneTest(unittest.TestCase):
         self.assertIn("非空", res["message"])
 
 
+class PrimarySourceTest(unittest.TestCase):
+    """主源 = 统一技能目录（2026-11-08 合并）。
+
+    历史上「统一技能目录」与「Git 技能源」是两处独立配置，实践里总指向同一个
+    目录，分别维护必然漂移。合并后统一目录由主源派生，这批断言守住三件事：
+    主源唯一、目录跟随主源、无主源时不假装已配置。
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="primary-")
+        self.cfg = os.path.join(self.tmp, "git_sources.yaml")
+        self.a = self._mk_repo("repo-a")
+        self.b = self._mk_repo("repo-b")
+
+    def _config_at(self, ledger):
+        """把 ledger 摆到 <dir>/data/ 下，返回同目录的 config 路径（模拟仓库布局）。"""
+        base = os.path.dirname(ledger)
+        data_dir = os.path.join(base, "data")
+        os.makedirs(data_dir, exist_ok=True)
+        target = os.path.join(data_dir, "git_sources.yaml")
+        if os.path.abspath(ledger) != os.path.abspath(target) and os.path.exists(ledger):
+            import shutil
+
+            shutil.copy2(ledger, target)
+        cfg = os.path.join(base, "config.yaml")
+        Path(cfg).write_text("unified_skills_dir: ~/.x\n", encoding="utf-8")
+        return cfg
+
+    def _mk_repo(self, name):
+        path = os.path.join(self.tmp, name)
+        os.makedirs(path)
+        _git(path, "init", "-q")
+        _git(path, "config", "user.email", "t@example.com")
+        _git(path, "config", "user.name", "Tester")
+        return path
+
+    def test_no_primary_returns_fallback_and_marks_missing(self):
+        gs.add_source(self.a, source_id="a", config_path=self.cfg)
+        directory, primary = gs.unified_dir_from_sources(gs.load_sources(self.cfg))
+        self.assertIsNone(primary)
+        self.assertTrue(directory.endswith(".skills-manager/skills"))
+
+    def test_set_primary_makes_directory_follow_it(self):
+        gs.add_source(self.a, source_id="a", config_path=self.cfg)
+        gs.add_source(self.b, source_id="b", config_path=self.cfg)
+        res = gs.set_primary("b", config_path=self.cfg)
+        self.assertTrue(res["ok"])
+        directory, primary = gs.unified_dir_from_sources(gs.load_sources(self.cfg))
+        self.assertEqual(primary["id"], "b")
+        self.assertEqual(directory, os.path.abspath(self.b))
+
+    def test_primary_is_unique(self):
+        """同一时刻只能有一个主源——两个会直接导致统一目录不确定。"""
+        gs.add_source(self.a, source_id="a", config_path=self.cfg)
+        gs.add_source(self.b, source_id="b", config_path=self.cfg)
+        gs.set_primary("a", config_path=self.cfg)
+        gs.set_primary("b", config_path=self.cfg)
+        primaries = [s for s in gs.load_sources(self.cfg) if s.get("primary")]
+        self.assertEqual(len(primaries), 1)
+        self.assertEqual(primaries[0]["id"], "b")
+
+    def test_primary_is_forced_enabled(self):
+        """主源被禁用会让统一目录整天「跳过」，因此设主源时强制启用。"""
+        gs.add_source(self.a, source_id="a", enabled=False, config_path=self.cfg)
+        gs.set_primary("a", config_path=self.cfg)
+        entry = gs.load_sources(self.cfg)[0]
+        self.assertTrue(entry["enabled"])
+
+    def test_unknown_primary_id_rejected(self):
+        res = gs.set_primary("nope", config_path=self.cfg)
+        self.assertFalse(res["ok"])
+
+    def test_apply_primary_overrides_config(self):
+        gs.add_source(self.a, source_id="a", config_path=self.cfg)
+        gs.set_primary("a", config_path=self.cfg)
+        cfg = {"unified_skills_dir": "~/.old-place"}
+        out = gs.apply_primary_to_config(cfg, config_path=self._config_at(self.cfg))
+        self.assertEqual(out["unified_skills_dir"], os.path.abspath(self.a))
+
+    def test_apply_primary_fills_absent_key(self):
+        """没有主源时不能把已有值抹掉（测试夹具会直接写 unified_skills_dir）。"""
+        cfg = {"unified_skills_dir": "~/.explicit"}
+        out = gs.apply_primary_to_config(cfg, config_path=self._config_at(self.cfg))
+        self.assertEqual(out["unified_skills_dir"], "~/.explicit")
+
+    def test_absent_key_gets_fallback_when_no_primary(self):
+        cfg = {}
+        out = gs.apply_primary_to_config(cfg, config_path=self._config_at(self.cfg))
+        self.assertTrue(str(out["unified_skills_dir"]).endswith("skills"))
+
+    def test_corrupt_ledger_does_not_break_config(self):
+        """登记表损坏只影响 Git 源功能，不能锁死整个配置加载。"""
+        Path(self.cfg).write_text("sources: [unclosed\n", encoding="utf-8")
+        cfg = {"unified_skills_dir": "~/.keep"}
+        out = gs.apply_primary_to_config(cfg, config_path=self.cfg)
+        self.assertEqual(out["unified_skills_dir"], "~/.keep")
+
+
 class CheckAllTest(unittest.TestCase):
     def test_disabled_source_is_skipped(self):
         tmp = tempfile.mkdtemp(prefix="all-")

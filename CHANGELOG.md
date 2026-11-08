@@ -7,6 +7,41 @@
 
 ## [Unreleased]
 
+## [v0.34.1] - 2026-11-08
+
+当前发布版本（build 135）。**把「统一技能目录」与「Git 技能源」合并为一个概念。**
+
+为什么合并：二者实践里总指向同一个目录——那既是技能聚合的地方，也是一个 git
+工作区。分成两处配置维护必然漂移，用户在设置页看到两张卡也容易困惑。
+
+### 变更
+
+- **统一技能目录 = 主 Git 源**：登记表里标 `primary: true` 的那条即统一目录。
+  `unified_skills_dir` 不再单独配置，由主源**派生**——`scanner.load_config` 在装配
+  生效配置时注入，下游 38 处 `config["unified_skills_dir"]` 读取点一行未改。
+- **新 CLI**：`--set-primary-git-source <id>`，把某个已登记的源设为统一目录
+  （同一时刻只有一个主源；设为主源会强制启用该源，否则统一目录会被当成禁用源跳过）。
+- **管理台合并两张卡**：原「Skills 统一目录」卡并入「统一技能源」卡，每行显示
+  「主源 · 统一目录」标记，其余源提供「设为主源」按钮。换统一目录 = 选另一个源，
+  保证统一目录永远是一个真实存在的 Git 工作区。
+- **无主源时的行为**：退回 `~/.skills-manager/skills` 并在状态里标注
+  `primary_missing`，CLI 输出提示用 `--set-primary-git-source` 指定，不静默假装已配置。
+
+### 修复
+
+- **`apply_primary_to_config` 未转发 `config_path`**：早先实现一律读生产的
+  `data/git_sources.yaml`，导致自定义配置与多实例场景会串（测试即暴露）。已按
+  config 所在目录推导 ledger 路径。
+- **登记表损坏不锁死配置**：`data/git_sources.yaml` 解析失败时保留配置原值，
+  只让 Git 源功能单独报错，避免一个坏文件让整个 CLI 起不来。
+
+### 测试
+
+- `tests/test_git_sources.py` 由 30 项增至 **39 项**，新增 `PrimarySourceTest`
+  9 项：主源唯一性、目录跟随主源、设主源强制启用、未知 id 拒绝、已有值不被抹掉、
+  缺键填兜底、损坏 ledger 不锁死配置。
+- 全量 **1581 项通过、2 项既有跳过**；`scripts/ci_parity.sh` 全部门禁通过。
+
 ## [v0.34.0] - 2026-11-07
 
 当前发布版本（build 134）。新增 **Git 技能源**：把「一个 Git 目录」当技能来源来登记、
@@ -2280,7 +2315,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.34.0...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.35.0...HEAD
+[v0.35.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.35.0
 [v0.34.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.34.0
 [v0.33.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.33.0
 [v0.32.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.32.0
