@@ -7,9 +7,22 @@
 
 ## [Unreleased]
 
+## [Unreleased]
+
+### 测试（基础设施，无产品代码变更）
+
+- **GUI 测试的函数抽取改为大括号配平**（`tests/_js_fn.py`）。13 个测试文件各自
+  写的 `_fn()` 有两种缺陷，且**都不会报错**，只让断言静默检查错东西：
+  `\n\}` 收尾只匹配零缩进的右花括号（管理台函数缩进两格，于是正则一路吃到
+  下一个顶格函数，实测 `renderMarketProgress` 真实 221 字节被抽成 43,723 字节、
+  把 28 个函数裹进了断言）；`\n  }` 收尾则切在第一个内部块上，抽出的函数体残缺。
+  改为扫描时跳读字符串与注释里的括号，避免两者造成的误报与漏报。
+- 新增 `tests/test_js_fn_extraction.py`（9 项）做变异测试：内注入必须抓到、
+  外注入必须不影响、字符串里的花括号不干扰配平、相似名不误匹配。
+
 ## [v0.36.0] - 2026-11-08
 
-当前发布版本（build 137）。**结果弹框正文结构化：计数不再串成一行。**
+当前发布版本（build 138）。**结果弹框正文结构化：计数不再串成一行。**
 
 用户截图反馈「检查完成（缓存）」弹框「没有排版」：四个计数
 （`有更新 1 · 最新 149 · 未知 24 · 已卸载但登记残留 7`）挤成一行同权重小字，
@@ -2382,7 +2395,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.36.0...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.37.0...HEAD
+[v0.37.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.0
 [v0.36.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.36.0
 [v0.35.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.35.0
 [v0.34.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.34.0
