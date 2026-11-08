@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from tests._js_fn import extract_function
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -446,11 +447,15 @@ class DshPageGuiTest(unittest.TestCase):
                       "类型列未处理 source_path，link: 依赖的溯源信息会丢失")
 
     def _fn(self, name):
-        """截取某个 JS 函数的源码体（到下一个顶层 function 之前）。"""
-        start = self.body.find(f"function {name}(")
-        self.assertNotEqual(-1, start, f"找不到函数 {name}()")
-        nxt = self.body.find("\nfunction ", start + 1)
-        return self.body[start:nxt if nxt != -1 else len(self.body)]
+        """截取某个 JS 函数的源码（大括号配平，见 tests/_js_fn.py）。
+
+        旧实现切在「下一个顶层 function」之前，前提是函数都顶格；而管理台里
+        函数缩进两格、且 `function` 也可能出现在字符串里，两者都会让它抽偏。
+        """
+        try:
+            return extract_function(self.body, name)
+        except KeyError:
+            self.fail(f"找不到函数 {name}()")
 
 
 if __name__ == "__main__":

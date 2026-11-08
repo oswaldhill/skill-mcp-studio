@@ -19,6 +19,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from tests._js_fn import extract_function
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -37,10 +38,8 @@ def _script() -> str:
 
 
 def _fn(name: str) -> str:
-    body = _script()
-    i = body.index(f"function {name}(")
-    j = body.index("\n}\n", i) + 3
-    return body[i:j]
+    """抽出函数体。用大括号配平（见 tests/_js_fn.py），不用易失准的正则。"""
+    return extract_function(_src(), name)
 
 
 def _render_fn() -> str:

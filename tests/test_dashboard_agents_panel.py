@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from tests._js_fn import extract_function
 from pathlib import Path
 
 
@@ -32,10 +33,8 @@ def _src() -> str:
 
 
 def _fn(name: str) -> str:
-    body = re.search(r"<script>(.*?)</script>", _src(), re.S).group(1)
-    i = body.index(f"function {name}(")
-    j = body.index("\n}\n", i) + 3
-    return body[i:j]
+    """抽出函数体。用大括号配平（见 tests/_js_fn.py），不用易失准的正则。"""
+    return extract_function(_src(), name)
 
 
 def _agent(name, *, is_agent=True, installed=True, install_state="installed", type_="AI Agent"):

@@ -2,6 +2,7 @@
 import unittest
 from pathlib import Path
 from tests._gui_source import page_source
+from tests._js_fn import extract_function
 
 ROOT = Path(__file__).resolve().parents[1]
 HTML = ROOT / "gui" / "dashboard.html"
@@ -14,11 +15,9 @@ def _src() -> str:
 
 
 def _fn(name: str) -> str:
-    """取出一个函数体（面板 JS 缩进两空格，函数以 `\n  }` 收尾）。"""
-    s = _src()
-    i = s.index("function " + name + "(")
-    j = s.index("\n  }", i)
-    return s[i:j]
+    """抽出函数源码。用大括号配平（见 tests/_js_fn.py），不用易失准的正则。"""
+    return extract_function(_src(), name)
+
 
 
 class MergeUiTest(unittest.TestCase):

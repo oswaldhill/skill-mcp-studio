@@ -11,15 +11,18 @@ import re
 import unittest
 from pathlib import Path
 from tests._gui_source import page_html as _gui_source_page_html
+from tests._js_fn import extract_function
 
 ROOT = Path(__file__).resolve().parents[1]
 HTML = _gui_source_page_html()
 
 
 def _fn(name):
-    m = re.search(r"(?:async )?function " + name + r"\([^)]*\)\s*\{(.*?)\n  \}", HTML, re.S)
-    assert m, f"找不到函数 {name}"
-    return m.group(1)
+    """取出函数**体**（不含 function 头）。用大括号配平，不用易失准的正则。"""
+    full = extract_function(HTML, name)
+    open_brace = full.index("{")
+    return full[open_brace + 1:-1]
+
 
 
 class TestRerunProgress(unittest.TestCase):

@@ -12,11 +12,11 @@
 本文件把这两件事钉住：口径必须同源，且规范必须记录。
 """
 
-import re
 import unittest
 from pathlib import Path
 
 from tests._gui_source import page_source
+from tests._js_fn import extract_function
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -26,10 +26,8 @@ def _src() -> str:
 
 
 def _fn(name: str) -> str:
-    m = re.search(r"function " + name + r"\(.*?\n\}", _src(), re.S)
-    if not m:
-        raise AssertionError(f"未找到函数 {name}")
-    return m.group(0)
+    """抽出函数体。用大括号配平（见 tests/_js_fn.py），不用易失准的正则。"""
+    return extract_function(_src(), name)
 
 
 class EnableSegmentsTest(unittest.TestCase):
