@@ -646,6 +646,9 @@
   .notice-card .notice-msg { user-select: text; }
   /* 汇总类信息可能较长（多行计数）：限高并允许滚动，避免撑破弹框 */
   .notice-card .notice-msg { max-height: 40vh; overflow: auto; word-break: break-word; }
+  .notice-card .notice-lead { margin-bottom: var(--sp-2); }
+  .notice-card .notice-list { margin: 0; padding-left: var(--sp-8a); list-style: disc; display: flex; flex-direction: column; gap: var(--gap-1); }
+  .notice-card .notice-list li { color: var(--muted); }
 
   /* 进度弹框（.progress-card，DESIGN.md §2.5b-2）
      一次操作 = 一个框：过程中列出每一步，结束后原地转成结果。
@@ -664,6 +667,22 @@
   .progress-card .prog-fold { margin-top: var(--sp-4); text-align: left; font-size: var(--fs-xs); color: var(--muted); }
   .progress-card .prog-fold summary { cursor: pointer; }
   .progress-card .prog-detail { margin-top: var(--sp-3); }
+  /* Git 源操作结果（2026-11-08）
+     此前把 --format json 的 stdout 原样塞进 .cfm-msg，用户看到的是一屏 JSON。
+     这里的排版要求：一行一个源、状态用色点+文字（不单靠颜色）、
+     下一步提示另起一行且弱化。只复用既有 token，不引入新色值。 */
+  .prog-detail .git-result { text-align: left; display: flex; flex-direction: column; gap: var(--gap-2); }
+  .prog-detail .git-res-sum { font-size: var(--fs-xs); color: var(--muted); margin-bottom: var(--sp-2); }
+  .prog-detail .git-res-row { display: flex; align-items: center; gap: var(--gap-2); font-size: var(--fs-sm); }
+  .prog-detail .git-res-dot { width: 8px; height: 8px; border-radius: var(--r-hair); background: var(--line-strong); flex: 0 0 auto; }
+  .prog-detail .git-res-row.ok .git-res-dot { background: var(--ok); }
+  .prog-detail .git-res-row.todo .git-res-dot { background: var(--warn); }
+  .prog-detail .git-res-row.err .git-res-dot { background: var(--err); }
+  .prog-detail .git-res-id { color: var(--text); font-weight: 500; }
+  .prog-detail .git-res-state { color: var(--muted); }
+  .prog-detail .git-res-row.todo .git-res-state { color: var(--warn); }
+  .prog-detail .git-res-row.err .git-res-state { color: var(--err); }
+  .prog-detail .git-res-hint { font-size: var(--fs-xs); color: var(--muted); padding-left: calc(var(--sp-2) + var(--gap-2)); margin-bottom: var(--sp-1); }
   .cfm-card .actions { justify-content: center; gap: var(--gap-5); margin-top: 0; }
   .cfm-card .actions button {
     min-height: 32px; padding: var(--sp-3) var(--sp-8a); border-radius: var(--r-control); font-size: var(--fs-sm); font-weight: 500;
@@ -2282,6 +2301,23 @@ const NOTICE_META = {
   warn: { label: "请注意",   path: '<path d="M12 8v5M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/>' },
   info: { label: "提示",     path: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>' },
 };
+// 通知正文排版：多行文本按行渲染成列表，而不是一整块。
+//
+// 为什么：.cfm-msg 虽然带 white-space:pre-line，但当正文是「一句结论 + 一串
+// 明细」（CLI 的 stderr、多源结果）时，整块读起来没有层次——用户分不清哪句是
+// 结论、哪句是原因。这里把首行当引子，其余行做左缩进的小列表。
+function renderNoticeBody(body) {
+  const text = String(body == null ? "" : body);
+  if (!text) return "";
+  const lines = text.split("\n");
+  if (lines.length <= 1) return escapeHtml(text);
+  const head = escapeHtml(lines[0]);
+  const rest = lines.slice(1).filter((l) => l.trim());
+  if (!rest.length) return head;
+  const items = rest.map((l) => `<li>${escapeHtml(l.replace(/^\s*[-•]\s*/, ""))}</li>`).join("");
+  return `<div class="notice-lead">${head}</div><ul class="notice-list">${items}</ul>`;
+}
+
 function modalNotice(kind, title, message) {
   const meta = NOTICE_META[kind] || NOTICE_META.info;
   const safeTitle = escapeHtml(title || meta.label);
@@ -2289,7 +2325,7 @@ function modalNotice(kind, title, message) {
   mountModal(`<div class="modal-backdrop"><div class="modal cfm-card notice-card notice-${kind}" role="dialog" aria-modal="true" aria-label="${safeTitle}" tabindex="-1">
     <div class="cfm-icon notice-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">${meta.path}</svg></div>
     <div class="cfm-title">${safeTitle}</div>
-    <div class="cfm-msg notice-msg">${escapeHtml(body)}</div>
+    <div class="cfm-msg notice-msg">${renderNoticeBody(body)}</div>
     <div class="actions">
       <button class="cfm-btn-cancel" id="notice-ok">好</button>
     </div>
@@ -2361,19 +2397,21 @@ function progressStep(text, ok) {
 
 // 结束：**原地**替换内容（progress-replace 是这条替换的落点标记），
 // 绝不 closeModal 后再 mountModal —— 那样会闪两下，也违背「完整结束后再关闭」。
-function progressFinish(title, ok, detail) {
+function progressFinish(title, ok, detail, detailHtml) {
   const badCount = _progressSteps.filter((s) => s.ok === false).length;
   const meta = ok ? NOTICE_META.ok : NOTICE_META.err;
   const kind = ok ? "ok" : "err";
   const stepsHtml = _progressSteps.length
     ? `<details class="prog-fold" ${ok ? "" : "open"}><summary>查看过程（${_progressSteps.length} 步${badCount ? `，失败 ${badCount}` : ""}）</summary><div class="prog-body">${_progressInner()}</div></details>`
     : "";
-  const detailHtml = detail ? `<div class="cfm-msg prog-detail">${escapeHtml(String(detail))}</div>` : "";
+  const detailBlock = detailHtml
+    ? `<div class="cfm-msg prog-detail">${detailHtml}</div>`
+    : (detail ? `<div class="cfm-msg prog-detail">${escapeHtml(String(detail))}</div>` : "");
   mountModal(`<div class="modal-backdrop"><div class="modal cfm-card notice-card notice-${kind}" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}" tabindex="-1">
     <div class="cfm-icon notice-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">${meta.path}</svg></div>
     <div class="cfm-title">${escapeHtml(title)}</div>
     <div data-progress-replace="${kind}"></div>
-    ${detailHtml}
+    ${detailBlock}
     ${stepsHtml}
     <div class="actions"><button class="cfm-btn-cancel" id="prog-ok">关掉</button></div>
   </div></div>`);
@@ -2489,18 +2527,26 @@ async function runTaskModal(title, run, refresh) {
   </div></div>`);
   _progressSteps = [];
 
-  let ok = false, message = "", detail = "";
+  let ok = false, message = "", detail = "", detailHtml = "";
   try {
     const r = (await run(progressStep)) || {};
     ok = !!r.ok;
     message = r.message || (ok ? "完成" : "失败");
     detail = stripAnsi(r.detail || "");
+    // 结构化结果（Git 源等）由调用方渲染成已转义的 HTML 片段；
+    // 有它就**不再**输出原始文本——两套并列只会让弹框变长。
+    detailHtml = stripAnsi(r.detailHtml || "");
   } catch (err) {
     ok = false;
     message = "工具运行失败";
     detail = stripAnsi(String((err && err.message) || err));
   }
-  progressFinish(ok ? (title + " · 完成") : (title + " · 未完成"), ok, [message, detail].filter(Boolean).join("\n"));
+  progressFinish(
+    ok ? (title + " · 完成") : (title + " · 未完成"),
+    ok,
+    [message, detail].filter(Boolean).join("\n"),
+    detailHtml,
+  );
   // 兜底：局部刷新全部数据块（--management --only），不再回落到全量审计。
   //
   // 历史问题：兜底曾是 loadInternal(false)，即整份 --management 重扫全部技能与
@@ -6597,13 +6643,129 @@ function renderEndpointStatus() {
   }
 
   // 统一的任务反馈：所有 git 源写动作都走这个壳（dry-run 可选）。
+  // 把 --format json 的结果**翻译成人话**，而不是把 JSON 原样丢给用户。
+  //
+  // 这是本轮（2026-11-08 用户截图反馈）的核心修正：此前 detail 直接取
+  // res.stdout，于是弹框里出现一屏原始 JSON。JSON 是给程序看的契约，
+  // 用户要的是「哪个源、什么结果、怎么办」。
+  const GIT_STATUS_TEXT = {
+    current: "已是最新",
+    behind: "有更新可拉取",
+    ahead: "有本地提交待推送",
+    diverged: "与远端已分叉",
+    pulled: "拉取完成",
+    pushed: "推送完成",
+    "dry-run": "预演完成（未改动）",
+    dirty: "工作区有未提交改动",
+    conflict: "合并冲突",
+    "no-remote": "未配置远端",
+    "no-upstream": "远端无对应分支",
+    "nothing-to-push": "无需推送",
+    "fetch-failed": "拉取远端失败",
+    "push-failed": "推送失败",
+    "merge-failed": "合并失败",
+    detached: "处于游离 HEAD",
+  };
+
+  // 状态 → 色点语义。ok=已达成 / todo=待办 / err=需要处理。
+  // 不直接用 r.ok 着色：`behind` 的退出码是 0，但它是「还有事要做」。
+  const GIT_TONE = {
+    current: "ok", pulled: "ok", pushed: "ok", "nothing-to-push": "ok",
+    behind: "todo", ahead: "todo", "dry-run": "todo",
+    diverged: "err", dirty: "err", conflict: "err",
+    "no-remote": "todo", "no-upstream": "todo",
+    "fetch-failed": "err", "push-failed": "err", "merge-failed": "err", detached: "err",
+  };
+
+  function gitStatusLabel(r) {
+    if (r.ok) return GIT_STATUS_TEXT[r.status] || r.status || "完成";
+    return GIT_STATUS_TEXT[r.status] || r.message || "未完成";
+  }
+
+  // 一眼看出「这个源现在什么状态、下一步该做什么」
+  function gitSourceHint(r) {
+    const b = r.behind || 0, a = r.ahead || 0;
+    if (r.status === "behind") return `落后 ${b} 个提交，可点「拉取」`;
+    if (r.status === "ahead") return `领先 ${a} 个提交，可点「推送」`;
+    if (r.status === "diverged") return `领先 ${a} / 落后 ${b}，需用「合并拉取」`;
+    if (r.status === "dirty") return `有 ${(r.dirty_files || []).length || r.dirty_files || 0} 个未提交改动，先提交或清理再拉取`;
+    if (r.status === "conflict") {
+      const files = r.conflicts || [];
+      return files.length ? `冲突文件：${files.join("、")}` : "合并冲突，需手工解决";
+    }
+    if (r.status === "pulled") return `已拉取 ${b} 个提交`;
+    if (r.status === "pushed") return `已推送 ${a} 个提交`;
+    if (r.status === "current") return `分支 ${r.branch || "-"} · 提交 ${r.head || "-"}`;
+    return r.branch ? `分支 ${r.branch}` : "";
+  }
+
+  // 把结构化结果渲染成 HTML 片段（detail 走 .git-result 专用样式）
+  function renderGitSourceResult(data) {
+    if (!data || !Array.isArray(data.results)) return "";
+    const rows = data.results.map((r) => {
+      // 色点表达的是「需要你做什么」，不是「命令退出码」。
+      // 关键区分：behind / ahead 是**待办**（黄），不是成功（绿）——
+      // 检查完发现落后 3 个提交，弹绿点会让用户以为已经同步好了。
+      const tone = GIT_TONE[r.status] || (r.ok ? "ok" : "err");
+      const hint = gitSourceHint(r);
+      return `<div class="git-res-row ${tone}">
+        <span class="git-res-dot" aria-hidden="true"></span>
+        <span class="git-res-id">${escapeHtml(r.id || "?")}</span>
+        <span class="git-res-state">${escapeHtml(gitStatusLabel(r))}</span>
+      </div>${hint ? `<div class="git-res-hint">${escapeHtml(hint)}</div>` : ""}`;
+    }).join("");
+    const s = data.summary || {};
+    const head = s.total
+      ? `<div class="git-res-sum">共 ${s.total} 个源 · 成功 ${s.ok} · 失败 ${s.failed}</div>`
+      : "";
+    return `<div class="git-result">${head}${rows}</div>`;
+  }
+
+  // 尝试把 stdout 解析成 Git 源结果；失败返回空串（调用方回退到纯文本）。
+  function gitResultFrom(res) {
+    try {
+      const data = JSON.parse(stripAnsi((res && res.stdout) || ""));
+      if (data && Array.isArray(data.results)) return renderGitSourceResult(data);
+    } catch (e) { /* 不是 JSON（例如 CLI 报了人话错误），走纯文本 */ }
+    return "";
+  }
+
+  // 从失败结果里挑一句能直接行动的话，作为弹框正文。
+  // 直接抄 CLI 的 stderr 常常是空的（退出码才是契约），所以先看结构化结果。
+  function gitFailureMessage(res) {
+    try {
+      const data = JSON.parse(stripAnsi((res && res.stdout) || ""));
+      const bad = (data.results || []).filter((r) => !r.ok);
+      if (bad.length) {
+        const first = bad[0];
+        const why = gitSourceHint(first) || gitStatusLabel(first);
+        return bad.length === 1
+          ? why
+          : `${bad.length} 个源未完成，首个问题：${why}`;
+      }
+    } catch (e) { /* 非 JSON，走下面的兜底 */ }
+    return cliFailLines(res) || cliErrDetail(res) || "操作未完成";
+  }
+
+  // allow-html-vars: detailHtml 是内部生成的已转义片段，不走用户输入
   async function runGitSourceAction(title, args, okMsg) {
     await runTaskModal(title, async () => {
       const res = await runCli(args);
       if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
-      const out = stripAnsi(res.stdout || "");
-      if (res.code === 0) return { ok: true, message: okMsg, detail: out };
-      return { ok: false, message: "操作未完成", detail: cliFailLines(res) || cliErrDetail(res) || out };
+      const structured = gitResultFrom(res);
+      if (res.code === 0) {
+        return { ok: true, message: okMsg, detail: "", detailHtml: structured };
+      }
+      // 失败：优先给结构化结果（哪个源失败、为什么），没有再退回 CLI 错误文本。
+      // message 要说清「为什么没做成」，不能只写「操作未完成」——用户看到
+      // 标题已经写着「未完成」，正文再重复一遍等于什么也没说。
+      const fallback = cliFailLines(res) || cliErrDetail(res) || "";
+      return {
+        ok: false,
+        message: gitFailureMessage(res),
+        detail: structured ? "" : fallback,
+        detailHtml: structured,
+      };
     }, () => loadGitSources());
   }
 
@@ -9376,7 +9538,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.34.1", build: 135, build_number: 135, semver_ok: true, full: "v0.34.1 (build 135)" },
+  app: { name: "Skill MCP Studio", version: "0.35.0", build: 136, build_number: 136, semver_ok: true, full: "v0.35.0 (build 136)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",
