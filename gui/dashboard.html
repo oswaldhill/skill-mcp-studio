@@ -649,6 +649,32 @@
   .notice-card .notice-lead { margin-bottom: var(--sp-2); }
   .notice-card .notice-list { margin: 0; padding-left: var(--sp-8a); list-style: disc; display: flex; flex-direction: column; gap: var(--gap-1); }
   .notice-card .notice-list li { color: var(--muted); }
+  /* 结构化通知正文（v0.36.0，2026-11-08 用户截图「没有排版」）
+     四件事分开表达，各占自己的视觉层：
+       结论句 → .notice-msg
+       计数   → .notice-stats（key/value 网格，数字大、标签小）
+       动作   → .notice-action（独立强调块，带前导箭头）
+     只复用既有 token，不引入新颜色；tone 复用语义三色。 */
+  .notice-card .notice-stats {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+    gap: var(--gap-2); margin: var(--sp-4) 0 var(--sp-2); text-align: center;
+  }
+  .notice-card .notice-stat {
+    display: flex; flex-direction: column; align-items: center; gap: var(--gap-1);
+    padding: var(--sp-3) var(--sp-2); border-radius: var(--r-control);
+    background: var(--panel-2); border: 1px solid var(--line);
+  }
+  .notice-card .notice-stat-v { font: 600 var(--fs-md)/1 var(--mono); color: var(--text); }
+  .notice-card .notice-stat-k { font-size: var(--fs-xs); color: var(--muted); white-space: nowrap; }
+  .notice-card .notice-stat.todo .notice-stat-v { color: var(--warn); }
+  .notice-card .notice-stat.warn .notice-stat-v { color: var(--warn); }
+  .notice-card .notice-action {
+    display: flex; align-items: flex-start; gap: var(--gap-2);
+    margin: var(--sp-3) 0 var(--sp-2); padding: var(--sp-3) var(--sp-4);
+    border-radius: var(--r-control); text-align: left;
+    background: var(--accent-bg); color: var(--text); font-size: var(--fs-sm); line-height: 1.5;
+  }
+  .notice-card .notice-action-icon { color: var(--accent); font-weight: 700; flex: 0 0 auto; }
 
   /* 进度弹框（.progress-card，DESIGN.md §2.5b-2）
      一次操作 = 一个框：过程中列出每一步，结束后原地转成结果。
@@ -2318,14 +2344,37 @@ function renderNoticeBody(body) {
   return `<div class="notice-lead">${head}</div><ul class="notice-list">${items}</ul>`;
 }
 
-function modalNotice(kind, title, message) {
+// 结构化通知（2026-11-08 用户截图反馈「没有排版」）。
+//
+// 规范 §2.9 早已写明结果弹框应是「结论 + 动作」，而不是一串计数；但调用方
+// 把 `有更新 1 · 最新 149 · 未知 24 · 已卸载 7` 拼成一行塞进 message，视觉上
+// 就是一片同权重的文字，扫不出重点，也看不出下一步做什么。
+//
+// 新增两个可选参数，把「数据」和「动作」从纯文本里拆出来：
+//   opts.stats  = [{ label, value, tone? }]  → 渲染成 key/value 网格
+//   opts.action = "一句可操作的下一步"        → 渲染成独立强调块
+// 两者都不传时行为与从前完全一致（纯文本路径不变）。
+function modalNotice(kind, title, message, opts) {
   const meta = NOTICE_META[kind] || NOTICE_META.info;
   const safeTitle = escapeHtml(title || meta.label);
   const body = message == null ? "" : String(message);
+  const o = opts || {};
+  const statsHtml = Array.isArray(o.stats) && o.stats.length
+    ? `<div class="notice-stats">${o.stats.map((st) =>
+        `<div class="notice-stat${st.tone ? " " + st.tone : ""}">
+           <span class="notice-stat-v">${escapeHtml(String(st.value))}</span>
+           <span class="notice-stat-k">${escapeHtml(String(st.label))}</span>
+         </div>`).join("")}</div>`
+    : "";
+  const actionHtml = o.action
+    ? `<div class="notice-action"><span class="notice-action-icon" aria-hidden="true">›</span>${escapeHtml(String(o.action))}</div>`
+    : "";
   mountModal(`<div class="modal-backdrop"><div class="modal cfm-card notice-card notice-${kind}" role="dialog" aria-modal="true" aria-label="${safeTitle}" tabindex="-1">
     <div class="cfm-icon notice-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">${meta.path}</svg></div>
     <div class="cfm-title">${safeTitle}</div>
-    <div class="cfm-msg notice-msg">${renderNoticeBody(body)}</div>
+    ${body ? `<div class="cfm-msg notice-msg">${renderNoticeBody(body)}</div>` : ""}
+    ${statsHtml}
+    ${actionHtml}
     <div class="actions">
       <button class="cfm-btn-cancel" id="notice-ok">好</button>
     </div>
@@ -7246,15 +7295,32 @@ function renderEndpointStatus() {
         // 误以为「出错了」，用户正是这么问的。
         // 只有两类真需要提醒：登记失效（本地有历史残留）、未知（结论不完整）。
         const needsAttention = Boolean(s.missing || s.unknown);
-        const summaryLine = `有更新 ${s.outdated || 0} · 最新 ${s.current || 0} · 未知 ${s.unknown || 0}${repoPending}${miss}`;
-        // 有更新时补一句「下一步做什么」，让它是可操作的提示而不是一句计数。
-        const nextStep = s.outdated
-          ? `\n\n${s.outdated} 个技能可升级：点工具栏「检查更新」旁的「一键升级」，或在技能行点「远端较新」。`
+        // 计数拆成结构化 key/value，而不是串成一行。规范 §2.9 要求结果弹框是
+        // 「结论 + 动作」，四个数字挤在一起用户扫不出重点（2026-11-08 用户截图）。
+        // tone 只标真正需要留意的两档；「有更新」是正常可操作状态，不着色。
+        const stats = [
+          { label: "可升级", value: s.outdated || 0, tone: (s.outdated ? "todo" : "") },
+          { label: "已最新", value: s.current || 0 },
+        ];
+        if (s.unknown) stats.push({ label: "未知", value: s.unknown, tone: "warn" });
+        if (s.missing) stats.push({ label: "登记残留", value: s.missing, tone: "warn" });
+        if (s.repo_outdated) stats.push({ label: "仓库待同步", value: s.repo_outdated, tone: "todo" });
+
+        const action = s.outdated
+          ? `点工具栏「一键升级」批量升级，或在技能行点「远端较新」`
           : "";
+        // 正文只保留「异常项需要留意」这一句结论；没有就留空，不写废话。
+        const lead = needsAttention
+          ? (s.missing
+              ? `有 ${s.missing} 个技能已卸载但登记残留，可在技能行删除`
+              : "部分技能未能判定版本，稍后可重试")
+          : "";
+
         modalNotice(
           needsAttention ? "warn" : "ok",
           `检查完成${cached}`,
-          summaryLine + nextStep);
+          lead,
+          { stats, action });
       }
     } catch (e) {
       modalNotice("err", "操作失败", "检查返回无法解析：" + e);
@@ -9538,7 +9604,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.35.0", build: 136, build_number: 136, semver_ok: true, full: "v0.35.0 (build 136)" },
+  app: { name: "Skill MCP Studio", version: "0.36.0", build: 137, build_number: 137, semver_ok: true, full: "v0.36.0 (build 137)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

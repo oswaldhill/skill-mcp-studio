@@ -688,6 +688,8 @@ IDE 与 Agent）`。只写 `N/M` 会让用户以为 M 是技能总数（曾如�
 |---|---|---|
 | `.cfm-msg` | 单句结论 | 居中、`--muted`、`white-space: pre-line` |
 | `.notice-lead` + `.notice-list` | 结论 + 若干明细行 | 首行当引子，其余转 `<ul>` 缩进列表（`modalNotice` 的 `renderNoticeBody`） |
+| `.notice-stats` + `.notice-stat` | 若干计数指标 | `key/value` 网格：`.notice-stat-v` 大号数字（`--mono`）、`.notice-stat-k` 小标签；`grid-template-columns: repeat(auto-fit, minmax(72px, 1fr))` 自适应列数 |
+| `.notice-action` | 一句可操作的下一步 | 独立强调块，带 `.notice-action-icon` 前导箭头；底色 `--accent-bg`，与正文区分开 |
 | `.git-result`（`.prog-detail` 内） | 逐条结构化结果 | 一行一实体的 `.git-res-row`（`flex`）：`.git-res-dot` 色点 + `.git-res-id` 主体名 + `.git-res-state` 状态；`.git-res-hint` 另起一行弱化；`.git-res-sum` 顶部汇总 |
 
 **`.git-result` 的色点语义（必须按「需要你做什么」着色，不按退出码）**：
@@ -705,6 +707,30 @@ IDE 与 Agent）`。只写 `N/M` 会让用户以为 M 是技能总数（曾如�
 **失败正文必须可行动**：标题已经写着「未完成」，正文再重复「操作未完成」等于
 什么也没说。正文取「首个失败源的具体原因 + 怎么办」（`gitFailureMessage`），
 例如「有 2 个未提交改动，先提交或清理再拉取」。
+
+**结果弹框的三层结构（v0.36.0，2026-11-08 用户截图「没有排版」）**
+
+`modalNotice(kind, title, message, opts)` 的第四个参数把「数据」与「动作」
+从纯文本里拆出来。**计数不得串成一行**（`有更新 1 · 最新 149 · 未知 24`
+这种写法用户扫不出重点）：
+
+```js
+modalNotice("ok", "检查完成", lead, {
+  stats: [                                  // → .notice-stats 网格
+    { label: "可升级", value: 1, tone: "todo" },
+    { label: "已最新", value: 149 },
+    { label: "未知",   value: 24, tone: "warn" },
+  ],
+  action: "点工具栏「一键升级」批量升级",      // → .notice-action 强调块
+});
+```
+
+- `message`（结论句）只写「需要留意什么」，没有就留空，不写废话；
+- `tone` 只允许 `todo` / `warn` 两档，且只标真正需要处理的项
+  （「有更新」是正常可操作状态，不着色）；
+- `stats` / `action` 都不传时，行为与从前逐字一致（纯文本路径不变）。
+
+排布顺序固定：图标 → 标题 → 结论 → 计数 → 动作 → 出口按钮。
 
 ### 2.3g DSH 插件页（`page-dsh`，v0.31.4 新增第七页）
 

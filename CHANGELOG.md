@@ -7,6 +7,38 @@
 
 ## [Unreleased]
 
+## [v0.36.0] - 2026-11-08
+
+当前发布版本（build 137）。**结果弹框正文结构化：计数不再串成一行。**
+
+用户截图反馈「检查完成（缓存）」弹框「没有排版」：四个计数
+（`有更新 1 · 最新 149 · 未知 24 · 已卸载但登记残留 7`）挤成一行同权重小字，
+建议段落夹在中间，扫不出重点。
+
+### 变更
+
+- **`modalNotice` 新增可选第四参 `opts`**：`stats: [{label, value, tone}]`
+  渲染成 key/value 网格（数字大号 `--mono`、标签小字），`action: "..."` 渲染成
+  独立强调块。两个都不传时行为与从前逐字一致。
+- **排布顺序固定**：图标 → 标题 → 结论 → 计数 → 动作 → 出口按钮。
+- **「检查更新」调用方改为结构化传参**：计数按实际有值的项动态生成
+  （可升级 / 已最新 / 未知 / 登记残留 / 仓库待同步），`tone` 只标需要处理的项。
+- **结论句只写需要留意什么**：有 `missing` 时写「有 N 个技能已卸载但登记残留，
+  可在技能行删除」；没有异常项就留空，不写废话。
+
+### 设计规范
+
+`docs/DESIGN.md` §2.3f 补充「结果弹框的三层结构」：登记 `.notice-stats` /
+`.notice-stat` / `.notice-action` / `.notice-action-icon` 四个类，写明
+「计数不得串成一行」的理由与 `tone` 只允许 `todo` / `warn` 两档。
+规范 §2.9 早已要求结果弹框是「结论 + 动作，而不是一串计数」，这次是把
+那个要求真正落到实现上。
+
+### 测试
+
+全量 **1581 项通过、2 项既有跳过**；`scripts/ci_parity.sh` 全部门禁通过
+（含设计契约的类登记与间距 token 校验）。
+
 ## [v0.35.0] - 2026-11-08
 
 当前发布版本（build 136）。**优化结果弹框：不再把原始 JSON 当正文给用户看。**
@@ -2350,7 +2382,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.35.0...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.36.0...HEAD
+[v0.36.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.36.0
 [v0.35.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.35.0
 [v0.34.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.34.0
 [v0.33.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.33.0
