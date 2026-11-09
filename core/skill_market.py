@@ -20,6 +20,7 @@ import subprocess
 import time
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -563,6 +564,58 @@ def _iso_lt(a: Optional[str], b: Optional[str]) -> bool:
     return bool(a and b and a < b)
 
 
+def _git_path_time(skills_dir: Path, name: str, timeout: int = 10) -> Optional[str]:
+    """统一库 git 里该技能目录最后提交时间，返回 UTC ISO8601（``...Z``）。
+
+    取 ``%ct``（Unix 时间戳）而不是 ``%cI``：后者带本地时区偏移，与远端
+    GitHub 的 ``...Z`` 直接做字符串比较会在「同年同月、不同时区」时错位。
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(skills_dir), "log", "-1", "--format=%ct", "--", f"{name}/"],
+            capture_output=True, text=True, timeout=timeout,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    raw = (proc.stdout or "").strip()
+    if not raw.isdigit():
+        return None
+    return datetime.fromtimestamp(int(raw), timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _local_skill_time(name: str, row: Dict[str, Any], skills_dir: Path) -> Optional[str]:
+    """本地内容时间：git 提交时间 > SKILL.md mtime > lock 的 updatedAt/installedAt。
+
+    ## 为什么不能只用 lock（2026-11-09 用户实测 playwright-cli）
+
+    lock 的 ``updatedAt`` 只在「经 npx 安装 / 升级」时写。用户用 git 同步统一
+    库、或手工替换文件时它**不会变**。实测该技能的文件与 git 提交都是
+    2026-07-17，lock 却停在 2026-01-28 —— 拿「1-28 vs 远端 1-31」判成
+    outdated，而本地内容其实比远端新 5 个多月。npx 升级同样认为已是最新，
+    于是「备份 → 升级 → 内容没变」，形成「永远显示可升级、升级永远无效」的
+    死循环（用户点过 10 次升级，10 份备份的 SKILL.md sha256 完全一致）。
+
+    回退链保留 lock 兜底：测试夹具与「目录不存在」的调用方没有文件可 stat。
+    """
+    path = Path(skills_dir) / name
+    if not path.is_dir():
+        return row.get("updated_at") or row.get("installed_at")
+
+    if (Path(skills_dir) / ".git").exists():
+        iso = _git_path_time(skills_dir, name)
+        if iso:
+            return iso
+
+    try:
+        mtime = (path / "SKILL.md").stat().st_mtime
+        return datetime.fromtimestamp(mtime, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    except OSError:
+        pass
+    return row.get("updated_at") or row.get("installed_at")
+
+
 def check_updates(
     only: Optional[List[str]] = None,
     force: bool = False,
@@ -653,11 +706,14 @@ def check_updates(
         owner_repo = parse_github_source(row.get("source_url"))
         remote, reason = None, ""
         # v0.31.0：无本地 version 的技能回退「时间比对」——上游该技能路径
-        # （skillPath）的最新 commit 时间 vs 本地 lock 的 updatedAt/installedAt。
+        # （skillPath）的最新 commit 时间 vs **本地内容时间**。
+        # 本地时间优先取统一库 git 里该路径的最后提交（其次 SKILL.md mtime，
+        # 最后才回退 lock 的 updatedAt/installedAt）——lock 不随文件更新而变，
+        # 只用它会让「git 同步过的技能」永远显示可升级（见 _local_skill_time）。
         # 语义弱于版本号（commit 了但内容可能没变），note 必须标注判定依据。
         # 内容哈希（skillFolderHash）不比对：远端无对应 hash 可查（GitHub
         # API 不提供目录 hash 对比；raw 拉文件需多次请求且要处理 ref）。
-        local_time = row.get("updated_at") or row.get("installed_at")
+        local_time = _local_skill_time(name, row, paths.skills_dir())
         skill_path = row.get("skill_path")
         if local is None and owner_repo and local_time and skill_path:
             state = "unknown"

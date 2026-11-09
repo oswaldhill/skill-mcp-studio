@@ -7,6 +7,51 @@
 
 ## [Unreleased]
 
+## [v0.37.5] - 2026-11-09
+
+当前发布版本（build 144）。**修复「升级后仍显示可升级」的永久误报。**
+
+用户截图问：「这个 skill 我刚刚已经完成了更新，但是为什么我重新检查更新仍然是
+有的？」查证结果比预期严重——**这个技能从来没被真正更新过**：
+
+- 本地文件与统一库 git 提交都是 **2026-07-17**；
+- lock 的 `updatedAt` 却停在 **2026-01-28**（安装时写入，之后从未变过）；
+- 远端 `packages/playwright/src/mcp/terminal/SKILL.md` 最后提交 **2026-01-31**；
+- `data/skill_backups/playwright-cli/` 里有 **10 份**升级前备份（10-23 到今天
+  13:41），每份的 `SKILL.md` sha256 **完全相同**（`bdd272a7…`）。
+
+### 根因
+
+更新判定在「本地无版本号」时回退到时间比对，基准取的是 **lock 的
+`updatedAt`**。而 lock 只在「经 npx 安装 / 升级」时写——用户用 git 同步统一库
+或手工替换文件时它不会变。于是拿「1-28 vs 远端 1-31」判成 `outdated`，而本地
+内容其实比远端新 5 个多月；npx 升级同样认为已是最新、什么都不改，形成
+「备份 → 升级 → 内容没变」的死循环：**永远显示可升级，升级永远无效**。
+
+### 修复
+
+`core/skill_market._local_skill_time()`：本地时间改为按内容判定，回退链为
+
+1. **统一库 git 里该技能路径的最后提交时间**（`git log -1 --format=%ct`，
+   转 UTC ISO8601）；
+2. `SKILL.md` 的 mtime；
+3. 最后才回退 lock 的 `updatedAt` / `installedAt`（测试夹具与目录缺失时仍可用）。
+
+取 `%ct` 而不是 `%cI`：后者带本地时区偏移，与远端 GitHub 的 `...Z` 直接做
+字符串比较会在「同年同月、不同时区」时错位。
+
+### 验证
+
+修复后该技能由 `outdated` 变为 `current`，检查汇总从
+`outdated: 1 / current: 173` 变为 **`outdated: 0 / current: 174`**。
+
+### 测试
+
+- 新增 `LocalSkillTimeTest`（4 项）：git 时间优先于 lock、无 git 时回退 mtime、
+  目录缺失回退 lock、以及集成场景（lock 旧 / 内容新 / 远端更旧 → current）。
+- 两条反向验证有效：退回「只用 lock」、去掉 git 优先级，各自让对应断言失败。
+- 全量 **1637 项通过、2 项既有跳过**。
+
 ## [v0.37.4] - 2026-11-09
 
 当前发布版本（build 143）。**修复 WorkBuddy 原生连接被误判为「客户端自带」。**
@@ -2623,7 +2668,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.37.4...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.37.5...HEAD
+[v0.37.5]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.5
 [v0.37.4]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.4
 [v0.37.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.3
 [v0.37.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.2

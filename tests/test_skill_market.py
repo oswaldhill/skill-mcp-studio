@@ -935,6 +935,88 @@ class TimeFallbackCheckTest(unittest.TestCase):
         self.assertTrue(out["summary"].get("rate_limited"))
 
 
+class LocalSkillTimeTest(unittest.TestCase):
+    """本地时间基准（2026-11-09 用户实测 playwright-cli）。
+
+    lock 的 updatedAt 只在「经 npx 安装 / 升级」时写，不随文件更新而变。
+    该技能的文件与 git 提交都是 2026-07-17，lock 停在 2026-01-28，远端
+    commit 是 2026-01-31 —— 只用 lock 会永久判 outdated，而 npx 升级认为
+    已最新、什么都不改（用户点过 10 次，10 份备份的 SKILL.md sha256 一致）。
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(self._tmp.name)
+        self.skills = self.root / "skills"
+        self.skills.mkdir()
+
+    def test_prefers_git_commit_time(self):
+        skill = self.skills / "pw"
+        skill.mkdir()
+        (skill / "SKILL.md").write_text("# x\n", encoding="utf-8")
+        (self.skills / ".git").mkdir()
+        from skill_market import _local_skill_time
+        with mock.patch("skill_market._git_path_time",
+                        return_value="2026-07-17T12:49:56Z"):
+            got = _local_skill_time(
+                "pw", {"updated_at": "2026-01-28T03:26:38.722Z"}, self.skills)
+        self.assertEqual(got, "2026-07-17T12:49:56Z",
+                         "git 提交时间必须优先于 lock（lock 不随文件更新）")
+
+    def test_falls_back_to_mtime_without_git(self):
+        skill = self.skills / "pw"
+        skill.mkdir()
+        f = skill / "SKILL.md"
+        f.write_text("# x\n", encoding="utf-8")
+        os.utime(f, (1785000000, 1785000000))
+        from skill_market import _local_skill_time
+        got = _local_skill_time(
+            "pw", {"updated_at": "2026-01-28T03:26:38.722Z"}, self.skills)
+        self.assertTrue(got and got > "2026-01-28",
+                        f"无 git 时应回退到文件 mtime，得到 {got}")
+
+    def test_falls_back_to_lock_when_dir_absent(self):
+        from skill_market import _local_skill_time
+        got = _local_skill_time(
+            "ghost", {"updated_at": "2026-01-28T03:26:38.722Z"}, self.skills)
+        self.assertEqual(got, "2026-01-28T03:26:38.722Z",
+                         "目录不存在时回退 lock（测试夹具依赖这条）")
+
+    def test_check_updates_uses_content_time_not_lock(self):
+        """集成：lock 旧、内容新、远端更旧 → current（playwright-cli 场景）。"""
+        skill = self.skills / "pw"
+        skill.mkdir()
+        (skill / "SKILL.md").write_text("# x\n", encoding="utf-8")
+        (self.skills / ".git").mkdir()
+        payload = {"installed": [
+            {"name": "pw", "source_url": "https://github.com/o/r.git",
+             "skill_path": "pkg/SKILL.md",
+             "updated_at": "2026-01-28T03:26:38.722Z",
+             "registered": True, "on_disk": True},
+        ]}
+        with mock.patch("skill_market.list_installed", return_value=payload), \
+             mock.patch("skill_market.paths.skills_dir", return_value=self.skills), \
+             mock.patch("skill_market._git_path_time",
+                        return_value="2026-07-17T12:49:56Z"), \
+             mock.patch("skill_market._remote_commit_time",
+                        return_value=("2026-01-31T21:54:33Z", "ok")), \
+             mock.patch("skill_market._remote_latest_version",
+                        return_value=(None, "unavailable")), \
+             mock.patch("skill_market._load_check_cache", return_value=None), \
+             mock.patch("skill_market._save_check_cache", lambda p: None), \
+             mock.patch("skill_state.read_skill_meta",
+                        return_value={"pw": {"version": None}}), \
+             mock.patch("market_sources.list_sources",
+                        return_value=([], False, [])):
+            out = check_updates(force=True)
+        row = out["updates"][0]
+        self.assertEqual(
+            row["state"], "current",
+            "本地内容（git 2026-07-17）比远端（2026-01-31）新，必须判 current；"
+            "若退回用 lock（2026-01-28）就会永久误报可升级")
+
+
 class RemoteSkillVersionTest(unittest.TestCase):
     """远端技能包版本读取（v0.31.0 修复，2026-10-23 用户实测）。
 
