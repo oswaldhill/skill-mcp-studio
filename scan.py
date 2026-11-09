@@ -1113,6 +1113,32 @@ def _run_skill_delete(args, config, config_path) -> int:
     return 0 if result["status"] in ("ok", "dry-run") else 2
 
 
+def _run_prune_skill_lock(args) -> int:
+    """清理来源登记表里「统一库已无目录」的残留登记（写操作，支持 --dry-run）。
+
+    这是「检查更新」弹框里那句「可在技能行删除」的正确出口：残留行在技能表
+    里根本不渲染（列表按磁盘目录生成），``--delete-skill`` 又要求目录存在，
+    所以必须由登记表自己提供清理入口。
+    """
+    from skill_market import prune_missing_registrations
+
+    result = prune_missing_registrations(dry_run=bool(getattr(args, "dry_run", False)))
+    if getattr(args, "format", None) == "json":
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0 if result["status"] in ("ok", "dry-run", "nothing-to-prune") else 2
+
+    status = result["status"]
+    icon = {"ok": "  ✅", "dry-run": "  🔍", "nothing-to-prune": "  ⏭️ "}.get(status, "  ❌ ")
+    print(f"{icon} {status}: {result['message']}")
+    if result.get("names"):
+        shown = result["names"][:10]
+        print(f"      待清理 {len(result['names'])} 条：{', '.join(shown)}"
+              + (" …" if len(result["names"]) > len(shown) else ""))
+    if result.get("backup"):
+        print(f"      备份: {result['backup']}")
+    return 0 if status in ("ok", "dry-run", "nothing-to-prune") else 2
+
+
 def _run_merge_skills(args, config, config_path) -> int:
     """写操作：按整理建议执行合并（FEAT-12）。
 
@@ -2876,6 +2902,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="软删除指定 skill：先备份再移入统一目录 _trash/（写操作，支持 --dry-run）",
     )
     parser.add_argument(
+        "--prune-skill-lock", action="store_true",
+        help="清理来源登记表里「统一库已无目录」的残留登记（写操作，支持 --dry-run；"
+             "只删磁盘上确实不存在的条目，改前自动备份登记表）",
+    )
+    parser.add_argument(
         "--merge-skills", action="store_true",
         help="按整理建议执行合并（FEAT-12，写操作）：把 --merge-fold 的技能备份后"
              "移入 _trash/，保留 --merge-keep 不动；执行前会重算判据确认建议仍成立",
@@ -3483,6 +3514,8 @@ def main() -> int:
         return _run_skill_rename(args, config, config_path)
     if getattr(args, "delete_skill", None):
         return _run_skill_delete(args, config, config_path)
+    if getattr(args, "prune_skill_lock", False):
+        return _run_prune_skill_lock(args)
     if getattr(args, "merge_skills", False):
         return _run_merge_skills(args, config, config_path)
 

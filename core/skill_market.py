@@ -17,6 +17,7 @@ import os
 import re
 import shutil
 import subprocess
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -192,6 +193,130 @@ def list_installed(
     if not lock_path.exists():
         reason = f"未找到来源登记 {lock_path}；仅列出磁盘上的技能"
     return {"installed": installed, "reason": reason, "lock_path": str(lock_path)}
+
+
+def missing_registrations(
+    lock_path: Optional[Path] = None,
+    skills_dir: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """只读：列出「登记表里有、统一库里已无目录」的技能名（登记残留）。
+
+    判据与 :func:`check_updates` 的 ``state == "missing"`` **完全同源**
+    （都来自 ``list_installed()`` 的 ``registered`` / ``on_disk``），
+    这样检查弹框报的条数与清理按钮实际删除的条数不会对不上。
+
+    为什么需要它：技能目录被手工删除、或安装中途失败后，``.skill-lock.json``
+    里的登记不会自己消失。这类条目没有内容可升级，却会让「检查结果条数」
+    比「技能列表可见行数」多出来，也让人误以为库里还装着这些技能。
+    """
+    lock_path = Path(lock_path) if lock_path else paths.default_lock_path()
+    listing = list_installed(lock_path, skills_dir)
+    ghosts = [
+        r for r in listing["installed"]
+        if r.get("registered") and r.get("on_disk") is False
+    ]
+    return {
+        "lock_path": str(lock_path),
+        "registered": sum(1 for r in listing["installed"] if r.get("registered")),
+        "names": [r["name"] for r in ghosts],
+    }
+
+
+def prune_missing_registrations(
+    lock_path: Optional[Path] = None,
+    skills_dir: Optional[Path] = None,
+    *,
+    dry_run: bool = False,
+) -> Dict[str, Any]:
+    """清理登记表里「统一库已无此目录」的条目（写操作）。
+
+    安全边界三条：
+
+    1. **先备份再改**：整份 lock 复制为 ``<原名>.bak-<时间戳>``；备份失败
+       即中止，不做半途修改。
+    2. **只删磁盘上确实没有的**：其它顶层字段（``dismissed`` /
+       ``lastSelectedAgents`` 等）与仍然存在的登记原样保留，不做归一化重排。
+    3. **dry-run 不落盘**：只报告将删哪些名字、将备份到哪里。
+
+    返回结构（CLI 与 GUI 共用）::
+
+        {"status": "ok"|"dry-run"|"nothing-to-prune"|"error",
+         "removed": N, "kept": N, "names": [...], "backup": "...",
+         "lock_path": "...", "message": "..."}
+    """
+    lock_path = Path(lock_path) if lock_path else paths.default_lock_path()
+    base = {
+        "lock_path": str(lock_path),
+        "removed": 0,
+        "kept": 0,
+        "names": [],
+        "backup": "",
+    }
+
+    if not lock_path.exists():
+        return dict(base, status="error",
+                    message=f"未找到来源登记 {lock_path}，没有可清理的对象")
+
+    # 先自己解析一次，再交给 list_installed 判定。顺序很重要：_read_lock 会
+    # 吞掉解析异常并返回 {}，若先判定残留，坏掉的登记表会被当成「没有残留」
+    # 而静默通过 —— 用户会以为清理成功，实际上什么都没发生。
+    try:
+        lock = json.loads(lock_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return dict(base, status="error", message=f"登记表无法读取或解析：{exc}")
+    if not isinstance(lock, dict):
+        return dict(base, status="error", message="登记表结构异常：顶层不是对象")
+    registered = lock.get("skills")
+    if registered is None:
+        registered = {}
+    if not isinstance(registered, dict):
+        return dict(base, status="error", message="登记表结构异常：skills 不是对象")
+
+    info = missing_registrations(lock_path, skills_dir)
+    names = info["names"]
+    kept = info["registered"] - len(names)
+    base.update({"removed": len(names), "kept": kept, "names": names})
+
+    if not names:
+        return dict(base, status="nothing-to-prune",
+                    message="没有登记残留：登记表里的技能都在统一库中")
+
+    backup = lock_path.with_name(
+        f"{lock_path.name}.bak-{time.strftime('%Y%m%d-%H%M%S')}"
+    )
+    if dry_run:
+        return dict(
+            base, status="dry-run", backup=str(backup),
+            message=f"将删除 {len(names)} 条登记残留（保留 {kept} 条）；"
+                    f"执行前会备份登记表到 {backup}",
+        )
+
+    try:
+        shutil.copy2(lock_path, backup)
+    except OSError as exc:
+        return dict(base, status="error", message=f"备份失败，未做任何修改：{exc}")
+
+    for name in names:
+        registered.pop(name, None)
+    lock["skills"] = registered
+
+    tmp = lock_path.with_name(lock_path.name + ".tmp")
+    try:
+        tmp.write_text(json.dumps(lock, ensure_ascii=False, indent=2) + "\n",
+                       encoding="utf-8")
+        os.replace(tmp, lock_path)
+    except OSError as exc:
+        # 原子替换失败时把备份还原回去，避免留下「备份了但内容半改」的状态。
+        try:
+            shutil.copy2(backup, lock_path)
+        except OSError:
+            pass
+        return dict(base, status="error", message=f"写入失败，已回滚：{exc}")
+
+    return dict(
+        base, status="ok", backup=str(backup),
+        message=f"已删除 {len(names)} 条登记残留，保留 {kept} 条；备份在 {backup}",
+    )
 
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")

@@ -7,6 +7,58 @@
 
 ## [Unreleased]
 
+## [v0.37.1] - 2026-11-09
+
+当前发布版本（build 140）。**登记残留有了清理出口。**
+
+用户问「116 个登记残留是什么意思，能否清理」。查下来是两件事叠在一起：
+`~/.agents/.skill-lock.json` 里有 187 条来源登记，统一库磁盘上只有 174 个
+目录，差的 116 条是「技能已卸载、登记没跟着消失」的条目。检查更新的弹框把
+它们单列为 `missing`，并提示「可在技能行删除」——**这句提示是错的**：技能
+表按磁盘目录渲染，残留行根本不出现；`--delete-skill` 又要求目录存在，实测
+对残留行直接报「未找到 skill 目录」。用户被指向了一个做不到的操作。
+
+### 新增
+
+- **`--prune-skill-lock`**：清理来源登记表里「统一库已无此目录」的条目。
+  支持 `--dry-run` 与 `--format json`；无残留时返回 `nothing-to-prune`。
+- **`core/skill_market.prune_missing_registrations()`**：判据与
+  `check_updates()` 的 `state == "missing"` 同源（都取 `list_installed()`
+  的 `registered` / `on_disk`），保证「检查弹框报的条数」与「清理按钮删的
+  条数」不会对不上。配套只读的 `missing_registrations()`。
+- **设置页「清理登记残留」按钮**（市场源卡片内，`data-action="prune-skill-lock"`）：
+  先跑 dry-run 拿清单，`confirmModal` 展示将删条数、保留条数与前 8 个示例，
+  确认后才执行；结果弹框给出备份路径。
+
+### 安全边界（写操作，三条）
+
+1. **先备份再改**：整份 lock 复制为 `<原名>.bak-<时间戳>`；备份失败即中止，
+   不做半途修改。
+2. **只删磁盘上确实没有的**：`dismissed` / `lastSelectedAgents` 等非 `skills`
+   字段与仍然存在的登记原样保留，不做归一化重排。
+3. **dry-run 不落盘、也不生成备份**：否则会留下「备份了但没改」的误导性文件。
+
+登记表缺失或 JSON 损坏时**如实报错**，不静默当成「没有残留」——后者会让
+用户以为清理成功，实际什么都没发生。
+
+### 文档
+
+`docs/DESIGN.md` §2.10 登记该控件：位置、ASCII 结构、为什么先 dry-run 再
+确认、三条安全边界，以及「为什么放在市场源卡片」（残留登记是市场安装的
+副产物，与「源」同一域）。
+
+### 测试
+
+- 新增 `tests/test_skill_lock_prune.py`（16 项）：dry-run 不落盘、只删磁盘
+  无目录的条目、非 `skills` 字段保留、备份内容等于改前原文、无残留不造空
+  备份、登记表缺失/损坏如实报错、CLI 端到端 JSON 与退出码，以及 GUI 契约
+  （按钮落在市场源卡片、事件分发接上、Rust 白名单同步、DESIGN.md 已登记）。
+- **反向验证过**：删掉按钮、删掉 Rust 白名单项、让 dry-run 也落盘，三种
+  违规各自让对应断言失败，恢复后全绿。
+- 全量 **1614 项通过、2 项既有跳过**；`scripts/ci_parity.sh` 全部门禁通过
+  （`skipped=2` 与 CI 基线 3 的差异已用 `CI_ALLOW_SKIP_DRIFT=1` 豁免，原因是
+  本机 node 在 PATH、CI 缺 node 会多跳过一个用例）。
+
 ## [v0.37.0] - 2026-11-09
 
 当前发布版本（build 139）。**Git 技能源补上「提交」能力。**
@@ -2439,7 +2491,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.37.0...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.37.1...HEAD
+[v0.37.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.1
 [v0.37.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.0
 [v0.36.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.36.0
 [v0.35.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.35.0

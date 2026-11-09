@@ -1271,7 +1271,7 @@ toast 反馈成功/失败。
 | tab | 卡片 |
 |---|---|
 | 通用 `appearance` | 外观（主题 / 缩放）、**后台巡检（定时检查）**、Skills 统一目录、**配置导入 / 导出**（v0.30.0）、关于 |
-| Skill `general` | 技能使用统计（自动统计间隔）、**市场源**（默认 skills.sh 可删改 + 自定义远端源，v0.31.0：`#market-sources-card`，源行 + 添加表单，读写经 CLI）、**GitHub API Token**（v0.31.0：`#github-token-card`，状态行脱敏 + password 输入 + 保存/清除，读写经 CLI） |
+| Skill `general` | 技能使用统计（自动统计间隔）、**市场源**（默认 skills.sh 可删改 + 自定义远端源，v0.31.0：`#market-sources-card`，源行 + 添加表单 + **登记残留清理**（v0.37.1，`data-action="prune-skill-lock"`），读写经 CLI）、**GitHub API Token**（v0.31.0：`#github-token-card`，状态行脱敏 + password 输入 + 保存/清除，读写经 CLI） |
 | 通用 `general`（WebDAV，v0.31.1） | **远程同步**（`#webdav-sync-card`，规划中）：远端 URL + 凭据状态行（脱敏）、推/拉按钮（写操作需确认）、同步范围说明。同步范围固定为个人配置层（`local_overrides` / `market_sources` / `discovered_tools` / `skill_versions`），**凭据与技能包本体永不同步** |
 | IDE / Agent `agents` | IDE / Agent 默认路径；**卡片/列表上的能力摘要**（Skills / MCP 两行，无需点开详情） |
 | MCP `mcp` | **活动端点**（下拉切换）、**自动发现**（开关 + 扫描路径只读）、MCP 端点库、**MCP 端点凭据**（v0.31.4 之后：`#endpoint-cred-card`，模式 / 来源 / 状态表 + 检测 / 存入，读写经 CLI） |
@@ -1327,6 +1327,37 @@ GUI 不直接改配置文件。间隔由 CLI 钳到 ≥5 分钟，界面需回�
 
 > 设置项的取值来源必须与「谁是唯一事实来源」一致：偏好类（主题/缩放/统计间隔）用
 > localStorage，跨进程共享类（巡检开关）用 config.yaml 并经 CLI。
+
+**登记残留清理**（v0.37.1，`#market-sources-card` 内的 `data-action="prune-skill-lock"`）：
+技能目录被手工删除后，`~/.agents/.skill-lock.json` 里的来源登记不会自己消失。
+这些「登记残留」没有内容可升级，却会让「检查更新」的结果条数比技能列表可见行数
+多出若干条，也让人误以为库里还装着它们。
+
+此前弹框写「可在技能行删除」是错的：`--delete-skill` 走 `soft_delete_skill()`，
+第一句就要求目录存在；而技能表按磁盘目录渲染，残留行根本不出现。所以必须由
+登记表自己提供出口，本控件就是唯一入口。
+
+```
+┌ settings-card#market-sources-card ────────────────────────────┐
+│ H4: 市场源                                                     │
+│ #market-sources-body（源行，异步加载）                          │
+│ note: 默认源 skills.sh 可删可改；支持 GitHub 仓库源              │
+│ form-actions: [btn-soft 清理登记残留]                           │
+│ note: 残留成因 + 只删磁盘无目录的条目 + 改前备份                  │
+└───────────────────────────────────────────────────────────────┘
+```
+
+- **交互**：点击先跑 `--prune-skill-lock --dry-run --format json`，取 `removed` /
+  `kept` / `names`；无残留就地 `modalNotice` 告知（不弹一个空的确认框）；有残留则
+  `confirmModal` 列出条数与前 8 个示例，确认后 `runTaskModal` 执行并展示备份路径。
+- **为什么先 dry-run 再确认**：删除条数必须在动手前可见——「点完才知道删了 116 条」
+  不可接受；dry-run 顺带给出「保留多少条有效登记」，让用户能判断比例是否正常。
+- **安全边界**（由 `core/skill_market.prune_missing_registrations()` 保证，
+  `tests/test_skill_lock_prune.py` 逐条守住）：只删「登记有、磁盘无目录」的条目；
+  `dismissed` / `lastSelectedAgents` 等非 `skills` 字段原样保留；改前把整份 lock
+  备份为 `<原名>.bak-<时间戳>`，备份失败即中止；dry-run 不落盘、也不生成备份。
+- **为什么放在市场源卡片**：残留登记是「市场安装」的副产物（`sourceType=github`），
+  与「源」同一域；单独开一张卡会让人以为它和源无关。
 
 ---
 

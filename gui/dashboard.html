@@ -5222,6 +5222,10 @@ function renderSettings() {
     <h4>市场源</h4>
     <div id="market-sources-body"><div class="empty">加载中…</div></div>
     <div class="note" style="margin-top:var(--sp-4)">默认源 skills.sh 可删可改；支持添加 GitHub 仓库源（更新检查按 latest release 比对版本）。源配置存本机 data/market_sources.yaml。</div>
+    <div class="form-actions" style="margin-top:var(--sp-4)">
+      <button class="btn-soft" data-action="prune-skill-lock">清理登记残留</button>
+    </div>
+    <div class="note" style="margin-top:var(--sp-4)">技能目录被手工删除后，来源登记表里会留下「已卸载但仍有登记」的条目：它们没有内容可升级，却会让检查结果比技能列表多出若干条。清理只删磁盘上确实不存在的条目，改前自动备份整份登记表。</div>
   </div>`;
 
   // 「Skill」：GitHub API Token（v0.31.0）——更新检查的配额提升通道。
@@ -6903,6 +6907,48 @@ function renderEndpointStatus() {
         detailHtml: structured,
       };
     }, () => loadGitSources());
+  }
+
+  // 清理登记残留（v0.37.1）：技能目录已删、来源登记表里还留着条目。
+  // 先 dry-run 拿清单再确认——删除条数必须让用户看见，不能点一下就改文件。
+  async function openPruneSkillLockModal() {
+    const res = await runCli(["--prune-skill-lock", "--dry-run", "--format", "json"]);
+    let data = null;
+    try { data = JSON.parse(stripAnsi((res && res.stdout) || "{}")); } catch (e) { data = null; }
+    if (!data) { modalNotice("err", "没能读取登记表", cliErrDetail(res)); return; }
+    if (data.status === "nothing-to-prune") {
+      modalNotice("ok", "没有登记残留", "来源登记表里的技能都在统一库中，无需清理。");
+      return;
+    }
+    if (data.status !== "dry-run") {
+      modalNotice("err", "检查失败", data.message || cliErrDetail(res));
+      return;
+    }
+    const names = Array.isArray(data.names) ? data.names : [];
+    const sample = names.slice(0, 8).join("、");
+    const more = names.length > 8 ? ` 等 ${names.length} 条` : "";
+    const ok = await confirmModal(
+      "清理登记残留",
+      `将删除 ${data.removed} 条「登记表有、统一库无目录」的条目，保留 ${data.kept} 条有效登记。\n\n`
+        + `示例：${sample}${more}\n\n`
+        + `改前会自动备份登记表；技能目录本身不受影响。`,
+      false,
+      "确认清理",
+    );
+    if (!ok) return;
+    await runTaskModal("清理登记残留", async () => {
+      const r = await runCli(["--prune-skill-lock", "--format", "json"]);
+      let d = null;
+      try { d = JSON.parse(stripAnsi((r && r.stdout) || "{}")); } catch (e) { d = null; }
+      if (r && r.code === 0 && d && d.status === "ok") {
+        return {
+          ok: true,
+          message: `已删除 ${d.removed} 条登记残留`,
+          detail: d.backup ? `备份：${d.backup}` : "",
+        };
+      }
+      return { ok: false, message: "清理失败", detail: (d && d.message) || cliErrDetail(r) };
+    }, () => refreshBlocks(["skills", "agents"]));
   }
 
   async function loadMarketSources() {
@@ -9072,6 +9118,7 @@ document.addEventListener("click", (e) => {
     else if (a === "git-source-commit") openCommitGitSourceModal();
     else if (a === "git-source-push") runGitSourceAction("推送 Git 源", ["--push-git-sources", "--format", "json"], "推送完成");
     else if (a === "git-source-add") openAddGitSourceModal();
+    else if (a === "prune-skill-lock") openPruneSkillLockModal();
     else if (a === "git-source-remove") confirmRemoveGitSource(act.dataset.id);
     else if (a === "git-source-set-primary") setPrimaryGitSource(act.dataset.id);
     else if (a === "add-agent") renderAddPanel();
@@ -9692,7 +9739,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.37.0", build: 139, build_number: 139, semver_ok: true, full: "v0.37.0 (build 139)" },
+  app: { name: "Skill MCP Studio", version: "0.37.1", build: 140, build_number: 140, semver_ok: true, full: "v0.37.1 (build 140)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",
