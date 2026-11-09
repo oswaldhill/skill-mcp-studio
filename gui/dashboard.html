@@ -420,6 +420,10 @@
   }
   /* 约束预览弹框（v0.38.4）：状态与规模并排成一行、底部用分隔线收口。
      此前是两行 kv + 大间距 + 虚线空态，整块读起来散且像占位符。 */
+  /* 宽度自己声明：**不要复用 .ad-modal**——它把内边距清零并隐藏溢出，
+     且定义在 .modal-form 之后，会把 28px 内边距吃掉（内容贴边的根因）。
+     注释里刻意不写「属性: 值」形式：间距门禁会把它当成真实声明扫出来。 */
+  .rules-modal { --modal-w: min(880px, 94vw); }
   .rules-modal .form-sub { margin-bottom: var(--sp-5); }
   .rules-modal .rules-meta { display: flex; flex-wrap: wrap; gap: var(--gap-2) var(--gap-7); margin-bottom: var(--sp-5); }
   .rules-modal .rules-meta-item { display: inline-flex; align-items: baseline; gap: var(--gap-2); }
@@ -7539,7 +7543,7 @@ function renderEndpointStatus() {
     const body = missing
       ? '<div class="rules-missing">文件不存在。用编辑器在该路径新建后，这里会显示内容。</div>'
       : `<pre class="rules-preview">${escapeHtml(d.content || "")}</pre>`;
-    mountModal(`<div class="modal-backdrop"><div class="modal modal-form ad-modal rules-modal">
+    mountModal(`<div class="modal-backdrop"><div class="modal modal-form rules-modal">
       <div class="form-title">${escapeHtml(d.client)} · 约束文件</div>
       <div class="form-sub"><code class="mono">${escapeHtml(d.path)}</code></div>
       <div class="rules-meta">
@@ -10028,7 +10032,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.38.4", build: 153, build_number: 153, semver_ok: true, full: "v0.38.4 (build 153)" },
+  app: { name: "Skill MCP Studio", version: "0.38.5", build: 154, build_number: 154, semver_ok: true, full: "v0.38.5 (build 154)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

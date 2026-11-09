@@ -7,6 +7,35 @@
 
 ## [Unreleased]
 
+## [v0.38.5] - 2026-11-09
+
+当前发布版本（build 154）。**修复约束预览弹框内容贴边（内边距被清零）。**
+
+用户截图：「这个弹框的样式还是有问题，边框直接在边上，没有间隔」。
+
+### 根因
+
+弹框用了 `class="modal modal-form ad-modal"`。`.ad-modal`（宽详情弹框）自带
+**内边距清零 + 溢出隐藏**，而它定义在 `.modal-form`（28px 内边距）之后——
+两者特异性相同，**后定义的胜出**，于是 28px 内边距被吃掉，内容区直接贴到弹框边缘。
+
+上一版只调了间距与边框，没意识到根因在类复用上。
+
+### 修复
+
+- 不再借用 `.ad-modal`：改为 `modal modal-form rules-modal`；
+- `.rules-modal` 自己声明宽度（`--modal-w: min(880px, 94vw)`，沿用宽详情弹框的上限）；
+- 内边距回归 `.modal-form` 的 28px，标题 / 路径 / 内容区 / 底栏全部与弹框边缘留出间隔。
+
+### 一个门禁细节
+
+修复注释里原本写了「`padding:0 + overflow:hidden`」，被 `NoLiteralSpacingTest`
+当成真实声明扫出来（该门禁会扫描全文件包括注释）。注释已改写为文字描述。
+
+### 测试
+
+全量 **1670 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
 ## [v0.38.4] - 2026-11-09
 
 当前发布版本（build 153）。**约束预览弹框的视觉收紧。**
@@ -3045,7 +3074,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.38.4...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.38.5...HEAD
+[v0.38.5]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.5
 [v0.38.4]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.4
 [v0.38.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.3
 [v0.38.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.2
