@@ -7,6 +7,50 @@
 
 ## [Unreleased]
 
+## [v0.38.1] - 2026-11-09
+
+当前发布版本（build 150）。**约束行与编辑弹框的视觉修正。**
+
+用户反馈四点：「样式需要和上面一样，不要单独出现一种新的样式」「如果有多个就
+显示多个，左右尽可能保持一致的大小」「展示的这个页面也需要和 UI 规范保持一致，
+目前太丑了」。
+
+### 约束行（`.ac-rules-v`）
+
+- **徽标不再被拉宽**：卡片值区的规则是「首个子元素 `flex: 1 1 auto`」（为
+  Skills / MCP 的自适应文本设计），但约束行的首个子元素是**状态徽标**，被拉伸后
+  与旁边的按钮比例失衡。改为 `.ac-rules-v`（inline-flex）：徽标定宽、按钮
+  `flex: 0 0 auto`。
+- **多路径按钮等宽并排**：`.rules-view-btn { min-width: 64px }`，WorkBuddy 的
+  「查看 1 / 查看 2」不再一大一小，换行时也保持同宽。
+- 行结构与 Skills / MCP 完全一致（`.ac-meta-row` 的 `k` / `v`），没有新造行样式。
+
+### 编辑弹框
+
+从「标题 + 路径 + 裸文本框」重排为五段层次：
+
+```
+WorkBuddy · 约束文件          ← form-title
+~/.workbuddy/USER.md          ← form-sub（mono，可复制）
+状态   [已配置]                ← kv 行（与卡片同一套）
+规模   42 行 · 1037 B
+文件内容                       ← form-field label
+[ 等宽编辑器，50vh，可纵向拉伸 ]
+保存前自动备份…    [取消] [保存]  ← form-actions（左说明右按钮）
+```
+
+- 状态与规模复用卡片的 `kv` 行语言，不引入新组件；
+- 底部左侧常驻备份说明，右侧两个按钮，与 §2.5b 的 `.modal-form .form-actions` 一致。
+
+### 文档
+
+`docs/DESIGN.md` §2.3c-2 登记 `.ac-rules-v` 与 `.rules-view-btn`（新增语义类必须
+登记，`ComponentRegistrationTest` 强制），`docs/DESIGN.html` 同步。
+
+### 测试
+
+全量 **1670 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
 ## [v0.38.0] - 2026-11-09
 
 当前发布版本（build 149）。**约束文件合并进 Agent 卡片/列表，不再单独开卡。**
@@ -2891,7 +2935,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.38.0...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.38.1...HEAD
+[v0.38.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.1
 [v0.38.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.0
 [v0.37.9]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.9
 [v0.37.8]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.8

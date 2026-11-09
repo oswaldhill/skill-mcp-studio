@@ -409,6 +409,10 @@ Agent 卡片里有两组「标签 + 值」行：**路径区**（APP / CLI / CONF
   `<原文件>.bak-<时间戳>` → 原子写 → 回读校验。
 - **目录形态**（Cline / TRAE）：`--read-rules` 返回文件清单，弹框只读展示，
   **不支持整体写入**——把一段文本写进规则目录会覆盖其中所有文件。
+- **约束行的值区**用 `.ac-rules-v`（inline-flex）：徽标 `.tag` 是**定宽状态**，
+  不能沿用卡片值区「首个子元素自适应」的规则——被 `flex:1` 拉宽后与按钮比例失衡
+  （用户截图「左右大小不一致」）。多路径时按钮 `.btn-soft.rules-view-btn`
+  统一 `min-width: 64px`，并排等宽、自动换行。
 - **为什么函数里要 `typeof RULES_DATA` 防御**：`renderHomeListView` /
   `renderAgentsTable` 会被测试单独抽出到 node 里执行，那时全局状态不存在；
   不加防御会直接 ReferenceError。

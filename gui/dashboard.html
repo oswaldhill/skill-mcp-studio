@@ -402,6 +402,12 @@
   }
   .agent-card:not(.home-card) .ac-meta-row .v > :first-child { flex: 1 1 auto; min-width: 0; }
   .agent-card:not(.home-card) .ac-meta-row .v > :not(:first-child) { flex: 0 0 auto; }
+  /* 约束行（v0.38.1）：徽标不是「自适应文本」，不能被 flex:1 拉宽——它是一枚
+     状态徽标，拉伸后和旁边的按钮比例失衡（用户截图「左右大小不一致」）。
+     这里把值区改成 inline-flex：徽标定宽、按钮等宽并排。 */
+  .agent-card:not(.home-card) .ac-meta-row .v.ac-rules-v { display: inline-flex; align-items: center; gap: var(--gap-2); flex-wrap: wrap; }
+  .agent-card:not(.home-card) .ac-meta-row .v.ac-rules-v > * { flex: 0 0 auto; }
+  .ac-rules-v .rules-view-btn { min-width: 64px; justify-content: center; }
   /* 路径区：列表改单列网格，路径因此**等宽**（右边界成一条竖线）；
      此前 flex-column 下胶囊宽度随内容长短不一，右边界呈锯齿。 */
   .agent-card:not(.home-card) .ac-path-row .ac-path-list {
@@ -4616,10 +4622,10 @@ function _agentRulesSummary(t) {
   const cls = hit === total ? "ok" : (hit > 0 ? "warn" : "");
   const tip = paths.map((p) => `${p.path}${p.exists ? "" : "（未配置）"}`).join("；");
   const btns = paths.map((p, idx) =>
-    `<button class="btn-soft" data-action="view-rules" data-client="${escapeHtml(t.name)}"
+    `<button class="btn-soft rules-view-btn" data-action="view-rules" data-client="${escapeHtml(t.name)}"
       data-index="${idx}" title="${escapeHtml(p.path)}">${paths.length > 1 ? `查看 ${idx + 1}` : "查看"}</button>`
   ).join("");
-  return `<span class="tag ${cls}" title="${escapeHtml(tip)}">${hit}/${total}</span>${btns}`;
+  return `<span class="ac-rules-v"><span class="tag ${cls}" title="${escapeHtml(tip)}">${hit}/${total}</span>${btns}</span>`;
 }
 
 function renderAgentsTable(page) {
@@ -4704,7 +4710,7 @@ function renderAgentsTable(page) {
           <div class="ac-meta">
             <div class="ac-meta-row"><span class="k">Skills</span><span class="v">${_agentSkillsSummary(t)}</span></div>
             <div class="ac-meta-row"><span class="k">MCP</span><span class="v">${_agentMcpSummary(t)}</span></div>
-            ${_agentRulesSummary(t) ? `<div class="ac-meta-row"><span class="k">约束</span><span class="v">${_agentRulesSummary(t)}</span></div>` : ""}
+            ${_agentRulesSummary(t) ? `<div class="ac-meta-row"><span class="k">约束</span><span class="v ac-rules-v">${_agentRulesSummary(t)}</span></div>` : ""}
           </div>
           <div class="ac-foot">
             <span class="ac-count">${totalPaths} 条路径</span>
@@ -7486,14 +7492,27 @@ function renderEndpointStatus() {
       return;
     }
     const missing = d.kind === "missing";
+    // 弹框信息层次（v0.38.1 用户「太丑了」后重排）：
+    // 标题 → 路径 → 状态/规模 → 编辑区 → 底部（备份说明 + 按钮）。
+    const lineCount = (d.content || "").split("\n").length;
+    const sizeText = d.size ? `${d.size} B` : `${(d.content || "").length} 字符`;
+    const stateTag = missing
+      ? '<span class="tag">未配置（保存后新建）</span>'
+      : '<span class="tag ok">已配置</span>';
     mountModal(`<div class="modal-backdrop"><div class="modal modal-form ad-modal">
       <div class="form-title">${escapeHtml(d.client)} · 约束文件</div>
-      <div class="form-sub"><code class="mono">${escapeHtml(d.path)}</code>${missing ? "（不存在，保存后新建）" : ""}</div>
+      <div class="form-sub"><code class="mono">${escapeHtml(d.path)}</code></div>
+      <div class="rows" style="font-size:var(--fs-sm);margin-bottom:var(--sp-7)">
+        <div class="row"><span class="k">状态</span><span class="v">${stateTag}</span></div>
+        <div class="row"><span class="k">规模</span><span class="v">${lineCount} 行 · ${sizeText}</span></div>
+      </div>
       <div class="form-field">
+        <label for="rules-editor">文件内容</label>
         <textarea id="rules-editor" class="rules-editor" spellcheck="false"
           aria-label="约束文件内容">${escapeHtml(d.content || "")}</textarea>
       </div>
       <div class="form-actions">
+        <span class="note" style="margin-right:auto">保存前自动备份原文件为 .bak-时间戳</span>
         <button class="btn-cancel" id="rules-cancel">取消</button>
         <button class="btn-save" id="rules-save">保存</button>
       </div>
@@ -9988,7 +10007,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.38.0", build: 149, build_number: 149, semver_ok: true, full: "v0.38.0 (build 149)" },
+  app: { name: "Skill MCP Studio", version: "0.38.1", build: 150, build_number: 150, semver_ok: true, full: "v0.38.1 (build 150)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

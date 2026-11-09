@@ -1109,6 +1109,9 @@
           <code>&lt;原文件&gt;.bak-&lt;时间戳&gt;</code> → 原子写 → 回读校验。</li>
         <li><strong>目录形态</strong>（Cline / TRAE）：<code>--read-rules</code> 返回文件清单，弹框只读展示，
           <strong>不支持整体写入</strong>——把一段文本写进规则目录会覆盖其中所有文件。</li>
+        <li><strong>约束行的值区</strong>用 <code>.ac-rules-v</code>（inline-flex）：徽标 <code>.tag</code> 是<strong>定宽状态</strong>，
+          不能沿用卡片值区「首个子元素自适应」的规则——被 <code>flex:1</code> 拉宽后与按钮比例失衡。
+          多路径时按钮 <code>.btn-soft.rules-view-btn</code> 统一 <code>min-width: 64px</code>，并排等宽。</li>
         <li><strong>为什么函数里要 <code>typeof RULES_DATA</code> 防御</strong>：<code>renderHomeListView</code> /
           <code>renderAgentsTable</code> 会被测试单独抽出到 node 里执行，那时全局状态不存在；
           不加防御会直接 ReferenceError。</li>
