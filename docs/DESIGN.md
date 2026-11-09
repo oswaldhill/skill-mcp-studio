@@ -371,6 +371,40 @@ Agent 卡片里有两组「标签 + 值」行：**路径区**（APP / CLI / CONF
 >
 > 不变量由 `ColumnWidthGovernanceTest` 守住。
 
+### 2.3c-2 约束文件面板（`#rules-panel`，v0.37.7）
+
+**为什么有它**：不同客户端的「主要约束文件」各不相同——Claude Code 用
+`CLAUDE.md`、Codex 用 `AGENTS.md`、Gemini CLI 用 `GEMINI.md`、Cursor 用
+`.cursor/rules/` 目录……用户此前要逐个翻目录才知道「这台机器上每个 Agent 的
+规则到底配了什么」。本面板把注册表里声明了约束文件的客户端汇总成一张表。
+
+```
+┌ .panel#rules-panel ────────────────────────────────────────────┐
+│ .hd.fc-head：h3「约束文件」+ hint（左）｜[重新读取 btn-soft]（右）│
+│ #rules-body：.mcp-table                                         │
+│   客户端 | 约束文件 | 状态 | 规模 | 操作                         │
+│   Codex  | ~/.codex/AGENTS.md | [tag ok 已配置] | 60 行 · … | 查看 │
+│   Cursor | ~/.cursor/rules    | [tag 目录]      | 3 个文件   | 查看 │
+│   Claude Code | ~/.claude/CLAUDE.md | [tag 未配置] | -     | 查看 │
+│ note: 共 N 个客户端有约定，M/N 个已配置；路径来自各客户端官方约定 │
+└────────────────────────────────────────────────────────────────┘
+```
+
+- **数据来源**：`--list-rules --format json`（只读）。路径只认注册表
+  （`mainstream_registry_data`）里显式声明的 `rules_paths`，**不猜**——猜一个
+  路径去读，猜错会让用户以为「这里就是它的配置」，比不显示更糟。
+- **查看 / 编辑**：点「查看」→ `--read-rules <client> --rules-index N`，弹
+  `.modal.modal-form` + `.rules-editor`（等宽、50vh、可纵向拉伸）。保存走
+  `--write-rules <client> --rules-content <文本>`：先备份为
+  `<原文件>.bak-<时间戳>` → 原子写 → 回读校验，与项目其它配置写入同一套安全形状。
+- **目录形态**（Cursor / TRAE）：`--read-rules` 返回文件清单，弹框只读展示，
+  **不支持整体写入**——把一段文本写进规则目录会覆盖其中所有文件。
+- **未配置**：显示 `tag 未配置` + 规模列「-」；点「查看」可新建（保存后文件才出现）。
+- **规模列**：文件显示「行数 · 字节 · 修改时间」，目录显示「N 个文件」。
+- **为什么放在 IDE / Agent 页而不是新开一页**：约束文件是**客户端的属性**
+  （与 skills 路径、MCP 配置同级），用户找它时的心理路径就是「这个 Agent 配了什么」；
+  单独开页会让它和客户端清单分家。
+
 ### 2.3d 图例（`.skill-legend`）的放置与对齐
 
 **位置：一律放在所说明内容的「上方」**（2026-10-14 用户定案：放上面好看）。页面级图例

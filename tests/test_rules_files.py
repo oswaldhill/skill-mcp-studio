@@ -1,0 +1,193 @@
+"""各客户端约束文件（AGENTS.md / CLAUDE.md 等）的发现与读写门禁断言。
+
+背景（2026-11-09 用户需求）：「根据每个应用不同的主要约束文件，对每个 Agent
+的约束进行管理」。不同客户端的规则文件不同——Claude Code 用 ``CLAUDE.md``、
+Codex 用 ``AGENTS.md``、Cursor 用 ``.cursor/rules/`` 目录……
+
+这批断言守 5 类事实：
+
+1. 只认注册表里显式声明的 ``rules_paths``，不猜路径；
+2. 发现口径：文件看行数/大小/mtime，目录看文件数，缺失标 ``exists=False``；
+3. 读取有上限（``MAX_PREVIEW_BYTES``），超出标 ``truncated``；
+4. 写入：先备份 → 原子写 → 回读校验；目录拒绝；新建时 backup 为空；
+5. CLI 端到端（``--list-rules`` / ``--read-rules``）与 GUI 契约
+   （面板、按钮、命令、Rust 白名单、DESIGN.md 登记）。
+"""
+
+import json
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "core"))
+
+import rules_files as rf  # noqa: E402
+
+
+def _tool(name, *paths, aliases=None):
+    return {"name": name, "type": "AI Agent", "rules_paths": list(paths),
+            "aliases": aliases or []}
+
+
+class DiscoverTest(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(self._tmp.name)
+
+    def test_file_and_missing_and_dir(self):
+        f = self.root / "AGENTS.md"
+        f.write_text("# rules\nline2\n", encoding="utf-8")
+        d = self.root / "rules"
+        d.mkdir()
+        (d / "a.mdc").write_text("x", encoding="utf-8")
+        (d / "b.mdc").write_text("y", encoding="utf-8")
+
+        registry = [
+            _tool("Codex", str(f)),
+            _tool("Claude Code", str(self.root / "nope.md")),
+            _tool("Cursor", str(d)),
+            {"name": "NoRules", "type": "AI IDE"},  # 未声明 → 不出现
+        ]
+        out = rf.discover(registry)
+
+        self.assertEqual(len(out["rows"]), 3, "未声明 rules_paths 的客户端不出现")
+        by = {r["name"]: r["paths"][0] for r in out["rows"]}
+        self.assertEqual(by["Codex"]["kind"], "file")
+        self.assertEqual(by["Codex"]["lines"], 2)
+        self.assertGreater(by["Codex"]["size"], 0)
+        self.assertTrue(by["Codex"]["mtime"])
+        self.assertFalse(by["Claude Code"]["exists"])
+        self.assertEqual(by["Cursor"]["kind"], "dir")
+        self.assertEqual(by["Cursor"]["files"], 2)
+        self.assertEqual(out["summary"]["declared"], 3)
+        self.assertEqual(out["summary"]["configured"], 2)
+
+    def test_registry_paths_are_authoritative(self):
+        """注册表里没声明就不猜：discover 只遍历声明的客户端。"""
+        out = rf.discover([{"name": "X", "type": "AI IDE"}])
+        self.assertEqual(out["rows"], [])
+        self.assertEqual(out["summary"]["configured"], 0)
+
+
+class ReadWriteTest(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(self._tmp.name)
+        self.file = self.root / "AGENTS.md"
+        self.registry = [_tool("Codex", str(self.file), aliases=["codex"])]
+
+    def test_read_missing_is_ok_with_flag(self):
+        res = rf.read_rules("Codex", registry=self.registry)
+        self.assertTrue(res["ok"])
+        self.assertEqual(res["kind"], "missing")
+        self.assertEqual(res["content"], "")
+
+    def test_read_truncates_oversize(self):
+        self.file.write_text("a" * (rf.MAX_PREVIEW_BYTES + 10), encoding="utf-8")
+        res = rf.read_rules("Codex", registry=self.registry)
+        self.assertTrue(res["truncated"])
+        self.assertEqual(len(res["content"]), rf.MAX_PREVIEW_BYTES)
+
+    def test_read_dir_lists_files(self):
+        d = self.root / "rules"
+        d.mkdir()
+        (d / "a.mdc").write_text("x", encoding="utf-8")
+        res = rf.read_rules("Cursor", registry=[_tool("Cursor", str(d))])
+        self.assertEqual(res["kind"], "dir")
+        self.assertEqual(res["files"], ["a.mdc"])
+
+    def test_write_creates_and_backs_up(self):
+        res = rf.write_rules("codex", "# v1\n", registry=self.registry)
+        self.assertTrue(res["ok"], res)
+        self.assertEqual(self.file.read_text(encoding="utf-8"), "# v1\n")
+        self.assertEqual(res["backup"], "", "新建时没有旧文件可备份")
+
+        res2 = rf.write_rules("Codex", "# v2\n", registry=self.registry)
+        self.assertTrue(res2["ok"])
+        self.assertTrue(Path(res2["backup"]).is_file(), "覆盖前必须备份")
+        self.assertEqual(Path(res2["backup"]).read_text(encoding="utf-8"), "# v1\n")
+        self.assertEqual(self.file.read_text(encoding="utf-8"), "# v2\n")
+
+    def test_write_rejects_dir(self):
+        d = self.root / "rules"
+        d.mkdir()
+        res = rf.write_rules("Cursor", "x", registry=[_tool("Cursor", str(d))])
+        self.assertFalse(res["ok"])
+        self.assertIn("目录", res["reason"])
+
+    def test_write_unknown_client(self):
+        res = rf.write_rules("Nope", "x", registry=self.registry)
+        self.assertFalse(res["ok"])
+        self.assertIn("未知客户端", res["reason"])
+
+    def test_read_unknown_client(self):
+        res = rf.read_rules("Nope", registry=self.registry)
+        self.assertFalse(res["ok"])
+
+
+class RulesCliTest(unittest.TestCase):
+    """端到端：GUI 直接 JSON.parse 这两条命令的 stdout。"""
+
+    def _run(self, *args):
+        return subprocess.run(
+            [sys.executable, str(ROOT / "scan.py"), *args],
+            cwd=str(ROOT), capture_output=True, text=True, timeout=120,
+        )
+
+    def test_list_rules_json(self):
+        proc = self._run("--list-rules", "--format", "json")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        payload = json.loads(proc.stdout)
+        self.assertIn("rows", payload)
+        self.assertIn("summary", payload)
+        names = {r["name"] for r in payload["rows"]}
+        # 注册表里至少这几家声明了约束文件
+        for expected in ("Codex", "Claude Code", "DeepSeek Harness"):
+            self.assertIn(expected, names)
+
+    def test_read_rules_json(self):
+        proc = self._run("--read-rules", "codex", "--format", "json")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        payload = json.loads(proc.stdout)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["client"], "Codex")
+
+
+class RulesGuiContract(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.dashboard = (ROOT / "gui" / "dashboard.html").read_text(encoding="utf-8")
+        cls.lib_rs = (ROOT / "src-tauri" / "src" / "lib.rs").read_text(encoding="utf-8")
+        cls.design = (ROOT / "docs" / "DESIGN.md").read_text(encoding="utf-8")
+
+    def test_panel_and_actions(self):
+        self.assertIn('id="rules-panel"', self.dashboard, "Agent 页缺约束文件面板")
+        self.assertIn('data-action="view-rules"', self.dashboard, "缺「查看」入口")
+        self.assertIn("function loadRules", self.dashboard)
+        self.assertIn("function openRulesModal", self.dashboard)
+
+    def test_commands_are_wired(self):
+        self.assertIn('"--list-rules"', self.dashboard)
+        self.assertIn('"--read-rules"', self.dashboard)
+        self.assertIn('"--write-rules"', self.dashboard)
+        self.assertIn('"--rules-content"', self.dashboard,
+                      "保存必须把编辑内容传给 CLI")
+
+    def test_rust_whitelist(self):
+        for flag in ("--list-rules", "--read-rules", "--write-rules",
+                     "--rules-file", "--rules-content", "--rules-index"):
+            self.assertIn(f'"{flag}"', self.lib_rs,
+                          f"Rust run_cli 白名单缺少 {flag}")
+
+    def test_design_spec_registers_panel(self):
+        self.assertIn("约束文件", self.design,
+                      "docs/DESIGN.md 未登记约束文件面板")
+
+
+if __name__ == "__main__":
+    unittest.main()

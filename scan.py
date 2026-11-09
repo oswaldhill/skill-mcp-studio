@@ -862,6 +862,86 @@ def _run_attach_endpoints(args, config, config_path) -> int:
     return 0 if result["status"] in ("ok", "dry-run") else 2
 
 
+def _run_rules(args) -> int:
+    """约束文件出口（v0.37.7）：列出 / 读取 / 写回各客户端的主要规则文件。
+
+    不同客户端的规则文件不同（Claude Code 的 ``CLAUDE.md``、Codex 的
+    ``AGENTS.md``、Cursor 的 ``.cursor/rules/`` 目录……）。路径只认注册表里
+    显式声明的 ``rules_paths``，不猜。
+    """
+    from pathlib import Path as _Path
+
+    import rules_files as rf
+
+    want_json = getattr(args, "format", None) == "json"
+    index = int(getattr(args, "rules_index", 0) or 0)
+
+    if getattr(args, "list_rules", False):
+        payload = rf.discover()
+        if want_json:
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+            return 0
+        summary = payload["summary"]
+        print(f"\n  约束文件：{summary['clients']} 个客户端有约定，"
+              f"{summary['configured']}/{summary['declared']} 个已配置\n")
+        for row in payload["rows"]:
+            for item in row["paths"]:
+                mark = "✓" if item["exists"] else "·"
+                if item["kind"] == "dir":
+                    detail = f"目录 · {item['files']} 个文件"
+                elif item["kind"] == "file":
+                    detail = f"{item['lines']} 行 · {item['size']} B · {item['mtime']}"
+                else:
+                    detail = "未配置"
+                print(f"    {mark} {row['name']:<18} {item['path']:<52} {detail}")
+        return 0
+
+    if getattr(args, "read_rules", None):
+        res = rf.read_rules(args.read_rules, index)
+        if want_json:
+            print(json.dumps(res, ensure_ascii=False, indent=2))
+            return 0 if res.get("ok") else 2
+        if not res.get("ok"):
+            print(f"  ❌ {res.get('reason')}")
+            return 2
+        print(f"\n  {res['client']} · {res['path']}")
+        if res["kind"] == "dir":
+            for name in res.get("files") or []:
+                print(f"    · {name}")
+        elif res["kind"] == "missing":
+            print("    （文件不存在，可在界面新建）")
+        else:
+            if res.get("truncated"):
+                print(f"    （超过 {rf.MAX_PREVIEW_BYTES} 字节，仅显示前部分）")
+            print(res["content"])
+        return 0
+
+    client = args.write_rules
+    source = getattr(args, "rules_file", None)
+    inline = getattr(args, "rules_content", None)
+    if source:
+        try:
+            content = _Path(source).read_text(encoding="utf-8")
+        except OSError as exc:
+            print(f"  ❌ 读取内容文件失败：{exc}")
+            return 2
+    elif inline is not None:
+        content = inline
+    else:
+        print("  ❌ --write-rules 需要 --rules-file <内容文件> 或 --rules-content <文本>")
+        return 2
+    res = rf.write_rules(client, content, index)
+    if want_json:
+        print(json.dumps(res, ensure_ascii=False, indent=2))
+    elif res.get("ok"):
+        print(f"  ✅ 已写入 {res['path']}（{res['bytes']} 字节）")
+        if res.get("backup"):
+            print(f"      备份：{res['backup']}")
+    else:
+        print(f"  ❌ {res.get('reason')}")
+    return 0 if res.get("ok") else 1
+
+
 def _run_list_mcp_inventory(args, config, config_path) -> int:
     """Read-only: per-client MCP entry dump + classification (需求 ③a 自动识别)."""
     try:
@@ -2714,6 +2794,31 @@ def build_parser() -> argparse.ArgumentParser:
         "--restore-config-backup", type=str, default=None, metavar="PATH",
         help="从备份还原该客户端配置（配合 --client；整文件覆盖；支持 --dry-run）",
     )
+    # === 约束文件（AGENTS.md / CLAUDE.md 等，v0.37.7）===
+    parser.add_argument(
+        "--list-rules", action="store_true",
+        help="只读：列出各客户端的主要约束文件（AGENTS.md / CLAUDE.md / GEMINI.md …）状态",
+    )
+    parser.add_argument(
+        "--read-rules", type=str, default=None, metavar="CLIENT",
+        help="只读：读取某客户端约束文件内容（目录则列文件清单；配合 --rules-index）",
+    )
+    parser.add_argument(
+        "--write-rules", type=str, default=None, metavar="CLIENT",
+        help="写回某客户端约束文件（先备份再原子写；内容来自 --rules-file）",
+    )
+    parser.add_argument(
+        "--rules-file", type=str, default=None, metavar="PATH",
+        help="配合 --write-rules：要写入的内容所在文件",
+    )
+    parser.add_argument(
+        "--rules-content", type=str, default=None, metavar="TEXT",
+        help="配合 --write-rules：直接传入内容（GUI 用；与 --rules-file 二选一）",
+    )
+    parser.add_argument(
+        "--rules-index", type=int, default=0, metavar="N",
+        help="配合 --read-rules / --write-rules：第几个约束路径（默认 0）",
+    )
     parser.add_argument(
         "--list-mcp-inventory", action="store_true",
         help="只读列出各客户端当前配置的全部 MCP 条目及分类（attached/legacy/unmanaged）",
@@ -3536,6 +3641,10 @@ def main() -> int:
         return _run_set_auth_secret(args, config, config_path)
     if getattr(args, "attach_endpoints", None):
         return _run_attach_endpoints(args, config, config_path)
+    if (getattr(args, "list_rules", False)
+            or getattr(args, "read_rules", None)
+            or getattr(args, "write_rules", None)):
+        return _run_rules(args)
     if getattr(args, "list_mcp_inventory", False):
         return _run_list_mcp_inventory(args, config, config_path)
     # 阶段五增量：MCP 条目删除 / 清理 / 配置备份还原。与上面几条管理台命令同属

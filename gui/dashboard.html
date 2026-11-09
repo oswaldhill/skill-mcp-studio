@@ -1409,6 +1409,10 @@
   .path-field-row button { flex: 0 0 auto; font-size: var(--fs-2xs); padding: var(--sp-1) var(--sp-3); }
 
   /* ============ settings（参考：label 左 + 控件右的表单行，hairline 分隔） ============ */
+  /* 约束文件编辑器（v0.37.7）：等宽、可纵向拉伸，占弹框主体 */
+  /* 选择器要压过 `.modal-form .form-field textarea { min-height: 80px }`：
+     后者特异性更高，只写 .rules-editor 时编辑器仍停在 80px（实测）。 */
+  .modal-form .form-field textarea.rules-editor { width: 100%; min-height: 50vh; font-family: var(--mono); font-size: var(--fs-xs); line-height: 1.6; resize: vertical; }
   .settings-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-card); padding: var(--sp-7a); margin-bottom: var(--sp-6); box-shadow: var(--shadow-card); }
   .settings-card h4 { margin: 0 0 var(--sp-5); font-family: var(--display); font-size: var(--fs-xs); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
   .settings-card .rows .row { padding: var(--sp-3b) 0; border-bottom: 1px solid var(--line); }
@@ -2083,6 +2087,14 @@
         </div>
       </div>
       <div id="agents-list"></div>
+      <!-- 约束文件（v0.37.7）：各客户端的主要规则文件（AGENTS.md / CLAUDE.md 等） -->
+      <div class="panel" id="rules-panel">
+        <div class="hd fc-head">
+          <div><h3>约束文件</h3><div class="hint">各客户端的 AGENTS.md / CLAUDE.md / GEMINI.md 等主要规则文件，可查看与编辑</div></div>
+          <button class="btn-soft" data-action="refresh-rules">重新读取</button>
+        </div>
+        <div id="rules-body"><div class="empty">加载中…</div></div>
+      </div>
     </section>
 
     <!-- ===== Skills（业务：合并 / 逐技能状态） ===== -->
@@ -5488,6 +5500,7 @@ function switchPage(page) {
   // DSH 插件页的数据不在主快照里（DSH 与本站是两套模型），进页时按需拉一次；
   // 已拉过则不重拉，避免每次切页都起一次子进程。
   if (page === "dsh" && !DSH_DATA) loadDshPlugins();
+  if (page === "agents") loadRules();
 }
 document.querySelectorAll(".nav-item").forEach((btn) => {
   btn.addEventListener("click", () => switchPage(btn.dataset.page));
@@ -7387,6 +7400,105 @@ function renderEndpointStatus() {
     }, () => loadSkillBackupStats());
   }
 
+  // ---------------- 约束文件（v0.37.7） ----------------
+  // 各客户端的规则文件不同：Claude Code 用 CLAUDE.md、Codex 用 AGENTS.md、
+  // Cursor 用 .cursor/rules/ 目录……路径只认注册表里声明的 rules_paths。
+  let RULES_DATA = null;
+
+  async function loadRules() {
+    const body = $("rules-body");
+    if (!body) return;
+    const res = await runCli(["--list-rules", "--format", "json"]);
+    let data = null;
+    try { data = JSON.parse(stripAnsi((res && res.stdout) || "{}")); } catch (e) { data = null; }
+    if (!data) {
+      body.innerHTML = `<div class="empty">${escapeHtml(cliErrDetail(res) || "读取失败")}</div>`;
+      return;
+    }
+    RULES_DATA = data;
+    renderRules();
+  }
+
+  function renderRules() {
+    const body = $("rules-body");
+    if (!body || !RULES_DATA) return;
+    const rows = RULES_DATA.rows || [];
+    if (!rows.length) {
+      body.innerHTML = '<div class="empty">没有声明约束文件的客户端</div>';
+      return;
+    }
+    const lines = [];
+    rows.forEach((row) => {
+      (row.paths || []).forEach((p, idx) => {
+        const state = p.exists
+          ? `<span class="tag ok">${p.kind === "dir" ? "目录" : "已配置"}</span>`
+          : '<span class="tag">未配置</span>';
+        const scale = p.kind === "dir"
+          ? `${p.files || 0} 个文件`
+          : (p.exists ? `${p.lines || 0} 行 · ${p.size || 0} B · ${escapeHtml(p.mtime || "")}` : "-");
+        lines.push(`<tr>
+          <td>${escapeHtml(row.name)}</td>
+          <td><code class="mono">${escapeHtml(p.path)}</code></td>
+          <td>${state}</td>
+          <td class="muted">${scale}</td>
+          <td><button class="btn-soft" data-action="view-rules"
+                data-client="${escapeHtml(row.name)}" data-index="${idx}">查看</button></td>
+        </tr>`);
+      });
+    });
+    const sum = RULES_DATA.summary || {};
+    body.innerHTML = `<table class="mcp-table"><thead><tr>
+        <th>客户端</th><th>约束文件</th><th>状态</th><th>规模</th><th>操作</th>
+      </tr></thead><tbody>${lines.join("")}</tbody></table>
+      <div class="note" style="margin-top:var(--sp-4)">共 ${sum.clients || 0} 个客户端有约定，
+        ${sum.configured || 0}/${sum.declared || 0} 个已配置。路径来自各客户端的官方约定；
+        未配置的客户端可点「查看」新建。</div>`;
+  }
+
+  async function openRulesModal(client, index) {
+    const res = await runCli(["--read-rules", client, "--rules-index", String(index), "--format", "json"]);
+    let d = null;
+    try { d = JSON.parse(stripAnsi((res && res.stdout) || "{}")); } catch (e) { d = null; }
+    if (!d || !d.ok) {
+      modalNotice("err", "读取失败", (d && d.reason) || cliErrDetail(res));
+      return;
+    }
+    if (d.kind === "dir") {
+      const files = (d.files || []).map((f) => `<li><code class="mono">${escapeHtml(f)}</code></li>`).join("");
+      modalNotice("info", `${d.client} · 规则目录`,
+        `${d.path}\n\n目录内 ${(d.files || []).length} 个文件：\n${(d.files || []).join("\n")}`);
+      return;
+    }
+    const missing = d.kind === "missing";
+    mountModal(`<div class="modal-backdrop"><div class="modal modal-form ad-modal">
+      <div class="form-title">${escapeHtml(d.client)} · 约束文件</div>
+      <div class="form-sub"><code class="mono">${escapeHtml(d.path)}</code>${missing ? "（不存在，保存后新建）" : ""}</div>
+      <div class="form-field">
+        <textarea id="rules-editor" class="rules-editor" spellcheck="false"
+          aria-label="约束文件内容">${escapeHtml(d.content || "")}</textarea>
+      </div>
+      <div class="form-actions">
+        <button class="btn-cancel" id="rules-cancel">取消</button>
+        <button class="btn-save" id="rules-save">保存</button>
+      </div>
+    </div></div>`);
+    $("rules-cancel").onclick = closeModal;
+    $("rules-save").onclick = async () => {
+      const content = ($("rules-editor") || {}).value || "";
+      closeModal();
+      await runTaskModal(`保存 ${client} 约束文件`, async () => {
+        const r = await runCli(["--write-rules", client, "--rules-index", String(index),
+                                "--rules-content", content, "--format", "json"]);
+        let x = null;
+        try { x = JSON.parse(stripAnsi((r && r.stdout) || "{}")); } catch (e) { x = null; }
+        if (x && x.ok) {
+          return { ok: true, message: `已写入 ${x.path}`, detail: x.backup ? `备份：${x.backup}` : "" };
+        }
+        return { ok: false, message: "保存失败", detail: (x && x.reason) || cliErrDetail(r) };
+      }, () => loadRules());
+    };
+  }
+
   async function loadMarketSources() {
     const body = $("market-sources-body");
     if (!body) return;
@@ -9238,6 +9350,8 @@ document.addEventListener("click", (e) => {
     else if (a === "git-source-add") openAddGitSourceModal();
     else if (a === "prune-skill-lock") openPruneSkillLockModal();
     else if (a === "prune-skill-backups") openPruneSkillBackupsModal();
+    else if (a === "refresh-rules") loadRules();
+    else if (a === "view-rules") openRulesModal(act.dataset.client, parseInt(act.dataset.index || "0", 10));
     else if (a === "git-source-remove") confirmRemoveGitSource(act.dataset.id);
     else if (a === "git-source-set-primary") setPrimaryGitSource(act.dataset.id);
     else if (a === "add-agent") renderAddPanel();
@@ -9858,7 +9972,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.37.6", build: 145, build_number: 145, semver_ok: true, full: "v0.37.6 (build 145)" },
+  app: { name: "Skill MCP Studio", version: "0.37.7", build: 146, build_number: 146, semver_ok: true, full: "v0.37.7 (build 146)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

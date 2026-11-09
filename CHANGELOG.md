@@ -7,6 +7,55 @@
 
 ## [Unreleased]
 
+## [v0.37.7] - 2026-11-09
+
+当前发布版本（build 146）。**新增「约束文件」管理：按每个 Agent 的主要规则文件
+统一查看与编辑。**
+
+用户提出：「根据每个应用不同的主要约束文件，对每个 Agent 的约束进行管理」。
+此前本工具只管 skills / MCP / DSH 插件，**完全不管各客户端的规则文件**——
+Claude Code 的 `CLAUDE.md`、Codex 的 `AGENTS.md`、Gemini CLI 的 `GEMINI.md`、
+Cursor 的 `.cursor/rules/` 目录……要确认「这台机器上每个 Agent 的约束到底配了
+什么」，只能逐个翻目录。
+
+### 新增
+
+- **注册表 `rules_paths`**：9 个有官方约定的客户端登记了约束文件路径
+  （Claude Code / Codex / Gemini CLI / OpenCode / DeepSeek Harness / Cursor /
+  TRAE / Cline / Windsurf）。**没声明的客户端不猜路径**——猜一个路径去读，猜错
+  会让用户以为「这里就是它的配置」，比不显示更糟。
+- **`core/rules_files.py`**：
+  - `discover()`：文件看行数/字节/mtime，目录看文件数，缺失标 `exists=False`；
+  - `read_rules()`：只读预览，超过 512 KiB 截断并标 `truncated`；
+  - `write_rules()`：备份 → 原子写 → 回读校验；目录形态拒绝整体写入。
+- **CLI**：`--list-rules`（只读）、`--read-rules <client>`、
+  `--write-rules <client> --rules-content <文本>`（或 `--rules-file`）。
+- **GUI**：IDE / Agent 页新增「约束文件」面板（`#rules-panel`）——表格列
+  「客户端 / 约束文件 / 状态 / 规模 / 查看」，点「查看」弹编辑框（等宽、50vh、
+  可纵向拉伸），保存后自动刷新。
+
+### 本机实测
+
+```
+约束文件：9 个客户端有约定，2/9 个已配置
+  ✓ Codex              ~/.codex/AGENTS.md      60 行 · 2150 B
+  ✓ DeepSeek Harness   ~/.dsh/AGENTS.md        41 行 · 5856 B
+  · 其余 7 个          未配置
+```
+
+### 文档
+
+`docs/DESIGN.md` §2.3c-2 + `docs/DESIGN.html` 同步登记面板：结构图、数据来源、
+查看/编辑流程、目录形态与未配置态，以及「为什么放在 IDE / Agent 页而不是新开一页」。
+
+### 测试
+
+- 新增 `tests/test_rules_files.py`（15 项）：发现口径（文件/目录/缺失/未声明）、
+  只认注册表路径、预览截断、写入备份与回读校验、目录拒绝、CLI 端到端、GUI 契约。
+- **4 条反向验证有效**：去掉写入备份、去掉 GUI 面板、去掉 Rust 白名单、
+  去掉目录拒绝，各自让对应断言失败。
+- 全量 **1670 项通过、2 项既有跳过**。
+
 ## [v0.37.6] - 2026-11-09
 
 当前发布版本（build 145）。**升级备份：内容去重 + 份数上限 + 清理入口。**
@@ -2713,7 +2762,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.37.6...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.37.7...HEAD
+[v0.37.7]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.7
 [v0.37.6]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.6
 [v0.37.5]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.5
 [v0.37.4]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.4

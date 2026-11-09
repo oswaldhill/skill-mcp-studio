@@ -619,6 +619,14 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
         // 升级备份维护（v0.37.6）：只读统计 + 内容去重/上限清理。
         "--skill-backup-stats",
         "--prune-skill-backups",
+        // 约束文件（v0.37.7）：各客户端的 AGENTS.md / CLAUDE.md 等。
+        // 写目标由注册表决定（不接收路径参数），--rules-file 只是读取内容来源。
+        "--list-rules",
+        "--read-rules",
+        "--write-rules",
+        "--rules-file",
+        "--rules-content",
+        "--rules-index",
         // 技能市场（FEAT-9）：只读出口（sources/list/search/check）。
         "--market",
         // 市场源 CRUD（v0.31.0 #4）：读写 data/market_sources.yaml（个人配置，

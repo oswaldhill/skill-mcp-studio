@@ -29,6 +29,7 @@ def _entry(
     mcp_config_path: str = "",
     mcp_format: str = "json",
     mcp_key_path: str = "mcpServers",
+    rules_paths: List[str] = None,
     aliases: List[str] = None,
     by_os: Dict[str, Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
@@ -53,6 +54,7 @@ def _entry(
     resolved_config_paths = _field(config_paths or [], "config_paths") or []
     resolved_skills_path = _field(skills_path, "skills_path") or ""
     resolved_mcp_config = _field(mcp_config_path, "mcp_config_path") or ""
+    resolved_rules = _field(rules_paths or [], "rules_paths") or []
 
     entry: Dict[str, Any] = {
         "name": name,
@@ -69,6 +71,8 @@ def _entry(
         entry["config_path"] = resolved_mcp_config
         entry["format"] = mcp_format
         entry["mcp_key_path"] = mcp_key_path.split(".") if mcp_key_path else ["mcpServers"]
+    if resolved_rules:
+        entry["rules_paths"] = list(resolved_rules)
     if aliases:
         entry["aliases"] = list(aliases)
     return entry
@@ -83,6 +87,7 @@ MAINSTREAM_TOOLS: List[Dict[str, Any]] = [
         config_paths=["~/.cursor/mcp.json"],
         skills_path="~/.cursor/skills",
         mcp_config_path="~/.cursor/mcp.json",
+        rules_paths=["~/.cursor/rules"],
         aliases=["cursor"],
         by_os={
             "windows": {
@@ -133,6 +138,7 @@ MAINSTREAM_TOOLS: List[Dict[str, Any]] = [
         config_paths=["~/.codeium/windsurf/mcp_config.json"],
         skills_path="~/.windsurf/skills",
         mcp_config_path="~/.codeium/windsurf/mcp_config.json",
+        rules_paths=["~/.codeium/windsurf/memories/global_rules.md"],
         aliases=["windsurf"],
         by_os={
             "windows": {
@@ -158,6 +164,7 @@ MAINSTREAM_TOOLS: List[Dict[str, Any]] = [
         config_paths=["~/Library/Application Support/Trae/User/mcp.json"],
         skills_path="~/.trae/skills",
         mcp_config_path="~/Library/Application Support/Trae/User/mcp.json",
+        rules_paths=["~/.trae/rules"],
         aliases=["trae", "trae-cn"],
         by_os={
             "windows": {
@@ -266,6 +273,7 @@ MAINSTREAM_TOOLS: List[Dict[str, Any]] = [
         config_paths=["~/.claude.json", "~/.claude/settings.json"],
         skills_path="~/.claude/skills",
         mcp_config_path="~/.claude.json", mcp_key_path="mcpServers",
+        rules_paths=["~/.claude/CLAUDE.md"],
         aliases=["claude", "claude-code"],
         by_os={
             "windows": {
@@ -293,6 +301,7 @@ MAINSTREAM_TOOLS: List[Dict[str, Any]] = [
         config_paths=["~/.codex/config.toml"],
         skills_path="~/.codex/skills",
         mcp_config_path="~/.codex/config.toml", mcp_format="toml", mcp_key_path="mcp_servers",
+        rules_paths=["~/.codex/AGENTS.md"],
         aliases=["codex", "openai-codex"],
         by_os={
             "windows": {
@@ -317,6 +326,7 @@ MAINSTREAM_TOOLS: List[Dict[str, Any]] = [
         config_paths=["~/.gemini/settings.json", "~/.config/gemini/mcp.json"],
         skills_path="~/.gemini/skills",
         mcp_config_path="~/.config/gemini/mcp.json",
+        rules_paths=["~/.gemini/GEMINI.md"],
         aliases=["gemini", "gemini-cli"],
         by_os={
             "windows": {
@@ -343,6 +353,7 @@ MAINSTREAM_TOOLS: List[Dict[str, Any]] = [
         skills_path="~/.cline/skills",
         mcp_config_path="~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json",
         mcp_format="json", mcp_key_path="mcpServers",
+        rules_paths=["~/.clinerules"],
         aliases=["cline"],
         by_os={
             "windows": {
@@ -414,6 +425,7 @@ MAINSTREAM_TOOLS: List[Dict[str, Any]] = [
         config_paths=["~/.config/opencode/opencode.jsonc"],
         skills_path="~/.config/opencode/skills",
         mcp_config_path="~/.config/opencode/opencode.jsonc", mcp_format="jsonc", mcp_key_path="mcp",
+        rules_paths=["~/.config/opencode/AGENTS.md"],
         aliases=["opencode"],
         by_os={
             "windows": {
@@ -516,6 +528,7 @@ MAINSTREAM_TOOLS: List[Dict[str, Any]] = [
         config_paths=["~/.dsh/settings.yaml", "~/.dsh/mcp.json"],
         skills_path="~/.dsh/skills",
         mcp_config_path="~/.dsh/mcp.json",
+        rules_paths=["~/.dsh/AGENTS.md"],
         aliases=["dsh", "ds-harness", "deepseek-harness"],
         by_os={
             "windows": {
