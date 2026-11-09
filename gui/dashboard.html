@@ -5240,6 +5240,20 @@ function renderSettings() {
     </div>
   </div>`;
 
+  // 「Skill」：技能备份（v0.37.6）——升级前自动备份的维护入口。
+  // 只读统计经 --skill-backup-stats；清理经 --prune-skill-backups（先 dry-run 再确认）。
+  // 规则：内容与上一份完全相同不重复备份；每技能最多保留 10 份不同内容。
+  const backupCard = `<div class="settings-card" id="skill-backups-card">
+    <h4>技能备份</h4>
+    <div class="rows" style="font-size:var(--fs-sm)">
+      <div class="row"><span class="k">备份总量</span><span class="v" id="backup-stats-line">加载中…</span></div>
+    </div>
+    <div class="form-actions" style="margin-top:var(--sp-4)">
+      <button class="btn-soft" data-action="prune-skill-backups">清理备份</button>
+    </div>
+    <div class="note" style="margin-top:var(--sp-4)">每次升级前会把技能目录整体备份到 data/skill_backups/，用于回滚。内容与上一份完全相同的不会重复备份；每个技能最多保留 10 份不同内容。清理只删重复副本与超出上限的旧版本，不同内容的历史版本保留。</div>
+  </div>`;
+
   // 「Skill」：GitHub API Token（v0.31.0）——更新检查的配额提升通道。
   // 读写经 CLI（--get/set-github-token）；脱敏显示（前4后4）。
   const githubTokenCard = `<div class="settings-card" id="github-token-card">
@@ -5359,7 +5373,7 @@ function renderSettings() {
 
   el.innerHTML =
     `<div class="settings-tab-panel" data-panel="appearance">${appearanceCard}${patrolCard}${configPortCard}${_aboutCard}</div>` +
-    `<div class="settings-tab-panel hidden" data-panel="general">${gitSourcesCard}${usageCard}${marketSourcesCard}${githubTokenCard}${webdavCard}</div>` +
+    `<div class="settings-tab-panel hidden" data-panel="general">${gitSourcesCard}${usageCard}${marketSourcesCard}${backupCard}${githubTokenCard}${webdavCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="agents">${agentsCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="mcp">${mcpCard}</div>`;
 
@@ -5439,7 +5453,7 @@ function switchSettingsTab(tab) {
   document.querySelectorAll(".settings-tab-panel").forEach((p) => {
     p.classList.toggle("hidden", p.dataset.panel !== _settingsTab);
   });
-  if (_settingsTab === "general") { loadMarketSources(); loadGithubTokenStatus(); loadWebdavStatus(); loadGitSources(); }
+  if (_settingsTab === "general") { loadMarketSources(); loadSkillBackupStats(); loadGithubTokenStatus(); loadWebdavStatus(); loadGitSources(); }
   initWebdavActions();
 }
 
@@ -7325,6 +7339,54 @@ function renderEndpointStatus() {
   // ── 市场源卡片逻辑（v0.31.0 #4，设置页 Skill tab）────────────────────
   // 异步加载 --list-market-sources 渲染；增删改经 CLI 后重载。
   let _marketSourcesData = null;
+  // 技能备份（v0.37.6）：只读统计 + 清理入口。
+  // 升级每次都备份，实测 find-skills 攒了 327 份、326 份字节一致——纯占盘。
+  async function loadSkillBackupStats() {
+    const el = $("backup-stats-line");
+    if (!el) return;
+    const res = await runCli(["--skill-backup-stats", "--format", "json"]);
+    let d = null;
+    try { d = JSON.parse(stripAnsi((res && res.stdout) || "{}")); } catch (e) { d = null; }
+    if (!d) { el.textContent = "读取失败"; return; }
+    const mb = ((d.bytes || 0) / 1024 / 1024).toFixed(1);
+    const dup = d.duplicates || 0;
+    el.innerHTML = `${d.skills || 0} 个技能 · ${d.snapshots || 0} 份备份 · ${mb} MB`
+      + (dup ? ` · <span class="tag warn">可清理 ${dup} 份</span>` : "");
+  }
+
+  async function openPruneSkillBackupsModal() {
+    const res = await runCli(["--prune-skill-backups", "--dry-run", "--format", "json"]);
+    let d = null;
+    try { d = JSON.parse(stripAnsi((res && res.stdout) || "{}")); } catch (e) { d = null; }
+    if (!d) { modalNotice("err", "没能读取备份", cliErrDetail(res)); return; }
+    if (d.status === "nothing-to-prune") {
+      modalNotice("ok", "无需清理", d.message || "备份已是最简。");
+      return;
+    }
+    if (d.status !== "dry-run") {
+      modalNotice("err", "检查失败", d.message || cliErrDetail(res));
+      return;
+    }
+    const mb = ((d.freed || 0) / 1024 / 1024).toFixed(1);
+    const ok = await confirmModal(
+      "清理技能备份",
+      `将删除 ${d.removed} 份重复或超出上限的备份（保留 ${d.kept} 份，涉及 ${(d.names || []).length} 个技能），释放约 ${mb} MB。\n\n`
+        + "不同内容的历史版本会保留；被删的都是与更早备份完全相同的副本，或超过每技能 10 份上限的旧版本。",
+      false,
+      "确认清理",
+    );
+    if (!ok) return;
+    await runTaskModal("清理技能备份", async () => {
+      const r = await runCli(["--prune-skill-backups", "--format", "json"]);
+      let x = null;
+      try { x = JSON.parse(stripAnsi((r && r.stdout) || "{}")); } catch (e) { x = null; }
+      if (r && r.code === 0 && x && x.status === "ok") {
+        return { ok: true, message: `已清理 ${x.removed} 份备份`, detail: x.message || "" };
+      }
+      return { ok: false, message: "清理失败", detail: (x && x.message) || cliErrDetail(r) };
+    }, () => loadSkillBackupStats());
+  }
+
   async function loadMarketSources() {
     const body = $("market-sources-body");
     if (!body) return;
@@ -9175,6 +9237,7 @@ document.addEventListener("click", (e) => {
     else if (a === "git-source-push") runGitSourceAction("推送 Git 源", ["--push-git-sources", "--format", "json"], "推送完成");
     else if (a === "git-source-add") openAddGitSourceModal();
     else if (a === "prune-skill-lock") openPruneSkillLockModal();
+    else if (a === "prune-skill-backups") openPruneSkillBackupsModal();
     else if (a === "git-source-remove") confirmRemoveGitSource(act.dataset.id);
     else if (a === "git-source-set-primary") setPrimaryGitSource(act.dataset.id);
     else if (a === "add-agent") renderAddPanel();
@@ -9795,7 +9858,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.37.5", build: 144, build_number: 144, semver_ok: true, full: "v0.37.5 (build 144)" },
+  app: { name: "Skill MCP Studio", version: "0.37.6", build: 145, build_number: 145, semver_ok: true, full: "v0.37.6 (build 145)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

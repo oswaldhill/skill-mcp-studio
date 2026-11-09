@@ -616,6 +616,9 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
         // 自动接管统一目录为 Git 源（v0.37.2）：只在登记表为空时写一次，
         // 统一目录本身就是 git 工作区才接受；不改 config 指向，非重定向。
         "--adopt-git-source",
+        // 升级备份维护（v0.37.6）：只读统计 + 内容去重/上限清理。
+        "--skill-backup-stats",
+        "--prune-skill-backups",
         // 技能市场（FEAT-9）：只读出口（sources/list/search/check）。
         "--market",
         // 市场源 CRUD（v0.31.0 #4）：读写 data/market_sources.yaml（个人配置，

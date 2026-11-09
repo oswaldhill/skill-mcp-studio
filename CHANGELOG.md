@@ -7,6 +7,51 @@
 
 ## [Unreleased]
 
+## [v0.37.6] - 2026-11-09
+
+当前发布版本（build 145）。**升级备份：内容去重 + 份数上限 + 清理入口。**
+
+用户实测 `data/skill_backups/find-skills/` 攒了 **327 份**备份，其中 **326 份
+字节完全一致**——升级每次都无条件复制一份，纯粹占盘。用户要求「备份前比对
+内容、每技能保留上限、给一个清理入口」。
+
+### 改动
+
+- **备份前比对内容**（`backup_skill()`）：要备份的内容与最近一份备份指纹相同
+  时返回 `skipped`，不再复制。指纹按「相对路径 + 文件字节」计算，**与 mtime
+  无关**（`copytree` 之后备份目录里的文件时间会变，内容其实一样）。
+- **份数上限**：`DEFAULT_BACKUP_KEEP = 10`。备份成功后顺手淘汰超出上限的旧
+  版本（同内容更早的也一并清掉），保留最近 10 份**不同内容**。
+- **清理入口**：
+  - `--prune-skill-backups`（写，支持 `--dry-run` / `--format json`）；
+  - `--skill-backup-stats`（只读：技能数 / 份数 / 占用 / 可清理份数）；
+  - 设置页 Skill tab 新增「技能备份」卡片（`#skill-backups-card`）：统计行 +
+    「清理备份」按钮，点击先 dry-run 再确认，结果弹框给条数与释放空间。
+- **契约变更**：`backup_skill()` 由返回 `Optional[str]` 改为结构体
+  `{"status": "ok"|"skipped"|"failed", "path": ..., "reason": ...}`。
+  `execute_plan` 与既有测试同步更新（`skipped` 时沿用已有备份路径，仍可回滚）。
+
+### 本次实测清理结果
+
+- 技能备份：355 份 / 36M → **20 份 / 33M**（删 335 份重复）
+- 应用备份（`~/.skill-mcp-studio-backups/`）：43 个 / 475M → **3 个 / 34M**
+  （保留最近三个版本）
+- 合计释放约 **443 MB**
+
+### 文档
+
+`docs/DESIGN.md` §2.10 新增「技能备份卡片」：结构、数据来源、交互（先 dry-run
+再确认）、清理规则，以及「为什么放设置页而不是 Skills 页」。
+
+### 测试
+
+- 新增 `tests/test_skill_backup_prune.py`（18 项）：指纹与 mtime 无关、同内容
+  `skipped`、内容变化产生新备份、超上限淘汰最旧、去重保留最新、dry-run 不删、
+  统计口径、CLI 端到端、GUI 契约（卡片 / 按钮 / 命令 / Rust 白名单 / 规范登记）。
+- **4 条反向验证有效**：去掉内容去重、去掉上限淘汰、去掉 GUI 按钮、去掉 Rust
+  白名单，各自让对应断言失败。
+- 全量 **1655 项通过、2 项既有跳过**。
+
 ## [v0.37.5] - 2026-11-09
 
 当前发布版本（build 144）。**修复「升级后仍显示可升级」的永久误报。**
@@ -2668,7 +2713,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.37.5...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.37.6...HEAD
+[v0.37.6]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.6
 [v0.37.5]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.5
 [v0.37.4]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.4
 [v0.37.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.3

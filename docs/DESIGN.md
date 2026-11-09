@@ -1271,7 +1271,7 @@ toast 反馈成功/失败。
 | tab | 卡片 |
 |---|---|
 | 通用 `appearance` | 外观（主题 / 缩放）、**后台巡检（定时检查）**、Skills 统一目录、**配置导入 / 导出**（v0.30.0）、关于 |
-| Skill `general` | 技能使用统计（自动统计间隔）、**市场源**（默认 skills.sh 可删改 + 自定义远端源，v0.31.0：`#market-sources-card`，源行 + 添加表单 + **登记残留清理**（v0.37.1，`data-action="prune-skill-lock"`），读写经 CLI）、**GitHub API Token**（v0.31.0：`#github-token-card`，状态行脱敏 + password 输入 + 保存/清除，读写经 CLI） |
+| Skill `general` | 技能使用统计（自动统计间隔）、**市场源**（默认 skills.sh 可删改 + 自定义远端源，v0.31.0：`#market-sources-card`，源行 + 添加表单 + **登记残留清理**（v0.37.1，`data-action="prune-skill-lock"`），读写经 CLI）、**GitHub API Token**（v0.31.0：`#github-token-card`，状态行脱敏 + password 输入 + 保存/清除，读写经 CLI）、**技能备份**（v0.37.6：`#skill-backups-card`，只读统计 + 清理按钮，读写经 CLI） |
 | 通用 `general`（WebDAV，v0.31.1） | **远程同步**（`#webdav-sync-card`，规划中）：远端 URL + 凭据状态行（脱敏）、推/拉按钮（写操作需确认）、同步范围说明。同步范围固定为个人配置层（`local_overrides` / `market_sources` / `discovered_tools` / `skill_versions`），**凭据与技能包本体永不同步** |
 | IDE / Agent `agents` | IDE / Agent 默认路径；**卡片/列表上的能力摘要**（Skills / MCP 两行，无需点开详情） |
 | MCP `mcp` | **活动端点**（下拉切换）、**自动发现**（开关 + 扫描路径只读）、MCP 端点库、**MCP 端点凭据**（v0.31.4 之后：`#endpoint-cred-card`，模式 / 来源 / 状态表 + 检测 / 存入，读写经 CLI） |
@@ -1435,6 +1435,29 @@ GUI 不直接改配置文件。间隔由 CLI 钳到 ≥5 分钟，界面需回�
   `primary: true`；`unified_dir_from_sources()` 随即能派生同一路径，主源语义闭环。
 - **可观测**：接管成功后卡片顶部显示一行 `note`（路径 + 分支），并说明可移除；
   刷新页面后该提示消失，但源行带「主源 · 统一目录」标签，状态仍然自解释。
+
+**技能备份卡片**（`#skill-backups-card`，v0.37.6，Skill tab，排在市场源之后）：
+
+```
+┌ settings-card#skill-backups-card ─────────────────────────────┐
+│ H4: 技能备份                                                   │
+│ row: 备份总量 | N 个技能 · M 份备份 · X MB · [tag warn 可清理 K 份] │
+│ form-actions: [btn-soft 清理备份]                              │
+│ note: 升级前自动备份 · 内容相同不重复 · 每技能上限 10 份          │
+└───────────────────────────────────────────────────────────────┘
+```
+
+- **数据来源**：`--skill-backup-stats`（只读，返回 `skills` / `snapshots` /
+  `duplicates` / `bytes` / `keep`）。`duplicates` 就是「清理能删掉多少」。
+- **交互**：点击先跑 `--prune-skill-backups --dry-run --format json`；无重复就地
+  `modalNotice` 告知（不弹空确认框）；有则 `confirmModal` 列出条数、保留数与释放
+  空间，确认后 `runTaskModal` 执行并刷新统计。
+- **清理规则**（`core/skill_market_ops.prune_skill_backups()`）：内容指纹去重
+  （同一内容只留时间戳最新的一份）+ 每技能保留最近 10 份**不同内容**。实测
+  `find-skills` 攒了 327 份、其中 326 份字节完全一致——升级每次都无条件备份，
+  纯占盘。备份前也比对内容，相同直接 `skipped`，从源头不再产生重复。
+- **为什么放在设置页而不是 Skills 页**：这是**磁盘维护操作**，不是日常技能操作；
+  Skills 页工具栏已有 6 个动作，再加会拥挤，且清理频率远低于升级。
 
 ---
 

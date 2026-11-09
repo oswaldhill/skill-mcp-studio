@@ -97,9 +97,11 @@ def execute_plan(
     backups: Dict[str, str] = {}
     if plan.get("action") == "upgrade":
         for name in list(plan.get("names") or []):
-            path = backup_skill(name)
-            if path:
-                backups[name] = path
+            # backup_skill 现在返回结构体：ok=新备份，skipped=内容未变、
+            # 沿用最近一份（同样可作为回滚点），failed 才不带路径。
+            res = backup_skill(name)
+            if res.get("status") in ("ok", "skipped") and res.get("path"):
+                backups[name] = res["path"]
 
     run = runner or _run_npx
     try:
@@ -216,32 +218,213 @@ def _backup_root() -> Path:
     return Path(__file__).resolve().parents[1] / "data" / "skill_backups"
 
 
-def backup_skill(name: str, skills_dir: Optional[Path] = None) -> Optional[str]:
-    """升级前把技能目录整体复制一份，返回备份路径（失败返回 None）。
+#: 每个技能保留的备份份数上限（内容不同的历史版本）。
+#: 2026-11-09 用户实测 find-skills 攒了 327 份、其中 326 份字节完全一致——
+#: 升级每次都无条件备份，纯粹占盘。上限 + 内容去重一起解决。
+DEFAULT_BACKUP_KEEP = 10
+
+
+def _tree_hash(root: Path) -> str:
+    """目录内容指纹：相对路径 + 文件字节，**与 mtime 无关**。
+
+    用来判断「这次要备份的内容是否与最近一份备份相同」。不能用 mtime：
+    ``copytree`` 之后备份目录里的文件时间会变，而内容其实一样。
+    """
+    import hashlib
+
+    h = hashlib.sha256()
+    for p in sorted(root.rglob("*")):
+        if not p.is_file():
+            continue
+        h.update(str(p.relative_to(root)).encode("utf-8"))
+        h.update(b"\0")
+        try:
+            h.update(p.read_bytes())
+        except OSError:
+            h.update(b"<unreadable>")
+        h.update(b"\0")
+    return h.hexdigest()
+
+
+def _backup_dirs(name: str) -> List[Path]:
+    """某技能的备份目录（新到旧；目录名即时间戳，可直接按名排序）。"""
+    root = _backup_root() / name
+    if not root.is_dir():
+        return []
+    return sorted([d for d in root.iterdir() if d.is_dir()],
+                  key=lambda p: p.name, reverse=True)
+
+
+def _dir_size(root: Path) -> int:
+    try:
+        return sum(f.stat().st_size for f in root.rglob("*") if f.is_file())
+    except OSError:
+        return 0
+
+
+def _prune_skill_dir(skill_root: Path, keep: int, *, dry_run: bool = False) -> Dict[str, Any]:
+    """单个技能的备份目录：**内容去重 + 保留最近 keep 份**。
+
+    从新到旧扫，规则两条（任一命中即删）：
+    1. 内容与更靠前的某份完全相同（去重，保留最新的那一份）；
+    2. 已经保留了 ``keep`` 份不同内容（上限，删更旧的）。
+    """
+    import shutil
+
+    snaps = sorted([d for d in skill_root.iterdir() if d.is_dir()],
+                   key=lambda p: p.name, reverse=True)
+    seen: set = set()
+    kept = removed = freed = 0
+    for snap in snaps:
+        digest = _tree_hash(snap)
+        duplicate = digest in seen
+        over = kept >= max(0, int(keep))
+        if duplicate or over:
+            size = _dir_size(snap)
+            if not dry_run:
+                try:
+                    shutil.rmtree(snap)
+                except OSError:
+                    continue  # 删不掉就跳过，不影响其它备份
+            removed += 1
+            freed += size
+            continue
+        seen.add(digest)
+        kept += 1
+    return {"kept": kept, "removed": removed, "freed": freed}
+
+
+def prune_skill_backups(
+    keep: int = DEFAULT_BACKUP_KEEP,
+    *,
+    dry_run: bool = False,
+) -> Dict[str, Any]:
+    """清理升级前备份：全部技能做「内容去重 + 保留最近 keep 份」。
+
+    返回::
+
+        {"status": "ok"|"dry-run"|"nothing-to-prune",
+         "skills": N, "kept": N, "removed": N, "freed": 字节数,
+         "names": [有清理动作的技能], "message": "..."}
+    """
+    root = _backup_root()
+    stats: Dict[str, Any] = {
+        "skills": 0, "kept": 0, "removed": 0, "freed": 0, "names": [],
+    }
+    if not root.is_dir():
+        return {**stats, "status": "nothing-to-prune",
+                "message": "没有升级备份目录（还没发生过升级）"}
+
+    for skill_dir in sorted(root.iterdir()):
+        if not skill_dir.is_dir():
+            continue
+        if not any(d.is_dir() for d in skill_dir.iterdir()):
+            continue
+        stats["skills"] += 1
+        one = _prune_skill_dir(skill_dir, keep, dry_run=dry_run)
+        stats["kept"] += one["kept"]
+        stats["removed"] += one["removed"]
+        stats["freed"] += one["freed"]
+        if one["removed"]:
+            stats["names"].append(skill_dir.name)
+
+    if stats["removed"] == 0:
+        return {**stats, "status": "nothing-to-prune",
+                "message": f"备份已是最简（无重复、未超过每技能 {keep} 份上限）"}
+
+    freed_mb = stats["freed"] / 1024 / 1024
+    action = "将删除" if dry_run else "已删除"
+    return {
+        **stats,
+        "status": "dry-run" if dry_run else "ok",
+        "message": f"{action} {stats['removed']} 份重复/超限备份"
+                   f"（保留 {stats['kept']} 份，涉及 {len(stats['names'])} 个技能）"
+                   f"，释放约 {freed_mb:.1f} MB",
+    }
+
+
+def backup_stats() -> Dict[str, Any]:
+    """只读：备份总量与重复情况（GUI 卡片展示用）。
+
+    ``duplicates`` 按内容指纹统计——同一技能下与更早备份内容相同的份数，
+    也就是「清理能删掉多少」。
+    """
+    root = _backup_root()
+    stats: Dict[str, Any] = {
+        "skills": 0, "snapshots": 0, "duplicates": 0,
+        "bytes": 0, "root": str(root), "keep": DEFAULT_BACKUP_KEEP,
+    }
+    if not root.is_dir():
+        return stats
+    for skill_dir in sorted(root.iterdir()):
+        if not skill_dir.is_dir():
+            continue
+        snaps = sorted([d for d in skill_dir.iterdir() if d.is_dir()],
+                       key=lambda p: p.name, reverse=True)
+        if not snaps:
+            continue
+        stats["skills"] += 1
+        stats["snapshots"] += len(snaps)
+        seen: set = set()
+        kept = 0
+        for snap in snaps:
+            digest = _tree_hash(snap)
+            stats["bytes"] += _dir_size(snap)
+            if digest in seen or kept >= DEFAULT_BACKUP_KEEP:
+                stats["duplicates"] += 1
+                continue
+            seen.add(digest)
+            kept += 1
+    return stats
+
+
+def backup_skill(
+    name: str,
+    skills_dir: Optional[Path] = None,
+    *,
+    keep: int = DEFAULT_BACKUP_KEEP,
+) -> Dict[str, Any]:
+    """升级前把技能目录整体复制一份。
+
+    返回 ``{"status": "ok"|"skipped"|"failed", "path": str, "reason": str}``。
 
     **为什么必须有这一步**：升级弹框对用户承诺「本地内容会被上游覆盖，
     升级前自动备份」。此前 ``execute_plan`` 只跑 npx、只做安装后校验，
     **从未备份**——承诺是空的（2026-10-23 评审发现）。上游把技能改坏、
     或迁移后重装成完全不同内容时，用户将永久失去原版。
 
-    目录可能很大，但技能包通常几百 KB；单次复制可接受。
-    跳过符号链接目标不存在等异常情况（尽力而为，失败不阻断升级，
-    但会在返回里体现为 None，调用方**不应**把它当作「已备份」）。
+    **内容去重**（2026-11-09 用户要求）：要备份的内容与最近一份备份完全相同
+    时返回 ``skipped``，不再复制一份。实测 find-skills 攒了 327 份、326 份
+    字节一致，全是白占盘。
+    **份数上限**：备份成功后顺手淘汰超出 ``keep`` 的旧版本。
     """
     import shutil
     from datetime import datetime
 
     src = (skills_dir or _skills_dir()) / name
     if not src.is_dir():
-        return None
+        return {"status": "failed", "path": "", "reason": "技能目录不存在"}
+
+    existing = _backup_dirs(name)
+    if existing:
+        latest = existing[0]
+        if _tree_hash(latest) == _tree_hash(src):
+            return {"status": "skipped", "path": str(latest),
+                    "reason": "与最近一份备份内容相同，跳过重复备份"}
+
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
     dest = _backup_root() / name / stamp
     try:
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(src, dest, symlinks=True)
-        return str(dest)
-    except (OSError, shutil.Error):
-        return None
+    except (OSError, shutil.Error) as exc:
+        return {"status": "failed", "path": "", "reason": f"备份失败：{exc}"}
+
+    pruned = _prune_skill_dir(dest.parent, keep)
+    reason = ""
+    if pruned["removed"]:
+        reason = f"已清理 {pruned['removed']} 份旧备份（超过每技能 {keep} 份上限或内容重复）"
+    return {"status": "ok", "path": str(dest), "reason": reason}
 
 
 def list_skill_backups(name: str) -> List[Dict[str, Any]]:

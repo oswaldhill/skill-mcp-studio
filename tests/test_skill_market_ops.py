@@ -166,27 +166,31 @@ class SkillBackupRollbackTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_backup_copies_whole_directory(self):
-        path = self.ops.backup_skill("demo-skill", skills_dir=self.skills)
-        self.assertIsNotNone(path)
+        res = self.ops.backup_skill("demo-skill", skills_dir=self.skills)
+        self.assertEqual(res["status"], "ok")
         from pathlib import Path
-        copied = Path(path)
+        copied = Path(res["path"])
         self.assertTrue((copied / "SKILL.md").is_file())
         self.assertTrue((copied / "extra.txt").is_file())
 
-    def test_backup_missing_skill_returns_none(self):
-        """技能不存在时不得返回路径——None 就是「没备份成」的诚实信号。"""
-        self.assertIsNone(self.ops.backup_skill("nope", skills_dir=self.skills))
+    def test_backup_missing_skill_is_failed(self):
+        """技能不存在时不得返回路径——failed 就是「没备份成」的诚实信号。"""
+        res = self.ops.backup_skill("nope", skills_dir=self.skills)
+        self.assertEqual(res["status"], "failed")
+        self.assertEqual(res["path"], "")
 
     def test_list_backups_newest_first(self):
-        p1 = self.ops.backup_skill("demo-skill", skills_dir=self.skills)
-        p2 = self.ops.backup_skill("demo-skill", skills_dir=self.skills)
+        # 内容必须不同才会产生第二份：v0.37.6 起内容相同直接 skipped
+        p1 = self.ops.backup_skill("demo-skill", skills_dir=self.skills)["path"]
+        (self.skill / "SKILL.md").write_text("version: 1.1.0\n", encoding="utf-8")
+        p2 = self.ops.backup_skill("demo-skill", skills_dir=self.skills)["path"]
         self.assertNotEqual(p1, p2, "两次备份必须是不同时间戳目录")
         items = self.ops.list_skill_backups("demo-skill")
         self.assertEqual(len(items), 2)
         self.assertEqual(items[0]["path"], p2, "列表应新到旧")
 
     def test_restore_recovers_content(self):
-        path = self.ops.backup_skill("demo-skill", skills_dir=self.skills)
+        path = self.ops.backup_skill("demo-skill", skills_dir=self.skills)["path"]
         # 模拟升级把内容改坏
         (self.skill / "SKILL.md").write_text("version: 9.9.9\n", encoding="utf-8")
         (self.skill / "extra.txt").unlink()
@@ -198,7 +202,7 @@ class SkillBackupRollbackTest(unittest.TestCase):
 
     def test_restore_stashes_current_before_overwrite(self):
         """回滚必须可撤销：覆盖前把当前版本另存。"""
-        path = self.ops.backup_skill("demo-skill", skills_dir=self.skills)
+        path = self.ops.backup_skill("demo-skill", skills_dir=self.skills)["path"]
         (self.skill / "SKILL.md").write_text("version: 9.9.9\n", encoding="utf-8")
         res = self.ops.restore_skill_backup("demo-skill", path, skills_dir=self.skills)
         self.assertTrue(res["ok"])
@@ -226,9 +230,10 @@ class SkillBackupRollbackTest(unittest.TestCase):
         """升级路径必须真的触发备份（此前完全缺失）。"""
         created = []
 
-        def fake_backup(name, skills_dir=None):
+        def fake_backup(name, skills_dir=None, **kwargs):
             created.append(name)
-            return f"/tmp/fake/{name}"
+            # v0.37.6 契约：backup_skill 返回结构体（ok / skipped / failed）
+            return {"status": "ok", "path": f"/tmp/fake/{name}", "reason": ""}
 
         def runner(argv, timeout):
             return {"code": 0, "stdout": "ok"}

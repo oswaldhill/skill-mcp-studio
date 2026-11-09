@@ -1963,6 +1963,44 @@ def _run_skill_rollback(args) -> int:
     return 0 if result["ok"] else 1
 
 
+def _run_skill_backup_maintenance(args) -> int:
+    """升级备份的只读统计与写清理（v0.37.6）。
+
+    清理规则见 ``skill_market_ops.prune_skill_backups``：内容去重（同内容只留
+    最新一份）+ 每技能保留最近 N 份。用户实测 find-skills 攒了 327 份、其中
+    326 份字节完全一致——升级每次都无条件备份，纯粹占盘。
+    """
+    from skill_market_ops import DEFAULT_BACKUP_KEEP, backup_stats, prune_skill_backups
+
+    want_json = getattr(args, "format", None) == "json"
+
+    if getattr(args, "skill_backup_stats", False):
+        stats = backup_stats()
+        if want_json:
+            print(json.dumps(stats, ensure_ascii=False, indent=2))
+        else:
+            mb = stats["bytes"] / 1024 / 1024
+            print("\n  升级备份：")
+            print(f"    技能 {stats['skills']} 个 · 备份 {stats['snapshots']} 份"
+                  f" · 占用 {mb:.1f} MB")
+            print(f"    可清理 {stats['duplicates']} 份（重复内容或超过每技能 "
+                  f"{stats['keep']} 份上限）")
+            print(f"    位置：{stats['root']}\n")
+        return 0
+
+    dry = bool(getattr(args, "dry_run", False))
+    res = prune_skill_backups(keep=DEFAULT_BACKUP_KEEP, dry_run=dry)
+    if want_json:
+        print(json.dumps(res, ensure_ascii=False, indent=2))
+    else:
+        icon = {"ok": "  ✅", "dry-run": "  🔍", "nothing-to-prune": "  ⏭️ "}.get(
+            res["status"], "  ❌ ")
+        print(f"{icon} {res['status']}: {res['message']}")
+        if res.get("names"):
+            print(f"      涉及技能：{'、'.join(res['names'])}")
+    return 0 if res["status"] in ("ok", "dry-run", "nothing-to-prune") else 2
+
+
 def _run_webdav(args) -> int:
     """WebDAV 远程同步出口（配置 / 状态 / 推 / 拉）。
 
@@ -2787,6 +2825,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--rollback-to", type=str, default=None, metavar="PATH",
         help="配合 --skill-rollback：指定备份路径（默认取最近一次）",
     )
+    parser.add_argument(
+        "--prune-skill-backups", action="store_true",
+        help="清理升级前备份：内容去重 + 每技能保留最近 N 份（写操作，支持 --dry-run）",
+    )
+    parser.add_argument(
+        "--skill-backup-stats", action="store_true",
+        help="只读：升级备份总量（技能数 / 份数 / 占用 / 可清理的重复份数）",
+    )
     # === WebDAV 远程同步（v0.31.1，#3 后半）===
     parser.add_argument(
         "--set-webdav-url", type=str, default=None, metavar="URL",
@@ -3550,6 +3596,11 @@ def main() -> int:
     # 通用快照路由之前（否则 --format json 会被快照截走）。
     if getattr(args, "skill_rollback", None) or getattr(args, "list_skill_backups", None):
         return _run_skill_rollback(args)
+
+    # 备份维护（v0.37.6）：只读统计与写清理，与回滚同组。
+    if (getattr(args, "prune_skill_backups", False)
+            or getattr(args, "skill_backup_stats", False)):
+        return _run_skill_backup_maintenance(args)
 
     # WebDAV 远程同步（v0.31.1）：配置/状态/推/拉共用出口。
     if (getattr(args, "set_webdav_url", None) is not None
