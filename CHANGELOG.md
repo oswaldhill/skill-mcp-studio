@@ -7,6 +7,54 @@
 
 ## [Unreleased]
 
+## [v0.38.3] - 2026-11-09
+
+当前发布版本（build 152）。**约束行并入 Agent 配置区，改为只读预览。**
+
+用户四点反馈：「约束好像应该是 Agent 本身的内容，不应该和 skill 和 MCP 放在一起，
+应该和 Agent 本身的配置在一起」「没有和整体的展示对齐，而且好像字体也不一样」
+「这些如果配置不对，都应该是可以修改的，但是目前好像都无法进行修改」
+「展示部分只需要只读就好了，在这里不需要提供直接修改文件的功能；点击之后的
+展示框仍然没有边框，没有相应的间隔」。
+
+### 1. 位置：约束行并入路径区
+
+从能力摘要区（SKILLS / MCP）移到**路径区**（APP / CLI / CONFIG 之后），标签
+`RULES`。约束是「Agent 本身配了什么」，与技能挂载、MCP 端点不是同一层语义。
+
+### 2. 对齐与字体：复用 `.ac-path-val` 胶囊
+
+之前约束行用的是纯文本 + 自定义样式，与上面三行的**胶囊路径**（mono、`--fs-xs`、
+`panel-2` 底、圆角）不一致——所以既没对齐、字体也不一样。现在每枚路径都是
+`.ac-path-val`（同款胶囊），标签列同为 58px，徽标走 `.ac-path-badges` 贴右。
+
+### 3. 交互：去掉按钮，点击胶囊打开只读预览
+
+- 不再有独立「查看」按钮，点击路径胶囊即打开预览；
+- **预览是只读的**：没有 textarea、没有保存按钮（用户定案「展示部分只需要只读
+  就好了，在这里不需要提供直接修改文件的功能」）；
+- 预览区 `.rules-preview`：**有边框、有内边距、可滚动**（`max-height: 55vh`），
+  不再是之前那个贴边的裸文本框（用户：「展示框仍然没有边框，没有相应的间隔」）。
+
+### 4. 修改入口
+
+约束文件内容本身不再提供内联编辑（只读预览 + 路径可复制）。需要改内容时用
+编辑器打开该路径——预览弹框底部明确写出这一句，避免用户找不到入口。
+（Agent 的 APP / CLI / CONFIG 路径仍可在「详情」弹框里查看。）
+
+### 文档
+
+`docs/DESIGN.md` §2.3c-2 重写为「并入路径区 + 只读预览」，并删掉旧的
+`.rules-editor` / `--write-rules` 描述；`docs/DESIGN.html` 同步。
+
+### 测试
+
+- 断言更新：`data-k="rules"`（在路径区）、`rules-preview`（只读预览）、
+  `assertNotIn("rules-editor")`（不再有编辑器）、`assertNotIn("--write-rules")`
+  （GUI 不再调用写接口）。
+- **反向验证 2 条**：把约束行移出路径区、加回编辑器 textarea，各自让断言失败。
+- 全量 **1670 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
 ## [v0.38.2] - 2026-11-09
 
 当前发布版本（build 151）。**约束行的操作语言与上面几行统一：去掉「查看」按钮，
@@ -2966,7 +3014,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.38.2...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.38.3...HEAD
+[v0.38.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.3
 [v0.38.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.2
 [v0.38.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.1
 [v0.38.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.0

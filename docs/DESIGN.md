@@ -403,18 +403,16 @@ Agent 卡片里有两组「标签 + 值」行：**路径区**（APP / CLI / CONF
   设置页（`RULES_DATA`）。路径只认注册表（`mainstream_registry_data`）里显式
   声明的 `rules_paths`，**不猜**。当前登记 9 个客户端 / 10 个路径。
   **Cursor 不登记**：用户规则存在设置里（不落盘），`~/.cursor/rules` 是项目级。
-- **查看 / 编辑**：点「查看」→ `--read-rules <client> --rules-index N`，弹
-  `.modal.modal-form.ad-modal` + `.rules-editor`（等宽、50vh、可纵向拉伸）。
-  保存走 `--write-rules <client> --rules-content <文本>`：先备份为
-  `<原文件>.bak-<时间戳>` → 原子写 → 回读校验。
 - **目录形态**（Cline / TRAE）：`--read-rules` 返回文件清单，弹框只读展示，
   **不支持整体写入**——把一段文本写进规则目录会覆盖其中所有文件。
-- **约束行与 SKILLS / MCP 完全同构**：值区首个子元素自适应、状态徽标贴右；
-  路径是**可点文字**（`.rules-path`：无边框、`cursor: pointer`、hover 才出现下划线，
-  `:focus-visible` 有焦点环），点击打开编辑弹框；多个路径用 `.rules-sep`（`·`）
-  分隔，各自可点。**不要在这里放「查看」按钮**——上面几行都是纯文本，
-  单独一行长出按钮就破坏了同一张卡片内的操作语言（用户定案：「点击上面好像
-  没有按钮，那么这个『查看』也不应该有按钮，应该点击文字就可以展示」）。
+- **约束行并入路径区**（`.ac-paths` 的第四行，标签 `RULES`），与 APP / CLI / CONFIG
+  **逐项同构**：同一 58px 标签列、同一 `.ac-path-val` 胶囊、同一 mono / `--fs-xs` 字号。
+  用户定案：「约束好像应该是 Agent 本身的内容，不应该和 skill 和 MCP 放在一起」
+  「没有和整体的展示对齐，而且好像字体也不一样」。
+  路径是胶囊里的可点文字（`.rules-path-btn`，**没有独立按钮**），点击打开只读预览。
+- **只读预览**（`.rules-preview`）：有边框、内边距、可滚动（`max-height: 55vh`），
+  底部只有「关闭」。**不提供内联编辑**——用户定案：「展示部分只需要只读就好了，
+  在这里不需要提供直接修改文件的功能」。
 - **为什么函数里要 `typeof RULES_DATA` 防御**：`renderHomeListView` /
   `renderAgentsTable` 会被测试单独抽出到 node 里执行，那时全局状态不存在；
   不加防御会直接 ReferenceError。

@@ -402,21 +402,22 @@
   }
   .agent-card:not(.home-card) .ac-meta-row .v > :first-child { flex: 1 1 auto; min-width: 0; }
   .agent-card:not(.home-card) .ac-meta-row .v > :not(:first-child) { flex: 0 0 auto; }
-  /* 约束行（v0.38.2）：与 SKILLS / MCP 完全同构——值区首个子元素自适应、
-     徽标贴右；路径本身是**可点文字**（无按钮），点击打开编辑弹框。
-     用户定案：「点击上面好像没有按钮，那么这个『查看』也不应该有按钮，
-     应该点击文字就可以展示。」 */
-  .ac-meta-row .rules-paths { display: flex; align-items: center; gap: var(--gap-2); flex-wrap: wrap; min-width: 0; }
-  .ac-meta-row .rules-path {
-    background: none; border: none; padding: 0; margin: 0; cursor: pointer;
-    font-family: var(--mono); font-size: var(--fs-xs); color: var(--muted);
-    text-decoration: underline; text-decoration-color: transparent;
-    transition: color .15s var(--ease), text-decoration-color .15s var(--ease);
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;
+  /* 约束行（v0.38.3）：并入路径区，与 APP / CLI / CONFIG **逐项同构**——
+     同一 58px 标签列、同一 `.ac-path-val` 胶囊、同一 mono/--fs-xs 字号。
+     用户定案：「约束好像应该是 Agent 本身的内容，不应该和 skill 和 MCP 放在一起，
+     应该和 Agent 本身的配置在一起」「没有和整体的展示对齐，而且好像字体也不一样」。
+     路径本身是胶囊里的可点文字（无独立按钮），点击打开**只读预览**。 */
+  .agent-card .ac-path-val.rules-path-btn {
+    text-align: left; font-weight: 400; font-size: var(--fs-xs);
   }
-  .ac-meta-row .rules-path:hover { color: var(--text); text-decoration-color: var(--line-strong); }
-  .ac-meta-row .rules-path:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .ac-meta-row .rules-sep { color: var(--faint); }
+  /* 只读预览区：有边框、有内边距、可滚动（用户：「展示框没有边框，没有相应的间隔」） */
+  .rules-preview {
+    margin: 0; padding: var(--sp-5) var(--sp-6);
+    border: 1px solid var(--line); border-radius: var(--r-control);
+    background: var(--bg-elev); color: var(--text);
+    font-family: var(--mono); font-size: var(--fs-xs); line-height: 1.6;
+    max-height: 55vh; overflow: auto; white-space: pre-wrap; word-break: break-word;
+  }
   /* 路径区：列表改单列网格，路径因此**等宽**（右边界成一条竖线）；
      此前 flex-column 下胶囊宽度随内容长短不一，右边界呈锯齿。 */
   .agent-card:not(.home-card) .ac-path-row .ac-path-list {
@@ -1428,9 +1429,6 @@
 
   /* ============ settings（参考：label 左 + 控件右的表单行，hairline 分隔） ============ */
   /* 约束文件编辑器（v0.37.7）：等宽、可纵向拉伸，占弹框主体 */
-  /* 选择器要压过 `.modal-form .form-field textarea { min-height: 80px }`：
-     后者特异性更高，只写 .rules-editor 时编辑器仍停在 80px（实测）。 */
-  .modal-form .form-field textarea.rules-editor { width: 100%; min-height: 50vh; font-family: var(--mono); font-size: var(--fs-xs); line-height: 1.6; resize: vertical; }
   .settings-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-card); padding: var(--sp-7a); margin-bottom: var(--sp-6); box-shadow: var(--shadow-card); }
   .settings-card h4 { margin: 0 0 var(--sp-5); font-family: var(--display); font-size: var(--fs-xs); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
   .settings-card .rows .row { padding: var(--sp-3b) 0; border-bottom: 1px solid var(--line); }
@@ -4630,14 +4628,19 @@ function _agentRulesSummary(t) {
   const total = paths.length;
   const cls = hit === total ? "ok" : (hit > 0 ? "warn" : "");
   const tip = paths.map((p) => `${p.path}${p.exists ? "" : "（未配置）"}`).join("；");
-  // 路径是可点文字（不是按钮）：与 SKILLS / MCP 行一样没有「操作按钮」，
-  // 点击路径直接打开编辑弹框；多个路径用 · 分隔，各自可点。
-  const links = paths.map((p, idx) =>
-    `<button type="button" class="rules-path" data-action="view-rules"
-      data-client="${escapeHtml(t.name)}" data-index="${idx}"
-      title="编辑 ${escapeHtml(p.path)}">${escapeHtml(p.path)}</button>`
-  ).join('<span class="rules-sep" aria-hidden="true">·</span>');
-  return `<span class="rules-paths">${links}</span><span class="tag ${cls}" title="${escapeHtml(tip)}">${hit}/${total}</span>`;
+  // 每个路径一枚 `.ac-path-val` 胶囊（与 APP/CLI/CONFIG 同款），点击打开只读预览；
+  // 状态徽标贴在第一行右侧（`.ac-path-badges`，与 Skills 行同一位置）。
+  const items = paths.map((p, idx) => {
+    const badge = idx === 0
+      ? `<span class="ac-path-badges"><span class="tag ${cls}" title="${escapeHtml(tip)}">${hit}/${total}</span></span>`
+      : "";
+    return `<div class="ac-path-item">
+      <button type="button" class="ac-path-val rules-path-btn" data-action="view-rules"
+        data-client="${escapeHtml(t.name)}" data-index="${idx}"
+        title="预览 ${escapeHtml(p.path)}">${escapeHtml(p.path)}</button>${badge}
+    </div>`;
+  }).join("");
+  return items;
 }
 
 function renderAgentsTable(page) {
@@ -4716,13 +4719,14 @@ function renderAgentsTable(page) {
             <div class="ac-path-row"><span class="ac-path-label" data-k="app">APP</span><div class="ac-path-list">${_acPathVals(app)}</div></div>
             <div class="ac-path-row"><span class="ac-path-label" data-k="cli">CLI</span><div class="ac-path-list">${_acPathVals(cli)}</div></div>
             <div class="ac-path-row"><span class="ac-path-label" data-k="cfg">CONFIG</span><div class="ac-path-list">${_acPathVals(cfg)}</div></div>
+            ${_agentRulesSummary(t) ? `<div class="ac-path-row"><span class="ac-path-label" data-k="rules">RULES</span><div class="ac-path-list">${_agentRulesSummary(t)}</div></div>` : ""}
           </div>
           <!-- 能力摘要（2026-10-12 用户要求）：详情里的内容要在**卡片上**直接可见，
                不必点进弹窗。与主页卡片同构（.ac-meta / .ac-meta-row）。 -->
           <div class="ac-meta">
             <div class="ac-meta-row"><span class="k">Skills</span><span class="v">${_agentSkillsSummary(t)}</span></div>
             <div class="ac-meta-row"><span class="k">MCP</span><span class="v">${_agentMcpSummary(t)}</span></div>
-            ${_agentRulesSummary(t) ? `<div class="ac-meta-row"><span class="k">约束</span><span class="v">${_agentRulesSummary(t)}</span></div>` : ""}
+
           </div>
           <div class="ac-foot">
             <span class="ac-count">${totalPaths} 条路径</span>
@@ -7509,41 +7513,29 @@ function renderEndpointStatus() {
     const lineCount = (d.content || "").split("\n").length;
     const sizeText = d.size ? `${d.size} B` : `${(d.content || "").length} 字符`;
     const stateTag = missing
-      ? '<span class="tag">未配置（保存后新建）</span>'
+      ? '<span class="tag">未配置</span>'
       : '<span class="tag ok">已配置</span>';
+    // 只读预览（v0.38.3 用户定案）：「展示部分只需要只读就好了，在这里不需要
+    // 提供直接修改文件的功能」——不再有 textarea 与保存按钮。
+    // 预览区有边框 / 内边距 / 可滚动（此前是裸 textarea，用户反馈「没有边框，
+    // 没有相应的间隔」）。
+    const body = missing
+      ? '<div class="empty">文件不存在。可在编辑器里新建后保存到该路径。</div>'
+      : `<pre class="rules-preview">${escapeHtml(d.content || "")}</pre>`;
     mountModal(`<div class="modal-backdrop"><div class="modal modal-form ad-modal">
       <div class="form-title">${escapeHtml(d.client)} · 约束文件</div>
       <div class="form-sub"><code class="mono">${escapeHtml(d.path)}</code></div>
-      <div class="rows" style="font-size:var(--fs-sm);margin-bottom:var(--sp-7)">
+      <div class="rows" style="font-size:var(--fs-sm);margin-bottom:var(--sp-6)">
         <div class="row"><span class="k">状态</span><span class="v">${stateTag}</span></div>
         <div class="row"><span class="k">规模</span><span class="v">${lineCount} 行 · ${sizeText}</span></div>
       </div>
-      <div class="form-field">
-        <label for="rules-editor">文件内容</label>
-        <textarea id="rules-editor" class="rules-editor" spellcheck="false"
-          aria-label="约束文件内容">${escapeHtml(d.content || "")}</textarea>
-      </div>
+      ${body}
       <div class="form-actions">
-        <span class="note" style="margin-right:auto">保存前自动备份原文件为 .bak-时间戳</span>
-        <button class="btn-cancel" id="rules-cancel">取消</button>
-        <button class="btn-save" id="rules-save">保存</button>
+        <span class="note" style="margin-right:auto">只读预览；需要修改请用编辑器打开该文件</span>
+        <button class="btn-cancel" id="rules-close">关闭</button>
       </div>
     </div></div>`);
-    $("rules-cancel").onclick = closeModal;
-    $("rules-save").onclick = async () => {
-      const content = ($("rules-editor") || {}).value || "";
-      closeModal();
-      await runTaskModal(`保存 ${client} 约束文件`, async () => {
-        const r = await runCli(["--write-rules", client, "--rules-index", String(index),
-                                "--rules-content", content, "--format", "json"]);
-        let x = null;
-        try { x = JSON.parse(stripAnsi((r && r.stdout) || "{}")); } catch (e) { x = null; }
-        if (x && x.ok) {
-          return { ok: true, message: `已写入 ${x.path}`, detail: x.backup ? `备份：${x.backup}` : "" };
-        }
-        return { ok: false, message: "保存失败", detail: (x && x.reason) || cliErrDetail(r) };
-      }, () => loadRules());
-    };
+    $("rules-close").onclick = closeModal;
   }
 
   async function loadMarketSources() {
@@ -10019,7 +10011,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.38.2", build: 151, build_number: 151, semver_ok: true, full: "v0.38.2 (build 151)" },
+  app: { name: "Skill MCP Studio", version: "0.38.3", build: 152, build_number: 152, semver_ok: true, full: "v0.38.3 (build 152)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

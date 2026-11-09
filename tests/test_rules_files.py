@@ -190,8 +190,15 @@ class RulesGuiContract(unittest.TestCase):
         self.assertIn('data-action="view-rules"', self.dashboard, "缺「查看」入口")
         # v0.38.2 用户定案：「上面好像没有按钮，那么这个『查看』也不应该有按钮，
         # 应该点击文字就可以展示」——约束行用可点路径文字，不再有按钮。
-        self.assertIn('class="rules-path"', self.dashboard,
-                      "约束行应使用可点路径文字（.rules-path）")
+        self.assertIn("rules-path-btn", self.dashboard,
+                      "约束行应使用可点路径文字（.rules-path-btn）")
+        # v0.38.3：约束行并入路径区（RULES 行），不再挂在能力摘要区
+        self.assertIn('data-k="rules"', self.dashboard,
+                      "约束行应并入 .ac-paths（RULES 行），与 APP/CLI/CONFIG 同构")
+        # 只读预览：不再有编辑器 textarea
+        self.assertIn("rules-preview", self.dashboard, "应有只读预览区（.rules-preview）")
+        self.assertNotIn("rules-editor", self.dashboard,
+                         "不应再有编辑器 textarea（只读预览）")
         self.assertNotIn("rules-view-btn", self.dashboard,
                          "约束行不应再有独立的「查看」按钮")
         self.assertIn("function loadRules", self.dashboard)
@@ -200,9 +207,10 @@ class RulesGuiContract(unittest.TestCase):
     def test_commands_are_wired(self):
         self.assertIn('"--list-rules"', self.dashboard)
         self.assertIn('"--read-rules"', self.dashboard)
-        self.assertIn('"--write-rules"', self.dashboard)
-        self.assertIn('"--rules-content"', self.dashboard,
-                      "保存必须把编辑内容传给 CLI")
+        # v0.38.3：展示只读，GUI 不再调用 --write-rules（用户定案
+        # 「展示部分只需要只读就好了，在这里不需要提供直接修改文件的功能」）
+        self.assertNotIn('"--write-rules"', self.dashboard,
+                         "GUI 不应再调用写接口（只读预览）")
 
     def test_rust_whitelist(self):
         for flag in ("--list-rules", "--read-rules", "--write-rules",

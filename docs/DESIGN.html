@@ -1103,18 +1103,14 @@
           （<code>RULES_DATA</code>）。路径只认注册表里显式声明的 <code>rules_paths</code>，<strong>不猜</strong>。
           当前登记 9 个客户端 / 10 个路径。<strong>Cursor 不登记</strong>（用户规则存在设置里不落盘，
           <code>~/.cursor/rules</code> 是项目级）。</li>
-        <li><strong>查看 / 编辑</strong>：点「查看」→ <code>--read-rules &lt;client&gt; --rules-index N</code>，
-          弹 <code>.modal.modal-form.ad-modal</code> + <code>.rules-editor</code>（等宽、50vh、可纵向拉伸）。
-          保存走 <code>--write-rules &lt;client&gt; --rules-content &lt;文本&gt;</code>：先备份为
-          <code>&lt;原文件&gt;.bak-&lt;时间戳&gt;</code> → 原子写 → 回读校验。</li>
-        <li><strong>目录形态</strong>（Cline / TRAE）：<code>--read-rules</code> 返回文件清单，弹框只读展示，
+                <li><strong>目录形态</strong>（Cline / TRAE）：<code>--read-rules</code> 返回文件清单，弹框只读展示，
           <strong>不支持整体写入</strong>——把一段文本写进规则目录会覆盖其中所有文件。</li>
-        <li><strong>约束行与 SKILLS / MCP 完全同构</strong>：值区首个子元素自适应、状态徽标贴右；
-          路径是<strong>可点文字</strong>（<code>.rules-path</code>：无边框、<code>cursor: pointer</code>、
-          hover 才出现下划线，<code>:focus-visible</code> 有焦点环），点击打开编辑弹框；
-          多个路径用 <code>.rules-sep</code>（<code>·</code>）分隔，各自可点。
-          <strong>不要在这里放「查看」按钮</strong>——上面几行都是纯文本，单独一行长出按钮就破坏了
-          同一张卡片内的操作语言。</li>
+        <li><strong>约束行并入路径区</strong>（<code>.ac-paths</code> 的第四行，标签 <code>RULES</code>），
+          与 APP / CLI / CONFIG <strong>逐项同构</strong>：同一 58px 标签列、同一 <code>.ac-path-val</code> 胶囊、
+          同一 mono / <code>--fs-xs</code> 字号。路径是胶囊里的可点文字（<code>.rules-path-btn</code>，
+          <strong>没有独立按钮</strong>），点击打开只读预览。</li>
+        <li><strong>只读预览</strong>（<code>.rules-preview</code>）：有边框、内边距、可滚动
+          （<code>max-height: 55vh</code>），底部只有「关闭」。<strong>不提供内联编辑</strong>。</li>
         <li><strong>为什么函数里要 <code>typeof RULES_DATA</code> 防御</strong>：<code>renderHomeListView</code> /
           <code>renderAgentsTable</code> 会被测试单独抽出到 node 里执行，那时全局状态不存在；
           不加防御会直接 ReferenceError。</li>
