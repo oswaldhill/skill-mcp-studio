@@ -1195,8 +1195,9 @@ class CardTitleAlignmentTest(unittest.TestCase):
         self.assertIn("var(--sp-5) var(--sp-7) 0", head,
                       "标题行应为 12px 16px 0：顶部与左右视觉起点一致，底部不留")
         # 路径区：顶 10px（标题到首行的间距因此接近行间距）
-        self.assertIn("var(--sp-4) var(--sp-7) var(--sp-5)", paths,
-                      "路径区顶部应为 10px，否则标题到首行的中心距明显大于行间距")
+        self.assertIn("var(--sp-2) var(--sp-7) var(--sp-5)", paths,
+                      "路径区顶部应为 6px：标题底到首行顶 8.8px，与行间隙 6px 同档；"
+                      "用 10px 时是 12.8px，内容看起来被整体推下去")
 
 
 class ColumnWidthGovernanceTest(unittest.TestCase):

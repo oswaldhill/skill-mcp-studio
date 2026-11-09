@@ -7,6 +7,29 @@
 
 ## [Unreleased]
 
+## [v0.38.7] - 2026-11-09
+
+当前发布版本（build 156）。**标题到首行的间隙与行间隙对齐。**
+
+用户反馈「好像还是明显偏下」。上一版把「标题中心到首行中心」调到 32.8px
+（行间距 30px），差值只剩 2.8px，但**真正的观感来自「间隙」而不是「中心距」**：
+
+| 指标 | 改前 | 改后 |
+|---|---|---|
+| 标题底 → 首行顶（间隙） | **12.8px** | **8.8px** |
+| 行间隙（行到行） | 6px | 6px |
+| 间隙差 | 6.8px | 2.8px |
+| 标题距卡片顶 | 15.8px | 15.8px（左右 16px） |
+
+标题下方空了 12.8px、而内容行之间只空 6px，内容整体就像被推下去一截。
+把路径区顶部内边从 10px 收到 6px（`--sp-2`）后，两处间隙同档。
+
+### 测试
+
+- `CardTitleAlignmentTest` 的断言同步改为 `var(--sp-2) var(--sp-7) var(--sp-5)`；
+  **反向验证**：改回 10px 会让断言失败。
+- 全量 **1672 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
 ## [v0.38.6] - 2026-11-09
 
 当前发布版本（build 155）。**卡片标题与内容行的垂直节奏修正。**
@@ -3106,7 +3129,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.38.6...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.38.7...HEAD
+[v0.38.7]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.7
 [v0.38.6]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.6
 [v0.38.5]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.5
 [v0.38.4]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.4
