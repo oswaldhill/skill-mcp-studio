@@ -209,6 +209,90 @@ def set_primary(source_id: str, *, config_path: Optional[str] = None) -> Dict[st
     return {"ok": True, "id": source_id, "path": target.get("path", ""), "backup": backup}
 
 
+def adopt_unified_dir(
+    config_path: Optional[str] = None,
+    *,
+    unified_dir: str = "",
+    dry_run: bool = False,
+) -> Dict[str, Any]:
+    """把「已经在用的统一技能目录」自动登记为主源（一次性迁移）。
+
+    ## 为什么需要（2026-11-09 用户反馈）
+
+    统一目录早就在 ``config.yaml`` 里配好了，磁盘上也确实是个 git 工作区
+    （有远端、有分支、技能列表也扫得到 170+ 个技能），但 ``data/git_sources.yaml``
+    是空的——于是设置页上「统一技能目录」显示已设置、「Git 技能源」却说
+    「尚未登记」，四个同步按钮全在空转。用户看不出到底配没配好，只能把同一个
+    路径再手输一遍。既然「主源 = 统一目录」已经是一个确定的事实，就不该让用户
+    再证明一次。
+
+    ## 判据与安全边界
+
+    1. **已有任何登记就退出**（``already-configured``）：不覆盖用户的源列表，
+       迁移只发生在「从未配置过」的初始态；
+    2. **只接受真实的 git 工作区**（``not-git-repo``）：目录不存在或缺 ``.git``
+       时如实说明原因，不制造一个拉不动的假源；
+    3. **登记即主源**（``primary: true``）：它就是统一目录本身，无需再点一次
+       「设为主源」；
+    4. **``dry_run`` 不落盘**：只报告将写什么；
+    5. 写入走 ``save_sources``（原子写 + 备份），失败如实报错。
+
+    返回::
+
+        {"status": "adopted"|"already-configured"|"not-git-repo"|"dry-run"|"error",
+         "path": "...", "id": "...", "branch": "...", "remote": "...",
+         "backup": "...", "message": "..."}
+    """
+    ledger = _ledger_for_config(config_path)
+    sources = load_sources(ledger)
+    base: Dict[str, Any] = {
+        "path": "", "id": "", "branch": "", "remote": "", "backup": "",
+    }
+
+    if sources:
+        return dict(base, status="already-configured",
+                    message=f"已登记 {len(sources)} 个 Git 源，不做自动接管")
+
+    candidate = unified_dir or os.path.expanduser(FALLBACK_UNIFIED_DIR)
+    resolved = _normalize_path(candidate)
+    base["path"] = resolved
+    info = inspect(resolved, count_skills=False)
+    if not info.get("exists"):
+        return dict(base, status="not-git-repo",
+                    message=f"统一目录不存在：{resolved}")
+    if not info.get("is_repo"):
+        return dict(base, status="not-git-repo",
+                    message=f"统一目录不是 Git 工作区（缺少 .git），无法作为 Git 源：{resolved}")
+
+    sid = derive_id(resolved)
+    base.update({
+        "id": sid,
+        "branch": info.get("branch", ""),
+        "remote": info.get("remote", ""),
+    })
+
+    if dry_run:
+        return dict(base, status="dry-run",
+                    message=f"将把统一目录登记为主源：{resolved}（id={sid}）")
+
+    entry = {
+        "id": sid,
+        "label": sid,
+        "path": resolved,
+        "enabled": True,
+        "primary": True,
+    }
+    try:
+        backup = save_sources([entry], ledger)
+    except OSError as exc:
+        return dict(base, status="error", message=f"写入登记表失败：{exc}")
+    return dict(
+        base, status="adopted", backup=backup,
+        message=f"已自动接管统一目录为 Git 源：{resolved}"
+                f"（分支 {info.get('branch') or '-'}）",
+    )
+
+
 # --------------------------------------------------------------------------
 # 登记（纯配置操作，不联网、不动仓库内容）
 # --------------------------------------------------------------------------

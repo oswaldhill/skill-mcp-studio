@@ -287,7 +287,7 @@ def _git_status_text(info: dict) -> str:
     return " · ".join(bits)
 
 
-def _run_git_source_commands(args) -> int:  # noqa: C901 - 早返回分派，保持单点可读
+def _run_git_source_commands(args, config=None, config_path=None) -> int:  # noqa: C901 - 早返回分派，保持单点可读
     """Git 技能源的一组早返回出口（登记 / 发现 / 检查 / 拉取 / 推送）。
 
     写操作全部支持 ``--dry-run``；默认动作是**只读检查**。
@@ -304,6 +304,20 @@ def _run_git_source_commands(args) -> int:  # noqa: C901 - 早返回分派，保
         elif payload.get("message"):
             print(f"  {payload['message']}")
         return code
+
+    # ── 自动接管（2026-11-09）：统一目录已是 git 工作区时，无需用户再手输一遍 ──
+    if getattr(args, "adopt_git_source", False):
+        unified = (config or {}).get("unified_skills_dir") or ""
+        res = gs.adopt_unified_dir(
+            config_path,
+            unified_dir=unified,
+            dry_run=bool(getattr(args, "dry_run", False)),
+        )
+        if as_json:
+            print(json.dumps(res, ensure_ascii=False, indent=2))
+        else:
+            print(f"  {res.get('message', '')}")
+        return 0 if res.get("status") in ("adopted", "dry-run", "already-configured") else 2
 
     # ── 发现（纯只读，不需要登记）────────────────────────────────
     if getattr(args, "git_discover", None):
@@ -2930,6 +2944,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="把已存在的 Git 目录登记为技能源（不 clone；配合 --git-source-id/--git-source-label）",
     )
     parser.add_argument(
+        "--adopt-git-source", action="store_true",
+        help="自动把当前统一技能目录登记为主源（只在从未登记过任何 Git 源时生效；"
+             "统一目录不是 git 工作区则如实拒绝；支持 --dry-run）",
+    )
+    parser.add_argument(
         "--remove-git-source", type=str, default=None, metavar="ID",
         help="从登记表移除 Git 源（只移除登记，磁盘目录保留）",
     )
@@ -3449,10 +3468,10 @@ def main() -> int:
         "list_git_sources", "add_git_source", "remove_git_source",
         "clone_git_source", "check_git_sources", "pull_git_sources",
         "push_git_sources", "git_discover", "set_primary_git_source",
-        "commit_git_sources",
+        "commit_git_sources", "adopt_git_source",
     )
     if any(getattr(args, name, None) for name in _git_src_flags):
-        return _run_git_source_commands(args)
+        return _run_git_source_commands(args, config, config_path)
 
     if getattr(args, "list_endpoints", False):
         return _run_list_endpoints(args, config, config_path)

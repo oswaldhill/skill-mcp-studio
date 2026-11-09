@@ -613,6 +613,9 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
         // 登记残留清理（v0.37.1）：只删 lock 里「统一库已无目录」的条目，
         // 改前备份整份登记表；写命令但不改变引擎的 config 指向，不属重定向。
         "--prune-skill-lock",
+        // 自动接管统一目录为 Git 源（v0.37.2）：只在登记表为空时写一次，
+        // 统一目录本身就是 git 工作区才接受；不改 config 指向，非重定向。
+        "--adopt-git-source",
         // 技能市场（FEAT-9）：只读出口（sources/list/search/check）。
         "--market",
         // 市场源 CRUD（v0.31.0 #4）：读写 data/market_sources.yaml（个人配置，

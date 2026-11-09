@@ -7,6 +7,53 @@
 
 ## [Unreleased]
 
+## [v0.37.2] - 2026-11-09
+
+当前发布版本（build 141）。**Git 技能源自动接管统一目录。**
+
+用户截图追问：「既然已经发现了，为什么不可以自动扫描或者自动获取？我的目录和
+统一默认的目录是一致的，而且页面上的 skill 也扫描到了 170 多个。」问题成立：
+统一目录早在 `config.yaml` 里配好、磁盘上确实是 git 工作区（远端
+`my-agent-skills`、分支 `master`），但 `data/git_sources.yaml` 是空的——同一张
+卡片里「统一技能目录」显示已设置、「Git 技能源」却说「尚未登记」，四个同步
+按钮全在空转。用户无法判断配没配好，只能把同一个路径手输一遍。
+
+### 新增
+
+- **`core/git_sources.adopt_unified_dir()`**：把当前统一技能目录自动登记为主源
+  （`primary: true`）。判据三条：登记表非空 → `already-configured`（绝不覆盖）；
+  目录不存在或缺 `.git` → `not-git-repo`（附原因）；成功则原子写 + 备份。
+- **`--adopt-git-source`**：CLI 出口，支持 `--dry-run` / `--format json`。
+- **设置页自动接管**：`loadGitSources()` 发现登记表为空时自动调用，成功后
+  重新加载并在卡片顶部显示「已自动接管统一技能目录为 Git 源：<路径>（分支 X）」，
+  刷新页面后该提示消失，但源行带「主源 · 统一目录」标签，状态仍自解释。
+
+### 为什么可以自动写
+
+这不是替用户做决定，而是把一个**已经成立的事实**（目录已配置、技能已在用、
+目录就是 git 工作区）记进登记表：不改变任何客户端指向、不动仓库内容，且随时可
+「移除」撤销。要求用户手输同一个路径，等于让他证明一个已知事实。
+
+### 失败不静默
+
+`not-git-repo` 的原因写进空态文案（「未登记 Git 技能源：统一目录不是 Git 工作区…」），
+不再退化成笼统的「尚未登记」——后者会让人以为功能没做。
+
+### 文档
+
+`docs/DESIGN.md` §2.10 新增「Git 源自动接管」：触发条件、后端判据、ASCII 结构、
+为什么可以自动写、为什么不需要再点「设为主源」。
+
+### 测试
+
+- 新增 `tests/test_git_sources_adopt.py`（11 项）：接管为主源、已有登记不覆盖、
+  非 git 目录/不存在目录拒绝且不落盘、dry-run 不写、主源语义闭环
+  （`unified_dir_from_sources()` 派生同一路径）、CLI 端到端、GUI 契约。
+- **反向验证 4 条**：删自动接管调用点、删重入解锁、删 Rust 白名单、去掉
+  `already-configured` 保护，各自让对应断言失败。其中「只断言函数名与命令名」
+  最初确实没拦住删调用点——补上调用点与「解锁紧邻重载」两条精确断言后才有效。
+- 全量 **1625 项通过、2 项既有跳过**。
+
 ## [v0.37.1] - 2026-11-09
 
 当前发布版本（build 140）。**登记残留有了清理出口。**
@@ -2491,7 +2538,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.37.1...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.37.2...HEAD
+[v0.37.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.2
 [v0.37.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.1
 [v0.37.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.0
 [v0.36.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.36.0

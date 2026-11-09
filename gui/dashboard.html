@@ -2240,7 +2240,7 @@ const escapeHtml = (v) => String(v == null ? "" : v)
 
 let SNAP = null;
 // Git 技能源（2026-11-07）：登记表 + 最近一次检查结果。
-let GIT_SOURCES = { loading: false, items: [], summary: null, error: "" };
+let GIT_SOURCES = { loading: false, items: [], summary: null, error: "", adoptTried: false, autoAdopted: null, adoptError: "" };
 // 端点连通性结果 —— **独立于审计快照 SNAP**。
 // 审计只判配置（不探活），端点通断只由用户手动点「检查端点连通性」触发，
 // 结果暂存在这里，不写回 SNAP，免得端点状态又渗回审计区的颜色。
@@ -6719,12 +6719,41 @@ function renderEndpointStatus() {
         return;
       }
       GIT_SOURCES.items = data.sources || [];
+      // 自动接管（v0.37.2）：登记表为空、而统一目录本身已经是 git 工作区时，
+      // 直接把它登记为主源。用户早就用这个目录装技能了（列表里 170+ 个），
+      // 再让他手输一遍同一个路径，等于要求他证明一个已知事实。
+      // 只在「从未配置过」时触发：已有任何登记就永不覆盖。
+      if (!GIT_SOURCES.items.length && !GIT_SOURCES.adoptTried) {
+        GIT_SOURCES.adoptTried = true;
+        if (await autoAdoptUnifiedDir()) return;
+      }
       GIT_SOURCES.summary = data.summary || null;
       GIT_SOURCES.error = "";
       renderGitSources();
     } finally {
       GIT_SOURCES.loading = false;
     }
+  }
+
+  // 自动接管统一目录为 Git 源。返回 true 表示已接管（内部已触发重载）。
+  async function autoAdoptUnifiedDir() {
+    const r = await runCli(["--adopt-git-source", "--format", "json"]);
+    let d = null;
+    try { d = JSON.parse(stripAnsi((r && r.stdout) || "{}")); } catch (e) { d = null; }
+    if (!d) {
+      GIT_SOURCES.adoptError = (r && (cliFailLines(r) || cliErrDetail(r))) || "";
+      return false;
+    }
+    if (d.status === "adopted") {
+      GIT_SOURCES.autoAdopted = d;
+      GIT_SOURCES.loading = false;  // 重入前先解锁，否则 loadGitSources 直接返回
+      await loadGitSources();
+      return true;
+    }
+    // already-configured / not-git-repo / error：都记下原因，空态里如实展示，
+    // 不要静默退化成「尚未登记」——那会让人以为功能没做。
+    GIT_SOURCES.adoptError = d.message || "";
+    return false;
   }
 
   // 状态 → 标签样式。与后端 status 字段一一对应，不做字符串猜测。
@@ -6748,7 +6777,12 @@ function renderEndpointStatus() {
     }
     const items = GIT_SOURCES.items || [];
     if (!items.length) {
-      body.innerHTML = '<div class="empty">尚未登记 Git 技能源。点下方「登记本地目录」，把一个已存在的 Git 仓库加进来。</div>';
+      // 自动接管失败时把原因说清楚（不是 git 仓库 / 目录不存在），
+      // 否则用户只看到「尚未登记」，无法判断是没配好还是根本配不了。
+      const hint = GIT_SOURCES.adoptError
+        ? `未登记 Git 技能源：${escapeHtml(GIT_SOURCES.adoptError)}。可点下方「登记本地目录」手动添加。`
+        : '尚未登记 Git 技能源。点下方「登记本地目录」，把一个已存在的 Git 仓库加进来。';
+      body.innerHTML = `<div class="empty">${hint}</div>`;
       return;
     }
     let primaryPath = "";
@@ -6779,7 +6813,10 @@ function renderEndpointStatus() {
     const foot = s.total
       ? `<div class="note" style="margin-top:var(--sp-3)">共 ${s.total} 个源（启用 ${s.enabled}）· 落后 ${s.behind} · 领先 ${s.ahead} · 有改动 ${s.dirty} · 技能 ${s.skills}</div>`
       : "";
-    body.innerHTML = `<div class="ad-entries">${rows}</div>${foot}`;
+    const adoptedNote = GIT_SOURCES.autoAdopted
+      ? `<div class="note" style="margin-bottom:var(--sp-4)">已自动接管统一技能目录为 Git 源：<code class="mono">${escapeHtml(GIT_SOURCES.autoAdopted.path || "")}</code>（分支 ${escapeHtml(GIT_SOURCES.autoAdopted.branch || "-")}）。检查更新 / 拉取 / 提交 / 推送现在可用；不需要的话点该行「移除」。</div>`
+      : "";
+    body.innerHTML = `${adoptedNote}<div class="ad-entries">${rows}</div>${foot}`;
   }
 
   // 统一的任务反馈：所有 git 源写动作都走这个壳（dry-run 可选）。
@@ -9739,7 +9776,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.37.1", build: 140, build_number: 140, semver_ok: true, full: "v0.37.1 (build 140)" },
+  app: { name: "Skill MCP Studio", version: "0.37.2", build: 141, build_number: 141, semver_ok: true, full: "v0.37.2 (build 141)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",
