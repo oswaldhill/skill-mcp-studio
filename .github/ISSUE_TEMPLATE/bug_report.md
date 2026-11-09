@@ -8,7 +8,7 @@ assignees: ""
 
 ## 环境
 
-- 版本：`skill-mcp-studio --version` 输出（如 `v0.37.7 build 146`）
+- 版本：`skill-mcp-studio --version` 输出（如 `v0.37.8 build 147`）
 - 操作系统：macOS / Windows / Linux + 版本
 - Python 版本：`python3 --version`
 - 运行方式：CLI 命令 / Tauri 桌面 App

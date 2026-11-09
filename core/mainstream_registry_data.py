@@ -3,6 +3,28 @@ import sys
 from typing import Any, Dict, List
 
 
+# ---------------------------------------------------------------------------
+# rules_paths：各客户端的「主要约束文件」用户级路径（2026-11-09 查官方文档）
+#
+# 只登记**有官方依据的用户级路径**，不猜。项目级路径（AGENTS.md / .cursor/rules
+# / .clinerules 等）由各客户端在仓库内自行发现，不属于本工具的「全局约束」范围。
+#
+#   客户端            路径                                          依据
+#   ----------------  --------------------------------------------  --------------------------------
+#   Claude Code       ~/.claude/CLAUDE.md                           官方 memory 文档（用户级）
+#   Codex             ~/.codex/AGENTS.md                            官方 AGENTS.md
+#   Gemini CLI        ~/.gemini/GEMINI.md                           官方 Context Files (GEMINI.md)
+#   OpenCode          ~/.config/opencode/AGENTS.md                 官方 Rules 文档「Global」段（明确）
+#   Cline             ~/Documents/Cline/Rules                      官方 Rules 文档「Global Rules Directory」
+#   Windsurf          ~/.codeium/windsurf/memories/global_rules.md  官方 Cascade memories
+#   TRAE              ~/.trae/rules                                 官方 Rules（目录形态）
+#   WorkBuddy         ~/.workbuddy/SOUL.md + USER.md               本机实测的人格/用户规则体系
+#   DeepSeek Harness  ~/.dsh/AGENTS.md                             本机实测
+#
+# 不登记 Cursor：它的用户级规则存在 Cursor 设置里（不落盘），`~/.cursor/rules`
+# 是**项目级**路径——登记成用户级会让界面显示一个永远「未配置」的假路径。
+# ---------------------------------------------------------------------------
+
 _PLATFORM_KEY = {"darwin": "darwin", "win32": "windows", "linux": "linux"}
 
 
@@ -87,7 +109,6 @@ MAINSTREAM_TOOLS: List[Dict[str, Any]] = [
         config_paths=["~/.cursor/mcp.json"],
         skills_path="~/.cursor/skills",
         mcp_config_path="~/.cursor/mcp.json",
-        rules_paths=["~/.cursor/rules"],
         aliases=["cursor"],
         by_os={
             "windows": {
@@ -353,7 +374,7 @@ MAINSTREAM_TOOLS: List[Dict[str, Any]] = [
         skills_path="~/.cline/skills",
         mcp_config_path="~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json",
         mcp_format="json", mcp_key_path="mcpServers",
-        rules_paths=["~/.clinerules"],
+        rules_paths=["~/Documents/Cline/Rules"],
         aliases=["cline"],
         by_os={
             "windows": {
@@ -475,6 +496,7 @@ MAINSTREAM_TOOLS: List[Dict[str, Any]] = [
         config_paths=["~/.workbuddy/mcp.json"],
         skills_path="~/.workbuddy/skills",
         mcp_config_path="~/.workbuddy/mcp.json",
+        rules_paths=["~/.workbuddy/SOUL.md", "~/.workbuddy/USER.md"],
         aliases=["workbuddy"],
         by_os={
             "windows": {

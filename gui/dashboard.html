@@ -7450,8 +7450,8 @@ function renderEndpointStatus() {
     body.innerHTML = `<table class="mcp-table"><thead><tr>
         <th>客户端</th><th>约束文件</th><th>状态</th><th>规模</th><th>操作</th>
       </tr></thead><tbody>${lines.join("")}</tbody></table>
-      <div class="note" style="margin-top:var(--sp-4)">共 ${sum.clients || 0} 个客户端有约定，
-        ${sum.configured || 0}/${sum.declared || 0} 个已配置。路径来自各客户端的官方约定；
+      <div class="note" style="margin-top:var(--sp-4)">共 ${sum.clients || 0} 个客户端有约定（${sum.declared || 0} 个路径），
+        ${sum.configured || 0} 个已配置。路径来自各客户端的官方约定；
         未配置的客户端可点「查看」新建。</div>`;
   }
 
@@ -9972,7 +9972,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.37.7", build: 146, build_number: 146, semver_ok: true, full: "v0.37.7 (build 146)" },
+  app: { name: "Skill MCP Studio", version: "0.37.8", build: 147, build_number: 147, semver_ok: true, full: "v0.37.8 (build 147)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

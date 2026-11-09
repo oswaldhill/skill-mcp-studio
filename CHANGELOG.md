@@ -7,6 +7,52 @@
 
 ## [Unreleased]
 
+## [v0.37.8] - 2026-11-09
+
+当前发布版本（build 147）。**约束文件路径按各客户端官方文档校正，补上 WorkBuddy。**
+
+用户指出「WorkBuddy 应该也有配置，其他的请读取官网上标准的定义」。查证结果：
+
+### 修正
+
+| 客户端 | 修正前 | 修正后 | 依据 |
+|---|---|---|---|
+| **WorkBuddy** | 未登记 | `~/.workbuddy/SOUL.md` + `USER.md` | 本机实测的人格/用户规则体系 |
+| **Cline** | `~/.clinerules` | `~/Documents/Cline/Rules`（目录） | 官方 Rules 文档「Global Rules Directory」：macOS 为 `~/Documents/Cline/Rules`，另搜 `~/.cline/rules` 与 `~/Cline/Rules`；`~/.clinerules` 是**项目级** |
+| **Cursor** | `~/.cursor/rules` | **移除** | 官方 Rules 文档：用户规则存在 Cursor 设置里（不落盘），`~/.cursor/rules` 是**项目级** `.mdc` 目录；登记成用户级只会显示一个永远「未配置」的假路径 |
+
+### 官方确认（未改动的）
+
+- **OpenCode**：`~/.config/opencode/AGENTS.md`（官方 Rules 文档「Global」段明确）；项目级 `AGENTS.md`，并兼容 `~/.claude/CLAUDE.md`
+- **Cline**：还识别 `AGENTS.md` / `~/.agents/AGENTS.md`（跨工具标准）、`.cursorrules`、`.windsurfrules`
+- **Cursor**：项目级 `.cursor/rules/*.mdc`（必须 `.mdc` 扩展名，`.md` 被忽略）+ 支持 `AGENTS.md`
+- **Aider**：`CONVENTIONS.md`（项目级，用 `read:` 加载）
+
+### 统计口径
+
+面板底部文案改为「N 个客户端有约定（M 个路径），K 个已配置」——WorkBuddy 有 2 个路径，
+原来写成「N 个客户端，K/M 个已配置」会让人以为客户端数与路径数是一回事。
+
+### 本机实测
+
+```
+约束文件：9 个客户端有约定（10 个路径），4 个已配置
+  ✓ Codex              ~/.codex/AGENTS.md      60 行
+  ✓ WorkBuddy          ~/.workbuddy/SOUL.md    66 行
+  ✓ WorkBuddy          ~/.workbuddy/USER.md    42 行
+  ✓ DeepSeek Harness   ~/.dsh/AGENTS.md        41 行
+  · 其余 6 个          未配置
+```
+
+### 文档
+
+`core/mainstream_registry_data.py` 顶部新增路径依据表（客户端 / 路径 / 依据），
+`docs/DESIGN.md` §2.3c-2 说明「为什么 Cursor 不登记」。
+
+### 测试
+
+全量 **1670 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
 ## [v0.37.7] - 2026-11-09
 
 当前发布版本（build 146）。**新增「约束文件」管理：按每个 Agent 的主要规则文件
@@ -2762,7 +2808,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.37.7...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.37.8...HEAD
+[v0.37.8]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.8
 [v0.37.7]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.7
 [v0.37.6]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.6
 [v0.37.5]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.5

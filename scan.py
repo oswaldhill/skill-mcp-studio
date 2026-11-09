@@ -882,8 +882,8 @@ def _run_rules(args) -> int:
             print(json.dumps(payload, ensure_ascii=False, indent=2))
             return 0
         summary = payload["summary"]
-        print(f"\n  约束文件：{summary['clients']} 个客户端有约定，"
-              f"{summary['configured']}/{summary['declared']} 个已配置\n")
+        print(f"\n  约束文件：{summary['clients']} 个客户端有约定"
+              f"（{summary['declared']} 个路径），{summary['configured']} 个已配置\n")
         for row in payload["rows"]:
             for item in row["paths"]:
                 mark = "✓" if item["exists"] else "·"

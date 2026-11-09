@@ -393,6 +393,11 @@ Agent 卡片里有两组「标签 + 值」行：**路径区**（APP / CLI / CONF
 - **数据来源**：`--list-rules --format json`（只读）。路径只认注册表
   （`mainstream_registry_data`）里显式声明的 `rules_paths`，**不猜**——猜一个
   路径去读，猜错会让用户以为「这里就是它的配置」，比不显示更糟。
+  当前登记 9 个客户端 / 10 个路径，每个路径的官方依据写在
+  `mainstream_registry_data.py` 顶部注释里（Claude Code / Codex / Gemini CLI /
+  OpenCode / Cline / Windsurf / TRAE / WorkBuddy / DeepSeek Harness）。
+  **Cursor 不登记**：它的用户级规则存在设置里（不落盘），`~/.cursor/rules`
+  是项目级路径，登记成用户级只会显示一个永远「未配置」的假路径。
 - **查看 / 编辑**：点「查看」→ `--read-rules <client> --rules-index N`，弹
   `.modal.modal-form` + `.rules-editor`（等宽、50vh、可纵向拉伸）。保存走
   `--write-rules <client> --rules-content <文本>`：先备份为
