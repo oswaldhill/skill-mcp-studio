@@ -7,6 +7,43 @@
 
 ## [Unreleased]
 
+## [v0.38.8] - 2026-11-09
+
+当前发布版本（build 157）。**路径行改为基线对齐（标签与值的文字不再错位）。**
+
+用户截图红框：「左边的字比右边的字高一点」——同一行里 `CLI` / `CONFIG` 标签比
+右侧的 `cursor` / `~/.cursor/mcp.json` 高出一截。
+
+### 根因
+
+标签与值的**行盒高度不同**：
+
+| 元素 | 字号 | line-height | 额外 |
+|---|---|---|---|
+| `.ac-path-label` | 11px | 1.9（20.9px） | 无 |
+| `.ac-path-val` | 12px | 1.5（18px） | 胶囊 padding 2px + border 1px（共 24px） |
+
+`.ac-path-row` 用 `align-items: start`，两列**顶对齐**，于是标签文字中心比值的
+文字中心高约 1.5px——在 2x 屏上就是 3px，肉眼可见。
+
+### 修复
+
+`.ac-path-row` 与 `.ac-meta-row`（SKILLS / MCP 同构）都改为 **`align-items: baseline`**。
+实测（浏览器 `Range.getBoundingClientRect()`）：
+
+| 指标 | 改前 | 改后 |
+|---|---|---|
+| 标签底 / 值底（基线）差 | **1.55px** | **0.00px** |
+| 标签顶 / 值顶差 | 0 | 1px（字号 11 vs 12 的正常差异） |
+
+基线对齐后两边文字落在同一条基线上；顶部 1px 差是字号本身的差异，不是错位。
+
+### 测试
+
+- 新增 `RowBaselineAlignmentTest`（2 项）：路径行、能力摘要行都必须 `baseline`。
+- **反向验证**：把路径行改回 `align-items: start`，断言立刻失败。
+- 全量 **1674 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
 ## [v0.38.7] - 2026-11-09
 
 当前发布版本（build 156）。**标题到首行的间隙与行间隙对齐。**
@@ -3129,7 +3166,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.38.7...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.38.8...HEAD
+[v0.38.8]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.8
 [v0.38.7]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.7
 [v0.38.6]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.6
 [v0.38.5]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.5

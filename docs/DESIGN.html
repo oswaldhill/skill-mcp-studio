@@ -1105,6 +1105,10 @@
           <code>~/.cursor/rules</code> 是项目级）。</li>
                 <li><strong>目录形态</strong>（Cline / TRAE）：<code>--read-rules</code> 返回文件清单，弹框只读展示，
           <strong>不支持整体写入</strong>——把一段文本写进规则目录会覆盖其中所有文件。</li>
+        <li><strong>路径行 / 能力摘要行一律基线对齐</strong>（<code>.ac-path-row</code>、
+          <code>.ac-meta-row</code> 的 <code>align-items: baseline</code>）：标签 11px / <code>line-height: 1.9</code>，
+          值 12px / <code>line-height: 1.5</code> 再套胶囊 padding，行盒高度不同。用 <code>start</code> 顶对齐时
+          标签会比值高 1.5~2px；基线对齐后两边文字落在同一条基线上（实测底部差 0.00px）。</li>
         <li><strong>约束行并入路径区</strong>（<code>.ac-paths</code> 的第四行，标签 <code>RULES</code>），
           与 APP / CLI / CONFIG <strong>逐项同构</strong>：同一 58px 标签列、同一 <code>.ac-path-val</code> 胶囊、
           同一 mono / <code>--fs-xs</code> 字号。路径是胶囊里的可点文字（<code>.rules-path-btn</code>，

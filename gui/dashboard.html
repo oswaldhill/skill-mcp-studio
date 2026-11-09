@@ -386,7 +386,7 @@
      此前这里是 flex + .k 宽 74px + 竖线，而路径区是 grid + 58px 且无竖线 —— 两组的
      标签列宽、字体、分隔线全不一致，卡片里能直接看出错位（用户截图反馈「最好保持对齐」）。
      现在两组同为 58px 标签列 + --gap-4，标签同为 mono/--fs-2xs/大写/--faint + 6px 圆点。 */
-  .agent-card .ac-meta-row { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: var(--gap-4); align-items: start; min-width: 0; }
+  .agent-card .ac-meta-row { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: var(--gap-4); align-items: baseline; min-width: 0; }
   .agent-card .ac-meta-row .k {
     font-family: var(--mono); font-size: var(--fs-2xs); font-weight: 600;
     letter-spacing: .07em; text-transform: uppercase; color: var(--faint);
@@ -1349,7 +1349,9 @@
   /* 分开声明（不用合并选择器）：便于逐选择器断言，也避免某一条被误删后静默失效。 */
   .agent-card:not(.home-card) .ac-meta { flex: 0 0 auto; margin-top: auto; }
   .agent-card:not(.home-card) .ac-foot { flex: 0 0 auto; margin-top: 0; }
-  .agent-card .ac-path-row { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: var(--gap-4); align-items: start; }
+  /* 基线对齐（v0.38.8）：标签 11px/1.9 与值胶囊 12px/1.5+padding 高度不同，
+     顶对齐会让标签文字比值的文字高 1.5~2px（用户截图「左边的字比右边的字高一点」）。 */
+  .agent-card .ac-path-row { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: var(--gap-4); align-items: baseline; }
   /* 路径区与能力摘要区的标签**同族**：mono / --fs-2xs / 大写 / --faint，**无装饰点**。
      为什么去掉圆点（2026-10-12 排版精修）：它常驻在每一行标签前，却不传达任何状态
      （只有 is-empty 才换成空心，而「空」已由值区的「未收录」文案说明）—— 按 taste 规则
@@ -10035,7 +10037,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.38.7", build: 156, build_number: 156, semver_ok: true, full: "v0.38.7 (build 156)" },
+  app: { name: "Skill MCP Studio", version: "0.38.8", build: 157, build_number: 157, semver_ok: true, full: "v0.38.8 (build 157)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

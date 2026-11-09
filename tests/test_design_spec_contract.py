@@ -1200,6 +1200,30 @@ class CardTitleAlignmentTest(unittest.TestCase):
                       "用 10px 时是 12.8px，内容看起来被整体推下去")
 
 
+class RowBaselineAlignmentTest(unittest.TestCase):
+    """路径行 / 能力摘要行必须**基线对齐**（v0.38.8）。
+
+    标签是 11px / line-height 1.9，值是 12px / line-height 1.5 再套胶囊 padding——
+    两者行盒高度不同。用 `align-items: start` 时标签顶对齐值顶，标签文字因此比值的
+    文字高 1.5~2px（用户截图红框：「左边的字比右边的字高一点」）。
+    `align-items: baseline` 让两边文字的**基线**落在同一条线上，实测底部差 0.00px。
+    """
+
+    def test_path_row_uses_baseline_alignment(self):
+        css = _css()
+        row = re.search(r"\.agent-card \.ac-path-row\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(row, "未找到 .ac-path-row 规则")
+        self.assertIn("align-items: baseline", row.group(1),
+                      "路径行必须基线对齐：标签与值字号不同，顶对齐会让标签偏高")
+
+    def test_meta_row_uses_baseline_alignment(self):
+        css = _css()
+        meta = re.search(r"\.agent-card \.ac-meta-row\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(meta, "未找到 .ac-meta-row 规则")
+        self.assertIn("align-items: baseline", meta.group(1),
+                      "能力摘要行（SKILLS / MCP）与路径行同构，同样必须基线对齐")
+
+
 class ColumnWidthGovernanceTest(unittest.TestCase):
     """`.agent-list-table` 必须用 `table-layout: fixed` + 紧列定宽，防止图标列被撑宽。
 

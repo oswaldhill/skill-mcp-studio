@@ -405,6 +405,11 @@ Agent 卡片里有两组「标签 + 值」行：**路径区**（APP / CLI / CONF
   **Cursor 不登记**：用户规则存在设置里（不落盘），`~/.cursor/rules` 是项目级。
 - **目录形态**（Cline / TRAE）：`--read-rules` 返回文件清单，弹框只读展示，
   **不支持整体写入**——把一段文本写进规则目录会覆盖其中所有文件。
+- **路径行 / 能力摘要行一律基线对齐**（`.ac-path-row`、`.ac-meta-row` 的
+  `align-items: baseline`）：标签是 11px / `line-height: 1.9`，值是 12px /
+  `line-height: 1.5` 再套胶囊 padding，两者行盒高度不同。用 `start` 顶对齐时
+  标签文字会比值的文字高 1.5~2px（用户截图：「左边的字比右边的字高一点」）；
+  基线对齐后两边文字落在同一条基线上，实测底部差 0.00px，顶部 1px 差是字号差异。
 - **约束行并入路径区**（`.ac-paths` 的第四行，标签 `RULES`），与 APP / CLI / CONFIG
   **逐项同构**：同一 58px 标签列、同一 `.ac-path-val` 胶囊、同一 mono / `--fs-xs` 字号。
   用户定案：「约束好像应该是 Agent 本身的内容，不应该和 skill 和 MCP 放在一起」
