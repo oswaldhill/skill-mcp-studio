@@ -7,6 +7,37 @@
 
 ## [Unreleased]
 
+## [v0.38.2] - 2026-11-09
+
+当前发布版本（build 151）。**约束行的操作语言与上面几行统一：去掉「查看」按钮，
+路径本身可点。**
+
+用户指出：「这里的整体交互逻辑和 UI 规范都应该统一：点击上面好像没有按钮，
+那么这个『查看』也不应该有按钮，应该点击文字就可以展示。目前看也没有完全对齐。」
+
+### 改动
+
+- **约束行去掉「查看」按钮**：SKILLS / MCP 行都是纯文本，单独一行长出按钮会破坏
+  同一张卡片内的操作语言。改为**路径文字可点**（`.rules-path`：无边框、
+  `cursor: pointer`、hover 才出现下划线、`:focus-visible` 有焦点环），点击直接
+  打开编辑弹框。
+- **顺序与对齐**：路径在前（值区首个子元素自适应）、状态徽标贴右，与
+  `MCP  ~/.codex/config.toml  2 个端点` 完全同构。之前徽标在最左，它的内边距
+  让文字起点比上面几行偏右 7px。
+- **多路径**：用 `.rules-sep`（`·`）分隔，每个路径各自可点（WorkBuddy 两个路径
+  两个可点文字），不再出现「查看 1 / 查看 2」两个按钮。
+
+### 文档
+
+`docs/DESIGN.md` §2.3c-2 重写该条规则并记录用户定案原话；`docs/DESIGN.html` 同步。
+
+### 测试
+
+- 断言改为精确类名 `class="rules-path"` + `assertNotIn("rules-view-btn")`；
+  **反向验证**：去掉可点路径、加回查看按钮，各自让断言失败
+  （第一版只查子串 `rules-path`，改名成 `rules-path-REMOVED` 仍能通过，已修正）。
+- 全量 **1670 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
 ## [v0.38.1] - 2026-11-09
 
 当前发布版本（build 150）。**约束行与编辑弹框的视觉修正。**
@@ -2935,7 +2966,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.38.1...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.38.2...HEAD
+[v0.38.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.2
 [v0.38.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.1
 [v0.38.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.0
 [v0.37.9]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.9

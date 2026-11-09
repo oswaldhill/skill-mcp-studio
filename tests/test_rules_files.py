@@ -188,6 +188,12 @@ class RulesGuiContract(unittest.TestCase):
         self.assertNotIn("renderSettingsRules", self.dashboard,
                          "独立卡片的渲染函数应已移除")
         self.assertIn('data-action="view-rules"', self.dashboard, "缺「查看」入口")
+        # v0.38.2 用户定案：「上面好像没有按钮，那么这个『查看』也不应该有按钮，
+        # 应该点击文字就可以展示」——约束行用可点路径文字，不再有按钮。
+        self.assertIn('class="rules-path"', self.dashboard,
+                      "约束行应使用可点路径文字（.rules-path）")
+        self.assertNotIn("rules-view-btn", self.dashboard,
+                         "约束行不应再有独立的「查看」按钮")
         self.assertIn("function loadRules", self.dashboard)
         self.assertIn("function openRulesModal", self.dashboard)
 

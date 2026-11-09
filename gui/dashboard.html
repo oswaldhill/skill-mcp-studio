@@ -402,12 +402,21 @@
   }
   .agent-card:not(.home-card) .ac-meta-row .v > :first-child { flex: 1 1 auto; min-width: 0; }
   .agent-card:not(.home-card) .ac-meta-row .v > :not(:first-child) { flex: 0 0 auto; }
-  /* 约束行（v0.38.1）：徽标不是「自适应文本」，不能被 flex:1 拉宽——它是一枚
-     状态徽标，拉伸后和旁边的按钮比例失衡（用户截图「左右大小不一致」）。
-     这里把值区改成 inline-flex：徽标定宽、按钮等宽并排。 */
-  .agent-card:not(.home-card) .ac-meta-row .v.ac-rules-v { display: inline-flex; align-items: center; gap: var(--gap-2); flex-wrap: wrap; }
-  .agent-card:not(.home-card) .ac-meta-row .v.ac-rules-v > * { flex: 0 0 auto; }
-  .ac-rules-v .rules-view-btn { min-width: 64px; justify-content: center; }
+  /* 约束行（v0.38.2）：与 SKILLS / MCP 完全同构——值区首个子元素自适应、
+     徽标贴右；路径本身是**可点文字**（无按钮），点击打开编辑弹框。
+     用户定案：「点击上面好像没有按钮，那么这个『查看』也不应该有按钮，
+     应该点击文字就可以展示。」 */
+  .ac-meta-row .rules-paths { display: flex; align-items: center; gap: var(--gap-2); flex-wrap: wrap; min-width: 0; }
+  .ac-meta-row .rules-path {
+    background: none; border: none; padding: 0; margin: 0; cursor: pointer;
+    font-family: var(--mono); font-size: var(--fs-xs); color: var(--muted);
+    text-decoration: underline; text-decoration-color: transparent;
+    transition: color .15s var(--ease), text-decoration-color .15s var(--ease);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;
+  }
+  .ac-meta-row .rules-path:hover { color: var(--text); text-decoration-color: var(--line-strong); }
+  .ac-meta-row .rules-path:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .ac-meta-row .rules-sep { color: var(--faint); }
   /* 路径区：列表改单列网格，路径因此**等宽**（右边界成一条竖线）；
      此前 flex-column 下胶囊宽度随内容长短不一，右边界呈锯齿。 */
   .agent-card:not(.home-card) .ac-path-row .ac-path-list {
@@ -4621,11 +4630,14 @@ function _agentRulesSummary(t) {
   const total = paths.length;
   const cls = hit === total ? "ok" : (hit > 0 ? "warn" : "");
   const tip = paths.map((p) => `${p.path}${p.exists ? "" : "（未配置）"}`).join("；");
-  const btns = paths.map((p, idx) =>
-    `<button class="btn-soft rules-view-btn" data-action="view-rules" data-client="${escapeHtml(t.name)}"
-      data-index="${idx}" title="${escapeHtml(p.path)}">${paths.length > 1 ? `查看 ${idx + 1}` : "查看"}</button>`
-  ).join("");
-  return `<span class="ac-rules-v"><span class="tag ${cls}" title="${escapeHtml(tip)}">${hit}/${total}</span>${btns}</span>`;
+  // 路径是可点文字（不是按钮）：与 SKILLS / MCP 行一样没有「操作按钮」，
+  // 点击路径直接打开编辑弹框；多个路径用 · 分隔，各自可点。
+  const links = paths.map((p, idx) =>
+    `<button type="button" class="rules-path" data-action="view-rules"
+      data-client="${escapeHtml(t.name)}" data-index="${idx}"
+      title="编辑 ${escapeHtml(p.path)}">${escapeHtml(p.path)}</button>`
+  ).join('<span class="rules-sep" aria-hidden="true">·</span>');
+  return `<span class="rules-paths">${links}</span><span class="tag ${cls}" title="${escapeHtml(tip)}">${hit}/${total}</span>`;
 }
 
 function renderAgentsTable(page) {
@@ -4710,7 +4722,7 @@ function renderAgentsTable(page) {
           <div class="ac-meta">
             <div class="ac-meta-row"><span class="k">Skills</span><span class="v">${_agentSkillsSummary(t)}</span></div>
             <div class="ac-meta-row"><span class="k">MCP</span><span class="v">${_agentMcpSummary(t)}</span></div>
-            ${_agentRulesSummary(t) ? `<div class="ac-meta-row"><span class="k">约束</span><span class="v ac-rules-v">${_agentRulesSummary(t)}</span></div>` : ""}
+            ${_agentRulesSummary(t) ? `<div class="ac-meta-row"><span class="k">约束</span><span class="v">${_agentRulesSummary(t)}</span></div>` : ""}
           </div>
           <div class="ac-foot">
             <span class="ac-count">${totalPaths} 条路径</span>
@@ -10007,7 +10019,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.38.1", build: 150, build_number: 150, semver_ok: true, full: "v0.38.1 (build 150)" },
+  app: { name: "Skill MCP Studio", version: "0.38.2", build: 151, build_number: 151, semver_ok: true, full: "v0.38.2 (build 151)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",
