@@ -1311,7 +1311,10 @@
   }
 
   /* 头部：名称 + 类型徽章 + 登记状态 */
-  .agent-card .ac-head { display: flex; align-items: center; gap: var(--gap-3); padding: var(--sp-5b) var(--sp-7) var(--sp-0b); }
+  /* 标题行与内容行的垂直节奏（v0.38.6）：标题顶部内边对齐左右内边（16px），
+     底部留 0、由路径区的 padding-top 统一给 10px —— 实测标题中心到第一行内容
+     中心原本 36.8px，比行间距（30px）多 6.8px，看起来内容「往下偏」。 */
+  .agent-card .ac-head { display: flex; align-items: center; gap: var(--gap-3); padding: var(--sp-5) var(--sp-7) 0; }
   .agent-card .ac-name {
     font-family: var(--mono); font-weight: 600; font-size: var(--fs-base);
     color: var(--text); letter-spacing: -.01em; min-width: 0;
@@ -1336,7 +1339,7 @@
   .agent-card .status.err .sdot { background: var(--err); }
 
   /* 路径区：每类一行，完整列出全部路径 */
-  .agent-card .ac-paths { display: flex; flex-direction: column; gap: var(--gap-2); padding: var(--sp-5) var(--sp-7); }
+  .agent-card .ac-paths { display: flex; flex-direction: column; gap: var(--gap-2); padding: var(--sp-4) var(--sp-7) var(--sp-5); }
   /* 路径区**弹性填充**，让卡片内两条分隔线（能力区上沿、底栏上沿）跨卡片对齐。
      为什么（2026-10-12 用户要求「分隔线永远对齐」）：同一行两张卡片等高，但路径条数
      可能不同（Cursor 3 条 vs VS Code 4 条）；路径区高度若随内容，其后的分隔线就会错开
@@ -10032,7 +10035,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.38.5", build: 154, build_number: 154, semver_ok: true, full: "v0.38.5 (build 154)" },
+  app: { name: "Skill MCP Studio", version: "0.38.6", build: 155, build_number: 155, semver_ok: true, full: "v0.38.6 (build 155)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

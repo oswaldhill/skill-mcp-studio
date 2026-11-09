@@ -1168,6 +1168,37 @@ class RowStatusCellUniformityTest(unittest.TestCase):
         self.assertIn("text-align: center", m.group(1), "居中规则应声明 text-align: center")
 
 
+class CardTitleAlignmentTest(unittest.TestCase):
+    """卡片标题与内容行的对齐（v0.38.6 用户「标题和内容没完全对齐，往下偏」）。
+
+    实测（620px 宽卡片）：改前标题左边 17px、标签左边 17px（已对齐），但标题中心到
+    第一行内容中心 36.8px，而行间距是 30px —— 多出 6.8px，视觉上内容「往下偏」。
+    改后：标题顶部内边 12px（与左右 16px 的视觉起点一致）、路径区顶部 10px，
+    标题到首行的中心距 32.8px，与行间距只差 2.8px。
+    """
+
+    def test_title_and_content_share_left_padding(self):
+        css = _css()
+        head = re.search(r"\.agent-card \.ac-head\s*\{([^}]*)\}", css)
+        paths = re.search(r"\.agent-card \.ac-paths\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(head, "未找到 .ac-head 规则")
+        self.assertIsNotNone(paths, "未找到 .ac-paths 规则")
+        # 左右内边同档 —— 标题与标签列因此左对齐
+        self.assertIn("var(--sp-7)", head.group(1))
+        self.assertIn("var(--sp-7)", paths.group(1))
+
+    def test_title_and_content_vertical_rhythm(self):
+        css = _css()
+        head = re.search(r"\.agent-card \.ac-head\s*\{([^}]*)\}", css).group(1)
+        paths = re.search(r"\.agent-card \.ac-paths\s*\{([^}]*)\}", css).group(1)
+        # 标题：顶 12px / 左右 16px / 底 0（底部间距交给路径区）
+        self.assertIn("var(--sp-5) var(--sp-7) 0", head,
+                      "标题行应为 12px 16px 0：顶部与左右视觉起点一致，底部不留")
+        # 路径区：顶 10px（标题到首行的间距因此接近行间距）
+        self.assertIn("var(--sp-4) var(--sp-7) var(--sp-5)", paths,
+                      "路径区顶部应为 10px，否则标题到首行的中心距明显大于行间距")
+
+
 class ColumnWidthGovernanceTest(unittest.TestCase):
     """`.agent-list-table` 必须用 `table-layout: fixed` + 紧列定宽，防止图标列被撑宽。
 

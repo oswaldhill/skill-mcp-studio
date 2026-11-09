@@ -7,6 +7,38 @@
 
 ## [Unreleased]
 
+## [v0.38.6] - 2026-11-09
+
+当前发布版本（build 155）。**卡片标题与内容行的垂直节奏修正。**
+
+用户反馈：「请检查标题和内容是否对齐，我感觉好像都没有完全对齐，有往下偏的趋势」。
+
+### 实测数据（620px 宽卡片，用浏览器量 boundingRect）
+
+| 项目 | 改前 | 改后 |
+|---|---|---|
+| 标题左边缘 | 17px | 17px |
+| 标签列左边缘 | 17px | 17px |
+| 标题中心 → 首行内容中心 | **36.8px** | **32.8px** |
+| 行间距（行到行中心距） | 30px | 30px |
+| 差值（越大越像「往下偏」） | **6.8px** | **2.8px** |
+
+左对齐本来是对的（17 = 17），问题在**垂直**：标题到首行的间距比行间距多 6.8px，
+所以内容看起来整体下沉。
+
+### 修复
+
+- `.ac-head` 内边由 `15px 16px 2px` 改为 **`12px 16px 0`**：顶部与左右视觉起点一致，
+  底部不留内边（交给路径区控制）；
+- `.ac-paths` 内边由 `12px 16px` 改为 **`10px 16px 12px`**：标题到首行 10px，
+  中心距随之接近行间距。
+
+### 测试
+
+- 新增 `CardTitleAlignmentTest`（2 项）：左右内边同档、标题与路径区的内边档位。
+- **反向验证 2 条**：把标题内边改回旧值、路径区顶部改回 12px，各自让断言失败。
+- 全量 **1672 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
 ## [v0.38.5] - 2026-11-09
 
 当前发布版本（build 154）。**修复约束预览弹框内容贴边（内边距被清零）。**
@@ -3074,7 +3106,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.38.5...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.38.6...HEAD
+[v0.38.6]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.6
 [v0.38.5]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.5
 [v0.38.4]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.4
 [v0.38.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.3
