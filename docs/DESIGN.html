@@ -1111,6 +1111,10 @@
           <strong>没有独立按钮</strong>），点击打开只读预览。</li>
         <li><strong>只读预览</strong>（<code>.rules-preview</code>）：有边框、内边距、可滚动
           （<code>max-height: 55vh</code>），底部只有「关闭」。<strong>不提供内联编辑</strong>。</li>
+        <li><strong>预览弹框</strong>（<code>.rules-modal</code>）：标题 → 路径（mono）→
+          <strong>状态与规模并排一行</strong>（<code>.rules-meta</code>）→ 内容区 → 底部分隔线 + 关闭。
+          未配置时用 <code>.rules-missing</code>（<strong>实线</strong>说明块）——虚线是「占位符」语言，
+          不该出现在这里。</li>
         <li><strong>为什么函数里要 <code>typeof RULES_DATA</code> 防御</strong>：<code>renderHomeListView</code> /
           <code>renderAgentsTable</code> 会被测试单独抽出到 node 里执行，那时全局状态不存在；
           不加防御会直接 ReferenceError。</li>

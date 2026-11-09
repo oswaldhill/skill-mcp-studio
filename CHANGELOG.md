@@ -7,6 +7,37 @@
 
 ## [Unreleased]
 
+## [v0.38.4] - 2026-11-09
+
+当前发布版本（build 153）。**约束预览弹框的视觉收紧。**
+
+用户截图指出弹框「太丑」。三处具体问题：
+
+1. **状态 / 规模两行 kv 间距过大**：`.rows` 在弹框里是 `gap: --gap-4`，两行之间
+   空了近 40px，读起来像两组无关信息；
+2. **未配置态用虚线框**：那是「占位符」语言（`.empty` 的样式），放在弹框里
+   像是还没做完；
+3. **底部没有分隔线**：左侧说明与右侧按钮浮在同一行，缺少收口。
+
+### 改动
+
+- 状态与规模**并排一行**（`.rules-meta` / `.rules-meta-k` / `.rules-meta-v`）：
+  标签 mono 大写 faint、值 `--fs-sm`，两者基线对齐，间距 `--gap-7`。
+- 未配置态改用 `.rules-missing`（**实线**边框的说明块，`--sp-9` 内边距）。
+- `.form-actions` 加 `border-top` + `padding-top`，把「只读预览说明 + 关闭」
+  收成弹框的独立底栏。
+- 弹框加 `.rules-modal` 修饰类，间距规则全部限定在它下面，不影响其它弹框。
+
+### 文档
+
+`docs/DESIGN.md` §2.3c-2 登记 `.rules-modal` / `.rules-meta` / `.rules-missing`
+及三处修正的原因；`docs/DESIGN.html` 同步。
+
+### 测试
+
+全量 **1670 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过
+（`ComponentRegistrationTest` 确认 `.rules-modal` 已登记）。
+
 ## [v0.38.3] - 2026-11-09
 
 当前发布版本（build 152）。**约束行并入 Agent 配置区，改为只读预览。**
@@ -3014,7 +3045,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.38.3...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.38.4...HEAD
+[v0.38.4]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.4
 [v0.38.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.3
 [v0.38.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.2
 [v0.38.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.1

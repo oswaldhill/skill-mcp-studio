@@ -413,6 +413,12 @@ Agent 卡片里有两组「标签 + 值」行：**路径区**（APP / CLI / CONF
 - **只读预览**（`.rules-preview`）：有边框、内边距、可滚动（`max-height: 55vh`），
   底部只有「关闭」。**不提供内联编辑**——用户定案：「展示部分只需要只读就好了，
   在这里不需要提供直接修改文件的功能」。
+- **预览弹框**（`.rules-modal` 修饰 `.modal.modal-form.ad-modal`）的信息层次：
+  标题 → 路径（mono）→ **状态与规模并排一行**（`.rules-meta` / `.rules-meta-k` /
+  `.rules-meta-v`，标签 mono 大写 faint、值 `--fs-sm`）→ 内容区 → 底部分隔线
+  （`.form-actions` 的 `border-top`）+ 关闭。未配置时用 `.rules-missing`
+  （**实线**边框的说明块）——虚线是「占位符」语言，不该出现在这里。
+  用户反馈「太丑」的三处：两行 kv 间距过大、未配置态是虚线框、底部无分隔。
 - **为什么函数里要 `typeof RULES_DATA` 防御**：`renderHomeListView` /
   `renderAgentsTable` 会被测试单独抽出到 node 里执行，那时全局状态不存在；
   不加防御会直接 ReferenceError。

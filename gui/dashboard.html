@@ -418,6 +418,23 @@
     font-family: var(--mono); font-size: var(--fs-xs); line-height: 1.6;
     max-height: 55vh; overflow: auto; white-space: pre-wrap; word-break: break-word;
   }
+  /* 约束预览弹框（v0.38.4）：状态与规模并排成一行、底部用分隔线收口。
+     此前是两行 kv + 大间距 + 虚线空态，整块读起来散且像占位符。 */
+  .rules-modal .form-sub { margin-bottom: var(--sp-5); }
+  .rules-modal .rules-meta { display: flex; flex-wrap: wrap; gap: var(--gap-2) var(--gap-7); margin-bottom: var(--sp-5); }
+  .rules-modal .rules-meta-item { display: inline-flex; align-items: baseline; gap: var(--gap-2); }
+  .rules-modal .rules-meta-k {
+    font-family: var(--mono); font-size: var(--fs-2xs); font-weight: 600;
+    letter-spacing: .07em; text-transform: uppercase; color: var(--faint);
+  }
+  .rules-modal .rules-meta-v { font-size: var(--fs-sm); color: var(--text); }
+  .rules-modal .form-actions { border-top: 1px solid var(--line); padding-top: var(--sp-5); margin-top: var(--sp-6); }
+  /* 未配置态：实线边框的说明块（虚线是「占位符」语言，不该出现在这里） */
+  .rules-missing {
+    padding: var(--sp-9) var(--sp-6); border: 1px solid var(--line);
+    border-radius: var(--r-control); background: var(--bg-elev);
+    text-align: center; color: var(--muted); font-size: var(--fs-sm); line-height: 1.6;
+  }
   /* 路径区：列表改单列网格，路径因此**等宽**（右边界成一条竖线）；
      此前 flex-column 下胶囊宽度随内容长短不一，右边界呈锯齿。 */
   .agent-card:not(.home-card) .ac-path-row .ac-path-list {
@@ -7520,14 +7537,14 @@ function renderEndpointStatus() {
     // 预览区有边框 / 内边距 / 可滚动（此前是裸 textarea，用户反馈「没有边框，
     // 没有相应的间隔」）。
     const body = missing
-      ? '<div class="empty">文件不存在。可在编辑器里新建后保存到该路径。</div>'
+      ? '<div class="rules-missing">文件不存在。用编辑器在该路径新建后，这里会显示内容。</div>'
       : `<pre class="rules-preview">${escapeHtml(d.content || "")}</pre>`;
-    mountModal(`<div class="modal-backdrop"><div class="modal modal-form ad-modal">
+    mountModal(`<div class="modal-backdrop"><div class="modal modal-form ad-modal rules-modal">
       <div class="form-title">${escapeHtml(d.client)} · 约束文件</div>
       <div class="form-sub"><code class="mono">${escapeHtml(d.path)}</code></div>
-      <div class="rows" style="font-size:var(--fs-sm);margin-bottom:var(--sp-6)">
-        <div class="row"><span class="k">状态</span><span class="v">${stateTag}</span></div>
-        <div class="row"><span class="k">规模</span><span class="v">${lineCount} 行 · ${sizeText}</span></div>
+      <div class="rules-meta">
+        <span class="rules-meta-item"><span class="rules-meta-k">状态</span><span class="rules-meta-v">${stateTag}</span></span>
+        <span class="rules-meta-item"><span class="rules-meta-k">规模</span><span class="rules-meta-v">${lineCount} 行 · ${sizeText}</span></span>
       </div>
       ${body}
       <div class="form-actions">
@@ -10011,7 +10028,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.38.3", build: 152, build_number: 152, semver_ok: true, full: "v0.38.3 (build 152)" },
+  app: { name: "Skill MCP Studio", version: "0.38.4", build: 153, build_number: 153, semver_ok: true, full: "v0.38.4 (build 153)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",
