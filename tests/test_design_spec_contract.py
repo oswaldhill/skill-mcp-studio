@@ -1157,7 +1157,7 @@ class RowStatusCellUniformityTest(unittest.TestCase):
         （文字+问号图标）轴线不一致；居中后实测偏差 0.0px。
         """
         css = _css()
-        for col in (3, 7, 8):
+        for col in (3, 7, 8, 9):
             with self.subTest(col=col):
                 self.assertIn(f".agent-list-table th:nth-child({col})", css,
                               f"第 {col} 列 th 未纳入居中规则")
@@ -1185,10 +1185,10 @@ class ColumnWidthGovernanceTest(unittest.TestCase):
                       ".agent-list-table 必须声明 table-layout: fixed，否则紧列会被 auto 布局撑宽")
 
     def test_tight_columns_have_px_width(self):
-        """7 个紧列（安装/APP/CLI/CONFIG/技能目录/MCP/操作）必须有 px 定宽。"""
+        """8 个紧列（安装/APP/CLI/CONFIG/技能目录/约束/MCP/操作）必须有 px 定宽。"""
         css = _css()
         # 列号 → 期望最小宽度（内容并集 + 20px 内边，向上取 4 的倍数）
-        expected = {3: 56, 4: 48, 5: 48, 6: 70, 7: 82, 8: 78, 9: 124}
+        expected = {3: 56, 4: 48, 5: 48, 6: 70, 7: 82, 8: 78, 9: 78, 10: 124}
         for col, min_w in expected.items():
             with self.subTest(col=col):
                 # th 或 td 任一声明了 width 即可（两者通常成对出现）

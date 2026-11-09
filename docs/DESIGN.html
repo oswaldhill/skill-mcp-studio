@@ -1075,32 +1075,45 @@
 
     <!-- ═══ 2.3c-2 ═══ -->
     <section id="s2-3c2">
-      <h3 id="s2-3c2">2.3c-2 约束文件面板（<code>#rules-panel</code>，v0.37.7）<a class="anchor" href="#s2-3c2" aria-label="锚点">#</a></h3>
+      <h3 id="s2-3c2">2.3c-2 约束文件（主表状态列 + 设置页逐行配置，v0.37.9）<a class="anchor" href="#s2-3c2" aria-label="锚点">#</a></h3>
       <p><strong>为什么有它</strong>：不同客户端的「主要约束文件」各不相同——Claude Code 用
         <code>CLAUDE.md</code>、Codex 用 <code>AGENTS.md</code>、Gemini CLI 用 <code>GEMINI.md</code>、
-        Cursor 用 <code>.cursor/rules/</code> 目录……用户此前要逐个翻目录才知道「这台机器上每个 Agent
-        的规则到底配了什么」。本面板把注册表里声明了约束文件的客户端汇总成一张表。</p>
-      <pre><code>┌ .panel#rules-panel ────────────────────────────────────────────┐
-│ .hd.fc-head：h3「约束文件」+ hint（左）｜[重新读取 btn-soft]（右）│
-│ #rules-body：.mcp-table                                         │
-│   客户端 | 约束文件 | 状态 | 规模 | 操作                         │
-│   Codex  | ~/.codex/AGENTS.md | [tag ok 已配置] | 60 行 · … | 查看 │
-│   Cursor | ~/.cursor/rules    | [tag 目录]      | 3 个文件   | 查看 │
-│   Claude Code | ~/.claude/CLAUDE.md | [tag 未配置] | -     | 查看 │
-│ note: 共 N 个客户端有约定，M/N 个已配置；路径来自各客户端官方约定 │
-└────────────────────────────────────────────────────────────────┘</code></pre>
+        WorkBuddy 用 <code>SOUL.md</code>……用户此前要逐个翻目录才知道「这台机器上每个 Agent 的规则配了什么」。</p>
+      <p><strong>两处呈现，职责分开</strong>（v0.37.9 用户定案：「约束文件应该合并到上面的列表中，
+        而不是单独展示；下面每个 Agent 的具体配置，应该在设置里单独有一行」）：</p>
+      <ol>
+        <li><strong>IDE / Agent 主表加「约束」列</strong>（第 8 列，技能目录与 MCP 之间）：只给状态，
+          与安装/技能目录/MCP 同一种表达方式（<code>N/M</code> 徽标，<code>title</code> 列出各路径）。
+          全部已配置 → <code>tag ok</code>；部分 → <code>tag warn</code>；一个都没有 → 中性
+          <code>tag</code> 写「未配置」；客户端没有官方约定 → 中性 <code>tag</code> 写「无约定」。
+          <strong>不要在这里放路径与编辑按钮</strong>：主表已有 10 列，路径会把表撑宽，
+          且「看状态」与「改内容」是两种不同的动作。</li>
+        <li><strong>设置页 IDE / Agent tab 加「约束文件」卡片</strong>（<code>#settings-rules-card</code>）：
+          <strong>每个 Agent 一行</strong>，<code>k</code> = 客户端名，<code>v</code> = 路径
+          （<code>code.mono</code>）+ 状态标签 + 规模（行数/文件数）+ 「查看」按钮。
+          WorkBuddy 有两个路径就出两行。</li>
+      </ol>
+      <pre><code>┌ .settings-card#settings-rules-card ───────────────────────────┐
+│ H4: 约束文件                                                   │
+│ .rows（每路径一行）：                                           │
+│   Codex            ~/.codex/AGENTS.md   [已配置] 60 行  [查看] │
+│   WorkBuddy        ~/.workbuddy/SOUL.md [已配置] 66 行  [查看] │
+│   Claude Code      ~/.claude/CLAUDE.md   [未配置] -      [查看] │
+│ note: 路径来自官方约定；未配置可点「查看」新建，保存前自动备份    │
+└───────────────────────────────────────────────────────────────┘</code></pre>
       <ul>
-        <li><strong>数据来源</strong>：<code>--list-rules --format json</code>（只读）。路径只认注册表
-          （<code>mainstream_registry_data</code>）里显式声明的 <code>rules_paths</code>，<strong>不猜</strong>。</li>
+        <li><strong>数据来源</strong>：<code>--list-rules --format json</code>（只读），一次加载同时喂给主表与设置页
+          （<code>RULES_DATA</code>）。路径只认注册表（<code>mainstream_registry_data</code>）里显式声明的
+          <code>rules_paths</code>，<strong>不猜</strong>。当前登记 9 个客户端 / 10 个路径，依据写在注册表顶部注释；
+          <strong>Cursor 不登记</strong>（用户规则存在设置里不落盘，<code>~/.cursor/rules</code> 是项目级）。</li>
         <li><strong>查看 / 编辑</strong>：点「查看」→ <code>--read-rules &lt;client&gt; --rules-index N</code>，
-          弹 <code>.modal.modal-form</code> + <code>.rules-editor</code>（等宽、50vh、可纵向拉伸）。
+          弹 <code>.modal.modal-form.ad-modal</code> + <code>.rules-editor</code>（等宽、50vh、可纵向拉伸）。
           保存走 <code>--write-rules &lt;client&gt; --rules-content &lt;文本&gt;</code>：先备份为
           <code>&lt;原文件&gt;.bak-&lt;时间戳&gt;</code> → 原子写 → 回读校验。</li>
-        <li><strong>目录形态</strong>（Cursor / TRAE）：<code>--read-rules</code> 返回文件清单，弹框只读展示，
+        <li><strong>目录形态</strong>（Cline / TRAE）：<code>--read-rules</code> 返回文件清单，弹框只读展示，
           <strong>不支持整体写入</strong>——把一段文本写进规则目录会覆盖其中所有文件。</li>
-        <li><strong>未配置</strong>：显示 <code>tag 未配置</code> + 规模列「-」；点「查看」可新建。</li>
-        <li><strong>为什么放在 IDE / Agent 页而不是新开一页</strong>：约束文件是<strong>客户端的属性</strong>
-          （与 skills 路径、MCP 配置同级），用户找它时的心理路径就是「这个 Agent 配了什么」。</li>
+        <li><strong>为什么主表用 <code>typeof RULES_DATA</code> 防御</strong>：<code>renderHomeListView</code>
+          会被测试单独抽出到 node 里执行，那时全局状态不存在；不加防御会直接 ReferenceError。</li>
       </ul>
     </section>
 

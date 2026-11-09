@@ -7,6 +7,46 @@
 
 ## [Unreleased]
 
+## [v0.37.9] - 2026-11-09
+
+当前发布版本（build 148）。**约束文件改为「主表状态列 + 设置页逐行配置」。**
+
+用户截图指出：「这个约束文件应该合并到上面的列表中，而不是单独展示。然后下面
+每个 Agent 的具体配置，应该在设置里单独有一行。」原实现是一块独立面板，
+与主表分家，且路径与编辑入口挤在同一张表里。
+
+### 改动
+
+- **IDE / Agent 主表加「约束」列**（第 8 列，技能目录与 MCP 之间）：只给状态，
+  与安装/技能目录/MCP 同一表达方式——`N/M` 徽标，`title` 列出各路径；
+  全配置 `tag ok`、部分 `tag warn`、都没有「未配置」、无约定「无约定」。
+- **设置页 IDE / Agent tab 加「约束文件」卡片**（`#settings-rules-card`）：
+  **每个 Agent 一行**——客户端名 + 路径（`code.mono`）+ 状态 + 规模（行数/文件数）
+  + 「查看」按钮；WorkBuddy 两个路径就出两行。
+- **移除独立面板** `#rules-panel` 与它的渲染函数 `renderRules()`。
+- **一次加载两处消费**：`--list-rules` 结果存 `RULES_DATA`，主表列与设置页行共用。
+
+### 顺带修掉的两个真 bug
+
+1. **`loadRules()` 依赖已删除的容器**：独立面板移除后它仍在找 `rules-body`，
+   找不到就直接 return——数据永远加载不出来，两处都停在「加载中…」。
+2. **`RULES_DATA` 声明在错误作用域**：声明留在被删函数的旧位置，而主表渲染在
+   另一处引用；已移到全局状态区（与 `GIT_SOURCES` 同级）。主表渲染另加
+   `typeof RULES_DATA` 防御——`renderHomeListView` 会被测试单独抽到 node 里执行。
+
+### 文档
+
+`docs/DESIGN.md` §2.3c-2 重写为「主表状态列 + 设置页逐行配置」两处职责，
+`docs/DESIGN.html` 同步。
+
+### 测试
+
+- `tests/test_rules_files.py` 的 GUI 契约改为断言「主表有约束列 + 独立面板已移除
+  + 设置页卡片存在」，并**反向验证**：去掉列、去掉卡片各自让断言失败。
+- 列宽治理测试期望更新为 8 个紧列（`{3:56, 4:48, 5:48, 6:70, 7:82, 8:78, 9:78, 10:124}`），
+  居中列扩到 3/7/8/9。
+- 全量 **1670 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
 ## [v0.37.8] - 2026-11-09
 
 当前发布版本（build 147）。**约束文件路径按各客户端官方文档校正，补上 WorkBuddy。**
@@ -2808,7 +2848,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.37.8...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.37.9...HEAD
+[v0.37.9]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.9
 [v0.37.8]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.8
 [v0.37.7]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.7
 [v0.37.6]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.6

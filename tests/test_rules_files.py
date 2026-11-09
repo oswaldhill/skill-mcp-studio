@@ -165,8 +165,21 @@ class RulesGuiContract(unittest.TestCase):
         cls.lib_rs = (ROOT / "src-tauri" / "src" / "lib.rs").read_text(encoding="utf-8")
         cls.design = (ROOT / "docs" / "DESIGN.md").read_text(encoding="utf-8")
 
-    def test_panel_and_actions(self):
-        self.assertIn('id="rules-panel"', self.dashboard, "Agent 页缺约束文件面板")
+    def test_column_and_settings_rows(self):
+        """v0.37.9：约束状态合并进客户端主表，逐 Agent 配置行收进设置页。
+
+        用户原话：「这个约束文件应该合并到上面的列表中，而不是单独展示。
+        然后下面每个 Agent 的具体配置，应该在设置里单独有一行。」
+        """
+        self.assertIn("约束<span class=\"th-help\"", self.dashboard,
+                      "IDE/Agent 主表缺「约束」列")
+        self.assertIn("rulesCell", self.dashboard, "缺约束列渲染逻辑")
+        self.assertNotIn('id="rules-panel"', self.dashboard,
+                         "独立约束面板应已移除（改为合并进主表）")
+        self.assertIn('id="settings-rules-card"', self.dashboard,
+                      "设置页 IDE/Agent tab 缺「约束文件」卡片")
+        self.assertIn("function renderSettingsRules", self.dashboard,
+                      "缺逐 Agent 配置行渲染")
         self.assertIn('data-action="view-rules"', self.dashboard, "缺「查看」入口")
         self.assertIn("function loadRules", self.dashboard)
         self.assertIn("function openRulesModal", self.dashboard)

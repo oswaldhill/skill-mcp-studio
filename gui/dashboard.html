@@ -1176,9 +1176,11 @@
   .agent-list-table th:nth-child(3),
   .agent-list-table th:nth-child(7),
   .agent-list-table th:nth-child(8),
+  .agent-list-table th:nth-child(9),
   .agent-list-table td:nth-child(3),
   .agent-list-table td:nth-child(7),
-  .agent-list-table td:nth-child(8) { text-align: center; }
+  .agent-list-table td:nth-child(8),
+  .agent-list-table td:nth-child(9) { text-align: center; }
   /* 列宽受控：紧列定宽 + 文本列弹性（2026-10-14 按量化诊断整改）。
      问题：默认 auto 布局下浏览器把**全部**宽度按内容比例分摊，于是"只装一枚 20px 图标"
      的列被分到 89-125px。1440px 窗口实测：技能目录列 125px 装 20px（浪费 105px）、
@@ -1193,8 +1195,9 @@
   .agent-list-table th:nth-child(5),  .agent-list-table td:nth-child(5)  { width: 48px; }   /* CLI：同上 */
   .agent-list-table th:nth-child(6),  .agent-list-table td:nth-child(6)  { width: 70px; }   /* CONFIG：同上，表头词更长 */
   .agent-list-table th:nth-child(7),  .agent-list-table td:nth-child(7)  { width: 82px; }   /* 技能目录：一枚链接徽标 */
-  .agent-list-table th:nth-child(8),  .agent-list-table td:nth-child(8)  { width: 78px; }   /* MCP：N/M 或「不支持」 */
-  .agent-list-table th:nth-child(9),  .agent-list-table td:nth-child(9)  { width: 124px; }  /* 操作：详情按钮 + 更多菜单 */
+  .agent-list-table th:nth-child(8),  .agent-list-table td:nth-child(8)  { width: 78px; }   /* 约束：N/M 或「无约定」 */
+  .agent-list-table th:nth-child(9),  .agent-list-table td:nth-child(9)  { width: 78px; }   /* MCP：N/M 或「不支持」 */
+  .agent-list-table th:nth-child(10), .agent-list-table td:nth-child(10) { width: 124px; }  /* 操作：详情按钮 + 更多菜单 */
   /* fixed 布局下超长内容不会自动换行，必须显式裁切（overflow: hidden 已合并进上方 td 主规则）。
      名称/类型两个文本列给省略号，保证长客户端名不撑破定宽。 */
   .agent-list-table .al-name,
@@ -2087,14 +2090,6 @@
         </div>
       </div>
       <div id="agents-list"></div>
-      <!-- 约束文件（v0.37.7）：各客户端的主要规则文件（AGENTS.md / CLAUDE.md 等） -->
-      <div class="panel" id="rules-panel">
-        <div class="hd fc-head">
-          <div><h3>约束文件</h3><div class="hint">各客户端的 AGENTS.md / CLAUDE.md / GEMINI.md 等主要规则文件，可查看与编辑</div></div>
-          <button class="btn-soft" data-action="refresh-rules">重新读取</button>
-        </div>
-        <div id="rules-body"><div class="empty">加载中…</div></div>
-      </div>
     </section>
 
     <!-- ===== Skills（业务：合并 / 逐技能状态） ===== -->
@@ -2262,6 +2257,9 @@ const escapeHtml = (v) => String(v == null ? "" : v)
 let SNAP = null;
 // Git 技能源（2026-11-07）：登记表 + 最近一次检查结果。
 let GIT_SOURCES = { loading: false, items: [], summary: null, error: "", adoptTried: false, autoAdopted: null, adoptError: "" };
+// 约束文件数据（v0.37.9）：主表的「约束」列与设置页逐 Agent 行共用。
+let RULES_DATA = null;
+let RULES_ERROR = "";
 // 端点连通性结果 —— **独立于审计快照 SNAP**。
 // 审计只判配置（不探活），端点通断只由用户手动点「检查端点连通性」触发，
 // 结果暂存在这里，不写回 SNAP，免得端点状态又渗回审计区的颜色。
@@ -3300,6 +3298,27 @@ const skillsCell = `<span class="al-ico ${skillsCls}" title="${escapeHtml(skills
     } else {
       mcpCell = `<span class="tag err" title="端点未在设置中配置（可用「修复 MCP」接入）">${mcpConfigured}/${mcpTotal}</span>`;
     }
+    // 约束文件（v0.37.9）：从 --list-rules 的结果里按客户端名匹配。
+    // 合并进主表而不是单独一块——它就是「这个客户端配了什么」的又一行。
+    // typeof 防御：渲染函数会被测试单独抽出执行，那时全局状态可能不存在。
+    const rulesRow = ((typeof RULES_DATA !== "undefined" && RULES_DATA && RULES_DATA.rows) || [])
+      .find((r) => r.name === a.name);
+    const rulesPaths = (rulesRow && rulesRow.paths) || [];
+    let rulesCell;
+    if (!rulesPaths.length) {
+      rulesCell = '<span class="tag" title="该客户端没有官方约定的用户级约束文件">无约定</span>';
+    } else {
+      const hit = rulesPaths.filter((x) => x.exists).length;
+      const total = rulesPaths.length;
+      const tip = rulesPaths.map((x) => `${x.path}${x.exists ? "" : "（未配置）"}`).join("；");
+      if (hit === total) {
+        rulesCell = `<span class="tag ok" title="${escapeHtml(tip)}">${hit}/${total}</span>`;
+      } else if (hit > 0) {
+        rulesCell = `<span class="tag warn" title="${escapeHtml(tip)}">${hit}/${total}</span>`;
+      } else {
+        rulesCell = `<span class="tag" title="${escapeHtml(tip)}">未配置</span>`;
+      }
+    }
     return `<tr>
       <td><span class="dot ${dot}" aria-hidden="true"></span> <span class="sr-only">${escapeHtml(statusText)}</span> <span class="al-name">${escapeHtml(a.name)}</span></td>
       <td><span class="al-type">${escapeHtml(a.type || "其他")}</span></td>
@@ -3308,6 +3327,7 @@ const skillsCell = `<span class="al-ico ${skillsCls}" title="${escapeHtml(skills
       <td>${cell("cli", a.cli_paths, a.name)}</td>
       <td>${cell("config", a.config_paths, a.name)}</td>
       <td>${skillsCell}</td>
+      <td>${rulesCell}</td>
       <td>${mcpCell}</td>
       <td class="al-ops"><button type="button" class="al-detail" data-open="${escapeHtml(a.name)}">${ICONS.info}<span>详情</span></button><button class="kebab" type="button" data-name="${escapeHtml(a.name)}" aria-label="更多操作" aria-haspopup="menu">${ICONS.kebab}</button></td>
     </tr>`;
@@ -3316,8 +3336,8 @@ const skillsCell = `<span class="al-ico ${skillsCls}" title="${escapeHtml(skills
   body.innerHTML = `<div class="agent-list-wrap">
       <div class="agent-list-count">共 ${list.length} 个（分类筛选：${homeType() === "all" ? "全部" : escapeHtml(homeType())}）</div>
       <div class="table-scroll"><table class="agent-list-table">
-        <thead><tr><th>名称</th><th>类型</th><th data-help="#check.ok:已安装;warn.warn:仅配置;cross.err:未安装">安装<span class="th-help" aria-hidden="true">${ICONS.help}</span></th><th>APP</th><th>CLI</th><th>CONFIG</th><th data-help="#link.ok:已指向统一技能目录;folder.warn:独立目录;cross.err:无目录;minus:不适用">技能目录<span class="th-help" aria-hidden="true">${ICONS.help}</span></th><th data-help="N / M = 已设置端点数 / 声明挂载的端点总数|#.ok:全部已设置;.warn:部分已设置;.err:未设置;.na:不支持 MCP 或无端点">MCP<span class="th-help" aria-hidden="true">${ICONS.help}</span></th><th style="text-align:right">操作</th></tr></thead>
-        <tbody>${rows || '<tr><td colspan="9" class="path-none">无匹配结果</td></tr>'}</tbody>
+        <thead><tr><th>名称</th><th>类型</th><th data-help="#check.ok:已安装;warn.warn:仅配置;cross.err:未安装">安装<span class="th-help" aria-hidden="true">${ICONS.help}</span></th><th>APP</th><th>CLI</th><th>CONFIG</th><th data-help="#link.ok:已指向统一技能目录;folder.warn:独立目录;cross.err:无目录;minus:不适用">技能目录<span class="th-help" aria-hidden="true">${ICONS.help}</span></th><th data-help="N / M = 已配置的约束文件数 / 该客户端的约束文件总数|#.ok:全部已配置;.warn:部分已配置;.na:未配置或无约定">约束<span class="th-help" aria-hidden="true">${ICONS.help}</span></th><th data-help="N / M = 已设置端点数 / 声明挂载的端点总数|#.ok:全部已设置;.warn:部分已设置;.err:未设置;.na:不支持 MCP 或无端点">MCP<span class="th-help" aria-hidden="true">${ICONS.help}</span></th><th style="text-align:right">操作</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="10" class="path-none">无匹配结果</td></tr>'}</tbody>
       </table></div>
     </div>`;
   body.querySelectorAll("[data-open]").forEach((b) => {
@@ -4584,6 +4604,45 @@ function _agentMcpSummary(t) {
   return pathTag + countTag;
 }
 
+function renderSettingsRules() {
+  const body = $("settings-rules-body");
+  if (!body) return;
+  if (!RULES_DATA) {
+    body.innerHTML = `<div class="empty">${escapeHtml(RULES_ERROR || "加载中…")}</div>`;
+    if (!RULES_ERROR) loadRules();
+    return;
+  }
+  const rows = RULES_DATA.rows || [];
+  if (!rows.length) {
+    body.innerHTML = '<div class="empty">没有声明约束文件的客户端</div>';
+    return;
+  }
+  const lines = [];
+  rows.forEach((row) => {
+    (row.paths || []).forEach((p, idx) => {
+      const state = p.exists
+        ? '<span class="tag ok">已配置</span>'
+        : '<span class="tag">未配置</span>';
+      const scale = p.exists
+        ? `<span class="muted">${p.kind === "dir" ? `${p.files || 0} 个文件` : `${p.lines || 0} 行`}</span>`
+        : '<span class="muted">-</span>';
+      lines.push(`<div class="row">
+        <span class="k">${escapeHtml(row.name)}</span>
+        <span class="v" style="display:flex;align-items:center;gap:var(--gap-2);flex-wrap:wrap">
+          <code class="mono">${escapeHtml(p.path)}</code>
+          ${state}${scale}
+          <button class="btn-soft" data-action="view-rules"
+            data-client="${escapeHtml(row.name)}" data-index="${idx}">查看</button>
+        </span>
+      </div>`);
+    });
+  });
+  const sum = RULES_DATA.summary || {};
+  body.innerHTML = `<div class="rows" style="font-size:var(--fs-sm)">${lines.join("")}</div>
+    <div class="note" style="margin-top:var(--sp-4)">共 ${sum.clients || 0} 个客户端有约定（${sum.declared || 0} 个路径），
+      ${sum.configured || 0} 个已配置。</div>`;
+}
+
 function renderAgentsTable(page) {
   const el = $("settings-agents-table");
   if (!el) return;
@@ -5332,6 +5391,15 @@ function renderSettings() {
     <div id="settings-agents-table" style="margin-top:var(--sp-4)"></div>
   </div>`;
 
+  // 「IDE / Agent」：约束文件（v0.37.9）——每个 Agent 一行，可查看与编辑。
+  // 用户要求「下面每个 Agent 的具体配置，应该在设置里单独有一行」：
+  // 总览页只保留状态列（N/M 徽标），具体路径与编辑入口收进设置。
+  const rulesCard = `<div class="settings-card" id="settings-rules-card">
+    <h4>约束文件</h4>
+    <div id="settings-rules-body"><div class="empty">加载中…</div></div>
+    <div class="note" style="margin-top:var(--sp-4)">每个 Agent 的主要规则文件（AGENTS.md / CLAUDE.md / GEMINI.md 等）。路径来自各客户端官方约定；未配置的可点「查看」新建，保存前自动备份原文件。</div>
+  </div>`;
+
   // 「MCP」：活动端点 + 自动发现 + 端点库 CRUD
   // PRD §10 #1：此前仅有只读展示，缺少 --set-active-profile / --set-auto-discover
   // 后端写命令与 GUI 编辑。现补齐（2026-10-15）。
@@ -5386,7 +5454,7 @@ function renderSettings() {
   el.innerHTML =
     `<div class="settings-tab-panel" data-panel="appearance">${appearanceCard}${patrolCard}${configPortCard}${_aboutCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="general">${gitSourcesCard}${usageCard}${marketSourcesCard}${backupCard}${githubTokenCard}${webdavCard}</div>` +
-    `<div class="settings-tab-panel hidden" data-panel="agents">${agentsCard}</div>` +
+    `<div class="settings-tab-panel hidden" data-panel="agents">${agentsCard}${rulesCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="mcp">${mcpCard}</div>`;
 
   el.querySelectorAll("[data-theme-btn]").forEach((b) => {
@@ -5466,6 +5534,7 @@ function switchSettingsTab(tab) {
     p.classList.toggle("hidden", p.dataset.panel !== _settingsTab);
   });
   if (_settingsTab === "general") { loadMarketSources(); loadSkillBackupStats(); loadGithubTokenStatus(); loadWebdavStatus(); loadGitSources(); }
+  if (_settingsTab === "agents") renderSettingsRules();
   initWebdavActions();
 }
 
@@ -7400,60 +7469,22 @@ function renderEndpointStatus() {
     }, () => loadSkillBackupStats());
   }
 
-  // ---------------- 约束文件（v0.37.7） ----------------
-  // 各客户端的规则文件不同：Claude Code 用 CLAUDE.md、Codex 用 AGENTS.md、
-  // Cursor 用 .cursor/rules/ 目录……路径只认注册表里声明的 rules_paths。
-  let RULES_DATA = null;
-
   async function loadRules() {
-    const body = $("rules-body");
-    if (!body) return;
     const res = await runCli(["--list-rules", "--format", "json"]);
     let data = null;
     try { data = JSON.parse(stripAnsi((res && res.stdout) || "{}")); } catch (e) { data = null; }
     if (!data) {
-      body.innerHTML = `<div class="empty">${escapeHtml(cliErrDetail(res) || "读取失败")}</div>`;
+      RULES_ERROR = cliErrDetail(res) || "读取失败";
+      renderSettingsRules();
       return;
     }
+    RULES_ERROR = "";
     RULES_DATA = data;
-    renderRules();
+    // 两处消费这份数据：主表的「约束」列 + 设置页的逐 Agent 配置行。
+    if (typeof renderAgents === "function") renderAgents();
+    renderSettingsRules();
   }
 
-  function renderRules() {
-    const body = $("rules-body");
-    if (!body || !RULES_DATA) return;
-    const rows = RULES_DATA.rows || [];
-    if (!rows.length) {
-      body.innerHTML = '<div class="empty">没有声明约束文件的客户端</div>';
-      return;
-    }
-    const lines = [];
-    rows.forEach((row) => {
-      (row.paths || []).forEach((p, idx) => {
-        const state = p.exists
-          ? `<span class="tag ok">${p.kind === "dir" ? "目录" : "已配置"}</span>`
-          : '<span class="tag">未配置</span>';
-        const scale = p.kind === "dir"
-          ? `${p.files || 0} 个文件`
-          : (p.exists ? `${p.lines || 0} 行 · ${p.size || 0} B · ${escapeHtml(p.mtime || "")}` : "-");
-        lines.push(`<tr>
-          <td>${escapeHtml(row.name)}</td>
-          <td><code class="mono">${escapeHtml(p.path)}</code></td>
-          <td>${state}</td>
-          <td class="muted">${scale}</td>
-          <td><button class="btn-soft" data-action="view-rules"
-                data-client="${escapeHtml(row.name)}" data-index="${idx}">查看</button></td>
-        </tr>`);
-      });
-    });
-    const sum = RULES_DATA.summary || {};
-    body.innerHTML = `<table class="mcp-table"><thead><tr>
-        <th>客户端</th><th>约束文件</th><th>状态</th><th>规模</th><th>操作</th>
-      </tr></thead><tbody>${lines.join("")}</tbody></table>
-      <div class="note" style="margin-top:var(--sp-4)">共 ${sum.clients || 0} 个客户端有约定（${sum.declared || 0} 个路径），
-        ${sum.configured || 0} 个已配置。路径来自各客户端的官方约定；
-        未配置的客户端可点「查看」新建。</div>`;
-  }
 
   async function openRulesModal(client, index) {
     const res = await runCli(["--read-rules", client, "--rules-index", String(index), "--format", "json"]);
@@ -9972,7 +10003,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.37.8", build: 147, build_number: 147, semver_ok: true, full: "v0.37.8 (build 147)" },
+  app: { name: "Skill MCP Studio", version: "0.37.9", build: 148, build_number: 148, semver_ok: true, full: "v0.37.9 (build 148)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",
