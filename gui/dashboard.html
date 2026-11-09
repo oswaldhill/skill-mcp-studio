@@ -4604,48 +4604,34 @@ function _agentMcpSummary(t) {
   return pathTag + countTag;
 }
 
-function renderSettingsRules() {
-  const body = $("settings-rules-body");
-  if (!body) return;
-  if (!RULES_DATA) {
-    body.innerHTML = `<div class="empty">${escapeHtml(RULES_ERROR || "加载中…")}</div>`;
-    if (!RULES_ERROR) loadRules();
-    return;
-  }
-  const rows = RULES_DATA.rows || [];
-  if (!rows.length) {
-    body.innerHTML = '<div class="empty">没有声明约束文件的客户端</div>';
-    return;
-  }
-  const lines = [];
-  rows.forEach((row) => {
-    (row.paths || []).forEach((p, idx) => {
-      const state = p.exists
-        ? '<span class="tag ok">已配置</span>'
-        : '<span class="tag">未配置</span>';
-      const scale = p.exists
-        ? `<span class="muted">${p.kind === "dir" ? `${p.files || 0} 个文件` : `${p.lines || 0} 行`}</span>`
-        : '<span class="muted">-</span>';
-      lines.push(`<div class="row">
-        <span class="k">${escapeHtml(row.name)}</span>
-        <span class="v" style="display:flex;align-items:center;gap:var(--gap-2);flex-wrap:wrap">
-          <code class="mono">${escapeHtml(p.path)}</code>
-          ${state}${scale}
-          <button class="btn-soft" data-action="view-rules"
-            data-client="${escapeHtml(row.name)}" data-index="${idx}">查看</button>
-        </span>
-      </div>`);
-    });
-  });
-  const sum = RULES_DATA.summary || {};
-  body.innerHTML = `<div class="rows" style="font-size:var(--fs-sm)">${lines.join("")}</div>
-    <div class="note" style="margin-top:var(--sp-4)">共 ${sum.clients || 0} 个客户端有约定（${sum.declared || 0} 个路径），
-      ${sum.configured || 0} 个已配置。</div>`;
+// 约束文件摘要（v0.38.0）：合并进 Agent 卡片 / 列表行，不再单独开卡。
+// 有官方约定的客户端显示「N/M」徽标 + 「查看」；无约定的返回空串（该行不出现）。
+function _agentRulesSummary(t) {
+  const rows = (typeof RULES_DATA !== "undefined" && RULES_DATA && RULES_DATA.rows) || [];
+  const row = rows.find((r) => r.name === t.name);
+  const paths = (row && row.paths) || [];
+  if (!paths.length) return "";
+  const hit = paths.filter((p) => p.exists).length;
+  const total = paths.length;
+  const cls = hit === total ? "ok" : (hit > 0 ? "warn" : "");
+  const tip = paths.map((p) => `${p.path}${p.exists ? "" : "（未配置）"}`).join("；");
+  const btns = paths.map((p, idx) =>
+    `<button class="btn-soft" data-action="view-rules" data-client="${escapeHtml(t.name)}"
+      data-index="${idx}" title="${escapeHtml(p.path)}">${paths.length > 1 ? `查看 ${idx + 1}` : "查看"}</button>`
+  ).join("");
+  return `<span class="tag ${cls}" title="${escapeHtml(tip)}">${hit}/${total}</span>${btns}`;
 }
 
 function renderAgentsTable(page) {
   const el = $("settings-agents-table");
   if (!el) return;
+  // 约束数据按需加载：用户可能直接进设置页 → IDE/Agent tab，从没走过
+  // 主页的 switchPage("agents")。没数据时卡片里不会出现「约束」行（静默缺失），
+  // 所以在这里补一次；失败有 RULES_ERROR 兜底，不会反复重试。
+  if (typeof RULES_DATA !== "undefined" && !RULES_DATA && !RULES_ERROR
+      && typeof loadRules === "function") {
+    loadRules();
+  }
   _agentsPage = page;
   const tools = (SNAP && SNAP.mainstream_tools) || [];
   const grouped = _groupBy(tools, t => t.type || "Other");
@@ -4718,6 +4704,7 @@ function renderAgentsTable(page) {
           <div class="ac-meta">
             <div class="ac-meta-row"><span class="k">Skills</span><span class="v">${_agentSkillsSummary(t)}</span></div>
             <div class="ac-meta-row"><span class="k">MCP</span><span class="v">${_agentMcpSummary(t)}</span></div>
+            ${_agentRulesSummary(t) ? `<div class="ac-meta-row"><span class="k">约束</span><span class="v">${_agentRulesSummary(t)}</span></div>` : ""}
           </div>
           <div class="ac-foot">
             <span class="ac-count">${totalPaths} 条路径</span>
@@ -4784,7 +4771,7 @@ function renderAgentsTable(page) {
           <td><span class="al-name">${escapeHtml(t.name)}</span>${(t.aliases||[]).length ? `<span class="al-type"> · ${escapeHtml(t.aliases.join(", "))}</span>` : ""}</td>
           <td><span class="al-type">${escapeHtml(t.type || "Other")}</span></td>
           <td><div class="al-metrics">${metric("APP", app.length, app.length>0)}${metric("CLI", cli.length, cli.length>0)}${metric("CONFIG", cfg.length, cfg.length>0)}</div></td>
-          <td><div class="al-metrics">${_agentSkillsSummary(t)}${_agentMcpSummary(t)}</div></td>
+          <td><div class="al-metrics">${_agentSkillsSummary(t)}${_agentMcpSummary(t)}${_agentRulesSummary(t)}</div></td>
           <td style="text-align:right"><button class="ghost sm btn-agent-detail" data-name="${escapeHtml(t.name)}">详情</button></td>
         </tr>`;
       }).join("");
@@ -5391,14 +5378,6 @@ function renderSettings() {
     <div id="settings-agents-table" style="margin-top:var(--sp-4)"></div>
   </div>`;
 
-  // 「IDE / Agent」：约束文件（v0.37.9）——每个 Agent 一行，可查看与编辑。
-  // 用户要求「下面每个 Agent 的具体配置，应该在设置里单独有一行」：
-  // 总览页只保留状态列（N/M 徽标），具体路径与编辑入口收进设置。
-  const rulesCard = `<div class="settings-card" id="settings-rules-card">
-    <h4>约束文件</h4>
-    <div id="settings-rules-body"><div class="empty">加载中…</div></div>
-    <div class="note" style="margin-top:var(--sp-4)">每个 Agent 的主要规则文件（AGENTS.md / CLAUDE.md / GEMINI.md 等）。路径来自各客户端官方约定；未配置的可点「查看」新建，保存前自动备份原文件。</div>
-  </div>`;
 
   // 「MCP」：活动端点 + 自动发现 + 端点库 CRUD
   // PRD §10 #1：此前仅有只读展示，缺少 --set-active-profile / --set-auto-discover
@@ -5454,7 +5433,7 @@ function renderSettings() {
   el.innerHTML =
     `<div class="settings-tab-panel" data-panel="appearance">${appearanceCard}${patrolCard}${configPortCard}${_aboutCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="general">${gitSourcesCard}${usageCard}${marketSourcesCard}${backupCard}${githubTokenCard}${webdavCard}</div>` +
-    `<div class="settings-tab-panel hidden" data-panel="agents">${agentsCard}${rulesCard}</div>` +
+    `<div class="settings-tab-panel hidden" data-panel="agents">${agentsCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="mcp">${mcpCard}</div>`;
 
   el.querySelectorAll("[data-theme-btn]").forEach((b) => {
@@ -5534,7 +5513,6 @@ function switchSettingsTab(tab) {
     p.classList.toggle("hidden", p.dataset.panel !== _settingsTab);
   });
   if (_settingsTab === "general") { loadMarketSources(); loadSkillBackupStats(); loadGithubTokenStatus(); loadWebdavStatus(); loadGitSources(); }
-  if (_settingsTab === "agents") renderSettingsRules();
   initWebdavActions();
 }
 
@@ -5741,6 +5719,9 @@ async function loadManagement() {
       // DSH 插件数据不在主快照里：顺手拉一次徽标计数，避免该项停在写死的 0。
       // 不 await —— 它是次要信息，不该拖慢主快照的呈现；失败只影响徽标本身。
       loadDshNavCount();
+      // 约束数据同样不在主快照里：初始化时拉一次，主表「约束」列与设置页
+      // Agent 卡片的「约束」行都靠它。不 await —— 次要信息，失败只影响那一行。
+      loadRules();
       return true;
     }
     // mgmt === null 时 runCli 已透出具体错误（CLI 未装/安全边界/连接失败），此处不再覆盖。
@@ -7474,15 +7455,19 @@ function renderEndpointStatus() {
     let data = null;
     try { data = JSON.parse(stripAnsi((res && res.stdout) || "{}")); } catch (e) { data = null; }
     if (!data) {
+      // 读取失败：主表与设置页都保持「无约定」渲染，错误只记在状态里，
+      // 不在页面上弹第二次（两处消费方各自已有空态）。
       RULES_ERROR = cliErrDetail(res) || "读取失败";
-      renderSettingsRules();
+      if (typeof renderAgents === "function") renderAgents();
       return;
     }
     RULES_ERROR = "";
     RULES_DATA = data;
-    // 两处消费这份数据：主表的「约束」列 + 设置页的逐 Agent 配置行。
+    // 两处消费这份数据：主表的「约束」列 + 设置页 Agent 卡片/列表的「约束」行。
     if (typeof renderAgents === "function") renderAgents();
-    renderSettingsRules();
+    if ($("settings-agents-table") && typeof renderAgentsTable === "function") {
+      renderAgentsTable(_agentsPage || 0);
+    }
   }
 
 
@@ -10003,7 +9988,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.37.9", build: 148, build_number: 148, semver_ok: true, full: "v0.37.9 (build 148)" },
+  app: { name: "Skill MCP Studio", version: "0.38.0", build: 149, build_number: 149, semver_ok: true, full: "v0.38.0 (build 149)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

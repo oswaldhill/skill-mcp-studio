@@ -7,6 +7,49 @@
 
 ## [Unreleased]
 
+## [v0.38.0] - 2026-11-09
+
+当前发布版本（build 149）。**约束文件合并进 Agent 卡片/列表，不再单独开卡。**
+
+用户截图指出：「这个约束文件也应该同步到上面的卡片或者列表中，而不是一个
+单独的展示。」上一版把它做成了设置页里一张独立卡片，与「IDE / Agent 默认路径」
+卡片分家——同一批客户端被拆成两处，读起来仍然是「又一个列表」。
+
+### 改动
+
+- **设置页 Agent 卡片**：约束作为**第三行能力摘要**接在 Skills / MCP 之后
+  （`.ac-meta-row` 的 `k=约束`），内容是 `N/M` 徽标 + 一个或多个「查看」按钮
+  （WorkBuddy 有两个路径就两个按钮，`title` 给完整路径）。
+- **设置页列表视图**：约束跟 Skills/MCP 一起放进「能力摘要」列。
+- **无官方约定的客户端不出现这一行**——不是显示「无约定」占位。
+- **移除独立卡片** `#settings-rules-card` 与 `renderSettingsRules()`；
+  `loadRules()` 改为刷新设置页的 Agent 表格。
+- 主表的「约束」列保持不变（那是总览，只给状态）。
+
+### 过程中修掉的三个问题
+
+1. **删除独立卡片时留下 26 行残码**：`renderSettingsRules` 函数体没删干净，
+   顶层出现 `return` → `Illegal return statement`，整个脚本不执行、所有按钮无反应。
+   被 `test_braces_parens_brackets_balanced` 与 `test_all_panel_buttons_reachable` 抓到。
+2. **反向验证发现断言不够精确**：断言 `assertIn("_agentRulesSummary", ...)` 时，
+   把函数改名成 `_agentRulesSummaryXxx` 仍会命中（子串匹配）。改为断言
+   `function _agentRulesSummary(t) {` + 两处调用计数 ≥ 2，再反向验证才真正失败。
+3. **`loadRules()` 的错误分支仍引用已删除的函数**——已改为只记录 `RULES_ERROR`，
+   由两处消费方各自渲染空态。
+4. **设置页没触发加载**：用户直接进「设置 → IDE / Agent」时从没走过主页的
+   `switchPage("agents")`，`RULES_DATA` 为空 → 卡片里静默不出现「约束」行。
+   已在 `loadManagement()` 初始化时拉一次（与 `loadDshNavCount()` 同模式，不 await），
+   并在 `renderAgentsTable()` 里保留按需兜底（有 `RULES_ERROR` 时不重试）。
+
+### 文档
+
+`docs/DESIGN.md` §2.3c-2 改为「主表状态列 + Agent 卡片/列表内联」，
+`docs/DESIGN.html` 同步。
+
+### 测试
+
+全量 **1670 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
 ## [v0.37.9] - 2026-11-09
 
 当前发布版本（build 148）。**约束文件改为「主表状态列 + 设置页逐行配置」。**
@@ -2848,7 +2891,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.37.9...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.38.0...HEAD
+[v0.38.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.0
 [v0.37.9]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.9
 [v0.37.8]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.8
 [v0.37.7]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.7

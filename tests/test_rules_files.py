@@ -176,10 +176,17 @@ class RulesGuiContract(unittest.TestCase):
         self.assertIn("rulesCell", self.dashboard, "缺约束列渲染逻辑")
         self.assertNotIn('id="rules-panel"', self.dashboard,
                          "独立约束面板应已移除（改为合并进主表）")
-        self.assertIn('id="settings-rules-card"', self.dashboard,
-                      "设置页 IDE/Agent tab 缺「约束文件」卡片")
-        self.assertIn("function renderSettingsRules", self.dashboard,
-                      "缺逐 Agent 配置行渲染")
+        # v0.38.0：约束摘要合并进 Agent 卡片 / 列表行，不再单独开卡。
+        # 断言要精确到「函数定义 + 两处调用」：只查子串的话，
+        # 把函数改名成 _agentRulesSummaryXxx 仍会命中（反向验证实测过）。
+        self.assertIn("function _agentRulesSummary(t) {", self.dashboard,
+                      "缺 Agent 卡片/列表的约束摘要函数")
+        self.assertGreaterEqual(self.dashboard.count("${_agentRulesSummary(t)}"), 2,
+                                "约束摘要必须同时出现在卡片与列表视图里")
+        self.assertNotIn('id="settings-rules-card"', self.dashboard,
+                         "独立「约束文件」卡片应已移除（合并进 Agent 卡片/列表）")
+        self.assertNotIn("renderSettingsRules", self.dashboard,
+                         "独立卡片的渲染函数应已移除")
         self.assertIn('data-action="view-rules"', self.dashboard, "缺「查看」入口")
         self.assertIn("function loadRules", self.dashboard)
         self.assertIn("function openRulesModal", self.dashboard)

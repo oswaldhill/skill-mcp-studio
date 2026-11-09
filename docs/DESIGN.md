@@ -371,54 +371,49 @@ Agent 卡片里有两组「标签 + 值」行：**路径区**（APP / CLI / CONF
 >
 > 不变量由 `ColumnWidthGovernanceTest` 守住。
 
-### 2.3c-2 约束文件（主表状态列 + 设置页逐行配置，v0.37.9）
+### 2.3c-2 约束文件（主表状态列 + Agent 卡片/列表内联，v0.38.0）
 
 **为什么有它**：不同客户端的「主要约束文件」各不相同——Claude Code 用
 `CLAUDE.md`、Codex 用 `AGENTS.md`、Gemini CLI 用 `GEMINI.md`、WorkBuddy 用
 `SOUL.md`……用户此前要逐个翻目录才知道「这台机器上每个 Agent 的规则配了什么」。
 
-**两处呈现，职责分开**（v0.37.9 用户定案：「约束文件应该合并到上面的列表中，
-而不是单独展示；下面每个 Agent 的具体配置，应该在设置里单独有一行」）：
+**两处呈现，都是「客户端的一个属性」，不单独开卡**（v0.38.0 用户定案：
+「这个约束文件也应该同步到上面的卡片或者列表中，而不是一个单独的展示」）：
 
 1. **IDE / Agent 主表加「约束」列**（第 8 列，技能目录与 MCP 之间）：只给状态，
-   与安装/技能目录/MCP 同一种表达方式（`N/M` 徽标，`title` 列出各路径）。
-   - `N/M` 全部已配置 → `tag ok`；部分 → `tag warn`；一个都没有 → 中性 `tag`
-     写「未配置」；客户端没有官方约定 → 中性 `tag` 写「无约定」。
-   - **不要在这里放路径与编辑按钮**：主表已有 10 列，路径会把表撑宽，
-     且「看状态」与「改内容」是两种不同的动作。
-2. **设置页 IDE / Agent tab 加「约束文件」卡片**（`#settings-rules-card`）：
-   **每个 Agent 一行**，`k` = 客户端名，`v` = 路径（`code.mono`）+ 状态标签 +
-   规模（行数/文件数）+ 「查看」按钮。WorkBuddy 有两个路径就出两行。
+   与安装/技能目录/MCP 同一表达方式——`N/M` 徽标，`title` 列出各路径；
+   全配置 `tag ok`、部分 `tag warn`、都没有「未配置」、无官方约定「无约定」。
+2. **设置页 IDE / Agent tab 的 Agent 卡片与列表**：约束作为**第三行能力摘要**
+   接在 Skills / MCP 之后（`.ac-meta-row` 的 `k=约束`），内容是 `N/M` 徽标 +
+   一个或多个「查看」按钮（WorkBuddy 有两个路径就两个按钮，`title` 给完整路径）。
+   列表视图里它跟 Skills/MCP 一起放进「能力摘要」列。
+   **无官方约定的客户端不出现这一行**——不是显示「无约定」占位。
 
 ```
-┌ .settings-card#settings-rules-card ───────────────────────────┐
-│ H4: 约束文件                                                   │
-│ .rows（每路径一行）：                                           │
-│   Codex            ~/.codex/AGENTS.md   [已配置] 60 行  [查看] │
-│   WorkBuddy        ~/.workbuddy/SOUL.md [已配置] 66 行  [查看] │
-│   Claude Code      ~/.claude/CLAUDE.md   [未配置] -      [查看] │
-│ note: 路径来自官方约定；未配置可点「查看」新建，保存前自动备份    │
-└───────────────────────────────────────────────────────────────┘
+┌ .agent-card（设置页卡片视图）─────────────────────┐
+│ WorkBuddy  AI Assistant                          │
+│ APP / CLI / CONFIG 三行路径                       │
+│ Skills  5/5 已启用                                │
+│ MCP     2/2                                       │
+│ 约束    [2/2] [查看 1] [查看 2]   ← v0.38.0 新增  │
+└──────────────────────────────────────────────────┘
 ```
 
-- **数据来源**：`--list-rules --format json`（只读），一次加载同时喂给主表与设置页
-  （`RULES_DATA`）。路径只认注册表（`mainstream_registry_data`）里显式声明的
-  `rules_paths`，**不猜**——猜错会让用户以为「这里就是它的配置」，比不显示更糟。
-  当前登记 9 个客户端 / 10 个路径，每个路径的官方依据写在
-  `mainstream_registry_data.py` 顶部注释里（Claude Code / Codex / Gemini CLI /
-  OpenCode / Cline / Windsurf / TRAE / WorkBuddy / DeepSeek Harness）。
-  **Cursor 不登记**：它的用户级规则存在设置里（不落盘），`~/.cursor/rules`
-  是项目级路径，登记成用户级只会显示一个永远「未配置」的假路径。
+- **数据来源**：`--list-rules --format json`（只读），一次加载同时喂给主表与
+  设置页（`RULES_DATA`）。路径只认注册表（`mainstream_registry_data`）里显式
+  声明的 `rules_paths`，**不猜**。当前登记 9 个客户端 / 10 个路径。
+  **Cursor 不登记**：用户规则存在设置里（不落盘），`~/.cursor/rules` 是项目级。
 - **查看 / 编辑**：点「查看」→ `--read-rules <client> --rules-index N`，弹
   `.modal.modal-form.ad-modal` + `.rules-editor`（等宽、50vh、可纵向拉伸）。
   保存走 `--write-rules <client> --rules-content <文本>`：先备份为
   `<原文件>.bak-<时间戳>` → 原子写 → 回读校验。
 - **目录形态**（Cline / TRAE）：`--read-rules` 返回文件清单，弹框只读展示，
   **不支持整体写入**——把一段文本写进规则目录会覆盖其中所有文件。
-- **为什么主表用 `typeof RULES_DATA` 防御**：`renderHomeListView` 会被测试单独
-  抽出到 node 里执行，那时全局状态不存在；不加防御会直接 ReferenceError。
+- **为什么函数里要 `typeof RULES_DATA` 防御**：`renderHomeListView` /
+  `renderAgentsTable` 会被测试单独抽出到 node 里执行，那时全局状态不存在；
+  不加防御会直接 ReferenceError。
 
-### 2.3d 图例（`.skill-legend`）的放置与对齐### 2.3d 图例（`.skill-legend`）的放置与对齐
+### 2.3d 图例（`.skill-legend`）的放置与对齐### 2.3d 图例（`.skill-legend`）的放置与对齐### 2.3d 图例（`.skill-legend`）的放置与对齐
 
 **位置：一律放在所说明内容的「上方」**（2026-10-14 用户定案：放上面好看）。页面级图例
 涉及 Skills 页、MCP 页、一键合并预览弹窗，共 3 处。
