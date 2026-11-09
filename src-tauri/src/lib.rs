@@ -572,6 +572,8 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
         "--set-primary-git-source",
         "--git-source-id",
         "--git-source-label",
+        "--commit-git-sources",
+        "--git-commit-message",
         "--check-git-sources",
         "--pull-git-sources",
         "--push-git-sources",

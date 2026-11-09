@@ -434,6 +434,116 @@ class PrimarySourceTest(unittest.TestCase):
         self.assertEqual(out["unified_skills_dir"], "~/.keep")
 
 
+class CommitTest(unittest.TestCase):
+    """提交现有改动（2026-11-08 需求：设置页只有检查/拉取/推送，缺了「提交」，
+    于是脏工作区既不能拉也推不出去，成了死结）。"""
+
+    def setUp(self):
+        self.pair = _RepoPair()
+        self.pair.add_skill(self.pair.a, "skill-a")
+        self.pair.commit_all(self.pair.a, "init")
+        _git(self.pair.a, "push", "-q", "origin", "master")
+
+    def test_status_lists_files_with_counts(self):
+        self.pair.add_skill(self.pair.a, "skill-b")
+        os.makedirs(os.path.join(self.pair.a, "gone"), exist_ok=True)
+        Path(self.pair.a, "gone", "x.md").write_text("x", encoding="utf-8")
+        self.pair.commit_all(self.pair.a, "add gone")
+        _git(self.pair.a, "push", "-q", "origin", "master")
+        os.remove(os.path.join(self.pair.a, "gone", "x.md"))
+        self.pair.add_skill(self.pair.a, "skill-c")
+
+        st = ops.commit_status(self.pair.a)
+        self.assertTrue(st["ok"])
+        self.assertTrue(st["dirty"])
+        self.assertIn("untracked", st["counts"])
+        self.assertIn("deleted", st["counts"])
+        self.assertEqual(st["total"], len(st["files"]))
+
+    def test_dry_run_does_not_commit(self):
+        self.pair.add_skill(self.pair.a, "skill-b")
+        before = _git(self.pair.a, "rev-parse", "HEAD").stdout.strip()
+        res = ops.commit_source("a", self.pair.a, dry_run=True)
+        self.assertEqual(res["status"], "dry-run")
+        after = _git(self.pair.a, "rev-parse", "HEAD").stdout.strip()
+        self.assertEqual(before, after, "dry-run 竟然产生了 commit")
+        # 改动仍在
+        self.assertTrue(ops.commit_status(self.pair.a)["dirty"])
+
+    def test_commit_clears_worktree(self):
+        self.pair.add_skill(self.pair.a, "skill-b")
+        res = ops.commit_source("a", self.pair.a, message="add skill-b")
+        self.assertTrue(res["ok"], res)
+        self.assertEqual(res["status"], "committed")
+        self.assertEqual(res["remaining"], 0, "提交后工作区应干净")
+        self.assertNotEqual(res["before"], res["after"])
+
+    def test_commit_includes_deletions(self):
+        """删除也必须被提交——这正是真实仓库里 75 个 D 的来源。"""
+        os.remove(os.path.join(self.pair.a, "skill-a", "SKILL.md"))
+        res = ops.commit_source("a", self.pair.a, message="remove a")
+        self.assertTrue(res["ok"], res)
+        self.assertEqual(ops.commit_status(self.pair.a)["total"], 0)
+
+    def test_nothing_to_commit(self):
+        res = ops.commit_source("a", self.pair.a)
+        self.assertEqual(res["status"], "nothing-to-commit")
+        self.assertTrue(res["ok"])
+
+    def test_default_message_used_when_blank(self):
+        self.pair.add_skill(self.pair.a, "skill-b")
+        res = ops.commit_source("a", self.pair.a, message="   ")
+        self.assertTrue(res["ok"])
+        subject = _git(self.pair.a, "log", "-1", "--pretty=%s").stdout.strip()
+        self.assertTrue(subject, "提交信息不得为空")
+
+    def test_custom_message_reaches_run_on_all(self):
+        """`run_on_all` 必须把提交信息透传下去。
+
+        这条是回归守卫：最初 scan.py 算了 message 却没传给 run_on_all，
+        表单里填的信息被静默丢弃、一律用默认文案。ruff 的「未使用变量」
+        抓到了它，但那个提示读起来像代码卫生问题，实际是功能缺陷。
+        """
+        tmp = tempfile.mkdtemp(prefix="commitall-")
+        cfg = os.path.join(tmp, "git_sources.yaml")
+        repo = os.path.join(tmp, "r")
+        os.makedirs(repo)
+        _git(repo, "init", "-q")
+        _git(repo, "config", "user.email", "t@example.com")
+        _git(repo, "config", "user.name", "Tester")
+        Path(repo, "a.md").write_text("x", encoding="utf-8")
+        gs.add_source(repo, source_id="r", config_path=cfg)
+
+        results, summary = ops.run_on_all(
+            "commit", config_path=cfg, message="feat: 我的自定义信息"
+        )
+        self.assertEqual(summary["ok"], 1, results)
+        subject = _git(repo, "log", "-1", "--pretty=%s").stdout.strip()
+        self.assertEqual(subject, "feat: 我的自定义信息", "自定义提交信息被丢弃了")
+
+    def test_missing_identity_reports_clearly(self):
+        """缺作者身份要如实报错，且**不得**去改用户的 git config。"""
+        solo = os.path.join(self.pair.tmp, "noident")
+        os.makedirs(solo)
+        _git(solo, "init", "-q")
+        # 清掉仓库级身份，并屏蔽全局身份
+        _git(solo, "config", "--unset", "user.email", check=False)
+        _git(solo, "config", "--unset", "user.name", check=False)
+        env_home = os.path.join(self.pair.tmp, "emptyhome")
+        os.makedirs(env_home, exist_ok=True)
+        old_home = os.environ.get("HOME")
+        try:
+            os.environ["HOME"] = env_home
+            os.environ["GIT_CONFIG_GLOBAL"] = os.path.join(env_home, ".gitconfig")
+            Path(solo, "f.txt").write_text("x", encoding="utf-8")
+            res = ops.commit_source("s", solo)
+            self.assertEqual(res["status"], "no-identity", res)
+        finally:
+            if old_home is not None:
+                os.environ["HOME"] = old_home
+            os.environ.pop("GIT_CONFIG_GLOBAL", None)
+
+
 class CheckAllTest(unittest.TestCase):
     def test_disabled_source_is_skipped(self):
         tmp = tempfile.mkdtemp(prefix="all-")

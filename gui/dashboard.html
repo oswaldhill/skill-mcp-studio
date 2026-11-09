@@ -708,6 +708,23 @@
   .prog-detail .git-res-state { color: var(--muted); }
   .prog-detail .git-res-row.todo .git-res-state { color: var(--warn); }
   .prog-detail .git-res-row.err .git-res-state { color: var(--err); }
+  /* 提交确认弹框（2026-11-08）
+     提交是唯一不可逆的本地写操作，清单必须可扫读：
+       每个源一块 → 改动性质用点数标出 → 文件清单默认折叠（几十条会淹没确认按钮）。
+     删除比新增更需要被看见，所以在性质点里单独计数而不是只给一个总数。 */
+  .git-commit-modal { text-align: left; }
+  .git-commit-modal .cfm-title { text-align: center; }
+  .git-commit-modal .cfm-msg { text-align: center; }
+  .git-commit-src { margin: var(--sp-3) 0; padding: var(--sp-4); border-radius: var(--r-control); background: var(--panel-2); border: 1px solid var(--line); }
+  .git-commit-head { display: flex; align-items: center; justify-content: space-between; gap: var(--gap-2); flex-wrap: wrap; }
+  .git-chg-line { display: flex; gap: var(--gap-3); flex-wrap: wrap; font-size: var(--fs-xs); color: var(--muted); }
+  .git-chg b { color: var(--text); font-family: var(--mono); }
+  .git-commit-files { margin-top: var(--sp-2); font-size: var(--fs-xs); color: var(--muted); }
+  .git-commit-files summary { cursor: pointer; }
+  .git-commit-files ul { margin: var(--sp-2) 0 0; padding-left: var(--sp-8a); max-height: 22vh; overflow: auto; }
+  .git-commit-files li { margin-bottom: var(--sp-1); word-break: break-all; }
+  .git-commit-modal .upg-warn { text-align: left; }
+  .git-commit-modal .form-field { margin-top: var(--sp-4); }
   .prog-detail .git-res-hint { font-size: var(--fs-xs); color: var(--muted); padding-left: calc(var(--sp-2) + var(--gap-2)); margin-bottom: var(--sp-1); }
   .cfm-card .actions { justify-content: center; gap: var(--gap-5); margin-top: 0; }
   .cfm-card .actions button {
@@ -5228,6 +5245,7 @@ function renderSettings() {
       <button class="btn-soft" data-action="git-source-add">登记本地目录</button>
       <button class="btn-soft" data-action="git-source-check">检查更新</button>
       <button class="btn-soft" data-action="git-source-pull">拉取</button>
+      <button class="btn-soft" data-action="git-source-commit">提交改动</button>
       <button class="btn-soft" data-action="git-source-push">推送</button>
     </div>
     <div class="note" style="margin-top:var(--sp-4)">统一技能目录就是这里标记为「主源」的那个 Git 目录，所有客户端都指向它；它同时也参与检查与同步。要换统一目录，把另一个源设为主源即可。拉取默认只做快进：工作区有未提交改动或已与远端分叉时会拒绝，不 stash、不覆盖你的改动；确需合并时用「合并拉取」。配置存本机 data/git_sources.yaml。</div>
@@ -6579,6 +6597,75 @@ function renderEndpointStatus() {
       } else {
         modalNotice("err", "登记失败", (res && (cliFailLines(res) || cliErrDetail(res))) || "未知错误");
       }
+    };
+  }
+
+  // 提交现有改动（2026-11-08）。
+  //
+  // 为什么必须有这个入口：脏工作区会让「拉取」直接拒绝（不 stash、不覆盖），
+  // 而「推送」又没有本地提交可推——用户卡在中间无路可走。截图里看到的
+  // 「有未提交改动 78」正是这种死结。
+  //
+  // 高危写操作的三步走（沿用本项目既有纪律）：
+  //   ① 只读列出将要提交的清单与性质 → ② 用户确认 → ③ 真正提交
+  // 提交前把「删除了 N 个文件」摆到明面上：删除比新增更需要确认。
+  const GIT_CHANGE_LABEL = {
+    added: "新增", modified: "修改", deleted: "删除",
+    renamed: "重命名", untracked: "未跟踪",
+  };
+
+  async function openCommitGitSourceModal() {
+    // 先拿清单（只读）
+    const res = await runCli(["--commit-git-sources", "--dry-run", "--format", "json"]);
+    let data = null;
+    try { data = JSON.parse(stripAnsi((res && res.stdout) || "{}")); } catch (e) { data = null; }
+    const rows = (data && Array.isArray(data.results)) ? data.results : [];
+    const dirty = rows.filter((r) => r.status === "dry-run");
+    if (!dirty.length) {
+      modalNotice("ok", "没有改动可提交", "所有 Git 源的工作区都是干净的。");
+      return;
+    }
+
+    const countsHtml = (r) => {
+      const c = r.counts || {};
+      return Object.keys(c).map((k) =>
+        `<span class="git-chg"><b>${c[k]}</b> ${escapeHtml(GIT_CHANGE_LABEL[k] || k)}</span>`).join("");
+    };
+    const filesOf = (r) => (r.files || []).slice(0, 12)
+      .map((f) => `<li><code class="mono">${escapeHtml(f.path)}</code></li>`).join("");
+    const blocks = dirty.map((r) => {
+      const files = filesOf(r);
+      const more = (r.files || []).length > 12
+        ? `<div class="note">另有 ${(r.files || []).length - 12} 个文件未列出</div>` : "";
+      return `<div class="git-commit-src">
+        <div class="git-commit-head"><span class="git-res-id">${escapeHtml(r.id)}</span>
+          <span class="git-chg-line">${countsHtml(r)}</span></div>
+        ${files ? `<details class="git-commit-files"><summary>查看文件（${(r.files || []).length}）</summary><ul>${files}</ul></details>` : ""}
+        ${more}
+      </div>`;
+    }).join("");
+
+    const totalFiles = dirty.reduce((n, r) => n + (r.total ?? (r.files || []).length), 0);
+    mountModal(`<div class="modal-backdrop"><div class="modal cfm-card task-card upg-modal git-commit-modal">
+      <div class="cfm-title">提交 Git 源改动</div>
+      <div class="cfm-msg">共 ${totalFiles} 个文件将被提交为一个 commit。提交后可在「推送」里同步到远端。</div>
+      ${blocks}
+      <div class="form-field"><label for="git-commit-msg">提交信息（留空则自动生成）</label>
+        <input type="text" id="git-commit-msg" placeholder="chore: 同步技能改动" autocomplete="off" /></div>
+      <div class="upg-warn"><span class="w-ic">${ICONS.info}</span><span>提交会把<strong>全部</strong>改动一起记入（含删除）。若只是想丢弃某些改动，请先在终端处理。</span></div>
+      <div class="actions">
+        <button class="cfm-btn-cancel" id="git-commit-cancel">取消</button>
+        <button class="cfm-btn-cancel" id="git-commit-confirm">确认提交</button>
+      </div>
+    </div></div>`);
+
+    $("git-commit-cancel").onclick = closeModal;
+    $("git-commit-confirm").onclick = async () => {
+      const msg = (($("git-commit-msg") || {}).value || "").trim();
+      const args = ["--commit-git-sources", "--format", "json"];
+      if (msg) args.push("--git-commit-message", msg);
+      closeModal();
+      await runGitSourceAction("提交 Git 源改动", args, "已提交");
     };
   }
 
@@ -8982,6 +9069,7 @@ document.addEventListener("click", (e) => {
     else if (a === "git-source-check") runGitSourceAction("检查 Git 源更新", ["--check-git-sources", "--format", "json"], "检查完成");
     else if (a === "git-source-pull") runGitSourceAction("拉取 Git 源（仅快进）", ["--pull-git-sources", "--format", "json"], "拉取完成");
     else if (a === "git-source-merge-pull") runGitSourceAction("拉取 Git 源（允许合并）", ["--pull-git-sources", "--git-merge", "--format", "json"], "拉取完成");
+    else if (a === "git-source-commit") openCommitGitSourceModal();
     else if (a === "git-source-push") runGitSourceAction("推送 Git 源", ["--push-git-sources", "--format", "json"], "推送完成");
     else if (a === "git-source-add") openAddGitSourceModal();
     else if (a === "git-source-remove") confirmRemoveGitSource(act.dataset.id);
@@ -9604,7 +9692,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.36.0", build: 138, build_number: 138, semver_ok: true, full: "v0.36.0 (build 138)" },
+  app: { name: "Skill MCP Studio", version: "0.37.0", build: 139, build_number: 139, semver_ok: true, full: "v0.37.0 (build 139)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

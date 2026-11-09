@@ -383,6 +383,173 @@ def pull_source(
 
 
 # --------------------------------------------------------------------------
+# 提交
+# --------------------------------------------------------------------------
+def _classify_status(lines: List[str]) -> Dict[str, int]:
+    """把 `git status --porcelain` 的 XY 码归成 added/modified/deleted/renamed/untracked。
+
+    用**真实码**归类而不是让用户猜：提交前他要看到「将删除 75 个文件」这种
+    事实，而不是一个笼统的「78 处改动」。
+    """
+    counts = {"added": 0, "modified": 0, "deleted": 0, "renamed": 0, "untracked": 0}
+    for ln in lines:
+        if len(ln) < 2:
+            continue
+        x, y = ln[0], ln[1]
+        if x == "?" and y == "?":
+            counts["untracked"] += 1
+        elif x == "R" or y == "R":
+            counts["renamed"] += 1
+        elif x == "A" or y == "A":
+            counts["added"] += 1
+        elif x == "D" or y == "D":
+            counts["deleted"] += 1
+        else:
+            counts["modified"] += 1
+    return {k: v for k, v in counts.items() if v}
+
+
+def commit_status(path: str) -> Dict[str, Any]:
+    """只读：列出待提交的改动清单与分组计数。**不写任何东西**。
+
+    提交是唯一不可逆的本地写操作（能 reset，但用户会怕）。所以界面必须先让
+    他看到「哪些文件、各是什么性质」，再问要不要提交。
+    """
+    resolved = _normalize_path(path)
+    if not is_git_repo(resolved):
+        return {"ok": False, "error": f"不是 git 仓库：{resolved}", "files": [], "counts": {}}
+    rc, out, err = _git(resolved, "status", "--porcelain")
+    if rc != 0:
+        return {"ok": False, "error": f"读取状态失败：{_first_line(err)}", "files": [], "counts": {}}
+    lines = [ln for ln in out.splitlines() if ln.strip()]
+    files = []
+    for ln in lines:
+        code, _, name = ln[:2], ln[2:3], ln[3:]
+        files.append({"code": code, "path": name})
+    return {
+        "ok": True,
+        "path": resolved,
+        "branch": current_branch(resolved),
+        "dirty": bool(lines),
+        "files": files,
+        "counts": _classify_status(lines),
+        "total": len(lines),
+    }
+
+
+def commit_source(
+    source_id: str,
+    path: str,
+    *,
+    message: str = "",
+    dry_run: bool = False,
+) -> Dict[str, Any]:
+    """把工作区全部改动提交为一个 commit（`git add -A` + `git commit`）。
+
+    ## 为什么是「全部」而不是「让用户挑」
+
+    技能目录的改动通常是成套的（一次技能增删会同时改动目录、lock、索引）。
+    只提交一部分会让仓库停在**不可用**的中间态：lock 说装了、目录却没有。
+    因此这里固定 `add -A`，并在提交前把清单完整交给用户确认。
+
+    ## 三条约束
+
+    1. **空工作区不制造空提交**：没有改动直接返回 ``nothing-to-commit``。
+    2. **作者身份缺失时如实报错**：不动 ``git config``（那是在改用户的全局配置），
+       只告诉用户缺什么、怎么配。
+    3. **提交信息必须非空**：空信息会生成一个无法解释的 commit，直接拒绝。
+    """
+    resolved = _normalize_path(path)
+    if not is_git_repo(resolved):
+        return _result(source_id, "commit", message=f"不是 git 仓库：{resolved}")
+
+    status = commit_status(resolved)
+    if not status.get("ok"):
+        return _result(source_id, "commit", message=status.get("error", "读取状态失败"))
+    if not status["dirty"]:
+        return _result(
+            source_id,
+            "commit",
+            ok=True,
+            status="nothing-to-commit",
+            message="没有需要提交的改动",
+            path=resolved,
+            branch=status["branch"],
+        )
+
+    body = (message or "").strip() or f"chore: 同步技能改动（{status['total']} 个文件）"
+
+    if dry_run:
+        return _result(
+            source_id,
+            "commit",
+            ok=True,
+            status="dry-run",
+            dry_run=True,
+            message=f"将提交 {status['total']} 个文件",
+            path=resolved,
+            branch=status["branch"],
+            counts=status["counts"],
+            files=status["files"][:200],
+        )
+
+    # 作者身份：缺了就别硬来，git 会失败但没有可读原因
+    rc_id, out_id, _ = _git(resolved, "config", "user.email")
+    rc_name, out_name, _ = _git(resolved, "config", "user.name")
+    if rc_id != 0 or not out_id.strip() or rc_name != 0 or not out_name.strip():
+        return _result(
+            source_id,
+            "commit",
+            status="no-identity",
+            message="未配置 git 作者身份，无法提交（请先设置 user.name / user.email）",
+            path=resolved,
+            branch=status["branch"],
+        )
+
+    before = head_commit(resolved)
+    rc, _o, err = _git(resolved, "add", "-A", timeout=180)
+    if rc != 0:
+        return _result(
+            source_id,
+            "commit",
+            status="add-failed",
+            message=f"暂存失败：{_first_line(err)}",
+            path=resolved,
+        )
+
+    rc2, _o2, err2 = _git(resolved, "commit", "-m", body, timeout=180)
+    after = head_commit(resolved)
+    if rc2 != 0:
+        return _result(
+            source_id,
+            "commit",
+            status="commit-failed",
+            message=f"提交失败：{_first_line(err2) or f'退出码 {rc2}'}",
+            path=resolved,
+            branch=status["branch"],
+            before=before,
+            after=after,
+        )
+
+    # 提交后应该「干净」；若还有残留（例如子模块或被忽略规则挡住的项），如实报出
+    rc3, out3, _ = _git(resolved, "status", "--porcelain")
+    remaining = [ln for ln in out3.splitlines() if ln.strip()] if rc3 == 0 else []
+    return _result(
+        source_id,
+        "commit",
+        ok=True,
+        status="committed",
+        message=f"已提交 {status['total']} 个文件",
+        path=resolved,
+        branch=status["branch"],
+        counts=status["counts"],
+        before=before,
+        after=after,
+        remaining=len(remaining),
+    )
+
+
+# --------------------------------------------------------------------------
 # 推送
 # --------------------------------------------------------------------------
 def push_source(
@@ -498,6 +665,7 @@ def run_on_all(
     mode: str = "ff-only",
     dry_run: bool = False,
     only: Optional[List[str]] = None,
+    message: str = "",
 ) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
     """对全部已启用源执行同一动作。返回 ``(逐源结果, 汇总)``。"""
     from git_sources import load_sources
@@ -516,6 +684,8 @@ def run_on_all(
             res = pull_source(sid, path, remote=remote, mode=mode, dry_run=dry_run)
         elif action == "push":
             res = push_source(sid, path, remote=remote, dry_run=dry_run)
+        elif action == "commit":
+            res = commit_source(sid, path, message=message, dry_run=dry_run)
         else:
             res = _result(sid, action, message=f"未知动作：{action}")
         results.append(res)

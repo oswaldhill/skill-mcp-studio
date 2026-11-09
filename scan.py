@@ -398,6 +398,21 @@ def _run_git_source_commands(args) -> int:  # noqa: C901 - 早返回分派，保
             print(f"  共 {summary['total']} 个，{summary['ok']} 个成功\n")
         return 0 if summary["failed"] == 0 else 1
 
+    if getattr(args, "commit_git_sources", False):
+        message = getattr(args, "git_commit_message", None) or ""
+        results, summary = ops.run_on_all("commit", dry_run=dry, message=message)
+        # 单源时把文件清单带上，让用户在终端也能看到「提交了什么」
+        if not as_json:
+            print(f"\n  Git 技能源提交{'（预演）' if dry else ''}：")
+            for r in results:
+                print(f"    [{r['status']}] {r['id']}: {r['message']}")
+                counts = r.get("counts") or {}
+                if counts:
+                    detail = " · ".join(f"{k} {v}" for k, v in counts.items())
+                    print(f"       {detail}")
+            print(f"  共 {summary['total']} 个，{summary['ok']} 个成功\n")
+        return 0 if summary["failed"] == 0 else 1
+
     if getattr(args, "push_git_sources", False):
         results, summary = ops.run_on_all("push", dry_run=dry)
         if as_json:
@@ -2920,6 +2935,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="拉取各 Git 源（默认仅快进；分叉或脏工作区拒绝；支持 --dry-run）",
     )
     parser.add_argument(
+        "--commit-git-sources", action="store_true",
+        help="把各 Git 源的本地改动提交为一个 commit（先看清单再确认；支持 --dry-run）",
+    )
+    parser.add_argument(
+        "--git-commit-message", type=str, default=None, metavar="MSG",
+        help="配合 --commit-git-sources：提交信息（默认自动生成）",
+    )
+    parser.add_argument(
         "--push-git-sources", action="store_true",
         help="推送各 Git 源的本地提交到远端（支持 --dry-run）",
     )
@@ -3395,6 +3418,7 @@ def main() -> int:
         "list_git_sources", "add_git_source", "remove_git_source",
         "clone_git_source", "check_git_sources", "pull_git_sources",
         "push_git_sources", "git_discover", "set_primary_git_source",
+        "commit_git_sources",
     )
     if any(getattr(args, name, None) for name in _git_src_flags):
         return _run_git_source_commands(args)
