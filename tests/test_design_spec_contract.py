@@ -1611,6 +1611,54 @@ class SkillVersionUiContractTest(unittest.TestCase):
         # 默认源可删改的说明
         self.assertIn("可删可改", src)
 
+    # ---- 市场源卡片结构（v0.37.3 用户截图「排版和视觉有问题」后重排） ----
+    # 这四条守的是**版面不变量**，不是内部类名：此前源行直接拼进 body、
+    # 添加字段与源行连排、按钮用 ghost.sm，整块读起来像散落的表单。
+
+    def test_market_sources_rows_are_grouped(self):
+        """.rows 容器决定行内边距与 hairline 分隔线，缺了列表就是一团。"""
+        src = _src()
+        self.assertIn(
+            '<div class="rows" style="font-size:var(--fs-sm)">${rows}</div>', src,
+            "市场源行必须包在 .rows 里（`.settings-card .rows .row` 才给行分隔线）")
+
+    def test_market_sources_add_form_is_a_group(self):
+        """新增表单必须独立成组并带标题，用户才看得出这是新增入口。"""
+        src = _src()
+        self.assertIn(
+            '<div class="settings-group">\n      <h4>添加源</h4>', src,
+            "添加源表单必须放进 .settings-group 并带「添加源」标题")
+
+    def test_market_sources_buttons_use_btn_soft(self):
+        """动作按钮统一 .btn-soft：ghost.sm 读起来像文字链接，不像可点操作。"""
+        src = _src()
+        self.assertNotIn('class="ghost sm" data-ms-toggle', src,
+                         "源行「停用」不应再用 ghost.sm")
+        self.assertNotIn('class="ghost sm" data-ms-remove', src,
+                         "源行「删除」不应再用 ghost.sm")
+        self.assertNotIn('class="ghost sm" data-ms-add', src,
+                         "「添加源」不应再用 ghost.sm")
+        self.assertIn('class="btn-soft" data-ms-add="1"', src,
+                      "「添加源」应是 .btn-soft")
+
+    def test_market_sources_fields_have_no_inline_width(self):
+        """字段宽度由 CSS 统一撑满，不允许每个字段内联写不同的 min-width。"""
+        src = _src()
+        for field in ("ms-add-id", "ms-add-label", "ms-add-url"):
+            self.assertNotRegex(
+                src, rf'id="{field}"[^>]*style="[^"]*min-width',
+                f"{field} 不应内联写 min-width（宽度由 `.settings-card .row .v > input` 统一）")
+        # 反向确认「统一撑满」这条 CSS 真的存在，而不是靠删断言蒙混过去。
+        self.assertIn(
+            '.settings-card .row .v > input[type="text"],\n  .settings-card .row .v > select { width: 100%; max-width: 24rem; }',
+            src,
+            "缺少「设置卡片内表单控件撑满值列」的样式规则")
+        # width:100% 只有在值列本身是 flex 增长项时才生效 —— `.row .v` 默认
+        # 由内容决定宽度，漏掉 flex:1 会让输入框仍停在内容宽度（实测 180px）。
+        self.assertIn(".settings-card .row .v { color: var(--muted); flex: 1; min-width: 0; }",
+                      src,
+                      "值列必须 flex:1，否则输入框的 width:100% 等于没生效")
+
 
 class PaginationConsistencyTest(unittest.TestCase):
     """全站只能有一套分页组件（2026-11-06 用户要求「统一一下分页组件」）。

@@ -7,6 +7,49 @@
 
 ## [Unreleased]
 
+## [v0.37.3] - 2026-11-09
+
+当前发布版本（build 142）。**设置页「市场源」卡片排版重做。**
+
+用户截图指出这一页「有一些排版和视觉上的问题」。评审确认四处：
+
+1. **源行没包 `.rows`**：`.settings-card .rows .row` 才给行内边距与 hairline
+   分隔线，此前直接把 `.row` 拼进 body，整块看起来像散落的表单；
+2. **新增表单与源列表连排**：没有分组标题，用户看不出「下面是新增入口」；
+3. **按钮不同族**：源行与「添加源」用 `.ghost.sm`（透明无边框、26px 高），
+   与卡片里 `.btn-soft` 的「清理登记残留」不是一套，读起来像文字链接；
+4. **字段宽度参差**：四个字段各自内联 `min-width: 8rem / 16rem`，四行不齐；
+   长仓库 URL 还会把操作按钮挤走。
+
+### 改动
+
+- **分区**：卡片内分三块——已配置源（`.rows`）／添加源（`.settings-group`
+  + 标题）／登记表维护（`.settings-group`，「清理登记残留」从说明文字中间
+  移到独立分组）。
+- **按钮统一 `.btn-soft`**：源行「停用 / 删除」与「添加源」都用它；`ghost`
+  只留给真正的纯文字动作。
+- **字段撑满**：新增 `.settings-card .row .v > input[type="text"] / > select
+  { width: 100%; max-width: 24rem }`，并给值列补 `flex: 1`——`.row .v` 默认
+  由内容决定宽度，漏掉它 `width: 100%` 只等于内容宽度（实测仍停在 180px，
+  看起来像没生效）。去掉每个字段的内联 `min-width`。
+- **URL 单独一行**：新增 `.market-source-url`（`flex: 1 0 100%`，超长省略、
+  `title` 给全文），不再与按钮抢宽度。
+- **`.settings-group`** 与既有的 `.agent-settings-section` 共用同一套样式规则
+  （上边线 + mono 大写小标题），不另造视觉。
+
+### 文档
+
+`docs/DESIGN.md` §2.10 新增「市场源卡片」结构图与三条结构规则（源行必须包
+`.rows`、新增表单独立成组、同卡片动作按钮统一 `.btn-soft`），并登记字段
+撑满与 URL 单独一行的做法。
+
+### 测试
+
+`tests/test_design_spec_contract.py` 新增 4 项版面不变量断言（`.rows` 包裹、
+添加源分组、按钮族、字段无内联宽度 + 撑满规则存在）。**4 条全部反向验证过**：
+去掉包裹、退回裸表单、改回 `ghost.sm`、加回内联 `min-width`，各自让对应断言
+失败。全量 **1629 项通过、2 项既有跳过**。
+
 ## [v0.37.2] - 2026-11-09
 
 当前发布版本（build 141）。**Git 技能源自动接管统一目录。**
@@ -2538,7 +2581,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.37.2...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.37.3...HEAD
+[v0.37.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.3
 [v0.37.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.2
 [v0.37.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.1
 [v0.37.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.0

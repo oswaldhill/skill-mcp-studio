@@ -1328,6 +1328,44 @@ GUI 不直接改配置文件。间隔由 CLI 钳到 ≥5 分钟，界面需回�
 > 设置项的取值来源必须与「谁是唯一事实来源」一致：偏好类（主题/缩放/统计间隔）用
 > localStorage，跨进程共享类（巡检开关）用 config.yaml 并经 CLI。
 
+**市场源卡片**（`#market-sources-card`，v0.31.0 起；v0.37.3 重排）：
+
+```
+┌ settings-card#market-sources-card ────────────────────────────┐
+│ H4: 市场源                                                     │
+│ #market-sources-body                                           │
+│   └ .rows：已配置源（每源一行）                                  │
+│       k: 源名（skills.sh 社区技能库）                            │
+│       v: [tag 类型] 启用/停用 [停用][删除]                       │
+│          └ .market-source-url（仓库地址，单独一行、超长省略）     │
+│   note: 当前为默认源（未自定义配置）                              │
+│   └ .settings-group「添加源」                                    │
+│       源 ID / 名称 / 类型 / 仓库 URL（控件撑满值列）              │
+│       form-actions: [添加源]                                     │
+│ note: 默认源可删可改、支持 GitHub 仓库源、配置存 data/…           │
+│ └ .settings-group「登记表维护」                                  │
+│     note: 残留成因 + 只删磁盘无目录 + 改前备份                    │
+│     form-actions: [清理登记残留]                                 │
+└───────────────────────────────────────────────────────────────┘
+```
+
+**三条结构规则**（v0.37.3，用户截图「排版和视觉有问题」后重排）：
+
+1. **源行必须包在 `.rows` 里**。`.settings-card .rows .row` 才给出行内边距与
+   hairline 分隔线；直接把 `.row` 拼进 body 会让整块看起来像散落的表单，
+   列表与新增表单之间没有视觉边界。
+2. **新增表单独立成组**（`.settings-group` + 自己的 `h4`）。此前源行与添加字段
+   连排，用户看不出「下面是新增入口」；分组标题用与 `.agent-settings-section`
+   同一套语言（上边线 + mono 大写小标题），不另造视觉。
+3. **同一卡片内动作按钮统一 `.btn-soft`**。此前源行与「添加源」用 `.ghost.sm`
+   （透明无边框、26px 高），与卡片里的「清理登记残留」不同族，读起来像文字
+   链接而不是可点操作；`ghost` 只保留给真正的纯文字动作（如表格行内 kebab）。
+
+**表单字段宽度**：`.settings-card .row .v > input[type="text"]` 与
+`> select` 一律 `width: 100%`，由值列决定宽度，不再给每个字段内联写
+`min-width`（此前 8rem / 16rem 两种宽度并存，四行参差）。仓库地址用
+`.market-source-url` 单独占一行（`flex: 1 0 100%`），避免长 URL 把操作按钮挤走。
+
 **登记残留清理**（v0.37.1，`#market-sources-card` 内的 `data-action="prune-skill-lock"`）：
 技能目录被手工删除后，`~/.agents/.skill-lock.json` 里的来源登记不会自己消失。
 这些「登记残留」没有内容可升级，却会让「检查更新」的结果条数比技能列表可见行数

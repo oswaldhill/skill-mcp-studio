@@ -1393,8 +1393,17 @@
   @keyframes agreveal { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
   /* Agent 设置子页面 */
-  .agent-settings-section { margin-top: var(--sp-7); padding-top: var(--sp-6); border-top: 1px solid var(--line); }
-  .agent-settings-section h4 { margin: 0 0 var(--sp-3); font-family: var(--display); font-size: var(--fs-xs); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .agent-settings-section,
+  .settings-group { margin-top: var(--sp-7); padding-top: var(--sp-6); border-top: 1px solid var(--line); }
+  .agent-settings-section h4,
+  .settings-group h4 { margin: 0 0 var(--sp-3); font-family: var(--display); font-size: var(--fs-xs); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  /* 设置卡片内表单字段：控件撑满值列并限宽，避免各字段宽度参差或过宽。
+     值列必须 flex:1 —— `.row .v` 默认由内容决定宽度，不加的话 input 的
+     width:100% 只等于内容宽度（实测仍是 180px，等于没生效）。 */
+  .settings-card .row .v > input[type="text"],
+  .settings-card .row .v > select { width: 100%; max-width: 24rem; }
+  /* 市场源的仓库地址：单独一行、超长省略（title 给全文） */
+  .market-source-url { flex: 1 0 100%; font-size: var(--fs-xs); color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .path-field-row { display: flex; gap: var(--gap-3); align-items: center; margin-bottom: var(--sp-2); }
   .path-field-row input { flex: 1; }
   .path-field-row button { flex: 0 0 auto; font-size: var(--fs-2xs); padding: var(--sp-1) var(--sp-3); }
@@ -1405,7 +1414,7 @@
   .settings-card .rows .row { padding: var(--sp-3b) 0; border-bottom: 1px solid var(--line); }
   .settings-card .rows .row:last-child { border-bottom: none; }
   .settings-card .row .k { flex: 0 0 150px; font-weight: 500; color: var(--text); }
-  .settings-card .row .v { color: var(--muted); }
+  .settings-card .row .v { color: var(--muted); flex: 1; min-width: 0; }
   .card-link { margin-top: var(--sp-5); display: flex; align-items: center; gap: var(--gap-4); }
   .card-link .grow { flex: 1; }
   .about-card { background: var(--bg-elev); }
@@ -5222,10 +5231,13 @@ function renderSettings() {
     <h4>市场源</h4>
     <div id="market-sources-body"><div class="empty">加载中…</div></div>
     <div class="note" style="margin-top:var(--sp-4)">默认源 skills.sh 可删可改；支持添加 GitHub 仓库源（更新检查按 latest release 比对版本）。源配置存本机 data/market_sources.yaml。</div>
-    <div class="form-actions" style="margin-top:var(--sp-4)">
-      <button class="btn-soft" data-action="prune-skill-lock">清理登记残留</button>
+    <div class="settings-group">
+      <h4>登记表维护</h4>
+      <div class="note">技能目录被手工删除后，来源登记表里会留下「已卸载但仍有登记」的条目：它们没有内容可升级，却会让检查结果比技能列表多出若干条。清理只删磁盘上确实不存在的条目，改前自动备份整份登记表。</div>
+      <div class="form-actions" style="margin-top:var(--sp-4)">
+        <button class="btn-soft" data-action="prune-skill-lock">清理登记残留</button>
+      </div>
     </div>
-    <div class="note" style="margin-top:var(--sp-4)">技能目录被手工删除后，来源登记表里会留下「已卸载但仍有登记」的条目：它们没有内容可升级，却会让检查结果比技能列表多出若干条。清理只删磁盘上确实不存在的条目，改前自动备份整份登记表。</div>
   </div>`;
 
   // 「Skill」：GitHub API Token（v0.31.0）——更新检查的配额提升通道。
@@ -7330,38 +7342,45 @@ function renderEndpointStatus() {
     const body = $("market-sources-body");
     if (!body || !_marketSourcesData) return;
     const sources = _marketSourcesData.sources || [];
+    // 源行：k = 源名，v = 类型标签 + 状态 + 操作按钮，仓库地址另起一行。
+    // 按钮统一 .btn-soft：此前源行与「添加源」用 .ghost.sm（透明无边框），
+    // 与卡片里其它动作按钮不同族，看起来像文字链接而不是可点操作。
     const rows = sources.map((s) => {
       const state = s.enabled ? "启用" : "停用";
-      const url = s.url ? ` <span class="mono muted" title="${escapeHtml(s.url)}">${escapeHtml(s.url)}</span>` : "";
+      const url = s.url
+        ? `<span class="market-source-url mono" title="${escapeHtml(s.url)}">${escapeHtml(s.url)}</span>`
+        : "";
       return `<div class="row"><span class="k">${escapeHtml(s.label)}</span><span class="v" style="display:flex;align-items:center;gap:var(--gap-2);flex-wrap:wrap">
-        <span class="tag">${escapeHtml(s.type)}</span><span class="muted">${state}</span>${url}
-        <button type="button" class="ghost sm" data-ms-toggle="${escapeHtml(s.id)}" data-ms-enabled="${s.enabled ? "true" : "false"}">${s.enabled ? "停用" : "启用"}</button>
-        <button type="button" class="ghost sm" data-ms-remove="${escapeHtml(s.id)}">删除</button>
+        <span class="tag">${escapeHtml(s.type)}</span><span class="muted">${state}</span>
+        <button type="button" class="btn-soft" data-ms-toggle="${escapeHtml(s.id)}" data-ms-enabled="${s.enabled ? "true" : "false"}">${s.enabled ? "停用" : "启用"}</button>
+        <button type="button" class="btn-soft" data-ms-remove="${escapeHtml(s.id)}">删除</button>
+        ${url}
       </span></div>`;
     }).join("");
-    // 添加表单：竖排 .row（.k 作 label），不用 placeholder 充当 label
-    // （taste-skill 4.6 / 表单可访问性：placeholder 是提示不是标签）
-    const addForm = `<div class="row"><span class="k">源 ID</span><span class="v" style="display:flex;align-items:center;gap:var(--gap-2);flex-wrap:wrap">
-      <input type="text" id="ms-add-id" placeholder="my-hub" aria-label="源 ID" style="min-width:8rem">
-    </span></div>
-    <div class="row"><span class="k">名称</span><span class="v" style="display:flex;align-items:center;gap:var(--gap-2);flex-wrap:wrap">
-      <input type="text" id="ms-add-label" placeholder="显示名称" aria-label="源名称" style="min-width:8rem">
-    </span></div>
-    <div class="row"><span class="k">类型</span><span class="v" style="display:flex;align-items:center;gap:var(--gap-2);flex-wrap:wrap">
-      <select id="ms-add-type" aria-label="源类型"><option value="skills-sh">skills.sh</option><option value="github-repo">GitHub 仓库</option></select>
-    </span></div>
-    <div class="row"><span class="k">仓库 URL</span><span class="v" style="display:flex;align-items:center;gap:var(--gap-2);flex-wrap:wrap">
-      <input type="text" id="ms-add-url" placeholder="https://github.com/owner/repo" aria-label="仓库 URL（github-repo 类型必填）" style="min-width:16rem">
-    </span></div>
-    <div class="row"><span class="k"></span><span class="v">
-      <button type="button" class="ghost sm" data-ms-add="1">添加源</button>
-    </span></div>`;
+    // 必须包一层 .rows：`.settings-card .rows .row` 才给出行内边距与分隔线，
+    // 此前直接把 .row 拼进 body，行之间没有 hairline，整块看起来是散落的表单。
+    const listBlock = sources.length
+      ? `<div class="rows" style="font-size:var(--fs-sm)">${rows}</div>`
+      : '<div class="empty">无市场源（检查更新将提示配置源）</div>';
     const fallbackNote = _marketSourcesData.fallback
-      ? '<div class="note">当前为默认源（未自定义配置）。</div>' : "";
+      ? '<div class="note" style="margin-top:var(--sp-3)">当前为默认源（未自定义配置）。</div>' : "";
     const invalidNote = (_marketSourcesData.invalid || []).length
-      ? `<div class="note">无效条目：${_marketSourcesData.invalid.map((i) => escapeHtml(i.id)).join("、")}</div>` : "";
-    body.innerHTML = (rows || '<div class="empty">无市场源（检查更新将提示配置源）</div>')
-      + addForm + fallbackNote + invalidNote;
+      ? `<div class="note" style="margin-top:var(--sp-3)">无效条目：${_marketSourcesData.invalid.map((i) => escapeHtml(i.id)).join("、")}</div>` : "";
+    // 添加表单独立成组（.settings-group）：标题说明「这里是新增入口」，
+    // 字段控件宽度由 CSS 统一撑满，不再给每个字段内联写不同的 min-width。
+    const addForm = `<div class="settings-group">
+      <h4>添加源</h4>
+      <div class="rows" style="font-size:var(--fs-sm)">
+        <div class="row"><span class="k">源 ID</span><span class="v"><input type="text" id="ms-add-id" placeholder="my-hub" aria-label="源 ID"></span></div>
+        <div class="row"><span class="k">名称</span><span class="v"><input type="text" id="ms-add-label" placeholder="显示名称" aria-label="源名称"></span></div>
+        <div class="row"><span class="k">类型</span><span class="v"><select id="ms-add-type" aria-label="源类型"><option value="skills-sh">skills.sh</option><option value="github-repo">GitHub 仓库</option></select></span></div>
+        <div class="row"><span class="k">仓库 URL</span><span class="v"><input type="text" id="ms-add-url" placeholder="https://github.com/owner/repo" aria-label="仓库 URL（github-repo 类型必填）"></span></div>
+      </div>
+      <div class="form-actions" style="margin-top:var(--sp-4)">
+        <button type="button" class="btn-soft" data-ms-add="1">添加源</button>
+      </div>
+    </div>`;
+    body.innerHTML = listBlock + fallbackNote + invalidNote + addForm;
     bindMarketSourcesActions();
   }
 
@@ -9776,7 +9795,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.37.2", build: 141, build_number: 141, semver_ok: true, full: "v0.37.2 (build 141)" },
+  app: { name: "Skill MCP Studio", version: "0.37.3", build: 142, build_number: 142, semver_ok: true, full: "v0.37.3 (build 142)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",
