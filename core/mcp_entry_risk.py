@@ -54,16 +54,32 @@ def _matching_bundle(path: str, prefixes: List[str]) -> str:
     return ""
 
 
-def is_high_risk_entry(entry: Dict[str, Any], tool: Dict[str, Any]) -> Tuple[bool, str]:
+def is_high_risk_entry(
+    entry: Dict[str, Any],
+    tool: Dict[str, Any],
+    *,
+    is_attached: bool = False,
+) -> Tuple[bool, str]:
     """返回 ``(high_risk, reason)``。
 
     非高风险时 ``reason`` 为空串；高风险时给出可直接展示给用户的中文原因。
+
+    ``is_attached``：该条目是否已被判定为「已挂载到端点库」（classification
+    为 ``attached``）。置真时**跳过 R3（同名）**，因为原生接入客户端会刻意用
+    自己的名字作为统一端点的连接键——WorkBuddy 5.9.3 即如此（见
+    ``docs/NATIVE-MCP-IDENTITY.md``：「连接键使用 WorkBuddy，从而保留其原生
+    Agent 名称」）。不豁免的话，它会被 R3 误判成「疑似客户端自带」：MCP 页
+    最后一列因 ``high_risk`` 而保留该条目，与表头 hermes-home 列重复显示，
+    看起来像「多了一个 WorkBuddy 已挂载」；删除保护也会平白挡住一次正常清理。
+
+    R1 / R2（命令落在应用包内）**不豁免**：即使 key 命中端点库，命令来自
+    客户端 app bundle 仍说明它是客户端自带能力，删掉会破坏宿主。
     """
     raw_key = entry.get("key")
     key = raw_key if isinstance(raw_key, str) else ""
     norm_key = normalized_name(key)
 
-    if norm_key:
+    if norm_key and not is_attached:
         candidates: List[Any] = [tool.get("name") or ""]
         candidates.extend(tool.get("aliases") or [])
         for candidate in candidates:

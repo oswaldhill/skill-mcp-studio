@@ -202,8 +202,12 @@ def _mcp_inventory_payload(entries: List[Any], tool: Dict[str, Any]) -> List[Dic
     """inventory 条目载荷；每条附带高风险判定，供 GUI 分级确认。"""
     payload: List[Dict[str, Any]] = []
     for entry in entries:
+        # 已挂载到端点库的条目跳过 R3（同名）判定：原生接入客户端会刻意用
+        # 自己的名字当连接键（WorkBuddy），不豁免会被误判成「客户端自带」，
+        # 导致 MCP 页最后一列与表头端点列重复显示同一条挂载事实。
         high, reason = is_high_risk_entry(
-            {"key": entry.key, "command": entry.command, "args": list(entry.args)}, tool
+            {"key": entry.key, "command": entry.command, "args": list(entry.args)}, tool,
+            is_attached=(entry.classification == "attached"),
         )
         payload.append(
             {

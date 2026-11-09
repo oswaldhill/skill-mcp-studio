@@ -63,8 +63,11 @@ def client_entries(config: Dict[str, Any], tool: Dict[str, Any]) -> List[Any]:
 
 
 def _annotate(entry: Any, tool: Dict[str, Any]) -> Dict[str, Any]:
+    # 与 management_snapshot 同口径：attached 条目跳过 R3（同名）判定，
+    # 否则 WorkBuddy 的原生连接键会被当成「客户端自带」而被删除保护挡住。
     high, reason = is_high_risk_entry(
-        {"key": entry.key, "command": entry.command, "args": list(entry.args)}, tool
+        {"key": entry.key, "command": entry.command, "args": list(entry.args)}, tool,
+        is_attached=(entry.classification == "attached"),
     )
     return {
         "key": entry.key,

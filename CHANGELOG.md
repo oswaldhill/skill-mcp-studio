@@ -7,6 +7,48 @@
 
 ## [Unreleased]
 
+## [v0.37.4] - 2026-11-09
+
+当前发布版本（build 143）。**修复 WorkBuddy 原生连接被误判为「客户端自带」。**
+
+用户截图问「为什么 MCP 中多了一个 WorkBuddy 的已挂载」。查下来不是多了一个
+客户端，也不是重复挂载：WorkBuddy 客户端的 `~/.workbuddy/mcp.json` 里有一个
+server 条目，键名就叫 `WorkBuddy`，指向 `https://hermes-mcp.pd-h.top/mcp`
+（统一端点 hermes-home）。这是 2026-11-06 原生 MCP 接入时的**有意设计**
+（`docs/NATIVE-MCP-IDENTITY.md`：「连接键使用 WorkBuddy，从而保留其原生
+Agent 名称」），把原来的 `hermes` 条目改名为 `WorkBuddy`。
+
+### 根因
+
+`core/mcp_entry_risk.is_high_risk_entry()` 的 R3 规则是「条目 key 归一化后
+等于客户端名或其 alias → 疑似客户端自带」。WorkBuddy 的键名恰好等于客户端
+名，于是被误判为 `high_risk`；而 MCP 页最后一列的过滤逻辑是
+「`attached` 且 `high_risk` → 保留」，导致同一条挂载事实在表头 `hermes-home`
+列与最后一列各显示一次，读起来就像「多了一个 WorkBuddy」。
+
+### 修复
+
+- `is_high_risk_entry()` 新增 `is_attached` 参数：**attached 条目跳过 R3（同名）**，
+  因为原生接入客户端会刻意用自己的名字当连接键。
+- **R1 / R2 不豁免**：命令落在客户端 app bundle 内仍判高危——即使 key 命中
+  端点库，命令来自宿主 app 仍说明它是客户端自带能力。
+- 两处调用点同步传参：`management_snapshot._mcp_inventory_payload()` 与
+  `mcp_entry_removal._annotate()`（后者同时让删除保护不再平白挡住正常清理）。
+
+### 验证
+
+实测数据从 `{'key': 'WorkBuddy', 'classification': 'attached',
+'endpoint_key': 'hermes-home', 'high_risk': True}` 变为 `high_risk: False`，
+前端过滤随即把它从最后一列移除。
+
+### 测试
+
+- `tests/test_mcp_entry_risk.py` 新增 4 项：attached 同名豁免、豁免不波及 R1、
+  未挂载同名仍判高危、**两处调用点必须传 `is_attached`**（只改函数签名不改
+  调用点等于没修）。
+- 两条反向验证有效：去掉 `and not is_attached`、去掉调用点传参，各自让对应
+  断言失败。全量 **1633 项通过、2 项既有跳过**。
+
 ## [v0.37.3] - 2026-11-09
 
 当前发布版本（build 142）。**设置页「市场源」卡片排版重做。**
@@ -2581,7 +2623,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.37.3...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.37.4...HEAD
+[v0.37.4]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.4
 [v0.37.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.3
 [v0.37.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.2
 [v0.37.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.37.1
