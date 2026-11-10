@@ -1149,6 +1149,10 @@
         </tbody>
       </table>
       <p><strong>只覆盖路径类字段</strong>：工具名、类型、别名一律不动——否则覆盖层会变成第二个注册表，两处数据迟早打架。</p>
+      <p><strong>路径字段一律带「浏览」按钮</strong>（v0.39.2）：调用 Tauri dialog 插件的
+        <code>window.__TAURI__.dialog.open({ directory })</code>——文件字段传 <code>false</code>、
+        目录字段（Skills 目录 / 扫描目录）传 <code>true</code>。浏览器预览态没有 <code>__TAURI__</code> 时
+        <code>pickPath</code> 返回 null、输入框保持原值，不报错。</p>
       <p><strong>三个入口</strong>：</p>
       <ol>
         <li>详情弹框的「编辑路径」按钮（六个字段各一个 textarea，每行一个值，清空 = 恢复默认）；</li>

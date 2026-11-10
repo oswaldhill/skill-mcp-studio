@@ -7,6 +7,33 @@
 
 ## [Unreleased]
 
+## [v0.39.2] - 2026-11-10
+
+当前发布版本（build 161）。
+
+**路径字段加「浏览」按钮，可用系统文件选择器选路径。**
+
+用户要求：「在编辑的对话框中，需要增加类似浏览的按钮，可以通过 GUI 去选择电脑上的
+文件而不是只能通过输入路径的方式」。
+
+### 改动
+
+- 新增 `pickPath(kind)`：调 Tauri dialog 插件的
+  `window.__TAURI__.dialog.open({ directory })`——文件字段 `false`、目录字段
+  （Skills 目录 / 默认扫描目录）`true`。
+- 客户端编辑弹框（`openAgentSettings`）里**所有路径字段**都带「浏览」：
+  APP BUNDLE / CONFIG / 约束文件（多值行，含「+ 添加路径」新加的行）、
+  Skills 路径 / MCP 配置文件 / 默认扫描目录（单值字段）。
+- CLI 命令名不给「浏览」——它是可执行名不是路径。
+- 浏览器预览态没有 `__TAURI__`：`pickPath` 返回 null，输入框保持原值，不报错。
+
+### 测试
+
+- 新增断言：`pickPath` 存在、必须走 `__TAURI__.dialog`（不是 `input[type=file]`）、
+  多值行有 `pf-browse`、单值字段有 `as-skills-pick`。
+- **反向验证**：把 `pickPath` 改名，断言立刻失败。
+- 全量 **1686 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
 ## [v0.39.1] - 2026-11-10
 
 当前发布版本（build 160）。
@@ -3300,7 +3327,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.39.1...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.39.2...HEAD
+[v0.39.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.39.2
 [v0.39.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.39.1
 [v0.39.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.39.0
 [v0.38.9]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.9

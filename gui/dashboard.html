@@ -1452,6 +1452,8 @@
   .path-field-row { display: flex; gap: var(--gap-3); align-items: center; margin-bottom: var(--sp-2); }
   .path-field-row input { flex: 1; }
   .path-field-row button { flex: 0 0 auto; font-size: var(--fs-2xs); padding: var(--sp-1) var(--sp-3); }
+  /* 「浏览」按钮（v0.39.2）：打开系统文件/目录选择器，不换行、不参与压缩 */
+  .path-field-row .pf-browse { flex: 0 0 auto; white-space: nowrap; }
 
   /* ============ settings（参考：label 左 + 控件右的表单行，hairline 分隔） ============ */
   /* 约束文件编辑器（v0.37.7）：等宽、可纵向拉伸，占弹框主体 */
@@ -4901,6 +4903,26 @@ function renderAgentsTable(page) {
   }
 }
 
+// 系统文件/目录选择器（v0.39.2）：路径字段此前只能手输，用户要求「加类似浏览的按钮，
+// 通过 GUI 选电脑上的文件」。Tauri v2 的 dialog 插件已注册（lib.rs + capabilities），
+// 且 withGlobalTauri=true，所以直接调 window.__TAURI__.dialog.open。
+// 浏览器预览态没有该对象，返回 null，调用方保持原值不变。
+async function pickPath(kind) {
+  const api = (window.__TAURI__ && window.__TAURI__.dialog) || null;
+  if (!api || typeof api.open !== "function") return null;
+  try {
+    const picked = await api.open({
+      directory: kind === "dir",
+      multiple: false,
+      title: kind === "dir" ? "选择目录" : "选择文件",
+    });
+    return typeof picked === "string" && picked ? picked : null;
+  } catch (err) {
+    showBanner("warn", "打开文件选择器失败：" + String((err && err.message) || err));
+    return null;
+  }
+}
+
 // ---------------- Agent 设置子页面 ----------------
 function openAgentSettings(name) {
   const tools = (SNAP && SNAP.mainstream_tools) || [];
@@ -4917,11 +4939,15 @@ function openAgentSettings(name) {
   // 规则路径改不了。补成与其它路径同构的多值字段。
   const rulesPaths = [...(t.rules_paths || [])];
 
-  function renderPathFields(id, arr, placeholder) {
+  function renderPathFields(id, arr, placeholder, kind) {
+    const browse = kind
+      ? `<button class="ghost sm pf-browse" data-kind="${kind}" title="从本机选择">浏览</button>`
+      : "";
     return arr.map((v, i) => `<div class="path-field-row" data-idx="${i}">
       <input type="text" class="pf-${id}" value="${escapeHtml(v)}" placeholder="${placeholder}" />
+      ${browse}
       <button class="ghost sm pf-rm" data-idx="${i}">×</button>
-    </div>`).join("") + `<button class="ghost sm pf-add" data-pf="${id}" data-placeholder="${placeholder}">+ 添加路径</button>`;
+    </div>`).join("") + `<button class="ghost sm pf-add" data-pf="${id}" data-placeholder="${placeholder}" data-kind="${kind || ""}">+ 添加路径</button>`;
   }
 
   mountModal(`<div class="modal-backdrop"><div class="modal modal-form" style="width:min(640px,92vw)">
@@ -4930,7 +4956,7 @@ function openAgentSettings(name) {
 
     <div class="agent-settings-section">
       <h4>App Bundle 路径</h4>
-      <div id="as-app">${renderPathFields("app", appBundles, "/Applications/App.app")}</div>
+      <div id="as-app">${renderPathFields("app", appBundles, "/Applications/App.app", "file")}</div>
     </div>
 
     <div class="agent-settings-section">
@@ -4940,19 +4966,34 @@ function openAgentSettings(name) {
 
     <div class="agent-settings-section">
       <h4>Config 路径</h4>
-      <div id="as-cfg">${renderPathFields("cfg", configPaths, "~/.app/mcp.json")}</div>
+      <div id="as-cfg">${renderPathFields("cfg", configPaths, "~/.app/mcp.json", "file")}</div>
     </div>
 
     <div class="agent-settings-section">
       <h4>约束文件</h4>
-      <div id="as-rules">${renderPathFields("rules", rulesPaths, "~/.app/RULES.md")}</div>
+      <div id="as-rules">${renderPathFields("rules", rulesPaths, "~/.app/RULES.md", "file")}</div>
     </div>
 
     <div class="agent-settings-section">
       <h4>目录设置</h4>
-      <div class="form-field"><label>Skills 路径</label><input type="text" id="as-skills" value="${escapeHtml(skillsPath)}" placeholder="~/.app/skills" /></div>
-      <div class="form-field"><label>MCP 配置文件</label><input type="text" id="as-mcp-cfg" value="${escapeHtml(mcpConfigPath)}" placeholder="~/.app/mcp.json" /></div>
-      <div class="form-field"><label>默认扫描目录</label><input type="text" id="as-scan" value="${escapeHtml(scanDir)}" placeholder="~/.config/app/skills" /></div>
+      <div class="form-field"><label>Skills 路径</label>
+        <div class="path-field-row">
+          <input type="text" id="as-skills" value="${escapeHtml(skillsPath)}" placeholder="~/.app/skills" />
+          <button class="ghost sm" id="as-skills-pick" data-kind="dir">浏览</button>
+        </div>
+      </div>
+      <div class="form-field"><label>MCP 配置文件</label>
+        <div class="path-field-row">
+          <input type="text" id="as-mcp-cfg" value="${escapeHtml(mcpConfigPath)}" placeholder="~/.app/mcp.json" />
+          <button class="ghost sm" id="as-mcp-cfg-pick" data-kind="file">浏览</button>
+        </div>
+      </div>
+      <div class="form-field"><label>默认扫描目录</label>
+        <div class="path-field-row">
+          <input type="text" id="as-scan" value="${escapeHtml(scanDir)}" placeholder="~/.config/app/skills" />
+          <button class="ghost sm" id="as-scan-pick" data-kind="dir">浏览</button>
+        </div>
+      </div>
     </div>
 
     <div class="form-actions">
@@ -4967,14 +5008,27 @@ function openAgentSettings(name) {
     container.querySelectorAll(".pf-rm").forEach(btn => {
       btn.onclick = () => btn.closest(".path-field-row").remove();
     });
+    const wireBrowse = (scope) => {
+      scope.querySelectorAll(".pf-browse").forEach(btn => {
+        btn.onclick = async () => {
+          const picked = await pickPath(btn.dataset.kind || "file");
+          if (picked) btn.previousElementSibling.value = picked;
+        };
+      });
+    };
+    wireBrowse(container);
     container.querySelectorAll(".pf-add").forEach(btn => {
       btn.onclick = () => {
         const pf = btn.dataset.pf;
         const ph = btn.dataset.placeholder;
+        const kind = btn.dataset.kind || "";
         const row = document.createElement("div");
         row.className = "path-field-row";
-        row.innerHTML = `<input type="text" class="pf-${pf}" placeholder="${ph}" /><button class="ghost sm pf-rm">×</button>`;
+        row.innerHTML = `<input type="text" class="pf-${pf}" placeholder="${ph}" />`
+          + (kind ? `<button class="ghost sm pf-browse" data-kind="${kind}">浏览</button>` : "")
+          + `<button class="ghost sm pf-rm">×</button>`;
         row.querySelector(".pf-rm").onclick = () => row.remove();
+        wireBrowse(row);
         btn.before(row);
       };
     });
@@ -4983,6 +5037,16 @@ function openAgentSettings(name) {
   bindPf("cli");
   bindPf("cfg");
   bindPf("rules");
+
+  [["as-skills-pick", "as-skills"], ["as-mcp-cfg-pick", "as-mcp-cfg"], ["as-scan-pick", "as-scan"]]
+    .forEach(([btnId, inputId]) => {
+      const btn = $(btnId);
+      if (!btn) return;
+      btn.onclick = async () => {
+        const picked = await pickPath(btn.dataset.kind || "file");
+        if (picked) $(inputId).value = picked;
+      };
+    });
 
   $("as-cancel").onclick = closeModal;
   $("as-save").onclick = async () => {
@@ -10141,7 +10205,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.39.1", build: 160, build_number: 160, semver_ok: true, full: "v0.39.1 (build 160)" },
+  app: { name: "Skill MCP Studio", version: "0.39.2", build: 161, build_number: 161, semver_ok: true, full: "v0.39.2 (build 161)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

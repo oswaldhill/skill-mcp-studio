@@ -197,6 +197,13 @@ class RulesGuiContract(unittest.TestCase):
                       "约束行应并入 .ac-paths（RULES 行），与 APP/CLI/CONFIG 同构")
         # 只读预览：不再有编辑器 textarea
         self.assertIn("rules-preview", self.dashboard, "应有只读预览区（.rules-preview）")
+        # v0.39.2 用户要求：路径字段要能「浏览」选文件，不能只手输
+        self.assertIn("async function pickPath(kind)", self.dashboard,
+                      "应有系统文件/目录选择器封装")
+        self.assertIn("__TAURI__.dialog", self.dashboard,
+                      "浏览必须走 Tauri dialog 插件（不是浏览器 input[type=file]）")
+        self.assertIn("pf-browse", self.dashboard, "多值路径行应有「浏览」按钮")
+        self.assertIn("as-skills-pick", self.dashboard, "单值字段（Skills 目录）应有「浏览」")
         # v0.38.9 用户反馈「显示不全」：长路径缩写固定前缀，完整路径留在 title
         self.assertIn("function _shortPath", self.dashboard, "应有路径缩写函数")
         self.assertIn('"~/Library/…/"', self.dashboard,
