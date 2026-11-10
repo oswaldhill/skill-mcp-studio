@@ -7,6 +7,42 @@
 
 ## [Unreleased]
 
+## [v0.39.4] - 2026-11-10
+
+当前发布版本（build 163）。
+
+**文件选择器定位到当前值所在目录。**
+
+用户：「如果是有内容的选项，点击浏览之后，应该直接打开的默认路径就是对应的地方，
+而不是一个统一的 documents」。
+
+### 改动
+
+- 新增 `_pickerStartDir(kind, current)`：从当前值推出起始目录
+  - 目录字段（Skills / 扫描目录）→ 值本身
+  - 文件字段（APP / CONFIG / 约束文件）→ 值的所在目录
+  - `~` 前缀 → 先用 Rust 新命令 `home_dir` 展开（前端拿不到 HOME）
+  - 命令名（不含 `/`）→ 推不出，不传 `defaultPath`（系统沿用上次位置）
+- `pickPath(kind, current)` 把结果传给 `dialog.open({ defaultPath })`。
+- Rust 侧新增 `home_dir` 命令（`HOME` / `USERPROFILE` 回落）并注册到
+  `invoke_handler`。
+
+### 效果
+
+| 字段 | 当前值 | 选择器打开位置 |
+|---|---|---|
+| APP BUNDLE | `/Applications/Cursor.app` | `/Applications` |
+| CONFIG | `~/.cursor/mcp.json` | `~/.cursor` |
+| 约束文件 | `~/.claude/CLAUDE.md` | `~/.claude` |
+| Skills 路径 | `~/.cursor/skills` | `~/.cursor/skills` |
+| CLI 命令 | `cursor` | 不指定（系统上次位置） |
+
+### 测试
+
+- 新增断言：`_pickerStartDir` 存在、必须传 `defaultPath`、`~` 必须用
+  `home_dir` 展开；**反向验证**：把 `pickPath` 签名改回单参数，断言失败。
+- 全量 **1686 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
 ## [v0.39.3] - 2026-11-10
 
 当前发布版本（build 162）。
@@ -3364,7 +3400,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.39.3...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.39.4...HEAD
+[v0.39.4]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.39.4
 [v0.39.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.39.3
 [v0.39.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.39.2
 [v0.39.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.39.1

@@ -198,11 +198,18 @@ class RulesGuiContract(unittest.TestCase):
         # 只读预览：不再有编辑器 textarea
         self.assertIn("rules-preview", self.dashboard, "应有只读预览区（.rules-preview）")
         # v0.39.2 用户要求：路径字段要能「浏览」选文件，不能只手输
-        self.assertIn("async function pickPath(kind)", self.dashboard,
+        self.assertIn("async function pickPath(kind, current)", self.dashboard,
                       "应有系统文件/目录选择器封装")
         self.assertIn("__TAURI__.dialog", self.dashboard,
                       "浏览必须走 Tauri dialog 插件（不是浏览器 input[type=file]）")
         self.assertIn("pf-browse", self.dashboard, "多值路径行应有「浏览」按钮")
+        # v0.39.4 用户：选择器应定位到当前值所在目录，而不是每次都落 Documents
+        self.assertIn("async function _pickerStartDir(kind, current)", self.dashboard,
+                      "应按当前值推断选择器的起始目录")
+        self.assertIn("defaultPath", self.dashboard,
+                      "必须把推断出的目录传给 dialog.open 的 defaultPath")
+        self.assertIn("core.invoke(\"home_dir\")", self.dashboard,
+                      "~ 前缀要用 Rust 的 home_dir 展开，前端拿不到 HOME")
         self.assertIn("as-skills-pick", self.dashboard, "单值字段（Skills 目录）应有「浏览」")
         # v0.39.3 用户：「CLI 的命令也是需要的」+ 整页优化
         self.assertIn('renderPathFields("cli", commands, "command-name", "exec")', self.dashboard,

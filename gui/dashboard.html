@@ -4913,15 +4913,46 @@ function renderAgentsTable(page) {
 // 通过 GUI 选电脑上的文件」。Tauri v2 的 dialog 插件已注册（lib.rs + capabilities），
 // 且 withGlobalTauri=true，所以直接调 window.__TAURI__.dialog.open。
 // 浏览器预览态没有该对象，返回 null，调用方保持原值不变。
-async function pickPath(kind) {
+let _homeCache = null;
+async function _homeDir() {
+  if (_homeCache !== null) return _homeCache;
+  try {
+    const core = (window.__TAURI__ && window.__TAURI__.core) || null;
+    _homeCache = core && typeof core.invoke === "function" ? String(await core.invoke("home_dir") || "") : "";
+  } catch (_) {
+    _homeCache = "";
+  }
+  return _homeCache;
+}
+
+// 从当前值推出「选择器该打开哪个目录」（v0.39.4 用户：不该每次都落到 Documents）。
+// 目录字段直接用值本身；文件字段取所在目录；命令名（不含 /）推不出，返回 null。
+async function _pickerStartDir(kind, current) {
+  const raw = String(current || "").trim();
+  if (!raw) return null;
+  if (kind === "exec" && !raw.includes("/")) return null;
+  let p = raw;
+  if (p.startsWith("~")) {
+    const home = await _homeDir();
+    if (!home) return null;
+    p = home + p.slice(1);
+  }
+  if (!p.startsWith("/")) return null;
+  return kind === "dir" ? p.replace(/\/+$/, "") : (p.replace(/\/[^/]*$/, "") || "/");
+}
+
+async function pickPath(kind, current) {
   const api = (window.__TAURI__ && window.__TAURI__.dialog) || null;
   if (!api || typeof api.open !== "function") return null;
   try {
-    const picked = await api.open({
+    const opts = {
       directory: kind === "dir",
       multiple: false,
       title: kind === "dir" ? "选择目录" : "选择文件",
-    });
+    };
+    const start = await _pickerStartDir(kind, current);
+    if (start) opts.defaultPath = start;
+    const picked = await api.open(opts);
     return typeof picked === "string" && picked ? picked : null;
   } catch (err) {
     showBanner("warn", "打开文件选择器失败：" + String((err && err.message) || err));
@@ -5025,12 +5056,13 @@ function openAgentSettings(name) {
       scope.querySelectorAll(".pf-browse").forEach(btn => {
         btn.onclick = async () => {
           const kind = btn.dataset.kind || "file";
-          let picked = await pickPath(kind === "exec" ? "file" : kind);
+          const input = btn.previousElementSibling;
+          let picked = await pickPath(kind === "exec" ? "file" : kind, input && input.value);
           if (!picked) return;
           // 命令名只存 basename：detect_installation 用 shutil.which 查 PATH，
           // 塞完整路径会让「命令是否存在」的判定与用户预期不一致。
           if (kind === "exec") picked = picked.split(/[\\/]/).pop();
-          btn.previousElementSibling.value = picked;
+          input.value = picked;
         };
       });
     };
@@ -5061,7 +5093,7 @@ function openAgentSettings(name) {
       const btn = $(btnId);
       if (!btn) return;
       btn.onclick = async () => {
-        const picked = await pickPath(btn.dataset.kind || "file");
+        const picked = await pickPath(btn.dataset.kind || "file", ($(inputId) || {}).value);
         if (picked) $(inputId).value = picked;
       };
     });
@@ -10223,7 +10255,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.39.3", build: 162, build_number: 162, semver_ok: true, full: "v0.39.3 (build 162)" },
+  app: { name: "Skill MCP Studio", version: "0.39.4", build: 163, build_number: 163, semver_ok: true, full: "v0.39.4 (build 163)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

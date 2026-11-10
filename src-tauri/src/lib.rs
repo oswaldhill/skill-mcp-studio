@@ -435,6 +435,15 @@ fn alert_state_for_app(app: &tauri::AppHandle) -> TrayState {
 /// 能力，没有点击回调（`Builder` 上没有 on_action/on_click 一类方法）。
 /// 因此改由 popover 承担跳转入口——用户从通知看到提示后点托盘弹框，
 /// 一次点击即可落到变更详情。
+/// 前端需要展开 `~` 才能把文件选择器的 defaultPath 指到用户目录。
+/// 浏览器预览态没有这个命令，前端会回落到系统上次位置。
+#[tauri::command]
+fn home_dir() -> Result<String, String> {
+    std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn show_main_window(app: tauri::AppHandle, page: Option<String>) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("main") {
@@ -793,6 +802,7 @@ pub fn run() {
             cancel_cli,
             read_scan_progress,
             open_url,
+            home_dir,
             show_main_window
         ])
         // P2-12：开发态直读磁盘上的 dashboard.html。
