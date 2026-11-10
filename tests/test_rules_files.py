@@ -204,6 +204,15 @@ class RulesGuiContract(unittest.TestCase):
                       "浏览必须走 Tauri dialog 插件（不是浏览器 input[type=file]）")
         self.assertIn("pf-browse", self.dashboard, "多值路径行应有「浏览」按钮")
         self.assertIn("as-skills-pick", self.dashboard, "单值字段（Skills 目录）应有「浏览」")
+        # v0.39.3 用户：「CLI 的命令也是需要的」+ 整页优化
+        self.assertIn('renderPathFields("cli", commands, "command-name", "exec")', self.dashboard,
+                      "CLI 命令行也要有「浏览」（选可执行文件后取文件名）")
+        self.assertIn("agent-settings-hint", self.dashboard,
+                      "每个路径组应有说明文字（placeholder 一输入就消失）")
+        self.assertIn("path-field-add", self.dashboard,
+                      "「+ 添加路径」应为轻量文字按钮")
+        self.assertIn('const rows = arr.length ? arr : [""]', self.dashboard,
+                      "空数组也要渲染一行空输入，否则整块像漏了字段")
         # v0.38.9 用户反馈「显示不全」：长路径缩写固定前缀，完整路径留在 title
         self.assertIn("function _shortPath", self.dashboard, "应有路径缩写函数")
         self.assertIn('"~/Library/…/"', self.dashboard,

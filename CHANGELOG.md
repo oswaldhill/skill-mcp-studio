@@ -7,6 +7,43 @@
 
 ## [Unreleased]
 
+## [v0.39.3] - 2026-11-10
+
+当前发布版本（build 162）。
+
+**CLI 命令行补「浏览」+ 编辑弹框整体整理。**
+
+用户：「CLI 的命令也是需要的。请你对整个编辑页面进行优化，在满足 UI 规范的前提下
+增加设计感」。
+
+### 一、CLI 命令也能「浏览」
+
+`renderPathFields("cli", ..., "exec")`——点「浏览」选可执行文件，自动取 **basename**
+填入（`cursor` 而不是 `/usr/local/bin/cursor`）。理由：`detect_installation` 用
+`shutil.which` 查 PATH，塞完整路径会让「命令是否存在」的判定与用户预期不一致。
+
+### 二、编辑弹框整理
+
+| 改动 | 之前 | 现在 |
+|---|---|---|
+| 空字段 | 只剩一个「+ 添加路径」，整块像漏了字段 | **空数组也渲染一行空输入** |
+| 字段说明 | 无（解释塞在 placeholder 里，一输入就消失） | 每组一句 `.agent-settings-hint` |
+| 「+ 添加路径」 | 与「浏览/×」同款的 ghost 按钮 | 轻量文字按钮 `.path-field-add`，不与操作按钮抢视觉 |
+| 约束文件区块 | 无值时空着 | 空行 + 说明「留空则回落到内置默认值」 |
+
+### 设计取舍
+
+这是产品表单弹框，不是 landing page——没有加渐变、玻璃、动画。设计感来自
+**分组节奏**（标题 → 说明 → 输入行 → 轻量添加）和**对齐**：每组同构，
+浏览/删除按钮固定在右侧同一列。taste-skill 的「Motion must be motivated」
+在这里的结论是：表单不需要动效。
+
+### 测试
+
+- 新增断言：CLI 行传 `exec`、`agent-settings-hint` 存在、`path-field-add` 存在、
+  空数组渲染空行；**反向验证**：去掉 CLI 的 `exec` 参数，断言立刻失败。
+- 全量 **1686 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
 ## [v0.39.2] - 2026-11-10
 
 当前发布版本（build 161）。
@@ -3327,7 +3364,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.39.2...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.39.3...HEAD
+[v0.39.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.39.3
 [v0.39.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.39.2
 [v0.39.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.39.1
 [v0.39.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.39.0

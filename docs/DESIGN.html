@@ -1153,6 +1153,10 @@
         <code>window.__TAURI__.dialog.open({ directory })</code>——文件字段传 <code>false</code>、
         目录字段（Skills 目录 / 扫描目录）传 <code>true</code>。浏览器预览态没有 <code>__TAURI__</code> 时
         <code>pickPath</code> 返回 null、输入框保持原值，不报错。</p>
+      <p><strong>编辑弹框的字段组织</strong>（v0.39.3）：每个路径组 = 标题（<code>.agent-settings-section h4</code>）
+        + 一句说明（<code>.agent-settings-hint</code>，比塞进 placeholder 稳）+ 输入行（输入框 + 浏览 + 移除）
+        + 轻量「+ 添加路径」（<code>.path-field-add</code>，文字按钮）。<strong>空数组也渲染一行空输入</strong>：
+        此前只剩一个「+ 添加路径」，整块看起来像漏了字段。</p>
       <p><strong>三个入口</strong>：</p>
       <ol>
         <li>详情弹框的「编辑路径」按钮（六个字段各一个 textarea，每行一个值，清空 = 恢复默认）；</li>

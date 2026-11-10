@@ -1442,6 +1442,12 @@
   .settings-group { margin-top: var(--sp-7); padding-top: var(--sp-6); border-top: 1px solid var(--line); }
   .agent-settings-section h4,
   .settings-group h4 { margin: 0 0 var(--sp-3); font-family: var(--display); font-size: var(--fs-xs); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  /* 区块说明（v0.39.3）：每个路径组一句话讲清「这个字段填什么」，
+     比在 placeholder 里塞解释更稳（placeholder 一输入就消失）。 */
+  .agent-settings-hint { margin: calc(var(--sp-1) * -1) 0 var(--sp-3); font-size: var(--fs-2xs); color: var(--faint); line-height: 1.5; }
+  /* 「+ 添加路径」：轻量文字按钮，不与右侧「浏览 / ×」抢视觉 */
+  .path-field-add { background: none; border: none; padding: var(--sp-0b) 0; color: var(--accent); font-size: var(--fs-2xs); cursor: pointer; }
+  .path-field-add:hover { text-decoration: underline; }
   /* 设置卡片内表单字段：控件撑满值列并限宽，避免各字段宽度参差或过宽。
      值列必须 flex:1 —— `.row .v` 默认由内容决定宽度，不加的话 input 的
      width:100% 只等于内容宽度（实测仍是 180px，等于没生效）。 */
@@ -4939,15 +4945,18 @@ function openAgentSettings(name) {
   // 规则路径改不了。补成与其它路径同构的多值字段。
   const rulesPaths = [...(t.rules_paths || [])];
 
+  // kind: "file" / "dir" / "exec"（命令名，选可执行文件后取文件名）
   function renderPathFields(id, arr, placeholder, kind) {
     const browse = kind
-      ? `<button class="ghost sm pf-browse" data-kind="${kind}" title="从本机选择">浏览</button>`
+      ? `<button class="ghost sm pf-browse" data-kind="${kind}" title="${kind === "exec" ? "选择可执行文件" : "从本机选择"}">浏览</button>`
       : "";
-    return arr.map((v, i) => `<div class="path-field-row" data-idx="${i}">
+    // 空数组也要渲染一行空输入：此前只剩一个「+ 添加路径」，整块看起来像漏了字段
+    const rows = arr.length ? arr : [""];
+    return rows.map((v, i) => `<div class="path-field-row" data-idx="${i}">
       <input type="text" class="pf-${id}" value="${escapeHtml(v)}" placeholder="${placeholder}" />
       ${browse}
-      <button class="ghost sm pf-rm" data-idx="${i}">×</button>
-    </div>`).join("") + `<button class="ghost sm pf-add" data-pf="${id}" data-placeholder="${placeholder}" data-kind="${kind || ""}">+ 添加路径</button>`;
+      <button class="ghost sm pf-rm" data-idx="${i}" title="移除这一行">×</button>
+    </div>`).join("") + `<button class="path-field-add pf-add" data-pf="${id}" data-placeholder="${placeholder}" data-kind="${kind || ""}">+ 添加路径</button>`;
   }
 
   mountModal(`<div class="modal-backdrop"><div class="modal modal-form" style="width:min(640px,92vw)">
@@ -4956,21 +4965,25 @@ function openAgentSettings(name) {
 
     <div class="agent-settings-section">
       <h4>App Bundle 路径</h4>
+      <div class="agent-settings-hint">macOS 应用包（.app）的位置，用于判定是否已安装。</div>
       <div id="as-app">${renderPathFields("app", appBundles, "/Applications/App.app", "file")}</div>
     </div>
 
     <div class="agent-settings-section">
       <h4>CLI 命令</h4>
-      <div id="as-cli">${renderPathFields("cli", commands, "command-name")}</div>
+      <div class="agent-settings-hint">终端里可执行的名字（如 cursor、code）。点「浏览」选可执行文件会自动取文件名。</div>
+      <div id="as-cli">${renderPathFields("cli", commands, "command-name", "exec")}</div>
     </div>
 
     <div class="agent-settings-section">
       <h4>Config 路径</h4>
+      <div class="agent-settings-hint">该客户端的设置 / MCP 配置文件位置，可多行。</div>
       <div id="as-cfg">${renderPathFields("cfg", configPaths, "~/.app/mcp.json", "file")}</div>
     </div>
 
     <div class="agent-settings-section">
       <h4>约束文件</h4>
+      <div class="agent-settings-hint">该 Agent 的用户级规则文件（如 AGENTS.md、CLAUDE.md）。留空则回落到内置默认值。</div>
       <div id="as-rules">${renderPathFields("rules", rulesPaths, "~/.app/RULES.md", "file")}</div>
     </div>
 
@@ -5011,8 +5024,13 @@ function openAgentSettings(name) {
     const wireBrowse = (scope) => {
       scope.querySelectorAll(".pf-browse").forEach(btn => {
         btn.onclick = async () => {
-          const picked = await pickPath(btn.dataset.kind || "file");
-          if (picked) btn.previousElementSibling.value = picked;
+          const kind = btn.dataset.kind || "file";
+          let picked = await pickPath(kind === "exec" ? "file" : kind);
+          if (!picked) return;
+          // 命令名只存 basename：detect_installation 用 shutil.which 查 PATH，
+          // 塞完整路径会让「命令是否存在」的判定与用户预期不一致。
+          if (kind === "exec") picked = picked.split(/[\\/]/).pop();
+          btn.previousElementSibling.value = picked;
         };
       });
     };
@@ -10205,7 +10223,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.39.2", build: 161, build_number: 161, semver_ok: true, full: "v0.39.2 (build 161)" },
+  app: { name: "Skill MCP Studio", version: "0.39.3", build: 162, build_number: 162, semver_ok: true, full: "v0.39.3 (build 162)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",
