@@ -4913,6 +4913,9 @@ function openAgentSettings(name) {
   const skillsPath = (t.skills_paths || [])[0] || "";
   const mcpConfigPath = t.config_path || "";
   const scanDir = t.scan_dir || "";
+  // v0.39.1 用户反馈：这个编辑弹框里没有「约束文件」字段（只有 APP/CLI/CONFIG/目录），
+  // 规则路径改不了。补成与其它路径同构的多值字段。
+  const rulesPaths = [...(t.rules_paths || [])];
 
   function renderPathFields(id, arr, placeholder) {
     return arr.map((v, i) => `<div class="path-field-row" data-idx="${i}">
@@ -4938,6 +4941,11 @@ function openAgentSettings(name) {
     <div class="agent-settings-section">
       <h4>Config 路径</h4>
       <div id="as-cfg">${renderPathFields("cfg", configPaths, "~/.app/mcp.json")}</div>
+    </div>
+
+    <div class="agent-settings-section">
+      <h4>约束文件</h4>
+      <div id="as-rules">${renderPathFields("rules", rulesPaths, "~/.app/RULES.md")}</div>
     </div>
 
     <div class="agent-settings-section">
@@ -4974,6 +4982,7 @@ function openAgentSettings(name) {
   bindPf("app");
   bindPf("cli");
   bindPf("cfg");
+  bindPf("rules");
 
   $("as-cancel").onclick = closeModal;
   $("as-save").onclick = async () => {
@@ -4997,9 +5006,32 @@ function openAgentSettings(name) {
     if (newScan) args.push("--scan-dir", newScan);
 
     const res = await runCli(args);
+    if (!(res && res.code === 0)) {
+      closeModal();
+      showBanner("err", (res && res.stderr) || "更新失败");
+      return;
+    }
+    // 约束文件走路径覆盖层（--set-tool-path），与「编辑路径」弹框同一条通道：
+    // 注册表里的 rules_paths 是厂商默认值，--update-client 写的是 discovered_tools，
+    // 两者不是同一份数据。清空则清除覆盖、回落到默认值。
+    const newRules = collect("rules");
+    const rulesChanged = newRules.join("\n") !== rulesPaths.join("\n");
+    if (rulesChanged) {
+      const rArgs = newRules.length
+        ? ["--set-tool-path", name, "rules_paths", newRules.join("\n"), "--format", "json"]
+        : ["--reset-tool-path", name, "rules_paths", "--format", "json"];
+      const rres = await runCli(rArgs);
+      let x = null;
+      try { x = JSON.parse(stripAnsi((rres && rres.stdout) || "{}")); } catch (e) { x = null; }
+      if (!x || !x.ok) {
+        closeModal();
+        showBanner("err", "约束文件保存失败：" + ((x && x.reason) || cliErrDetail(rres)));
+        return;
+      }
+    }
     closeModal();
-    if (res && res.code === 0) { showBanner("ok", name + " 配置已更新"); refreshBlocks(["agents", "mainstream"]); }
-    else showBanner("err", (res && res.stderr) || "更新失败");
+    showBanner("ok", name + " 配置已更新");
+    refreshBlocks(["agents", "mainstream"]);
   };
 }
 
@@ -10109,7 +10141,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.39.0", build: 159, build_number: 159, semver_ok: true, full: "v0.39.0 (build 159)" },
+  app: { name: "Skill MCP Studio", version: "0.39.1", build: 160, build_number: 160, semver_ok: true, full: "v0.39.1 (build 160)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

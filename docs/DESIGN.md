@@ -401,7 +401,7 @@ Agent 卡片里有两组「标签 + 值」行：**路径区**（APP / CLI / CONF
 
 - **数据来源**：`--list-rules --format json`（只读），一次加载同时喂给主表与
   设置页（`RULES_DATA`）。路径只认注册表（`mainstream_registry_data`）里显式
-  声明的 `rules_paths`，**不猜**。当前登记 **12 个客户端 / 13 个路径**。
+  声明的 `rules_paths`，**不猜**。当前登记 **13 个客户端 / 14 个路径**。
 
   | 客户端 | 用户级规则文件 | 官方依据 |
   |---|---|---|
@@ -413,6 +413,7 @@ Agent 卡片里有两组「标签 + 值」行：**路径区**（APP / CLI / CONF
   | Codex | `~/.codex/AGENTS.md` | OpenAI Codex AGENTS.md |
   | Gemini CLI | `~/.gemini/GEMINI.md` | Gemini CLI 文档 |
   | Cline | `~/Documents/Cline/Rules` | Cline 文档 |
+  | Roo Code | `~/.roo/rules` | Roo Code 全局规则目录 |
   | OpenCode | `~/.config/opencode/AGENTS.md` | OpenCode 文档 |
   | Goose | `~/.config/goose/.goosehints` | goose「Global hints file」 |
   | WorkBuddy | `~/.workbuddy/SOUL.md` + `~/.workbuddy/USER.md` | WorkBuddy 文档 |

@@ -7,6 +7,48 @@
 
 ## [Unreleased]
 
+## [v0.39.1] - 2026-11-10
+
+当前发布版本（build 160）。
+
+**客户端编辑弹框补「约束文件」字段 + 注册表补 Claude Desktop / Roo Code 规则路径。**
+
+用户截图指出：`VS Code · 设置` 弹框里只有 APP BUNDLE / CLI / CONFIG / 目录设置，
+**没有约束文件（RULES）**——规则路径改不了。
+
+### 一、编辑弹框补「约束文件」
+
+`openAgentSettings()`（「XX · 设置」弹框）新增「约束文件」区块，与其它路径字段同构
+（多值、可增删行）。保存走 `--set-tool-path NAME rules_paths`（路径覆盖层），
+清空 = 清除覆盖、回落内置默认值。
+
+> 为什么不用 `--update-client`：它写的是 `data/discovered_tools.yaml`，
+> 而注册表的 `rules_paths` 是另一份数据。两条通道混用会让「改了没生效」变成常态。
+
+### 二、注册表补全
+
+| 变更 | 内容 |
+|---|---|
+| Roo Code | 补 `rules_paths = ~/.roo/rules`（全局规则目录） |
+| Claude Desktop | **新增条目**（39 条）：`/Applications/Claude.app` + MCP 配置 `~/Library/Application Support/Claude/claude_desktop_config.json`。与 Claude Code 是两套（后者用 `~/.claude.json`），桌面端无用户级规则文件，不声明 `rules_paths` |
+
+约束文件覆盖：**13 个客户端 / 14 个路径**（新增 Roo Code）。
+
+### 三、调研结论（2026-11）
+
+- **TRAE**：官网现为 TraeCode（编码 IDE）+ TraeWork（工作台）两条产品线，**不是**
+  合并到豆包；TRAE 补 `traecode` 别名，TraeWork 摘掉共用的 `traecode`。
+- **千问工作**：对应 `QwenWork`（已在册），补「千问工作」别名。
+- **豆包工作**：给「豆包」补别名。
+- **通义灵码**：官网仍在（lingma.aliyun.com），保留。
+- **无用户级规则文件的**（Cursor / Aider / JetBrains / Claude Desktop）刻意不登记，
+  理由写进 `DESIGN.md` §2.3c-2。
+
+### 测试
+
+- PRD 的注册表条数断言 38 → 39（新增 Claude Desktop），`test_registry_count_is_39_not_22`。
+- 全量 **1686 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
 ## [v0.39.0] - 2026-11-10
 
 **路径修正功能（此前确实缺失）+ Agent 别名按官网现状更新。**
@@ -3258,7 +3300,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.39.0...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.39.1...HEAD
+[v0.39.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.39.1
 [v0.39.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.39.0
 [v0.38.9]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.9
 [v0.38.8]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.8

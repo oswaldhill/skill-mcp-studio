@@ -114,6 +114,23 @@ EXTRA_MAINSTREAM_TOOLS: List[Dict[str, Any]] = [
                            "skills_path": "%USERPROFILE%\\.trae-cn\\skills"},
                "linux": {"app_bundles": [], "commands": [], "config_paths": []},
            }),
+    # Claude Desktop：官方 MCP 配置文件在 Application Support 下（与 Claude Code 的
+    # ~/.claude.json 是两套）。桌面端没有「用户级规则文件」——规则走 Projects，
+    # 不声明 rules_paths。
+    _entry("Claude Desktop", type_="AI Assistant",
+           app_bundles=["/Applications/Claude.app"], commands=[],
+           config_paths=["~/Library/Application Support/Claude/claude_desktop_config.json"],
+           mcp_config_path="~/Library/Application Support/Claude/claude_desktop_config.json",
+           mcp_format="json", mcp_key_path="mcpServers",
+           aliases=["claude-desktop", "claude-app"],
+           by_os={
+               "windows": {"app_bundles": [], "commands": [],
+                           "config_paths": ["%APPDATA%\\Claude\\claude_desktop_config.json"],
+                           "mcp_config_path": "%APPDATA%\\Claude\\claude_desktop_config.json"},
+               "linux": {"app_bundles": [], "commands": [],
+                         "config_paths": ["~/.config/Claude/claude_desktop_config.json"],
+                         "mcp_config_path": "~/.config/Claude/claude_desktop_config.json"},
+           }),
     _entry("Huawei CodeArts", type_="IDE Plugin",
            commands=["codearts"], config_paths=["~/.codearts/mcp.json"],
            aliases=["codearts", "huawei-codearts"],

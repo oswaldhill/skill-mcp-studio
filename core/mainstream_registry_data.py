@@ -398,6 +398,7 @@ MAINSTREAM_TOOLS: List[Dict[str, Any]] = [
     _entry(
         "Roo Code", type_="IDE Plugin",
         commands=["roo-code"],
+        rules_paths=["~/.roo/rules"],
         config_paths=["~/.roo-code/mcp_settings.json",
                       "~/Library/Application Support/Code/User/globalStorage/RooVeterinaryInc.roo-cline/settings/mcp_settings.json"],
         skills_path="~/.roo-code/skills",

@@ -36,8 +36,8 @@ class CorrectedFactsTest(unittest.TestCase):
         # 不能再有「结论式」的空白断言：不以勘正口吻出现的相同句子
         self.assertNotIn("> 架构结论：必须摒弃「macOS 中心」的路径硬编码，采用**跨平台分派**（决策 A，见 §1.3）。当前代码", self.body)
 
-    def test_registry_count_is_38_not_22(self):
-        self.assertIn("实测 38 条", self.body)
+    def test_registry_count_is_39_not_22(self):
+        self.assertIn("实测 39 条", self.body)
         self.assertNotIn("共 **22 个**", self.body)
         # 两个口径必须都讲清楚，避免又混成一个数
         self.assertIn("注册表条数」≠「本机受管客户端数", self.body)
@@ -146,8 +146,8 @@ class ClaimsMatchCodeTest(unittest.TestCase):
             cwd=ROOT, capture_output=True, text=True, timeout=60,
         )
         self.assertEqual(0, out.returncode, out.stderr)
-        self.assertEqual("38", out.stdout.strip(),
-                         "注册表条数变了：PRD §1.4 的「38 条」需同步更新")
+        self.assertEqual("39", out.stdout.strip(),
+                         "注册表条数变了：PRD §1.4 的「39 条」需同步更新")
 
 
 if __name__ == "__main__":

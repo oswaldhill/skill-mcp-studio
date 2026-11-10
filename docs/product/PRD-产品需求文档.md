@@ -60,15 +60,15 @@ skill-mcp-studio 是**跨平台**的本地桌面工具，同一份代码在三�
 
 ### 1.4 内置客户端清单（以主流注册表为唯一事实源）
 
-内置默认清单分两类（国际 / 通用 + 国产），**实测 38 条**（v1.5 勘正：本文此前写「22 个」，那是 v0.7 时代的设计目标快照，此后新增的 QwenWork、TraeWork、Trae CN、Cherry Studio 等均未回写）。完整路径 + 确定度 + 来源 URL 见 [`跨平台路径矩阵-Windows-Linux.md`](../design/跨平台路径矩阵-Windows-Linux.md)。**条目数量与路径以 `core/mainstream_registry.py`（`register_mainstream_tools()` 返回值）为唯一事实源**，本文的「38」同样是快照，后续新增以注册表为准，不再回写本段落计数。
+内置默认清单分两类（国际 / 通用 + 国产），**实测 39 条**（v1.5 勘正：本文此前写「22 个」，那是 v0.7 时代的设计目标快照，此后新增的 QwenWork、TraeWork、Trae CN、Cherry Studio 等均未回写）。完整路径 + 确定度 + 来源 URL 见 [`跨平台路径矩阵-Windows-Linux.md`](../design/跨平台路径矩阵-Windows-Linux.md)。**条目数量与路径以 `core/mainstream_registry.py`（`register_mainstream_tools()` 返回值）为唯一事实源**，本文的「38」同样是快照，后续新增以注册表为准，不再回写本段落计数。
 
-实测条目类型分布（v0.31.3，`register_mainstream_tools()` 共 38 条）：AI Agent 16 / IDE Plugin 12 / AI IDE 8 / AI Assistant 2。其中本机已发现 23 个、Skills 侧有挂载的 5 个——**「注册表条数」≠「本机受管客户端数」≠「有 Skills 挂载的客户端数」**，三者不得混用（旧文本把三者当成一个数）。
+实测条目类型分布（v0.39.1，`register_mainstream_tools()` 共 39 条，v0.39.1 新增 Claude Desktop）：AI Agent 16 / IDE Plugin 12 / AI IDE 8 / AI Assistant 2。其中本机已发现 23 个、Skills 侧有挂载的 5 个——**「注册表条数」≠「本机受管客户端数」≠「有 Skills 挂载的客户端数」**，三者不得混用（旧文本把三者当成一个数）。
 
 **国际 / 通用（15 个）**：Claude Code、Cursor、VS Code、Windsurf、Codex、Gemini CLI、OpenCode、Aider、Cline、Roo Code、JetBrains(IDEA/PyCharm/WebStorm)、Zed、TRAE、Goose、Cherry Studio。
 
 **国产（7 个）**：CodeBuddy、WorkBuddy（腾讯）；Qoder、QwenWork 千问办公（阿里）；Trae、TraeWork、豆包 Doubao（字节）。
 
-> **为什么下面只列 22 个名字、注册表却有 38 条（v1.5 说明）**：注册表把**同一产品的多个变体拆成独立条目**——JetBrains 族的 IDEA / PyCharm / WebStorm 各算一条、Trae 与 Trae CN 分开、QwenWork 与其办公版分开，加上每条还可能带 `aliases`（别名不新增条目）。因此「产品名 22 个」与「注册表条目 38 条」都是对的，**但它们是两个口径，不能互相印证**。需要精确数字时以 `register_mainstream_tools()` 为准。
+> **为什么下面只列 22 个名字、注册表却有 39 条（v0.39.1 说明）**：注册表把**同一产品的多个变体拆成独立条目**——JetBrains 族的 IDEA / PyCharm / WebStorm 各算一条、Trae 与 Trae CN 分开、QwenWork 与其办公版分开，加上每条还可能带 `aliases`（别名不新增条目）。因此「产品名 22 个」与「注册表条目 38 条」都是对的，**但它们是两个口径，不能互相印证**。需要精确数字时以 `register_mainstream_tools()` 为准。
 
 > **无 Linux 桌面版，Linux 扫描直接跳过**：QwenWork 千问办公（仅 macOS/Win/HarmonyOS）、TraeWork（桌面版仅 macOS/Win）、豆包（仅网页版）。
 > **无本地 skills/MCP 语义，只判安装不参与 skills/MCP 检查**：豆包（通用对话助手，非编程 IDE）。
