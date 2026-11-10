@@ -7,6 +7,59 @@
 
 ## [Unreleased]
 
+## [v0.39.7] - 2026-11-10
+
+当前发布版本（build 166）。
+
+**主表列宽与空态形态整改（用户评审后，保留原有列结构）。**
+
+用户对主表评审定了三条边界：**不合并 APP/CLI/CONFIG、类型保留独立列、安装列保留**。
+在此前提下做视觉与交互改进。
+
+### 一、列宽：文本列定宽，省下的宽度还给表格外缘
+
+此前名称 / 类型两列 `width: auto`，`table-layout: fixed` 下**平分全部剩余宽度**：
+1280px 窗口实测名称 347px 装 44px 文字、类型 347px 装 52px 文字——两列吃掉 54% 宽度
+却只放 96px 内容。
+
+现在定宽 **名称 220px / 类型 150px**，省下约 370px 变成表格外缘留白。
+
+> **反转了一条旧判据**：`test_text_columns_have_no_fixed_width` 原写「文本列不得设 px
+> 定宽」。它的初衷是防紧列被平分，但弹性列的代价更大。改成
+> `test_text_columns_are_bounded`：**文本列必须有明确上限（≤ 300px）**，而不是「不设宽」。
+
+### 二、0 值计数用虚线
+
+`.al-metric.dim`（虚线 + 透明底 + faint 色）。此前 0 与 1 都是实线圆环、只差底色调亮
+一点，用户得逐行读数字才知道有没有。
+
+### 三、约束列统一 `N/M`
+
+- 「未配置」→ `0/1`（同一列保持数字形态，横向扫视有节奏）
+- 「无约定」/ MCP「不支持」→ `.tag.tag-none` 占位（虚线边框，表「没有」而非「未加载」）
+
+> 占位符用的是**中点 `·`**，不是破折号：本项目有一条硬规则「可见字符串里不许出现
+> em/en-dash」（`test_no_em_dash_in_visible_strings`）。最初写的 `—` 被门禁拦下。
+
+### 四、整行可点
+
+`tr[data-row-open]` + `tabindex="0"` + `role="button"`，含键盘 Enter / Space。
+此前只能瞄准右上角 64px 的「详情」按钮。
+
+「详情」按钮**保留**：`.al-detail` 被 `test_all_panel_buttons_reachable` 等门禁引用，
+且键盘用户需要显式的可聚焦目标；两条路径并存不冲突。点行内按钮（计数徽标 / 约束 /
+MCP）不触发行跳转（`e.target.closest("button, .kebab")` 守卫）。
+
+### 测试
+
+- 新增 `ListRowAffordanceTest`（3 项）：整行可点 + 键盘、0 值虚线、空态占位共用。
+- **反向验证 3 条**：去掉整行可点、0 值改回实线、空态改回实线，各自让断言失败。
+- 全量 **1694 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
+### 文档
+
+`docs/DESIGN.md` 新增 §2.3d-2；`docs/DESIGN.html` 同步。
+
 ## [v0.39.6] - 2026-11-10
 
 当前发布版本（build 165）。
@@ -3496,7 +3549,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.39.6...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.39.7...HEAD
+[v0.39.7]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.39.7
 [v0.39.6]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.39.6
 [v0.39.5]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.39.5
 [v0.39.4]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.39.4

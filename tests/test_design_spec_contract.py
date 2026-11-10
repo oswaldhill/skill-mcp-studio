@@ -1119,9 +1119,12 @@ class RowStatusCellUniformityTest(unittest.TestCase):
         剩下的「不支持 / 0」仍是 MCP 列真实产出的两种空态，断言强度不变。
         """
         body = self._row_renderer_body()
-        for label in ("不支持", "0"):
+        # v0.39.7：MCP 「不支持」改为与约束一致的「—」破折号（tag-none），
+        # 「0」仍是中性 .tag。两者都必须是标签形态而不是裸文字。
+        for label in ("·", "0"):
             with self.subTest(label=label):
-                self.assertRegex(body, rf'class="tag"[^>]*>{re.escape(label)}<',
+                # v0.39.7：空态可能带修饰类（如 .tag-none），只要根类是 .tag 即可
+                self.assertRegex(body, rf'class="tag[ "][^>]*>{re.escape(label)}<',
                                  f"「{label}」应为中性 .tag 胶囊")
 
     def test_tooltip_legend_renders_icons(self):
@@ -1166,6 +1169,42 @@ class RowStatusCellUniformityTest(unittest.TestCase):
         m = re.search(r"\.agent-list-table th:nth-child\(3\)[^{]*\{([^}]*)\}", css, re.S)
         self.assertIsNotNone(m, "未找到居中规则体")
         self.assertIn("text-align: center", m.group(1), "居中规则应声明 text-align: center")
+
+
+class ListRowAffordanceTest(unittest.TestCase):
+    """主表的行级交互与空态形态（v0.39.7 用户评审整改）。
+
+    用户定了三条边界：不合并 APP/CLI/CONFIG、类型保留独立列、安装列保留。
+    在这些边界内改进：
+    1. 整行可点（含键盘）——此前只能瞄准右上角 64px 的「详情」按钮；
+    2. 0 值计数用虚线（`.al-metric.dim`）——此前 0 与 1 几乎同款；
+    3. 约束列统一 `N/M`，无约定与不支持共用 `.tag.tag-none` 占位。
+    """
+
+    def test_row_is_clickable_with_keyboard(self):
+        src = _src()
+        self.assertIn('data-row-open="${escapeHtml(a.name)}" tabindex="0" role="button"', src,
+                      "行必须可点且键盘可达")
+        self.assertIn('body.querySelectorAll("tr[data-row-open]")', src,
+                      "行点击事件必须绑定")
+        self.assertIn('e.key === "Enter"', src, "键盘 Enter 应能打开详情")
+
+    def test_zero_metric_is_dashed(self):
+        css = _css()
+        m = re.search(r"\.al-metric\.dim\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(m, "缺少 .al-metric.dim 样式")
+        self.assertIn("dashed", m.group(1), "0 值必须用虚线，与有值区分")
+        src = _src()
+        self.assertIn('(n ? " hit" : " dim")', src, "0 值必须套 .dim")
+
+    def test_empty_state_uses_shared_placeholder(self):
+        src = _src()
+        self.assertEqual(src.count('class="tag tag-none"'), 2,
+                         "约束「无约定」与 MCP「不支持」应共用 .tag.tag-none 占位")
+        css = _css()
+        m = re.search(r"\.tag\.tag-none\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(m, "缺少 .tag.tag-none 样式")
+        self.assertIn("dashed", m.group(1), "空态占位应为虚线，表「没有」而非「未加载」")
 
 
 class ListStatusCellsClickableTest(unittest.TestCase):
@@ -1304,7 +1343,9 @@ class ColumnWidthGovernanceTest(unittest.TestCase):
         """8 个紧列（安装/APP/CLI/CONFIG/技能目录/约束/MCP/操作）必须有 px 定宽。"""
         css = _css()
         # 列号 → 期望最小宽度（内容并集 + 20px 内边，向上取 4 的倍数）
-        expected = {3: 56, 4: 48, 5: 48, 6: 70, 7: 82, 8: 78, 9: 78, 10: 124}
+        # 操作列 v0.39.7 由 124 → 104：整行可点后「详情」不再是唯一入口，
+        # 按钮降级为提示，104px 足够容纳 详情 + kebab 且不浪费
+        expected = {3: 56, 4: 48, 5: 48, 6: 70, 7: 82, 8: 78, 9: 78, 10: 104}
         for col, min_w in expected.items():
             with self.subTest(col=col):
                 # th 或 td 任一声明了 width 即可（两者通常成对出现）
@@ -1314,14 +1355,25 @@ class ColumnWidthGovernanceTest(unittest.TestCase):
                 self.assertGreaterEqual(int(m.group(1)), min_w,
                                         f"第 {col} 列宽度 {m.group(1)}px 小于安全下限 {min_w}px")
 
-    def test_text_columns_have_no_fixed_width(self):
-        """名称（1）与类型（2）是弹性列，不得设 px 定宽，否则无法吸收剩余空间。"""
+    def test_text_columns_are_bounded(self):
+        """名称（1）与类型（2）必须**定宽有上限**，否则会吃掉整表宽度。
+
+        v0.39.7 反转（2026-11-10 用户评审后）：原判据是「文本列不得设 px 定宽、应留弹性
+        吸收剩余」，补这条的初衷是防止紧列被平分。但实测发现弹性列的代价更大 ——
+        1280px 窗口下名称 347px 装 44px 文字、类型 347px 装 52px 文字，**两列吃掉 54%
+        宽度却只放 96px 内容**，整表右半边全是空白。
+
+        正确的不变量是「文本列有明确上限，不允许无限膨胀」：
+        定了宽就必须 <= 300px（够放最长客户端名 / 类型名，再长走省略号）。
+        """
         css = _css()
         for col in (1, 2):
             with self.subTest(col=col):
-                pat = rf"\.agent-list-table t[hd]:nth-child\({col}\)[^{{]*\{{[^}}]*width:\s*\d+px"
-                self.assertIsNone(re.search(pat, css),
-                                  f"第 {col} 列（文本列）不应设 px 定宽，应留弹性吸收剩余空间")
+                pat = rf"\.agent-list-table t[hd]:nth-child\({col}\)[^{{]*\{{[^}}]*width:\s*(\d+)px"
+                m = re.search(pat, css)
+                self.assertIsNotNone(m, f"第 {col} 列（文本列）应设明确上限")
+                self.assertLessEqual(int(m.group(1)), 300,
+                                     f"第 {col} 列宽度 {m.group(1)}px 过大，会挤压状态列")
 
     def test_td_overflow_hidden_for_fixed_layout(self):
         """fixed 布局下 td 必须 overflow: hidden，否则超长内容会溢出到相邻列。"""

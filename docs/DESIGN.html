@@ -1520,6 +1520,25 @@
       <p class="spec-note">由 <code>tests/test_dsh_plugins.py::test_nav_count_badge_*</code> 与 <code>test_nav_count_loaded_at_startup_not_on_page_visit</code> 共同守住。</p>
     </section>
 
+    <section id="s2-3d2">
+      <h3 id="s2-3d2">2.3d-2 主表列宽与空态形态（v0.39.7）<a class="anchor" href="#s2-3d2" aria-label="锚点">#</a></h3>
+      <p>用户评审后定了三条边界：<strong>不合并 APP/CLI/CONFIG、类型保留独立列、安装列保留</strong>。
+        在此前提下只做视觉与交互改进。</p>
+      <table>
+        <thead><tr><th>项</th><th>改前</th><th>改后</th></tr></thead>
+        <tbody>
+          <tr><td>名称 / 类型列</td><td><code>width: auto</code>，各分到 347px（内容仅 44 / 52px）</td><td>定宽 220 / 150px，省下 ~370px 变成表格外缘留白</td></tr>
+          <tr><td>0 值计数</td><td>实线圆环，与 1 几乎同款</td><td><code>.al-metric.dim</code>：虚线 + 透明底</td></tr>
+          <tr><td>约束列</td><td><code>1/1</code> / <code>未配置</code> / <code>无约定</code> 三种形态</td><td>统一 <code>N/M</code>；无约定用 <code>—</code></td></tr>
+          <tr><td>MCP 空态</td><td>「不支持」两字</td><td>与约束一致的 <code>—</code>（<code>.tag.tag-none</code>）</td></tr>
+          <tr><td>进详情</td><td>只能点右上角「详情」按钮</td><td><strong>整行可点</strong>（<code>tr[data-row-open]</code>，含键盘 Enter/Space）；按钮降级为提示</td></tr>
+        </tbody>
+      </table>
+      <p><strong>为什么文本列要定宽</strong>（反转一条旧判据）：原判据是「文本列不设 px 宽、留弹性吸收剩余」，
+        初衷是防紧列被平分；但实测弹性列的代价更大——两列吃 54% 宽度却只放 96px 内容。
+        正确的不变量是「文本列有明确上限」（&le; 300px）。</p>
+    </section>
+
     <section id="s2-3d1">
       <h3 id="s2-3d1">2.3d-1 主表状态列一律可点（v0.39.6）<a class="anchor" href="#s2-3d1" aria-label="锚点">#</a></h3>
       <p>主表「安装 / 技能目录 / 约束 / MCP」四列的状态徽标<strong>全部是按钮</strong>，点开各自的明细。
