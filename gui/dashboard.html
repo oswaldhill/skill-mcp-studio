@@ -4595,9 +4595,20 @@ function _hexToRgba(hex, alpha) {
 }
 
 // 完整列出某类默认路径（不截断）；空数组显示占位（表示注册表未收录该默认项，而非检测本机）。
+// 长路径在卡片里会被 ellipsis 截断（用户反馈「显示不全」）。
+// 只缩写**固定前缀**，保留有辨识度的中段与文件名；完整路径仍在 title 里。
+function _shortPath(p) {
+  if (!p) return "";
+  return String(p)
+    .replace(/^~\/Library\/Application Support\//, "~/Library/…/")
+    .replace(/^~\/AppData\/Roaming\//, "~/AppData/…/");
+  // 只缩写带 `…` 的固定长前缀：`/Applications/…` 这类替换会改变路径字面含义，
+  // 用户会以为真实路径就是缩写后的样子。
+}
+
 function _acPathVals(arr) {
   if (!arr || !arr.length) return '<span class="ac-path-none" title="注册表未收录该默认项">未收录</span>';
-  return arr.map((p) => `<span class="ac-path-val" title="${escapeHtml(p)}（点击复制）">${escapeHtml(p)}</span>`).join("");
+  return arr.map((p) => `<span class="ac-path-val" title="${escapeHtml(p)}（点击复制）">${escapeHtml(_shortPath(p))}</span>`).join("");
 }
 
 function _groupBy(list, fn) {
@@ -4663,7 +4674,7 @@ function _agentRulesSummary(t) {
     return `<div class="ac-path-item">
       <button type="button" class="ac-path-val rules-path-btn" data-action="view-rules"
         data-client="${escapeHtml(t.name)}" data-index="${idx}"
-        title="预览 ${escapeHtml(p.path)}">${escapeHtml(p.path)}</button>${badge}
+        title="预览 ${escapeHtml(p.path)}">${escapeHtml(_shortPath(p.path))}</button>${badge}
     </div>`;
   }).join("");
   return items;
@@ -10037,7 +10048,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.38.8", build: 157, build_number: 157, semver_ok: true, full: "v0.38.8 (build 157)" },
+  app: { name: "Skill MCP Studio", version: "0.38.9", build: 158, build_number: 158, semver_ok: true, full: "v0.38.9 (build 158)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

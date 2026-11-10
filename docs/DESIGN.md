@@ -401,7 +401,32 @@ Agent 卡片里有两组「标签 + 值」行：**路径区**（APP / CLI / CONF
 
 - **数据来源**：`--list-rules --format json`（只读），一次加载同时喂给主表与
   设置页（`RULES_DATA`）。路径只认注册表（`mainstream_registry_data`）里显式
-  声明的 `rules_paths`，**不猜**。当前登记 9 个客户端 / 10 个路径。
+  声明的 `rules_paths`，**不猜**。当前登记 **12 个客户端 / 13 个路径**。
+
+  | 客户端 | 用户级规则文件 | 官方依据 |
+  |---|---|---|
+  | VS Code | `~/.copilot/copilot-instructions.md` | VS Code 文档「User instructions」 |
+  | Windsurf | `~/.codeium/windsurf/memories/global_rules.md` | Windsurf 文档 |
+  | TRAE | `~/.trae/rules` | TRAE 文档 |
+  | Zed | `~/.config/zed/AGENTS.md` | Zed「Personal Instructions」 |
+  | Claude Code | `~/.claude/CLAUDE.md` | Claude Code memory |
+  | Codex | `~/.codex/AGENTS.md` | OpenAI Codex AGENTS.md |
+  | Gemini CLI | `~/.gemini/GEMINI.md` | Gemini CLI 文档 |
+  | Cline | `~/Documents/Cline/Rules` | Cline 文档 |
+  | OpenCode | `~/.config/opencode/AGENTS.md` | OpenCode 文档 |
+  | Goose | `~/.config/goose/.goosehints` | goose「Global hints file」 |
+  | WorkBuddy | `~/.workbuddy/SOUL.md` + `~/.workbuddy/USER.md` | WorkBuddy 文档 |
+  | DeepSeek Harness | `~/.dsh/AGENTS.md` | DSH 文档 |
+
+  **刻意不登记的**：Cursor（User Rules 存在设置/数据库，无官方文件路径，
+  项目级 `.cursor/rules` 不是用户级）、Aider（`CONVENTIONS.md` 是项目级，
+  用户级要靠 `.aider.conf.yml` 的 `read:` 自行指路）、JetBrains AI Assistant
+  （官方文档未给出用户级规则文件路径）。这些客户端宁可显示「无约定」，
+  也不猜一个看起来对、实际不生效的路径。
+
+  路径在卡片里会**缩写固定长前缀**（`.replace(/^~\/Library\/Application Support\//,
+  "~/Library/…/")`，Windows 同理 `~/AppData/…/`），完整路径保留在 `title`
+  与预览弹框里——长路径在 480px 卡片里会被 ellipsis 截断（用户反馈「显示不全」）。
   **Cursor 不登记**：用户规则存在设置里（不落盘），`~/.cursor/rules` 是项目级。
 - **目录形态**（Cline / TRAE）：`--read-rules` 返回文件清单，弹框只读展示，
   **不支持整体写入**——把一段文本写进规则目录会覆盖其中所有文件。

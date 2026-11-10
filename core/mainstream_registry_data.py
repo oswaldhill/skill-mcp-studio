@@ -134,6 +134,7 @@ MAINSTREAM_TOOLS: List[Dict[str, Any]] = [
         config_paths=["~/.vscode/mcp.json", "~/.config/Code/User/mcp.json"],
         skills_path="~/.vscode/skills",
         mcp_config_path="~/.vscode/mcp.json",
+        rules_paths=["~/.copilot/copilot-instructions.md"],
         aliases=["vscode", "visual-studio-code"],
         by_os={
             "windows": {
@@ -211,6 +212,7 @@ MAINSTREAM_TOOLS: List[Dict[str, Any]] = [
         config_paths=["~/.config/zed/settings.json"],
         skills_path="~/.config/zed/skills",
         mcp_config_path="~/.config/zed/settings.json", mcp_format="json", mcp_key_path="context_servers",
+        rules_paths=["~/.config/zed/AGENTS.md"],
         aliases=["zed"],
         by_os={
             "windows": {
@@ -471,6 +473,7 @@ MAINSTREAM_TOOLS: List[Dict[str, Any]] = [
         config_paths=["~/.config/goose/settings.json", "~/.config/goose/config.yaml"],
         skills_path="~/.config/goose/skills",
         mcp_config_path="~/.config/goose/config.yaml", mcp_format="yaml", mcp_key_path="extensions",
+        rules_paths=["~/.config/goose/.goosehints"],
         aliases=["goose"],
         by_os={
             "windows": {

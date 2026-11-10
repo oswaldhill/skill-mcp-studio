@@ -7,6 +7,50 @@
 
 ## [Unreleased]
 
+## [v0.38.9] - 2026-11-10
+
+当前发布版本（build 158）。**约束文件覆盖补全 + 长路径缩写。**
+
+用户两点：「这里仍然有很多显示不全的问题」「对于 rule 规则的文件，只要是 AI Agent
+其实都应该是存在的，请深入调研」。
+
+### 一、约束文件：9 客户端 / 10 路径 → 12 客户端 / 13 路径
+
+查官方文档后补了 3 个（都只认文档明确写出的用户级路径）：
+
+| 客户端 | 新增路径 | 官方依据 |
+|---|---|---|
+| VS Code | `~/.copilot/copilot-instructions.md` | VS Code 文档「User instructions」 |
+| Zed | `~/.config/zed/AGENTS.md` | Zed「Personal Instructions」 |
+| Goose | `~/.config/goose/.goosehints` | goose「Global hints file」 |
+
+**刻意没登记的三个**（避免猜一个看起来对、实际不生效的路径）：
+
+- **Cursor**：User Rules 存在设置/数据库里，官方文档没给文件路径；项目级
+  `.cursor/rules/*.mdc` 不是用户级。
+- **Aider**：`CONVENTIONS.md` 是项目级，用户级要靠 `.aider.conf.yml` 的 `read:`
+  自己指路，没有官方默认位置。
+- **JetBrains AI Assistant**：官方帮助文档没有用户级规则文件路径。
+
+### 二、长路径缩写
+
+`~/Library/Application Support/Trae/User/mcp.json` 这类路径在 480px 卡片里会被
+ellipsis 截断。新增 `_shortPath()`，只缩写**带 `…` 的固定长前缀**：
+
+```
+~/Library/Application Support/Trae/User/mcp.json → ~/Library/…/Trae/User/mcp.json
+~/AppData/Roaming/Block/goose/config.yaml        → ~/AppData/…/Block/goose/config.yaml
+```
+
+完整路径仍在 `title`（悬停）与预览弹框里。**没有**做 `/Applications/` 这类
+「看起来更短但改变字面含义」的替换——那会让用户以为真实路径就是缩写后的样子。
+
+### 测试
+
+- 新增断言：`_shortPath` 存在、`~/Library/…/` 规则、路径胶囊与 RULES 行都必须
+  经过 `_shortPath`；**反向验证**：让路径胶囊绕过缩写，断言立刻失败。
+- 全量 **1674 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
 ## [v0.38.8] - 2026-11-09
 
 当前发布版本（build 157）。**路径行改为基线对齐（标签与值的文字不再错位）。**
@@ -3166,7 +3210,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.38.8...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.38.9...HEAD
+[v0.38.9]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.9
 [v0.38.8]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.8
 [v0.38.7]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.7
 [v0.38.6]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.6

@@ -197,6 +197,14 @@ class RulesGuiContract(unittest.TestCase):
                       "约束行应并入 .ac-paths（RULES 行），与 APP/CLI/CONFIG 同构")
         # 只读预览：不再有编辑器 textarea
         self.assertIn("rules-preview", self.dashboard, "应有只读预览区（.rules-preview）")
+        # v0.38.9 用户反馈「显示不全」：长路径缩写固定前缀，完整路径留在 title
+        self.assertIn("function _shortPath", self.dashboard, "应有路径缩写函数")
+        self.assertIn('"~/Library/…/"', self.dashboard,
+                      "应把 ~/Library/Application Support/ 缩写为 ~/Library/…/")
+        self.assertIn("escapeHtml(_shortPath(p))", self.dashboard,
+                      "路径胶囊必须经过 _shortPath")
+        self.assertIn("escapeHtml(_shortPath(p.path))", self.dashboard,
+                      "RULES 行路径必须经过 _shortPath")
         self.assertNotIn("rules-editor", self.dashboard,
                          "不应再有编辑器 textarea（只读预览）")
         self.assertNotIn("rules-view-btn", self.dashboard,
