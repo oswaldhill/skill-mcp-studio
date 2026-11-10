@@ -1842,7 +1842,13 @@
         <li>窗口高度由内容决定（<code>fitWindow</code> 量完面板高度再 <code>setSize</code>），
             最小 200px；<strong>首屏先用 localStorage 缓存渲染</strong>，再后台刷新。</li>
         <li>定位由 Rust 侧负责：水平居中对齐托盘图标、垂直贴菜单栏下方；
-            没有图标坐标时（菜单触发）退回右上角。</li>
+            没有图标坐标时（菜单触发）退回右上角。
+        <li><strong>四格统计与产品能力同源</strong>（v0.39.8）：<code>IDE/Agent · MCP · Skill · DSH 插件</code>。
+          第四格原本是 <strong>Hook</strong>，但 Hook 功能已于 v0.33.0 整体下线（CLI / GUI / 配置 / 代码全删），
+          那一格永远读到 0、恒显灰色，用户会以为「Hook 还在，只是没配」。改为 DSH 插件数——
+          与本工具实际提供的「DSH 插件」页同源。数据来自 <code>_snapshot_totals()</code> 的
+          <code>dsh</code> 字段；扫描入口必须传 <code>None</code> 让 <code>dsh_plugins.scan()</code>
+          自己解析默认根目录，传 <code>"~/.dsh"</code> 字面量会以未展开路径找 profiles，结果恒为 0。</li></li>
       </ul>
     </section>
 

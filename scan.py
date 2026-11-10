@@ -3247,10 +3247,24 @@ def _snapshot_totals(snap) -> dict:
     for c in mcp.get("clients") or []:
         if isinstance(c, dict):
             mcp_entries += len(c.get("inventory") or [])
+    # DSH 插件（v0.39.8）：托盘面板第四格此前显示 Hook——Hook 功能已于 v0.33.0 整体
+    # 下线，那一格永远读不到数、恒为 0。改成 DSH 插件数（与「DSH 插件」页同源）。
+    # 只在 DSH 目录存在时扫描；扫描异常静默降级为 0，绝不因为一个可选的只读统计
+    # 让整个托盘面板失败。
+    dsh_plugins = 0
+    try:
+        from dsh_plugins import scan as _scan_dsh
+        # 必须传 None 让 dsh_plugins 自己解析默认根目录：传 "~/.dsh" 字面量会让它以
+        # **未展开的路径**去找 profiles，结果 0 个 profile、0 个插件（实测踩过）。
+        # 与 `--dsh-plugins` 的默认参数（args.dsh_home = None）保持同一入口。
+        dsh_plugins = int(((_scan_dsh(None) or {}).get("summary") or {}).get("plugins") or 0)
+    except Exception:  # noqa: BLE001 - 可选统计，失败不影响主的快照
+        dsh_plugins = 0
     return {
         "agents": len(agents),
         "mcp": mcp_entries,
         "skills": len(skills.get("skills") or []),
+        "dsh": dsh_plugins,
     }
 
 

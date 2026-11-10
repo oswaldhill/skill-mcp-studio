@@ -1171,6 +1171,39 @@ class RowStatusCellUniformityTest(unittest.TestCase):
         self.assertIn("text-align: center", m.group(1), "居中规则应声明 text-align: center")
 
 
+class TrayPanelDimsTest(unittest.TestCase):
+    """托盘面板四格统计必须与产品实际能力一致（v0.39.8）。
+
+    用户截图反馈：「这里的 hook 还存在，请修改成 DSH 插件」。
+    Hook 功能已于 v0.33.0 整体下线（CLI / GUI / 配置 / 代码全删），但托盘面板
+    第四格一直写着 Hook——它永远读不到数、恒为 0，既误导又占位置。
+    """
+
+    def test_no_hook_dim_in_tray(self):
+        pop = (ROOT / "gui" / "popover.html").read_text(encoding="utf-8")
+        self.assertNotIn('"hooks", "Hook"', pop,
+                         "托盘面板不应再有 Hook 格：Hook 功能已于 v0.33.0 下线")
+
+    def test_dsh_dim_present(self):
+        pop = (ROOT / "gui" / "popover.html").read_text(encoding="utf-8")
+        self.assertIn('["dsh", "DSH 插件"', pop,
+                      "第四格应显示 DSH 插件（与本工具实际提供的 DSH 插件页同源）")
+
+    def test_totals_provide_dsh_count(self):
+        import subprocess
+        import sys as _sys
+        out = subprocess.run(
+            [_sys.executable, "-c",
+             "import sys; sys.path.insert(0,'.');"
+             "from scan import _snapshot_totals;"
+             "print(sorted(_snapshot_totals({'agents':[],'skills':{},'mcp':{}}).keys()))"],
+            cwd=ROOT, capture_output=True, text=True, timeout=120,
+        )
+        self.assertEqual(0, out.returncode, out.stderr)
+        self.assertIn("'dsh'", out.stdout, "totals 必须带 dsh 维度，否则面板第四格恒为 0")
+        self.assertNotIn("'hooks'", out.stdout, "totals 不应再有 hooks 维度")
+
+
 class ListRowAffordanceTest(unittest.TestCase):
     """主表的行级交互与空态形态（v0.39.7 用户评审整改）。
 

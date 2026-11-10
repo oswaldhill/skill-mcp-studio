@@ -254,11 +254,13 @@
   </div>
 
 <script>
+// 四格统计（v0.39.8）：原第四格是 Hook，但 Hook 功能已于 v0.33.0 整体下线，
+// 该格永远读到 0，用户截图反馈「Hook 还存在」。改为 DSH 插件（与「DSH 插件」页同源）。
 const DIMS = [
   ["agents", "IDE/Agent", "var(--pop-accent)"],
   ["mcp", "MCP", "var(--pop-ok)"],
   ["skills", "Skill", "var(--pop-warn)"],
-  ["hooks", "Hook", "var(--pop-accent)"],
+  ["dsh", "DSH 插件", "var(--pop-accent)"],
 ];
 
 // 供「打开主面板」决定落点：有变更 → 变更详情，无变更 → 概览。

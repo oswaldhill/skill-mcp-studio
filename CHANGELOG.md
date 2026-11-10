@@ -7,6 +7,47 @@
 
 ## [Unreleased]
 
+## [v0.39.8] - 2026-11-10
+
+当前发布版本（build 167）。
+
+**托盘面板第四格：Hook → DSH 插件。**
+
+用户截图指出：「这里的 hook 还存在，请你修改成 DSH 插件」。
+
+### 根因
+
+Hook 功能已于 **v0.33.0** 整体下线（CLI 参数 / GUI 页 / 配置段 / `core/hooks_*.py`
+全部删除），但托盘面板 `gui/popover.html` 的 `DIMS` 里第四格仍是 `["hooks", "Hook"]`。
+`totals.hooks` 早已不存在，那一格永远读到 0、恒显灰色——用户会以为「Hook 还在，
+只是没配置」，而实际是功能已经没有了。
+
+### 改动
+
+| 位置 | 改前 | 改后 |
+|---|---|---|
+| `gui/popover.html` `DIMS` | `["hooks", "Hook"]` | `["dsh", "DSH 插件"]` |
+| `scan.py` `_snapshot_totals()` | 只返回 agents / mcp / skills | 增加 `dsh`（DSH 插件总数） |
+| `docs/DESIGN.md` §2.8 | 无四格说明 | 补四格口径与入口约束 |
+
+DSH 插件数与本工具实际提供的「DSH 插件」页同源，本机实测 `dsh: 16`。
+
+### 一个实测踩到的坑
+
+第一版写成 `scan(os.path.expanduser("~/.dsh"))`，结果 `dsh: 0`——`dsh_plugins.scan()`
+收到**未展开**的路径时找不到 profiles，静默返回 0 个插件。改成传 `None` 让
+`dsh_plugins` 自己解析默认根目录（与 `--dsh-plugins` 的默认参数同一入口）后得到 16。
+
+统计失败也做了降级：`try/except` 包住，扫描异常时 `dsh: 0`，绝不让一个可选的只读
+统计把整个托盘面板搞挂。
+
+### 测试
+
+- 新增 `TrayPanelDimsTest`（3 项）：托盘不得再有 Hook 格、必须有 DSH 插件格、
+  `_snapshot_totals()` 必须返回 `dsh` 且不再有 `hooks`。
+- **反向验证**：把 `["dsh", "DSH 插件"]` 改回 `["hooks", "Hook"]`，断言立刻失败。
+- 全量 **1697 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
 ## [v0.39.7] - 2026-11-10
 
 当前发布版本（build 166）。
@@ -3549,7 +3590,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.39.7...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.39.8...HEAD
+[v0.39.8]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.39.8
 [v0.39.7]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.39.7
 [v0.39.6]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.39.6
 [v0.39.5]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.39.5
