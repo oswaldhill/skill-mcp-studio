@@ -7,6 +7,54 @@
 
 ## [Unreleased]
 
+## [v0.39.0] - 2026-11-10
+
+**路径修正功能（此前确实缺失）+ Agent 别名按官网现状更新。**
+
+用户两点：「路径识别不正确时我该怎么修改？这个功能是否缺失了？」
+「有些 Agent 已被更新产品替代，请按厂商官网整理」。
+
+### 一、路径覆盖（新功能）
+
+内置注册表的 APP / CLI / CONFIG / SKILLS / MCP / RULES 都是**厂商默认值**，
+此前**没有任何修正入口**——用户本机装到别处时只能看着错误的路径。确认缺失，补上：
+
+| 层 | 内容 |
+|---|---|
+| 数据 | `data/local_overrides.yaml` 的 `tool_paths` 段（gitignore，不进版本库） |
+| 合并 | `register_mainstream_tools()` 内 `apply_overrides(copy.deepcopy(...))` |
+| CLI | `--set-tool-path TOOL FIELD VALUE` / `--reset-tool-path TOOL [FIELD]` / `--list-tool-paths` |
+| GUI | 详情弹框「编辑路径」按钮 → 六个字段的 textarea（每行一个值，清空 = 恢复默认） |
+
+可覆盖字段：`app_bundles`、`commands`、`config_paths`、`skills_path`、
+`mcp_config_path`、`rules_paths`。**只覆盖路径**，工具名 / 类型 / 别名不动——
+否则覆盖层会变成第二个注册表。
+
+### 二、Agent 别名按官网现状更新
+
+查了官网（2026-11）：
+
+- **TRAE**：官网现在是 **TraeCode**（编码 IDE）+ **TraeWork**（工作台）两条产品线，
+  不是「合并到豆包」。给 TRAE 补 `traecode` 别名；同时把 TraeWork 上原本共用的
+  `traecode` 别名摘掉——两条产品线不该共用一个别名。
+- **千问工作**：`QwenWork` 已有「千问办公」别名，补「千问工作」。
+- **豆包工作**：给「豆包」补「豆包工作」别名。
+- **通义灵码**：官网仍在（lingma.aliyun.com，Lingma IDE 公测），保留。
+
+### 测试
+
+- 新增 `tests/test_tool_path_overrides.py`（12 项）：写入/生效/重置闭环、多值换行、
+  `mcp_config_path` 标量、未知字段拒绝、坏 YAML 不炸、保留其它键、注册表接线、
+  GUI 入口、Rust 白名单、CLI 可调用。
+- **反向验证 2 条**：注册表不接覆盖层、GUI 去掉编辑入口，各自让断言失败
+  （第一条断言先写成子串 `openToolPathEditor`，改名成 `openToolPathEditorX` 仍通过，
+  已改成精确匹配函数定义）。
+- 全量 **1686 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
+### 文档
+
+`docs/DESIGN.md` 新增 §2.3c-2b「路径覆盖」；`docs/DESIGN.html` 同步（含导航）。
+
 ## [v0.38.9] - 2026-11-10
 
 当前发布版本（build 158）。**约束文件覆盖补全 + 长路径缩写。**
@@ -3210,7 +3258,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.38.9...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.39.0...HEAD
+[v0.39.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.39.0
 [v0.38.9]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.9
 [v0.38.8]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.8
 [v0.38.7]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.38.7

@@ -187,7 +187,7 @@ MAINSTREAM_TOOLS: List[Dict[str, Any]] = [
         skills_path="~/.trae/skills",
         mcp_config_path="~/Library/Application Support/Trae/User/mcp.json",
         rules_paths=["~/.trae/rules"],
-        aliases=["trae", "trae-cn"],
+        aliases=["trae", "trae-cn", "traecode"],
         by_os={
             "windows": {
                 "app_bundles": ["%LOCALAPPDATA%\\Programs\\Trae\\Trae.exe"],

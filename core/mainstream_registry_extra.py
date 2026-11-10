@@ -80,7 +80,7 @@ EXTRA_MAINSTREAM_TOOLS: List[Dict[str, Any]] = [
     _entry("豆包", type_="AI Agent",
            app_bundles=["/Applications/Doubao.app"], commands=["doubao"],
            config_paths=["~/.doubao/mcp.json"],
-           aliases=["doubao", "bytedance-doubao"],
+           aliases=["doubao", "bytedance-doubao", "豆包工作"],
            by_os={
                "windows": {"app_bundles": ["%LOCALAPPDATA%\\Doubao"], "commands": [],
                            "config_paths": ["%LOCALAPPDATA%\\Doubao"]},
@@ -92,20 +92,22 @@ EXTRA_MAINSTREAM_TOOLS: List[Dict[str, Any]] = [
            app_bundles=["/Applications/QwenWork.app"], commands=[],
            config_paths=["~/.qwenworkcn"],
            skills_path="~/.qwenworkcn/skills",
-           aliases=["qwenwork", "qwenoffice", "千问办公"],
+           aliases=["qwenwork", "qwenoffice", "千问办公", "千问工作"],
            by_os={
                "windows": {"app_bundles": [], "commands": [],
                            "config_paths": ["%USERPROFILE%\\.qwenworkcn"],
                            "skills_path": "%USERPROFILE%\\.qwenworkcn\\skills"},
                "linux": {"app_bundles": [], "commands": [], "config_paths": []},
            }),
-    # TraeWork（字节 AI 工作台，前身 TraeCode SOLO）：桌面版仅 macOS/Windows；
+    # TraeWork（字节 AI 工作台）：官网 2026-11 把 TRAE 拆成 TraeCode（编码 IDE）
+    # 与 TraeWork（工作台）两条产品线，TraeCode 不再是 TraeWork 的前身，
+    # 因此别名不与 TRAE 共用 traecode。桌面版仅 macOS/Windows；
     # MCP 走 GUI 录入口，未公开本地文件 → 不声明 mcp_config_path（P-5/B-8）。
     _entry("TraeWork", type_="AI Assistant",
            app_bundles=["/Applications/TraeWork.app"], commands=[],
            config_paths=["~/.trae-cn"],
            skills_path="~/.trae-cn/skills",
-           aliases=["traework", "traecode", "trae-cn"],
+           aliases=["traework", "trae-work"],
            by_os={
                "windows": {"app_bundles": [], "commands": [],
                            "config_paths": ["%USERPROFILE%\\.trae-cn"],

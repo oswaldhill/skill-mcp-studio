@@ -1726,3 +1726,40 @@ null 软删除，**不绑定活动端点**）。两处同源：概览页显示�
 
 > 本文件与 HTML 可读版的章节由门禁**双向**比对：MD 里的每节要能在 HTML 中找到，
 > HTML 里的每节也要能在 MD 中找到 —— 两侧都不许单方面新增章节。
+
+### 2.3c-2b 路径覆盖（v0.39.0）
+
+内置注册表里的 APP / CLI / CONFIG / SKILLS / MCP / RULES 全是**厂商默认值**。
+本机装到别处、或厂商改了落盘位置时，此前没有任何修正入口（用户：「这个功能是否
+缺失了？」——确实是缺失）。
+
+**覆盖层**：`data/local_overrides.yaml` 的 `tool_paths` 段（该目录 gitignore，
+机器本地路径不进版本库）：
+
+```yaml
+tool_paths:
+  TRAE:
+    config_paths: ["~/custom/mcp.json"]
+    skills_path: "~/custom/skills"
+```
+
+| 可覆盖字段 | 注册表里的键 |
+|---|---|
+| `app_bundles` | `install.app_bundles` |
+| `commands` | `install.commands` |
+| `config_paths` | `install.config_paths` |
+| `skills_path` | `skills_paths` |
+| `mcp_config_path` | `config_path` |
+| `rules_paths` | `rules_paths` |
+
+**只覆盖路径类字段**：工具名、类型、别名一律不动——否则覆盖层会变成第二个
+注册表，两处数据迟早打架。
+
+**三个入口**：
+
+1. 详情弹框的「编辑路径」按钮（六个字段各一个 textarea，每行一个值，清空 = 恢复默认）；
+2. `--set-tool-path TOOL FIELD VALUE` / `--reset-tool-path TOOL [FIELD]`；
+3. `--list-tool-paths`（查看当前覆盖）。
+
+**合并点**：`register_mainstream_tools()` 内部 `apply_overrides(copy.deepcopy(...))`。
+深拷贝是硬要求——调用方（快照构建、详情弹框）会就地读字段，共享引用迟早被改脏。

@@ -14,5 +14,14 @@ MAINSTREAM_NAMES = [t["name"] for t in MAINSTREAM_TOOLS]
 
 
 def register_mainstream_tools():
-    """返回扩展后的主流工具清单（含国内外常用）。"""
-    return MAINSTREAM_TOOLS + EXTRA_MAINSTREAM_TOOLS
+    """返回扩展后的主流工具清单（含国内外常用）。
+
+    2026-11-10：叠加 ``data/local_overrides.yaml`` 的 ``tool_paths`` 覆盖层——
+    内置路径是厂商默认值，本机装到别处时用户需要能改（见 tool_path_overrides）。
+    始终深拷贝：调用方（快照构建 / 详情弹框）会就地读字段，共享引用迟早被改脏。
+    """
+    import copy
+
+    from tool_path_overrides import apply_overrides
+
+    return apply_overrides(copy.deepcopy(MAINSTREAM_TOOLS + EXTRA_MAINSTREAM_TOOLS))

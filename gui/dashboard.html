@@ -8154,6 +8154,66 @@ function renderEndpointStatus() {
                          ok ? "ok" : "warn");
     modalNotice(ok ? "ok" : "err", ok ? `${what} 完成` : `${what} 未生效`, ok ? "" : "写入未生效，原配置已按安全链回滚。");
   }
+// 路径修正（v0.39.0）：内置注册表的路径是厂商默认值，本机装到别处时需要能改。
+// 之前完全没有入口（用户：「这个功能是否缺失了」）——确实是缺失。
+// 弹框只编辑**路径类字段**，保存时逐字段调 --set-tool-path / --reset-tool-path，
+// 清空某个字段 = 恢复内置默认值。
+function openToolPathEditor(name) {
+  const a = (SNAP && SNAP.mainstream_tools || []).find((x) => x.name === name);
+  if (!a) { modalNotice("err", "未找到客户端", name); return; }
+  const rows = [
+    ["app_bundles", "APP 路径", a.app_bundles || []],
+    ["commands", "CLI 命令", a.commands || []],
+    ["config_paths", "CONFIG 路径", a.config_paths || []],
+    ["skills_path", "SKILLS 目录", a.skills_paths || []],
+    ["mcp_config_path", "MCP 配置", a.config_path ? [a.config_path] : []],
+    ["rules_paths", "约束文件", a.rules_paths || []],
+  ];
+  const body = rows.map(([field, label, vals]) => `
+    <div class="form-field">
+      <label for="tp-${field}">${label}</label>
+      <textarea id="tp-${field}" rows="2" spellcheck="false"
+        placeholder="留空 = 使用内置默认值">${escapeHtml((vals || []).join("\n"))}</textarea>
+    </div>`).join("");
+  mountModal(`<div class="modal-backdrop"><div class="modal modal-form">
+    <div class="form-title">${escapeHtml(name)} · 路径</div>
+    <div class="form-sub">每行一个值；清空表示恢复内置默认值。保存后立即生效。</div>
+    ${body}
+    <div class="form-actions">
+      <span class="note" style="margin-right:auto">写入 data/local_overrides.yaml</span>
+      <button class="btn-cancel" id="tp-cancel">取消</button>
+      <button class="btn-save" id="tp-save">保存</button>
+    </div>
+  </div></div>`);
+  $("tp-cancel").onclick = closeModal;
+  $("tp-save").onclick = async () => {
+    const changed = [];
+    rows.forEach(([field, label, vals]) => {
+      const el = $(`tp-${field}`);
+      const value = ((el && el.value) || "").trim();
+      const original = (vals || []).join("\n").trim();
+      if (value !== original) changed.push({ field, label, value });
+    });
+    if (!changed.length) { closeModal(); return; }
+    closeModal();
+    await runTaskModal(`保存 ${name} 路径`, async () => {
+      for (const item of changed) {
+        const args = item.value
+          ? ["--set-tool-path", name, item.field, item.value, "--format", "json"]
+          : ["--reset-tool-path", name, item.field, "--format", "json"];
+        const r = await runCli(args);
+        let x = null;
+        try { x = JSON.parse(stripAnsi((r && r.stdout) || "{}")); } catch (e) { x = null; }
+        if (!x || !x.ok) {
+          return { ok: false, message: `保存「${item.label}」失败`,
+                   detail: (x && x.reason) || cliErrDetail(r) };
+        }
+      }
+      return { ok: true, message: `已更新 ${changed.length} 个字段`, detail: "" };
+    }, () => loadManagement());
+  };
+}
+
 function showAgentDetail(name) {
   const a = (SNAP && SNAP.agents || []).find((x) => x.name === name);
   if (!a) { showBanner("err", "未找到客户端 " + name); return; }
@@ -8230,13 +8290,14 @@ function showAgentDetail(name) {
         ${a.fix_supported ? `<div class="ad-cleanbar">${legacyCount > 0 || unmanagedCount > 0 ? `<span class="ad-clean-note">${legacyCount > 0 ? `${legacyCount} 个旧通道` : ""}${legacyCount > 0 && unmanagedCount > 0 ? "，" : ""}${unmanagedCount > 0 ? `${unmanagedCount} 个未纳管` : ""}</span>` : ""}${legacyCount > 0 ? `<button class="ad-clean-btn" type="button" data-action="clean-legacy" data-name="${escapeHtml(name)}">清理旧 MCP</button>` : ""}${unmanagedCount > 0 ? `<button class="ad-clean-btn" type="button" data-action="remove-mcp-class" data-name="${escapeHtml(name)}" data-class="unmanaged">清理未纳管</button>` : ""}<button class="ad-clean-btn" type="button" data-action="show-config-backups" data-name="${escapeHtml(name)}">从备份恢复</button></div>` : ""}
       </div>
     </div>
-    <div class="ad-foot">${isConfigOnly
+    <div class="ad-foot"><button class="btn-soft" id="ad-edit-paths" title="本机路径与默认值不同时，在这里修正">编辑路径</button>${isConfigOnly
       ? `<button class="btn-soft danger" id="ad-cleanup-config">清理配置</button>`
       : (a.fix_supported
         ? `<button class="btn-soft" id="ad-fix-skills">修复 Skills</button>${canFixMcp ? `<button class="btn-soft" id="ad-fix-mcp">修复 MCP</button>` : ""}`
         : "")}<button class="btn-cancel close-push" id="ad-close">关闭</button></div>
   </div></div>`);
   $("ad-close").onclick = closeModal;
+  if ($("ad-edit-paths")) $("ad-edit-paths").onclick = () => openToolPathEditor(name);
   if (isConfigOnly) {
     $("ad-cleanup-config").onclick = () => { closeModal(); cleanupConfigFor(name); };
   } else if (a.fix_supported) {
@@ -10048,7 +10109,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.38.9", build: 158, build_number: 158, semver_ok: true, full: "v0.38.9 (build 158)" },
+  app: { name: "Skill MCP Studio", version: "0.39.0", build: 159, build_number: 159, semver_ok: true, full: "v0.39.0 (build 159)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

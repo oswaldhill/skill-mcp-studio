@@ -862,6 +862,64 @@ def _run_attach_endpoints(args, config, config_path) -> int:
     return 0 if result["status"] in ("ok", "dry-run") else 2
 
 
+def _run_tool_path_commands(args) -> int:
+    """路径覆盖的读写（--set-tool-path / --reset-tool-path / --list-tool-paths）。
+
+    背景（2026-11-10 用户反馈）：内置注册表的路径是厂商默认值，本机装到别处时
+    用户没有任何修正入口。覆盖层写进 ``data/local_overrides.yaml`` 的
+    ``tool_paths`` 段，``register_mainstream_tools()`` 会把它叠在注册表之上。
+    """
+    import json
+
+    from tool_path_overrides import (
+        FIELD_NAMES,
+        load_tool_paths,
+        reset_tool_path,
+        set_tool_path,
+    )
+
+    as_json = str(getattr(args, "format", "text") or "text").lower() == "json"
+
+    if getattr(args, "set_tool_path", None):
+        tool, field, value = args.set_tool_path
+        if field not in FIELD_NAMES:
+            payload = {"ok": False, "reason": f"不支持的字段 {field}",
+                       "fields": FIELD_NAMES}
+        else:
+            payload = set_tool_path(tool, field, value)
+            payload["fields"] = FIELD_NAMES
+        print(json.dumps(payload, ensure_ascii=False) if as_json
+              else (f"✅ {tool}.{field} = {value}" if payload.get("ok")
+                    else f"❌ {payload.get('reason')}"))
+        return 0 if payload.get("ok") else 2
+
+    if getattr(args, "reset_tool_path", None):
+        values = args.reset_tool_path
+        tool = values[0]
+        field = values[1] if len(values) > 1 else None
+        payload = reset_tool_path(tool, field)
+        print(json.dumps(payload, ensure_ascii=False) if as_json
+              else (f"✅ 已清除 {tool}" + (f".{field}" if field else "")
+                    if payload.get("ok") else f"❌ {payload.get('reason')}"))
+        return 0 if payload.get("ok") else 2
+
+    overrides = load_tool_paths()
+    if as_json:
+        print(json.dumps({"ok": True, "overrides": overrides,
+                          "fields": FIELD_NAMES}, ensure_ascii=False))
+        return 0
+    if not overrides:
+        print("  当前没有路径覆盖（全部使用内置注册表的默认值）")
+        print(f"  可覆盖字段：{', '.join(FIELD_NAMES)}")
+        return 0
+    print(f"  路径覆盖：{len(overrides)} 个工具")
+    for tool, fields in sorted(overrides.items()):
+        for field, value in fields.items():
+            shown = value if isinstance(value, str) else ", ".join(value or [])
+            print(f"    · {tool:<22} {field:<16} {shown}")
+    return 0
+
+
 def _run_rules(args) -> int:
     """约束文件出口（v0.37.7）：列出 / 读取 / 写回各客户端的主要规则文件。
 
@@ -3067,6 +3125,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="软删除指定 skill：先备份再移入统一目录 _trash/（写操作，支持 --dry-run）",
     )
     parser.add_argument(
+        "--set-tool-path", nargs=3, metavar=("TOOL", "FIELD", "VALUE"),
+        help="覆盖某个内置 Agent 的默认路径（写 data/local_overrides.yaml）；"
+             "FIELD 可取 app_bundles / commands / config_paths / skills_path / "
+             "mcp_config_path / rules_paths",
+    )
+    parser.add_argument(
+        "--reset-tool-path", nargs="+", metavar="TOOL",
+        help="清除路径覆盖：`--reset-tool-path TOOL FIELD` 只清该字段，"
+             "`--reset-tool-path TOOL` 清整个工具",
+    )
+    parser.add_argument(
+        "--list-tool-paths", action="store_true",
+        help="列出当前的路径覆盖（内置注册表之上叠加的那层）",
+    )
+    parser.add_argument(
         "--prune-skill-lock", action="store_true",
         help="清理来源登记表里「统一库已无目录」的残留登记（写操作，支持 --dry-run；"
              "只删磁盘上确实不存在的条目，改前自动备份登记表）",
@@ -3645,6 +3718,10 @@ def main() -> int:
             or getattr(args, "read_rules", None)
             or getattr(args, "write_rules", None)):
         return _run_rules(args)
+    if (getattr(args, "set_tool_path", None)
+            or getattr(args, "reset_tool_path", None)
+            or getattr(args, "list_tool_paths", False)):
+        return _run_tool_path_commands(args)
     if getattr(args, "list_mcp_inventory", False):
         return _run_list_mcp_inventory(args, config, config_path)
     # 阶段五增量：MCP 条目删除 / 清理 / 配置备份还原。与上面几条管理台命令同属

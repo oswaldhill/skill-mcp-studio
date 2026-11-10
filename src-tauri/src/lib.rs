@@ -622,6 +622,9 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
         // 约束文件（v0.37.7）：各客户端的 AGENTS.md / CLAUDE.md 等。
         // 写目标由注册表决定（不接收路径参数），--rules-file 只是读取内容来源。
         "--list-rules",
+        "--set-tool-path",
+        "--reset-tool-path",
+        "--list-tool-paths",
         "--read-rules",
         "--write-rules",
         "--rules-file",
