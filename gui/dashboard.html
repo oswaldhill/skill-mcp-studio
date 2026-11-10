@@ -1274,6 +1274,21 @@
   .al-ico.ok { color: var(--ok); border-color: var(--ok-border); background: var(--ok-bg); }
   .al-ico.warn { color: var(--warn); border-color: var(--warn-border); background: var(--warn-bg); }
   .al-ico.err { color: var(--err); border-color: var(--err-border); background: var(--err-bg); }
+  /* 可点击的图标徽标（v0.39.6 用户：「后面红色框的几个按钮也需要和绿色框一样是
+     完全可点击的，可以展示出它们具体的内容」）。APP/CLI/CONFIG 一直是按钮，
+     技能目录与安装却是静态 span——同一行里一半能点一半不能，用户会以为坏了。
+     这里把 span 换成 <button class="al-ico">，视觉完全不变，只补 hover / focus 反馈。 */
+  button.al-ico { padding: 0; cursor: pointer; font: inherit;
+    transition: border-color .15s var(--ease), background .15s var(--ease), box-shadow .15s var(--ease); }
+  button.al-ico:hover { border-color: var(--accent-border); box-shadow: 0 0 0 3px var(--accent-bg); }
+  button.al-ico:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  /* 可点的 .tag（约束 / MCP 列）：保留标签形态，只补指针与 hover 反馈。
+     静态 span 与可点 button 视觉一致，用户靠 hover 才知道能点。 */
+  .tag-btn { cursor: pointer; font: inherit; font-size: var(--fs-2xs); padding: inherit; border: inherit;
+    background: inherit; color: inherit; border-radius: var(--r-pill);
+    transition: border-color .15s var(--ease), box-shadow .15s var(--ease); }
+  .tag-btn:hover { border-color: var(--accent-border); box-shadow: 0 0 0 3px var(--accent-bg); }
+  .tag-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   /* 分类筛选 chips */
   .agent-chips { display: flex; flex-wrap: wrap; gap: var(--gap-2); margin: var(--sp-0b) 0 var(--sp-4); }
   .agent-chip {
@@ -3339,7 +3354,7 @@ function renderHomeListView(q) {
 const statusText = a.installed ? "已安装" : (isConfigOnly ? "仅配置" : "未安装");
 const statusCls = a.installed ? "ok" : (isConfigOnly ? "warn" : "err");
 const statusIco = a.installed ? ICONS.check : (isConfigOnly ? ICONS.warn : ICONS.cross);
-const statusCell = `<span class="al-ico ${statusCls}" title="${statusText}" aria-hidden="true">${statusIco}</span><span class="sr-only">${statusText}</span>`;
+const statusCell = `<button type="button" class="al-ico ${statusCls}" data-popkind="install" data-name="${escapeHtml(a.name)}" title="点击查看安装证据" aria-label="${statusText}，点击查看安装证据">${statusIco}</button>`;
 // 技能目录：链接统一目录=link(ok) / 独立目录=folder(warn) / 无目录=cross(err) / 不适用=minus(中性)
 // 用三元 + 数组解构，**刻意不写 if/else 链**：本仓库测试用「换行 + 单个右花括号 + 换行」
 // 定位函数结尾（tests/test_dashboard_agents_panel.py::_fn），而 if/else 的收尾右花括号
@@ -3352,7 +3367,7 @@ const [skillsText, skillsCls, skillsIco] = !a.installed
     : (a.skills_compliant
       ? [`已通过软链接/快捷方式链接到统一技能目录（${linkFormText(a.skill_link_form)}）`, "ok", ICONS.link]
       : ["使用客户端各自的独立 Skill 目录，未链接到统一技能目录", "warn", ICONS.folder]));
-const skillsCell = `<span class="al-ico ${skillsCls}" title="${escapeHtml(skillsText)}" aria-hidden="true">${skillsIco}</span><span class="sr-only">${escapeHtml(skillsText)}</span>`;
+const skillsCell = `<button type="button" class="al-ico ${skillsCls}" data-popkind="skills" data-name="${escapeHtml(a.name)}" title="点击查看技能目录" aria-label="${escapeHtml(skillsText)}，点击查看技能目录">${skillsIco}</button>`;
     // MCP 列与卡片页一致：显示「已配置 / 声明挂载」端点，颜色由是否全配置驱动
     // （不再只看 mcp_attach.length——那只是期望挂载数，不代表实际接上）。
     const eps = (SNAP && SNAP.mcp && SNAP.mcp.endpoint_status) || {};
@@ -3369,11 +3384,11 @@ const skillsCell = `<span class="al-ico ${skillsCls}" title="${escapeHtml(skills
     } else if (!mcpTotal) {
       mcpCell = '<span class="tag" title="未声明要挂载的端点">0</span>';
     } else if (mcpConfigured === mcpTotal) {
-      mcpCell = `<span class="tag ok" title="${mcpConfigured}/${mcpTotal} 端点已在设置中配置">${mcpConfigured}/${mcpTotal}</span>`;
+      mcpCell = `<button type="button" class="tag tag-btn ok" data-popkind="mcp" data-name="${escapeHtml(a.name)}" title="点击查看端点明细">${mcpConfigured}/${mcpTotal}</button>`;
     } else if (mcpConfigured > 0) {
-      mcpCell = `<span class="tag warn" title="部分端点已在设置中配置">${mcpConfigured}/${mcpTotal}</span>`;
+      mcpCell = `<button type="button" class="tag tag-btn warn" data-popkind="mcp" data-name="${escapeHtml(a.name)}" title="部分端点已在设置中配置，点击查看明细">${mcpConfigured}/${mcpTotal}</button>`;
     } else {
-      mcpCell = `<span class="tag err" title="端点未在设置中配置（可用「修复 MCP」接入）">${mcpConfigured}/${mcpTotal}</span>`;
+      mcpCell = `<button type="button" class="tag tag-btn err" data-popkind="mcp" data-name="${escapeHtml(a.name)}" title="端点未在设置中配置（可用「修复 MCP」接入），点击查看明细">${mcpConfigured}/${mcpTotal}</button>`;
     }
     // 约束文件（v0.37.9）：从 --list-rules 的结果里按客户端名匹配。
     // 合并进主表而不是单独一块——它就是「这个客户端配了什么」的又一行。
@@ -3388,13 +3403,15 @@ const skillsCell = `<span class="al-ico ${skillsCls}" title="${escapeHtml(skills
       const hit = rulesPaths.filter((x) => x.exists).length;
       const total = rulesPaths.length;
       const tip = rulesPaths.map((x) => `${x.path}${x.exists ? "" : "（未配置）"}`).join("；");
-      if (hit === total) {
-        rulesCell = `<span class="tag ok" title="${escapeHtml(tip)}">${hit}/${total}</span>`;
-      } else if (hit > 0) {
-        rulesCell = `<span class="tag warn" title="${escapeHtml(tip)}">${hit}/${total}</span>`;
-      } else {
-        rulesCell = `<span class="tag" title="${escapeHtml(tip)}">未配置</span>`;
-      }
+      const ruleCls = hit === total ? "ok" : (hit > 0 ? "warn" : "");
+      const ruleText = hit === 0 ? "未配置" : `${hit}/${total}`;
+      // 单路径直接开只读预览；多路径（WorkBuddy 两个）先就地列出，再点进去看内容。
+      // 两条路径都走 data-action：`view-rules` 是「打开预览」的唯一入口，多路径时
+      // 由 openRulesModal 前的 pop 层先列出（delegation_contract 要求可识别按钮带 data-action）。
+      const ruleAttrs = total > 1
+        ? ` data-action="list-rules" data-client="${escapeHtml(a.name)}"`
+        : ` data-action="view-rules" data-client="${escapeHtml(a.name)}" data-index="0"`;
+      rulesCell = `<button type="button" class="tag tag-btn ${ruleCls}"${ruleAttrs} title="${escapeHtml(tip)}" aria-label="约束文件 ${ruleText}，点击查看">${ruleText}</button>`;
     }
     return `<tr>
       <td><span class="dot ${dot}" aria-hidden="true"></span> <span class="sr-only">${escapeHtml(statusText)}</span> <span class="al-name">${escapeHtml(a.name)}</span></td>
@@ -3480,19 +3497,50 @@ function hideThTip() {
 }
 
 // 列表视图数字徽章气泡：按 kind（app/cli/config/mcp）取对应路径/端点展示，点击路径复制。
-function togglePathPop(btnEl) {
+function togglePathPop(btnEl, kindOverride) {
   const root = $("pop-root");
   if (!root) return;
   if (root.innerHTML) { root.innerHTML = ""; return; }
-  const kind = btnEl.dataset.popkind;
+  const kind = kindOverride || btnEl.dataset.popkind;
   const name = btnEl.dataset.name;
   const a = (SNAP && SNAP.agents || []).find((x) => x.name === name);
   if (!a) return;
-  const labelMap = { app: "APP 应用", cli: "CLI 命令", config: "CONFIG 配置", mcp: "MCP 端点" };
+  const labelMap = {
+    app: "APP 应用", cli: "CLI 命令", config: "CONFIG 配置", mcp: "MCP 端点",
+    install: "安装证据", skills: "技能目录", rules: "约束文件",
+  };
   const title = `${name} · ${labelMap[kind] || kind.toUpperCase()}`;
   let items;
+  let hint = "点击路径复制到剪贴板";
   if (kind === "mcp") {
     items = (a.mcp_attach && a.mcp_attach.length) ? a.mcp_attach : [];
+  } else if (kind === "install") {
+    // 安装证据 = 三组证据并集：判「为什么算已安装 / 为什么算未安装」时看这里。
+    items = [...(a.app_paths || []), ...(a.cli_paths || []), ...(a.config_paths || [])];
+    hint = "应用包 / CLI / 配置文件，命中任一即视为已安装";
+  } else if (kind === "skills") {
+    items = a.skills_paths || a.expanded_paths || [];
+    hint = a.installed
+      ? "技能目录（复制后可粘贴到访达）"
+      : "该客户端未安装，以下为注册表声明位置";
+  } else if (kind === "rules") {
+    // 约束文件：逐条列出路径 + 是否存在，点一条直接打开只读预览。
+    const row = ((typeof RULES_DATA !== "undefined" && RULES_DATA && RULES_DATA.rows) || [])
+      .find((r) => r.name === name);
+    const paths = (row && row.paths) || [];
+    items = paths.map((x) => x.path);
+    hint = "点击路径打开只读预览";
+    const listHtml2 = paths.length
+      ? paths.map((x, i) => `<button type="button" class="pp-item" data-action="view-rules"
+          data-client="${escapeHtml(name)}" data-index="${i}">${ICONS.info}<span>${escapeHtml(_shortPath(x.path))}${x.exists ? "" : "（未配置）"}</span></button>`).join("")
+      : '<div class="pp-empty">该客户端没有官方约定的用户级约束文件</div>';
+    const rect2 = btnEl.getBoundingClientRect();
+    $("pop-root").innerHTML = `<div class="path-pop" style="left:${Math.min(Math.max(12, rect2.left), window.innerWidth - 332)}px;top:${rect2.bottom + 6}px">
+      <div class="pp-head"><span class="pp-title">${escapeHtml(title)}</span><span class="pp-sub">${paths.length}</span></div>
+      <div class="pp-body">${listHtml2}</div>
+      <div class="pp-hint">${escapeHtml(hint)}</div>
+    </div>`;
+    return;
   } else {
     items = { app: a.app_paths, cli: a.cli_paths, config: a.config_paths }[kind] || [];
   }
@@ -3505,7 +3553,7 @@ function togglePathPop(btnEl) {
   root.innerHTML = `<div class="path-pop" style="left:${left}px;top:${top}px">
     <div class="pp-head"><span class="pp-title">${escapeHtml(title)}</span><span class="pp-sub">${items ? items.length : 0}</span></div>
     <div class="pp-body">${listHtml}</div>
-    <div class="pp-hint">点击路径复制到剪贴板</div>
+    <div class="pp-hint">${escapeHtml(hint)}</div>
   </div>`;
 }
 
@@ -9665,6 +9713,7 @@ document.addEventListener("click", (e) => {
     else if (a === "prune-skill-backups") openPruneSkillBackupsModal();
     else if (a === "refresh-rules") loadRules();
     else if (a === "view-rules") openRulesModal(act.dataset.client, parseInt(act.dataset.index || "0", 10));
+    else if (a === "list-rules") togglePathPop(act, "rules");
     else if (a === "git-source-remove") confirmRemoveGitSource(act.dataset.id);
     else if (a === "git-source-set-primary") setPrimaryGitSource(act.dataset.id);
     else if (a === "add-agent") renderAddPanel();
@@ -10285,7 +10334,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.39.5", build: 164, build_number: 164, semver_ok: true, full: "v0.39.5 (build 164)" },
+  app: { name: "Skill MCP Studio", version: "0.39.6", build: 165, build_number: 165, semver_ok: true, full: "v0.39.6 (build 165)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

@@ -1520,6 +1520,26 @@
       <p class="spec-note">由 <code>tests/test_dsh_plugins.py::test_nav_count_badge_*</code> 与 <code>test_nav_count_loaded_at_startup_not_on_page_visit</code> 共同守住。</p>
     </section>
 
+    <section id="s2-3d1">
+      <h3 id="s2-3d1">2.3d-1 主表状态列一律可点（v0.39.6）<a class="anchor" href="#s2-3d1" aria-label="锚点">#</a></h3>
+      <p>主表「安装 / 技能目录 / 约束 / MCP」四列的状态徽标<strong>全部是按钮</strong>，点开各自的明细。
+        此前 APP / CLI / CONFIG 是按钮，而技能目录 / 安装是静态 <code>span</code>、约束 / MCP 是静态标签，
+        同一行一半能点一半不能，用户会以为功能坏了。</p>
+      <table>
+        <thead><tr><th>列</th><th>元素</th><th>点击行为</th></tr></thead>
+        <tbody>
+          <tr><td>安装</td><td><code>button.al-ico</code></td><td><code>.path-pop</code> 列出安装证据（APP + CLI + CONFIG 并集）</td></tr>
+          <tr><td>技能目录</td><td><code>button.al-ico</code></td><td><code>.path-pop</code> 列出技能目录</td></tr>
+          <tr><td>约束（单路径）</td><td><code>button.tag.tag-btn</code></td><td>直接打开只读预览弹框</td></tr>
+          <tr><td>约束（多路径）</td><td><code>button.tag.tag-btn</code></td><td>先列出路径，点一条再进预览</td></tr>
+          <tr><td>MCP（有端点）</td><td><code>button.tag.tag-btn</code></td><td><code>.path-pop</code> 列出端点 key</td></tr>
+          <tr><td>MCP（<code>0</code> / <code>不支持</code>）</td><td><code>span.tag</code></td><td>不点——中性空态，没有可展示的内容</td></tr>
+        </tbody>
+      </table>
+      <p><strong>可点必须有可点的手感</strong>：<code>button.al-ico</code> 与 <code>.tag-btn</code> 都补了
+        <code>hover</code>（accent 边框 + 3px 光晕）与 <code>:focus-visible</code>（焦点环）。</p>
+    </section>
+
     <section id="s2-5b1">
       <h3 id="s2-5b1">2.5b-1 表单弹框的三段式骨架（v0.39.5）<a class="anchor" href="#s2-5b1" aria-label="锚点">#</a></h3>
       <p><strong>操作按钮永远可见，滚动区不含按钮。</strong>此前 <code>.modal</code> 整体

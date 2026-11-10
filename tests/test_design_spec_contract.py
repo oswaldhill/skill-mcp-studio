@@ -1168,6 +1168,40 @@ class RowStatusCellUniformityTest(unittest.TestCase):
         self.assertIn("text-align: center", m.group(1), "居中规则应声明 text-align: center")
 
 
+class ListStatusCellsClickableTest(unittest.TestCase):
+    """主表「安装 / 技能目录 / 约束 / MCP」四列都必须可点开明细（v0.39.6）。
+
+    用户：「后面红色框的几个按钮也需要和绿色框一样是完全可点击的，可以展示出
+    它们具体的内容」。此前 APP/CLI/CONFIG 是按钮，技能目录/安装是静态 span，
+    约束/MCP 是静态标签 —— 同一行一半能点一半不能，用户会以为功能坏了。
+    """
+
+    def _body(self):
+        return self._row_renderer_body() if hasattr(self, "_row_renderer_body") else _src()
+
+    def test_install_and_skills_are_buttons(self):
+        src = _src()
+        self.assertIn('data-popkind="install"', src, "安装列应可点开安装证据")
+        self.assertIn('data-popkind="skills"', src, "技能目录列应可点开目录")
+
+    def test_rules_and_mcp_are_buttons(self):
+        src = _src()
+        # 单路径：data-action="view-rules" + data-client + data-index="0"（属性顺序不固定）
+        self.assertRegex(src, r'data-action="view-rules"[^`\n]*data-index="0"',
+                         "单路径约束应直接打开只读预览")
+        self.assertIn('data-action="list-rules"', src, "多路径约束应先列出再点进去")
+        # MCP：有端点的三种状态都要可点（0 与不支持是中性空态，不点）
+        self.assertEqual(src.count('class="tag tag-btn') >= 3, True,
+                         "MCP 的 ok / warn / err 三态都应是可点标签")
+
+    def test_clickable_badges_have_affordance(self):
+        css = _css()
+        for sel in ("button.al-ico", ".tag-btn"):
+            self.assertIn(sel, css, f"{sel} 缺少可点样式（无 hover 反馈用户不知道能点）")
+        self.assertIn("button.al-ico:hover", css)
+        self.assertIn(".tag-btn:hover", css)
+
+
 class ModalSkeletonTest(unittest.TestCase):
     """对话框统一骨架：头固定 / 主体滚动 / 操作栏固定（v0.39.5）。
 

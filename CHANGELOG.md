@@ -7,6 +7,57 @@
 
 ## [Unreleased]
 
+## [v0.39.6] - 2026-11-10
+
+当前发布版本（build 165）。
+
+**主表状态列全部可点开明细。**
+
+用户：「后面红色框的几个按钮也需要和绿色框一样是完全可点击的，可以展示出它们
+具体的内容」。
+
+### 根因
+
+主表里 APP / CLI / CONFIG 一直是 `<button>`，而**技能目录 / 安装是静态 `<span>`、
+约束 / MCP 是静态 `<span class="tag">`**——同一行一半能点一半不能，用户会以为
+这几列坏了。
+
+### 改动
+
+| 列 | 元素 | 点击行为 |
+|---|---|---|
+| 安装 | `button.al-ico` | 列出安装证据（APP + CLI + CONFIG 并集），解答「为什么算已安装」 |
+| 技能目录 | `button.al-ico` | 列出技能目录（未安装时标注「注册表声明位置」） |
+| 约束（单路径） | `button.tag.tag-btn` | 直接打开只读预览 |
+| 约束（多路径） | `button.tag.tag-btn` | 先列出路径，点一条再进预览 |
+| MCP（有端点） | `button.tag.tag-btn` | 列出端点 key |
+
+**可点必须有可点的手感**：`button.al-ico` 与 `.tag-btn` 加了 hover（accent 边框 +
+3px 光晕）与 `:focus-visible`（焦点环）。静态 span 和按钮长得一样，没有 hover
+反馈用户根本不知道能点。
+
+`MCP 0` / `不支持` 保持中性 `span.tag`——是空态、没有可展示的内容，不该假装能点。
+
+### 实现要点
+
+- `togglePathPop(btnEl, kindOverride)` 新增 `install` / `skills` / `rules` 三种 kind；
+  `rules` 走独立分支（列路径 + 直接绑 `data-action="view-rules"`）。
+- 多路径约束用 `data-action="list-rules"`（而不是裸 `data-popkind`）：全局委托只认
+  带 `data-action` 的按钮，否则点击被丢弃（`delegation_contract` 抓到的）。
+- `.tag-btn` 圆角用 `var(--r-pill)` 而不是 `inherit`——形状一致性锁要求所有圆角
+  来自 `--r-*` 档位（`test_no_off_scale_radius_values` 抓到的）。
+
+### 测试
+
+- 新增 `ListStatusCellsClickableTest`（3 项）：四列可点、`.tag-btn` 三态、
+  hover/focus 样式存在。
+- **反向验证 2 条**：安装列 / 技能目录列改回静态 span，断言各自失败。
+- 全量 **1691 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
+### 文档
+
+`docs/DESIGN.md` 新增 §2.3d-1；`docs/DESIGN.html` 同步。
+
 ## [v0.39.5] - 2026-11-10
 
 当前发布版本（build 164）。
@@ -3445,7 +3496,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.39.5...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.39.6...HEAD
+[v0.39.6]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.39.6
 [v0.39.5]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.39.5
 [v0.39.4]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.39.4
 [v0.39.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.39.3
