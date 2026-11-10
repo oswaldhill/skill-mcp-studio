@@ -1168,6 +1168,32 @@ class RowStatusCellUniformityTest(unittest.TestCase):
         self.assertIn("text-align: center", m.group(1), "居中规则应声明 text-align: center")
 
 
+class ModalSkeletonTest(unittest.TestCase):
+    """对话框统一骨架：头固定 / 主体滚动 / 操作栏固定（v0.39.5）。
+
+    用户：「保存、取消这些操作按钮永远是显示的，滚动部分不应该包括操作按钮」。
+    此前 `.modal` 整体 `overflow-y: auto`，按钮会跟着内容一起滚出视口。
+    """
+
+    def test_form_modal_is_three_sections(self):
+        css = _css()
+        self.assertIn(".modal-form .form-body", css, "缺少可滚动主体")
+        self.assertIn(".modal-form .form-actions", css, "缺少固定操作栏")
+        body = re.search(r"\.modal-form \.form-body\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(body)
+        self.assertIn("overflow-y: auto", body.group(1), "主体必须自己滚动")
+        actions = re.search(r"\.modal-form \.form-actions\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(actions)
+        self.assertIn("flex: 0 0 auto", actions.group(1), "操作栏不得参与滚动压缩")
+
+    def test_mount_modal_normalizes(self):
+        html = _src()
+        self.assertIn("function _normalizeFormModal(root)", html,
+                      "应有统一的对话框结构重排函数")
+        self.assertIn("_normalizeFormModal(modal);", html,
+                      "mountModal 必须调用重排，否则每个弹框都要自己包一层")
+
+
 class CardTitleAlignmentTest(unittest.TestCase):
     """卡片标题与内容行的对齐（v0.38.6 用户「标题和内容没完全对齐，往下偏」）。
 

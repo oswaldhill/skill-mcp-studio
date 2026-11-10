@@ -7,6 +7,51 @@
 
 ## [Unreleased]
 
+## [v0.39.5] - 2026-11-10
+
+当前发布版本（build 164）。
+
+**对话框统一三段式骨架：操作按钮永远可见。**
+
+用户：「请调整并统一一下所有关于对话框的 UI 规范，让『保存』『取消』这些操作按钮
+永远是显示的，滚动部分不应该包括操作按钮」。
+
+### 根因
+
+`.modal` 是 `max-height: 92vh; overflow-y: auto`——**整个弹框一起滚**，底部
+`.form-actions` 会跟着内容滚出视口。内容一多（APP/CLI/CONFIG/约束/目录设置五组），
+按钮就看不见了。
+
+### 修复
+
+```
+┌ .modal.modal-form ─────────────────────────────┐
+│ .form-head      标题 + 副标题        flex:0 0  │ ← 固定
+│ ─────────────────────────────────────────────  │
+│ .form-body      各字段 / 说明 / 列表  flex:1 1 │ ← 唯一滚动区
+│ ─────────────────────────────────────────────  │
+│ .form-actions   取消 / 保存          flex:0 0  │ ← 固定
+└────────────────────────────────────────────────┘
+```
+
+- **结构由 `mountModal` 自动重排**（`_normalizeFormModal`）：各 `open*` 函数照旧
+  平铺写 `form-title` / 字段 / `form-actions`，挂载时自动包成三段。这样**新增弹框
+  不会漏**，也不需要在十几个 `open*` 里各写一遍。
+- 只作用于 `.modal-form`；`.ad-modal`（详情）与 `.cfm-card`（确认）保留各自骨架。
+- `.form-body` 必须 `min-height: 0`：flex 子项默认 `min-height: auto` 会撑破容器，
+  滚动直接失效（这是 flex 布局最常见的坑）。
+
+### 测试
+
+- 新增 `ModalSkeletonTest`（2 项）：`.form-body` 必须 `overflow-y: auto`、
+  `.form-actions` 必须 `flex: 0 0 auto`、`mountModal` 必须调用重排。
+- **反向验证**：去掉 `_normalizeFormModal(modal);` 调用，断言立刻失败。
+- 全量 **1688 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
+### 文档
+
+`docs/DESIGN.md` 新增 §2.5b-1「表单弹框的三段式骨架」；`docs/DESIGN.html` 同步。
+
 ## [v0.39.4] - 2026-11-10
 
 当前发布版本（build 163）。
@@ -3400,7 +3445,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.39.4...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.39.5...HEAD
+[v0.39.5]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.39.5
 [v0.39.4]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.39.4
 [v0.39.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.39.3
 [v0.39.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.39.2

@@ -1520,6 +1520,26 @@
       <p class="spec-note">由 <code>tests/test_dsh_plugins.py::test_nav_count_badge_*</code> 与 <code>test_nav_count_loaded_at_startup_not_on_page_visit</code> 共同守住。</p>
     </section>
 
+    <section id="s2-5b1">
+      <h3 id="s2-5b1">2.5b-1 表单弹框的三段式骨架（v0.39.5）<a class="anchor" href="#s2-5b1" aria-label="锚点">#</a></h3>
+      <p><strong>操作按钮永远可见，滚动区不含按钮。</strong>此前 <code>.modal</code> 整体
+        <code>overflow-y: auto</code>，按钮会跟着内容一起滚出视口。</p>
+      <pre><code>┌ .modal.modal-form ─────────────────────────────┐
+│ .form-head      标题 + 副标题        flex:0 0  │ ← 固定
+│ ─────────────────────────────────────────────  │
+│ .form-body      各字段 / 说明 / 列表  flex:1 1 │ ← 唯一滚动区
+│ ─────────────────────────────────────────────  │
+│ .form-actions   取消 / 保存          flex:0 0  │ ← 固定
+└────────────────────────────────────────────────┘</code></pre>
+      <ul>
+        <li><strong>结构由 <code>mountModal</code> 自动重排</strong>（<code>_normalizeFormModal</code>）：
+          各 <code>open*</code> 函数照旧平铺写，挂载时自动包成三段，新增弹框不会漏。</li>
+        <li>只作用于 <code>.modal-form</code>；<code>.ad-modal</code> 与 <code>.cfm-card</code> 有各自的骨架。</li>
+        <li><code>.form-body</code> 必须 <code>min-height: 0</code>，否则 flex 子项的默认
+          <code>min-height: auto</code> 会让它撑破容器、滚动失效。</li>
+      </ul>
+    </section>
+
     <section id="s2-4">
       <h3 id="s2-4">2.4 元信息与数字<a class="anchor" href="#s2-4" aria-label="锚点">#</a></h3>
       <ul>

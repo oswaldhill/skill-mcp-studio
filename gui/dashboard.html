@@ -872,7 +872,15 @@
   }
 
   /* 统一表单模态框 */
-  .modal-form { padding: var(--sp-9a); }
+  /* 对话框统一骨架（v0.39.5 用户：「保存/取消要永远显示，滚动部分不该包含操作按钮」）：
+     标题固定 → 主体滚动 → 操作栏固定。结构由 mountModal 自动重排（见 form-head /
+     form-body 的注入），各 open* 函数不需要记得包一层。 */
+  .modal-form { padding: 0; display: flex; flex-direction: column; overflow: hidden; max-height: 92vh; }
+  .modal-form .form-head { flex: 0 0 auto; padding: var(--sp-9a) var(--sp-9a) var(--sp-6); border-bottom: 1px solid var(--line); }
+  .modal-form .form-head .form-title { margin: 0 0 var(--sp-1); }
+  .modal-form .form-head .form-sub { margin: 0; }
+  .modal-form .form-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: var(--sp-6) var(--sp-9a); }
+  .modal-form .form-actions { flex: 0 0 auto; margin-top: 0; padding: var(--sp-5) var(--sp-9a); border-top: 1px solid var(--line); background: var(--panel); }
   .modal-form .form-title { font-size: var(--fs-md); font-weight: 600; color: var(--text); margin: 0 0 var(--sp-1); letter-spacing: -.01em; }
   .modal-form .form-sub { font-size: var(--fs-xs); color: var(--muted); margin: 0 0 var(--sp-7a); line-height: 1.4; }
   .modal-form .form-field { margin-bottom: var(--sp-5); }
@@ -2365,9 +2373,31 @@ function showBanner(kind, text) {
 }
 function clearBanner() { const b = $("banner"); b.className = ""; b.textContent = ""; }
 
+// 把 `.modal-form` 的直接子节点重排成「头 / 身 / 尾」三段（v0.39.5）。
+// 目的：操作按钮永远可见——此前整个弹框一起滚，按钮会被滚出视口。
+// 只处理 `.modal-form`；`.ad-modal`（详情）与 `.cfm-card`（确认）有自己的骨架。
+function _normalizeFormModal(root) {
+  const card = root.querySelector(".modal.modal-form");
+  if (!card || card.querySelector(":scope > .form-body")) return;
+  const actions = card.querySelector(":scope > .form-actions");
+  if (!actions) return;
+  const head = document.createElement("div");
+  head.className = "form-head";
+  const body = document.createElement("div");
+  body.className = "form-body";
+  [...card.children].forEach((el) => {
+    if (el === actions) return;
+    if (el.classList.contains("form-title") || el.classList.contains("form-sub")) head.appendChild(el);
+    else body.appendChild(el);
+  });
+  card.insertBefore(head, card.firstChild);
+  card.insertBefore(body, actions);
+}
+
 function mountModal(html) {
   const modal = $("modal-root");
   modal.innerHTML = html;
+  _normalizeFormModal(modal);
   // 必须走 showModal()：结果面板（使用分析）本身是 top layer 的 <dialog>，
   // 而 top layer 内的元素一律绘制在所有普通浮层之上。确认框若还留在普通文档流里，
   // 被面板整个盖住——用户点了按钮却"什么都没发生"。
@@ -10255,7 +10285,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.39.4", build: 163, build_number: 163, semver_ok: true, full: "v0.39.4 (build 163)" },
+  app: { name: "Skill MCP Studio", version: "0.39.5", build: 164, build_number: 164, semver_ok: true, full: "v0.39.5 (build 164)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",
