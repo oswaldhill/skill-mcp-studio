@@ -7,6 +7,67 @@
 
 ## [Unreleased]
 
+## [v0.44.0] - 2026-11-11
+
+当前发布版本（build 184）。
+
+**找到「操作列改不动」的真凶：表头内联 `style="text-align:right"`。操作组视觉重做。**
+
+用户：「后面对齐的问题好像还是没有解决……最后的操作却是右侧对齐的。详情和 3 个
+点的操作按钮的排版布局也不是很好看」。
+
+### 一、真凶是内联样式
+
+表头实际写着：
+
+```html
+<th style="text-align:right">操作</th>
+```
+
+**内联样式优先级高于任何样式表选择器。** 于是前三轮修复
+（`th:nth-child(10)` → `thead th:nth-child(10)` → `.al-op-cell`）全部被它压住，
+无论我怎么改 CSS 都无效。
+
+修复：删掉内联，改用 `.al-op-cell`：
+
+```css
+th.al-op-cell, td.al-op-cell { text-align: center; }
+```
+
+顺带把向导里客户端对照表的「操作」列也统一过来（那里同样是内联右对齐 + 单元格不跟）。
+
+### 二、操作组视觉重做
+
+| 元素 | 改前 | 改后 |
+|---|---|---|
+| 详情 | 26px 高、常驻边框胶囊 | **28px** 高、透明底透明边框；行 hover / 自身 hover 才浮现 accent 胶囊 |
+| 更多 `⋯` | 24px 裸图标 | **28×28** 方形按钮，与详情等高；hover 浮现 `--panel-2` 底 |
+| 间距 | 6px | 6px（不变） |
+
+一胖一瘦并排的问题解决：两者等高、同等交互层级，视觉上成为一个「操作组」。表格里
+不再常驻两圈边框，减少框线噪音。
+
+### 三、实测
+
+```
+表头 align: center  单元格 align: center
+表头中心 1010.3 = 操作组中心 1010.3   delta 0
+详情高 28 = 更多高 28
+```
+
+### 测试
+
+- 新增 `NoInlineTableAlignmentTest`（2 项）：表格单元格不得用内联 `text-align`、
+  操作列必须用 `.al-op-cell`。
+- 新增 `test_detail_and_kebab_are_equalsized`：两者必须 28px 等高、详情默认透明边框。
+- **反向验证 3 条**：加回内联右对齐、去掉等高、去掉显式类，各自失败。
+- 全量 **1750 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
+### 文档
+
+`docs/DESIGN.md` §2.3d-2 补「禁止用内联 `text-align` 控制列对齐」与操作组构成
+（默认态 / hover 态 / 尺寸）；`DESIGN.html` 同步。
+
 ## [v0.43.3] - 2026-11-11
 
 当前发布版本（build 183）。
@@ -4354,7 +4415,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.43.3...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.44.0...HEAD
+[v0.44.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.44.0
 [v0.43.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.43.3
 [v0.43.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.43.2
 [v0.43.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.43.1

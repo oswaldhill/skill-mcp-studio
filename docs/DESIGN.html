@@ -1549,6 +1549,20 @@
       <p><strong><code>table-layout: fixed</code> 的隐藏行为</strong>（v0.43.1）：所有列宽度合计小于表格宽时，
         浏览器会<strong>按比例放大每一列</strong>，px 变成比例而非定值（实测合计 958 / 容器 1061 →
         名称 220→243.6、操作 128→141.8）。必须留一列 <code>width: auto</code> 吸收剩余。</p>
+      <p><strong>操作列：<code>.al-op-cell</code> 显式类 + 中心对齐</strong>（v0.44.0）：
+        表头与内容同轴居中，与「安装 / 技能目录 / 约束 / MCP」一致。
+        <strong>禁止用内联 <code>style="text-align:..."</code> 控制列对齐</strong>——内联样式优先级高于任何样式表规则，
+        实测曾让三轮 CSS 修复全部失效。</p>
+      <pre><code>                    ⋯
+              [ ⓘ 详情 ]
+        28px 高 · 间距 6px · 垂直居中</code></pre>
+      <table>
+        <thead><tr><th>元素</th><th>默认态</th><th>hover 态</th></tr></thead>
+        <tbody>
+          <tr><td>详情 <code>.al-detail</code></td><td>透明底、透明边框占位、accent 文字</td><td>accent 底 + accent 边框胶囊</td></tr>
+          <tr><td>更多 <code>.kebab</code></td><td>28×28 方形、透明底、faint 图标</td><td><code>--panel-2</code> 底、muted 图标</td></tr>
+        </tbody>
+      </table>
       <p><strong>操作列的轴对齐</strong>（v0.43.1）：表头文字与按钮必须落在同一条竖线上。操作列只放「详情」，
         详情与更多<strong>并排</strong>，<code>.al-ops</code> 居中、表头居中，两者中心同轴（覆盖层方案因会压住按钮而废弃）。另外操作列 <code>td</code> 的
         <code>overflow</code> 从 <code>hidden</code> 改 <code>visible</code>——否则按钮的 3px hover 光晕被削成直角，

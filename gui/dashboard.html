@@ -455,24 +455,35 @@
   .agent-card .ac-fixbar .ac-fix.danger { border-color: var(--err-border); background: var(--err-bg); color: var(--err); }
   .agent-card .ac-fixbar .ac-fix.danger:hover { background: var(--err); border-color: var(--err); color: var(--on-accent); }
   /* 主页列表视图：详情链接 */
-  /* 操作列（v0.43.3）：详情 + 更多并排，**不做绝对定位覆盖**。
-     上一版把 kebab 用 `right: calc(sp-4 + 68px)` 浮在单元格右上角，详情按钮一改宽度
-     就压到按钮上（用户截图「操作按钮和详情按钮发生了干涉和冲突」）。并排排布没有
-     这个隐患：宽度由内容决定，溢出由列宽吸收。 */
+  /* 操作组（v0.44.0）：详情是**文字按钮**、更多是**图标按钮**，两者等宽等高、垂直居中，
+     间距固定。此前详情是带边框的胶囊（26px 高、左右各 10px 内边），kebab 却只有 24px
+     裸图标——一胖一瘦并排，用户评价「排版布局也不是很好看」。
+     现在：详情去掉边框，hover 才浮现胶囊底（减少表格里的框线噪音）；
+     kebab 用与详情等高的方形按钮，鼠标移入才显形，避免常驻的第二个"框"。 */
   .al-ops { display: flex; justify-content: center; align-items: center; gap: var(--gap-2); white-space: nowrap; min-width: 0; }
   .al-detail {
-    display: inline-flex; align-items: center; gap: var(--gap-1); height: 26px; flex: 0 0 auto;
-    padding: 0 var(--sp-4); border: 1px solid var(--line); border-radius: var(--r-control);
-    background: var(--panel); color: var(--accent); box-shadow: none;
+    display: inline-flex; align-items: center; justify-content: center; gap: var(--gap-1);
+    height: 28px; flex: 0 0 auto; padding: 0 var(--sp-4);
+    border: 1px solid transparent; border-radius: var(--r-control);
+    background: transparent; color: var(--accent); box-shadow: none;
     font-size: var(--fs-xs); font-weight: 500; font-family: inherit; cursor: pointer;
     transition: background .14s var(--ease), border-color .14s var(--ease), color .14s var(--ease), transform .1s var(--ease);
   }
+  /* 行 hover / 按钮自身 hover 都给出同样的胶囊底：表格里不再常驻两圈边框 */
+  .agent-list-table tbody tr:hover .al-detail,
   .al-detail:hover { background: var(--accent-bg); border-color: var(--accent-border); }
   .al-detail:active { transform: scale(.96); }
-  .al-detail svg { width: 14px; height: 14px; }
-  .al-ops .kebab { margin-left: 0; flex: 0 0 auto; width: 24px; height: 24px; display: inline-flex;
-    align-items: center; justify-content: center; border-radius: var(--r-control); color: var(--faint); }
+  .al-detail svg { width: 14px; height: 14px; flex: none; }
+  .al-ops .kebab {
+    margin-left: 0; flex: 0 0 auto; width: 28px; height: 28px; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 1px solid transparent; border-radius: var(--r-control);
+    background: transparent; color: var(--faint); cursor: pointer;
+    transition: background .14s var(--ease), color .14s var(--ease), transform .1s var(--ease);
+  }
+  .agent-list-table tbody tr:hover .al-ops .kebab,
   .al-ops .kebab:hover { background: var(--panel-2); color: var(--muted); }
+  .al-ops .kebab:active { transform: scale(.94); }
   .agent-list-table td .dot { margin-right: var(--sp-2); vertical-align: -1px; }
 
   /* ============ table ============ */
@@ -1261,11 +1272,14 @@
      现在两边都以单元格内容盒的右缘为准，轴线一致。 */
   /* 特异性要压过 `.agent-list-table th { text-align: left }`（同为 0,1,1，后者定义在前，
      但 `th` 主规则在文件更下方 → 实测覆盖了本规则）。提到 thead 层级确保生效。 */
-  /* 操作列：表头与按钮**中心对齐**（v0.43.2）。此前右对齐，表头文字右缘与按钮右缘
-     虽然重合，但两者宽度不同 → 视觉中心相差 19px，用户两轮都读成「没有居中对齐」。 */
-  .agent-list-table thead th:nth-child(10),
-  .agent-list-table td:nth-child(10) { text-align: center; }
-  .al-ops { justify-content: center; }
+  /* 操作列（v0.44.0）：表头与内容**同轴居中**，与「安装 / 约束 / MCP」等列一致。
+     前几版用 `th:nth-child(10)` 单列特判，反复被别的 th/td 规则层叠盖掉；
+     现在改成显式类 `.al-op-cell`——选择器更短、无 nth 依赖，不会再被覆盖。 */
+  .agent-list-table th.al-op-cell,
+  .agent-list-table td.al-op-cell { text-align: center; }
+  /* 同一条约定也适用于其它表格（向导里的客户端对照表）：
+     「操作」列的表头与单元格必须同轴居中，不得只给表头写内联 right。 */
+  th.al-op-cell, td.al-op-cell { text-align: center; }
   .agent-list-table th:nth-child(3),
   .agent-list-table th:nth-child(7),
   .agent-list-table th:nth-child(8),
@@ -3649,14 +3663,14 @@ const skillsCell = `<button type="button" class="al-ico ${skillsCls}" data-popki
       <td>${skillsCell}</td>
       <td>${rulesCell}</td>
       <td>${mcpCell}</td>
-      <td class="al-ops"><button type="button" class="al-detail" data-open="${escapeHtml(a.name)}" title="查看详情" aria-label="查看 ${escapeHtml(a.name)} 详情">${ICONS.info}<span>详情</span></button><button class="kebab" type="button" data-name="${escapeHtml(a.name)}" aria-label="更多操作" aria-haspopup="menu">${ICONS.kebab}</button></td>
+      <td class="al-ops al-op-cell"><button type="button" class="al-detail" data-open="${escapeHtml(a.name)}" title="查看详情" aria-label="查看 ${escapeHtml(a.name)} 详情">${ICONS.info}<span>详情</span></button><button class="kebab" type="button" data-name="${escapeHtml(a.name)}" aria-label="更多操作" aria-haspopup="menu">${ICONS.kebab}</button></td>
     </tr>`;
   }).join("");
 
   body.innerHTML = `<div class="agent-list-wrap">
       <div class="agent-list-count">共 ${list.length} 个（分类筛选：${homeType() === "all" ? "全部" : escapeHtml(homeType())}）</div>
       <div class="table-scroll"><table class="agent-list-table">
-        <thead><tr><th>名称</th><th>类型</th><th data-help="#check.ok:已安装;warn.warn:仅配置;cross.err:未安装">安装<span class="th-help" aria-hidden="true">${ICONS.help}</span></th><th>APP</th><th>CLI</th><th>CONFIG</th><th data-help="#link.ok:已指向统一技能目录;folder.warn:独立目录;cross.err:无目录;minus:不适用">技能目录<span class="th-help" aria-hidden="true">${ICONS.help}</span></th><th data-help="N / M = 已配置的约束文件数 / 该客户端的约束文件总数|#.ok:全部已配置;.warn:部分已配置;.na:未配置或无约定">约束<span class="th-help" aria-hidden="true">${ICONS.help}</span></th><th data-help="N / M = 已设置端点数 / 声明挂载的端点总数|#.ok:全部已设置;.warn:部分已设置;.err:未设置;.na:不支持 MCP 或无端点">MCP<span class="th-help" aria-hidden="true">${ICONS.help}</span></th><th style="text-align:right">操作</th></tr></thead>
+        <thead><tr><th>名称</th><th>类型</th><th data-help="#check.ok:已安装;warn.warn:仅配置;cross.err:未安装">安装<span class="th-help" aria-hidden="true">${ICONS.help}</span></th><th>APP</th><th>CLI</th><th>CONFIG</th><th data-help="#link.ok:已指向统一技能目录;folder.warn:独立目录;cross.err:无目录;minus:不适用">技能目录<span class="th-help" aria-hidden="true">${ICONS.help}</span></th><th data-help="N / M = 已配置的约束文件数 / 该客户端的约束文件总数|#.ok:全部已配置;.warn:部分已配置;.na:未配置或无约定">约束<span class="th-help" aria-hidden="true">${ICONS.help}</span></th><th data-help="N / M = 已设置端点数 / 声明挂载的端点总数|#.ok:全部已设置;.warn:部分已设置;.err:未设置;.na:不支持 MCP 或无端点">MCP<span class="th-help" aria-hidden="true">${ICONS.help}</span></th><th class="al-op-cell">操作</th></tr></thead>
         <tbody>${rows || '<tr><td colspan="10" class="path-none">无匹配结果</td></tr>'}</tbody>
       </table></div>
     </div>`;
@@ -5168,7 +5182,7 @@ function renderAgentsTable(page) {
           <td><span class="al-type">${escapeHtml(t.type || "Other")}</span></td>
           <td><div class="al-metrics">${metric("APP", app.length, app.length>0)}${metric("CLI", cli.length, cli.length>0)}${metric("CONFIG", cfg.length, cfg.length>0)}</div></td>
           <td><div class="al-metrics">${_agentSkillsSummary(t)}${_agentMcpSummary(t)}${_agentRulesSummary(t)}</div></td>
-          <td style="text-align:right"><button class="ghost sm btn-agent-detail" data-name="${escapeHtml(t.name)}">详情</button></td>
+          <td class="al-op-cell"><button class="ghost sm btn-agent-detail" data-name="${escapeHtml(t.name)}">详情</button></td>
         </tr>`;
       }).join("");
       return `<tr class="al-group-head" data-group="${escapeHtml(type)}">
@@ -5180,7 +5194,7 @@ function renderAgentsTable(page) {
         <div class="agent-chips" id="agent-chips">${chips}</div>
         <div class="agent-list-count">共 ${list.length} 个 Agent/IDE（分 ${groupedList.length} 类）${q ? `，匹配「${escapeHtml(q)}」` : ""}</div>
         <div class="table-scroll"><table class="agent-list-table">
-          <thead><tr><th>名称</th><th>类型</th><th>路径指标</th><th>能力摘要（Skills / MCP）</th><th style="text-align:right">操作</th></tr></thead>
+          <thead><tr><th>名称</th><th>类型</th><th>路径指标</th><th>能力摘要（Skills / MCP）</th><th class="al-op-cell">操作</th></tr></thead>
           <tbody>${groupRows || '<tr><td colspan="5" class="path-none">无匹配结果</td></tr>'}</tbody>
         </table></div>
       </div>`;
@@ -10703,7 +10717,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.43.3", build: 183, build_number: 183, semver_ok: true, full: "v0.43.3 (build 183)" },
+  app: { name: "Skill MCP Studio", version: "0.44.0", build: 184, build_number: 184, semver_ok: true, full: "v0.44.0 (build 184)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

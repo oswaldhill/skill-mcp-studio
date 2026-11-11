@@ -1303,6 +1303,27 @@ class NoToastTest(unittest.TestCase):
         self.assertIn("modal cfm-card", body, "通知必须是 .cfm-card 弹框家族")
 
 
+class NoInlineTableAlignmentTest(unittest.TestCase):
+    """表格里不得用内联 `style="text-align:..."` 控制列对齐（v0.44.0）。
+
+    实测：表头写着 `<th style="text-align:right">操作</th>`，内联样式优先级高于
+    任何样式表选择器，于是三轮 CSS 修复（nth-child → thead 层级 → 显式类）全被压住，
+    用户连报三次「没有居中对齐」。对齐必须写在样式表里，用 `.al-op-cell` 之类的类。
+    """
+
+    def test_no_inline_text_align_in_tables(self):
+        src = _src()
+        bad = [ln.strip()[:90] for ln in src.splitlines()
+               if 'style="text-align' in ln and ("<th" in ln or "<td" in ln)]
+        self.assertEqual(bad, [], "表格单元格不得用内联 text-align 控制对齐")
+
+    def test_operation_column_uses_semantic_class(self):
+        src = _src()
+        self.assertIn('<th class="al-op-cell">操作</th>', src, "操作列表头必须用 .al-op-cell")
+        self.assertNotIn('<th style="text-align:right">操作</th>', src,
+                         "禁止内联右对齐（会压过所有样式表规则）")
+
+
 class CellDisplayGuardTest(unittest.TestCase):
     """单元格不得被装饰类改成非 table-cell（v0.43.4）。
 
@@ -1371,14 +1392,35 @@ class OperationColumnAxisTest(unittest.TestCase):
       2. 按钮组是 [详情][kebab]，以整组右缘对齐时详情按钮中心偏左 31px。
     """
 
-    def test_th_alignment_beats_main_rule(self):
-        """操作列表头必须与按钮**中心对齐**且压过 th 主规则（v0.43.2）。"""
+    def test_header_and_cell_share_explicit_class(self):
+        """操作列表头与单元格必须同轴居中，且用**显式类**而不是 nth-child（v0.44.0）。
+
+        前几版靠 `th:nth-child(10)` 单列特判，反复被别的 th/td 规则层叠盖掉，
+        用户连报三轮「没有居中对齐」。显式类选择器更短、无 nth 依赖。
+        """
         css = _css()
-        m = re.search(r"\.agent-list-table thead th:nth-child\(10\)[^{]*\{([^}]*)\}", css)
-        self.assertIsNotNone(m, "操作列表头必须用 thead 层级提高特异性（否则被 th 主规则覆盖）")
-        self.assertIn("text-align: center", m.group(1),
-                      "表头与按钮须中心对齐（右对齐时视觉中心差 19px）")
-        self.assertRegex(css, r"\.al-ops\s*\{[^}]*justify-content: center")
+        self.assertIn(".agent-list-table th.al-op-cell", css, "表头需显式 al-op-cell 类")
+        self.assertIn(".agent-list-table td.al-op-cell", css, "单元格需显式 al-op-cell 类")
+        self.assertRegex(css, r"\.agent-list-table th\.al-op-cell,[\s\S]{0,80}td\.al-op-cell \{[^}]*text-align: center")
+        src = _src()
+        self.assertIn('<th class="al-op-cell">操作</th>', src, "表头必须带该类")
+        self.assertIn('<td class="al-ops al-op-cell">', src, "操作单元格必须带该类")
+
+    def test_detail_and_kebab_are_equalsized(self):
+        """详情与更多必须等高（28px），间距固定，详情默认无边框（v0.44.0）。
+
+        用户：「详情和 3 个点的操作按钮的排版布局也不是很好看」——此前详情是
+        26px 带边框胶囊、kebab 是 24px 裸图标，一胖一瘦并排。
+        """
+        css = _css()
+        detail = re.search(r"\n  \.al-detail \{([^}]*)\}", css)
+        kebab = re.search(r"\.al-ops \.kebab \{([^}]*)\}", css)
+        self.assertIsNotNone(detail)
+        self.assertIsNotNone(kebab)
+        self.assertIn("height: 28px", detail.group(1))
+        self.assertIn("height: 28px", kebab.group(1))
+        self.assertIn("border: 1px solid transparent", detail.group(1),
+                      "详情默认无边框，hover 才浮现胶囊底")
 
     def test_ops_cell_overflow_visible(self):
         css = _css()
