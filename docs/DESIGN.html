@@ -1549,6 +1549,12 @@
       <p><strong><code>table-layout: fixed</code> 的隐藏行为</strong>（v0.43.1）：所有列宽度合计小于表格宽时，
         浏览器会<strong>按比例放大每一列</strong>，px 变成比例而非定值（实测合计 958 / 容器 1061 →
         名称 220→243.6、操作 128→141.8）。必须留一列 <code>width: auto</code> 吸收剩余。</p>
+      <p><strong>表格跟着容器压缩，不出现横向滚动条</strong>（v0.45.0）：10 列从写死 px 改为百分比
+        （名称 20% / 类型 15% / 安装 5.5% / APP 4.5% / CLI 4.5% / CONFIG 7% / 技能目录 8% /
+        约束 9% / MCP 8% / 操作 5%，合计 100%），配合 <code>table-layout: fixed</code> 按容器分配。
+        实测 720px / 560px 容器下 <code>scrollWidth === clientWidth</code>，无横向滚动。</p>
+      <p><strong>操作列只保留「⋯」</strong>（v0.45.0）：详情并入菜单第一项 + 整行可点；
+        kebab <strong>默认始终可见</strong>（唯一入口不能藏），hover 加深。</p>
       <p><strong>操作列：<code>.al-op-cell</code> 显式类 + 中心对齐</strong>（v0.44.0）：
         表头与内容同轴居中，与「安装 / 技能目录 / 约束 / MCP」一致。
         <strong>禁止用内联 <code>style="text-align:..."</code> 控制列对齐</strong>——内联样式优先级高于任何样式表规则，

@@ -474,20 +474,27 @@
   .al-detail:hover { background: var(--accent-bg); border-color: var(--accent-border); }
   .al-detail:active { transform: scale(.96); }
   .al-detail svg { width: 14px; height: 14px; flex: none; }
+  /* 操作列（v0.45.0）：**只有一个「⋯」**——用户要求「所有的操作按钮都应该在三个点里面」。
+     默认始终可见（它是这一列唯一入口，不能藏），hover 加深底色。
+     尺寸 28×28，与行高居中。 */
   .al-ops .kebab {
     margin-left: 0; flex: 0 0 auto; width: 28px; height: 28px; padding: 0;
     display: inline-flex; align-items: center; justify-content: center;
     border: 1px solid transparent; border-radius: var(--r-control);
-    background: transparent; color: var(--faint); cursor: pointer;
+    background: transparent; color: var(--muted); cursor: pointer;
     transition: background .14s var(--ease), color .14s var(--ease), transform .1s var(--ease);
   }
-  .agent-list-table tbody tr:hover .al-ops .kebab,
-  .al-ops .kebab:hover { background: var(--panel-2); color: var(--muted); }
+  .agent-list-table tbody tr:hover .al-ops .kebab { background: var(--panel-2); color: var(--text); }
+  .al-ops .kebab:hover { background: var(--line); color: var(--text); }
   .al-ops .kebab:active { transform: scale(.94); }
   .agent-list-table td .dot { margin-right: var(--sp-2); vertical-align: -1px; }
 
   /* ============ table ============ */
-  .table-scroll { overflow-x: auto; border-radius: var(--r-card); border: 1px solid var(--line); background: var(--panel); margin-top: var(--sp-5); box-shadow: var(--shadow-card); }
+  /* 表格容器（v0.45.0）：默认**不出现横向滚动条**，让表格跟着外框压缩。
+     只有容器窄到连最小可读宽度都放不下时才滚（此时表格有 min-width 兜底）。 */
+  .table-scroll { overflow-x: auto; max-width: 100%; border-radius: var(--r-card); border: 1px solid var(--line); background: var(--panel); margin-top: var(--sp-5); box-shadow: var(--shadow-card); }
+  .agent-list-table { min-width: 0; }
+  .agent-list-table thead th { white-space: nowrap; }
   table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
   th, td { padding: var(--sp-3b) var(--sp-5); text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
   thead th { background: var(--panel); color: var(--faint); font-weight: 600; position: sticky; top: 0; font-family: var(--sans); font-size: var(--fs-2xs); letter-spacing: .08em; text-transform: uppercase; border-bottom: 1px solid var(--line); }
@@ -1223,10 +1230,10 @@
   .agent-list-table tbody tr:last-child td { border-bottom: none; }
   .agent-list-table th {
     text-align: left; font-size: var(--fs-2xs); text-transform: uppercase; letter-spacing: .06em;
-    color: var(--faint); font-weight: 600; padding: var(--sp-3a) var(--sp-4); border-bottom: 1px solid var(--line-strong);
+    color: var(--faint); font-weight: 600; padding: var(--sp-3a) var(--sp-3); border-bottom: 1px solid var(--line-strong);
   }
   /* overflow: hidden —— fixed 布局下超长内容不会自动换行，必须显式裁切兜底（2026-10-14）。 */
-  .agent-list-table td { padding: var(--sp-3a) var(--sp-4); border-bottom: 1px solid var(--line); vertical-align: middle; overflow: hidden; }
+  .agent-list-table td { padding: var(--sp-3a) var(--sp-3); border-bottom: 1px solid var(--line); vertical-align: middle; overflow: hidden; }
   /* 操作列不做裁切（v0.43.1）：单元格里的按钮组带 3px 光晕，overflow:hidden 会把光晕
      削成直角、与相邻列的竖线粘在一起（用户截图「这里的线没有对齐、连在一起」）。 */
   .agent-list-table td:nth-child(10) { overflow: visible; }
@@ -1302,17 +1309,23 @@
      名称 347px 装 44px 文字、类型 347px 装 52px 文字，两列吃掉 54% 宽度却只放 96px 内容。
      现在按「最长名称 + 最长类型」给够余量后定宽，省下的 ~370px 变成表格外缘留白
      （用户明确要求保留两列，不合并、不删列）。 */
-  .agent-list-table th:nth-child(1),  .agent-list-table td:nth-child(1)  { width: 220px; }  /* 名称：最长 "DeepSeek Harness" */
-  .agent-list-table th:nth-child(2),  .agent-list-table td:nth-child(2)  { width: 240px; }  /* 类型（v0.43.3：fixed 下 auto 会按内容算宽、不吸收剩余） */
-  .agent-list-table th:nth-child(3),  .agent-list-table td:nth-child(3)  { width: 56px; }   /* 安装：一枚 20px 徽标 */
-  .agent-list-table th:nth-child(4),  .agent-list-table td:nth-child(4)  { width: 48px; }   /* APP：一枚计数徽标 */
-  .agent-list-table th:nth-child(5),  .agent-list-table td:nth-child(5)  { width: 48px; }   /* CLI：同上 */
-  .agent-list-table th:nth-child(6),  .agent-list-table td:nth-child(6)  { width: 70px; }   /* CONFIG：同上，表头词更长 */
-  .agent-list-table th:nth-child(7),  .agent-list-table td:nth-child(7)  { width: 82px; }   /* 技能目录：一枚链接徽标 */
-  .agent-list-table th:nth-child(8),  .agent-list-table td:nth-child(8)  { width: 78px; }   /* 约束：N/M 或「无约定」 */
-  .agent-list-table th:nth-child(9),  .agent-list-table td:nth-child(9)  { width: 78px; }   /* MCP：N/M 或「不支持」 */
-  .agent-list-table th:nth-child(10), .agent-list-table td:nth-child(10) { width: 116px; }  /* 操作（v0.43.0 由 104 加宽：内容需 ~120px，此前溢出被裁） */
-  /* v0.43.1：上面 10 列合计 958px，容器通常更宽 —— table-layout:fixed 会把剩余宽度
+  /* 列宽（v0.45.0）：**不再写死 px**，改为百分比 + 最小宽。
+     用户：「默认应该跟着外面的框进行压缩，不应该有横向的滚动条」。
+     原来 10 列合计 1036px，容器一窄就溢出。现在：
+       · 文本列（名称 / 类型）吃百分比，超长走省略号；
+       · 紧列给一个够用的定宽下限，浏览器在空间不足时按 table-layout:fixed 等比收缩；
+       · 合计 100%，天然适配容器宽度。 */
+  .agent-list-table th:nth-child(1),  .agent-list-table td:nth-child(1)  { width: 20%; min-width: 150px; }  /* 名称 */
+  .agent-list-table th:nth-child(2),  .agent-list-table td:nth-child(2)  { width: 15%; min-width: 96px; }   /* 类型 */
+  .agent-list-table th:nth-child(3),  .agent-list-table td:nth-child(3)  { width: 5.5%; }   /* 安装 */
+  .agent-list-table th:nth-child(4),  .agent-list-table td:nth-child(4)  { width: 4.5%; }   /* APP */
+  .agent-list-table th:nth-child(5),  .agent-list-table td:nth-child(5)  { width: 4.5%; }   /* CLI */
+  .agent-list-table th:nth-child(6),  .agent-list-table td:nth-child(6)  { width: 7%; }     /* CONFIG */
+  .agent-list-table th:nth-child(7),  .agent-list-table td:nth-child(7)  { width: 8%; }     /* 技能目录 */
+  .agent-list-table th:nth-child(8),  .agent-list-table td:nth-child(8)  { width: 9%; }     /* 约束 */
+  .agent-list-table th:nth-child(9),  .agent-list-table td:nth-child(9)  { width: 8%; }     /* MCP */
+  .agent-list-table th:nth-child(10), .agent-list-table td:nth-child(10) { width: 5%; }    /* 操作：只剩「⋯」 */
+
      **按比例摊到所有列**，于是「定宽」变成比例值（实测名称 220→243.6、操作 128→141.8），
      列与列的分隔线看起来松松垮垮。把「类型」列改成吸收剩余的那一列（其余保持真定宽），
      既让紧列钉死，又不会右侧留一大块空。 */
@@ -3663,7 +3676,7 @@ const skillsCell = `<button type="button" class="al-ico ${skillsCls}" data-popki
       <td>${skillsCell}</td>
       <td>${rulesCell}</td>
       <td>${mcpCell}</td>
-      <td class="al-ops al-op-cell"><button type="button" class="al-detail" data-open="${escapeHtml(a.name)}" title="查看详情" aria-label="查看 ${escapeHtml(a.name)} 详情">${ICONS.info}<span>详情</span></button><button class="kebab" type="button" data-name="${escapeHtml(a.name)}" aria-label="更多操作" aria-haspopup="menu">${ICONS.kebab}</button></td>
+      <td class="al-ops al-op-cell"><button class="kebab" type="button" data-name="${escapeHtml(a.name)}" aria-label="操作菜单（${escapeHtml(a.name)}）" aria-haspopup="menu" title="操作">${ICONS.kebab}</button></td>
     </tr>`;
   }).join("");
 
@@ -10821,7 +10834,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.44.4", build: 188, build_number: 188, semver_ok: true, full: "v0.44.4 (build 188)" },
+  app: { name: "Skill MCP Studio", version: "0.45.0", build: 189, build_number: 189, semver_ok: true, full: "v0.45.0 (build 189)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

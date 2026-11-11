@@ -7,6 +7,57 @@
 
 ## [Unreleased]
 
+## [v0.45.0] - 2026-11-11
+
+当前发布版本（build 189）。
+
+**表格跟着容器压缩（去掉横向滚动条）+ 操作列只保留「⋯」。**
+
+### 一、不出现横向滚动条
+
+用户：「默认应该跟着外面的框进行压缩，不应该有横向的滚动条」。
+
+原来 10 列写死 px，合计 1036，容器一窄就溢出、右侧被截断。
+
+| 列 | 改前 | 改后 |
+|---|---|---|
+| 名称 | 220px | **20%**（min-width 150px） |
+| 类型 | 240px | **15%**（min-width 96px） |
+| 安装 / APP / CLI / CONFIG | 56 / 48 / 48 / 70 | **5.5% / 4.5% / 4.5% / 7%** |
+| 技能目录 / 约束 / MCP | 82 / 78 / 78 | **8% / 9% / 8%** |
+| 操作 | 116px | **5%** |
+| 单元格内边 | `--sp-4`（10px） | `--sp-3`（8px） |
+
+合计 **100%**，`table-layout: fixed` 让浏览器按容器分配。实测：
+1048px / 720px / 560px 三种容器宽度下 `scrollWidth === clientWidth`，均无横向滚动。
+
+### 二、操作列只保留「⋯」
+
+用户：「所有的操作按钮都应该在三个点里面，不应该单独有一个展示的内容」。
+
+| 项 | 改前 | 改后 |
+|---|---|---|
+| 操作列内容 | 详情按钮 + ⋯ | **只有 ⋯**（28×28） |
+| 详情入口 | 常驻按钮 | 菜单第一项「查看详情」+ 整行可点 |
+| kebab 可见性 | 半隐藏 | **默认始终可见**，hover 加深 |
+
+> 「唯一入口不能藏」：kebab 现在是这一列唯一的操作入口，默认必须可见可点，
+> 门禁禁止 `opacity: 0`。
+
+### 测试
+
+- 新增 `NoHorizontalScrollTest`（3 项）：10 列都用百分比、合计不超 100%、
+  文本列有省略号兜底。
+- 新增 `AllActionsInMenuTest`（3 项）：操作列只有 1 个按钮、详情是菜单第一项、
+  kebab 默认可见。
+- **反向验证 3 条**：加回详情按钮、列宽改回 px、kebab 默认隐藏，各自失败。
+- 全量 **1764 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
+### 文档
+
+`docs/DESIGN.md` §2.3d-2 补「表格跟着容器压缩」列宽对照表与「操作列只保留「⋯」」；
+`DESIGN.html` 同步。
+
 ## [v0.44.4] - 2026-11-11
 
 当前发布版本（build 188）。
@@ -4619,7 +4670,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.44.4...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.45.0...HEAD
+[v0.45.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.45.0
 [v0.44.4]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.44.4
 [v0.44.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.44.3
 [v0.44.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.44.2

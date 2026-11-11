@@ -1372,10 +1372,11 @@ class ListVerticalRulesTest(unittest.TestCase):
     def test_collapse_disabled(self):
         """`border-collapse: collapse` 下伪元素会被合边裁掉，必须改 separate。"""
         css = _css()
-        m = re.search(r"\.agent-list-table \{([^}]*)\}", css)
-        self.assertIsNotNone(m)
-        self.assertIn("border-collapse: separate", m.group(1))
-        self.assertIn("border-spacing: 0", m.group(1))
+        blocks = re.findall(r"\n\s*\.agent-list-table\s*\{([^}]*)\}", css)
+        self.assertTrue(blocks)
+        joined = " ".join(blocks)
+        self.assertIn("border-collapse: separate", joined)
+        self.assertIn("border-spacing: 0", joined)
 
     def test_header_has_background(self):
         """separate 布局下表头背景需要显式给，否则竖线穿过表头时露白。"""
@@ -1441,15 +1442,18 @@ class OperationColumnAxisTest(unittest.TestCase):
         self.assertIsNotNone(m)
         self.assertIn("justify-content: center", m.group(0))
 
-    def test_type_column_has_explicit_width(self):
-        """类型列必须显式定宽（v0.43.4）。
+    def test_type_column_has_ratio_width(self):
+        """类型列必须有宽度声明（v0.45.0 起为百分比 + min-width）。
 
-        `width: auto` 在 `table-layout: fixed` 下**按内容算宽**、不吸收剩余——
-        实测该列塌到 150px，后面整列错位。
+        `width: auto` 在 `table-layout: fixed` 下按内容算宽、不吸收剩余；
+        但写死 px 又会溢出容器。现在的折中是「百分比 + min-width 兜底」。
         """
         css = _css()
-        self.assertIn("td:nth-child(2)  { width: 240px; }", css,
-                      "类型列必须显式 px 定宽，不能用 auto")
+        pat = r"\.agent-list-table th:nth-child\(2\),\s*\.agent-list-table td:nth-child\(2\)\s*\{([^}]*)\}"
+        m = re.search(pat, css)
+        self.assertIsNotNone(m, "缺少类型列宽度声明")
+        self.assertRegex(m.group(1), r"width:\s*[\d.]+%", "类型列必须用百分比宽度")
+        self.assertIn("min-width", m.group(1), "类型列需要 min-width 兜底可读性")
 
 
 class ModalFamilyConsistencyTest(unittest.TestCase):
@@ -1614,6 +1618,71 @@ class RowBaselineAlignmentTest(unittest.TestCase):
                       "能力摘要行（SKILLS / MCP）与路径行同构，同样必须基线对齐")
 
 
+class NoHorizontalScrollTest(unittest.TestCase):
+    """主表必须跟着外框压缩，不出现横向滚动条（v0.45.0 用户要求）。
+
+    用户：「默认应该跟着外面的框进行压缩，不应该有横向的滚动条」。
+    原来 10 列写死 px 合计 1036，容器一窄就溢出、右侧被截断。
+    """
+
+    def test_all_columns_use_percentage(self):
+        css = _css()
+        for col in range(1, 11):
+            with self.subTest(col=col):
+                pat = rf"\.agent-list-table t[hd]:nth-child\({col}\)[^{{]*\{{[^}}]*width:\s*[\d.]+%"
+                self.assertRegex(css, pat, f"第 {col} 列必须用百分比宽度")
+
+    def test_percentage_sum_not_over_100(self):
+        css = _css()
+        total = 0.0
+        for col in range(1, 11):
+            pat = rf"\.agent-list-table t[hd]:nth-child\({col}\)[^{{]*\{{[^}}]*width:\s*([\d.]+)%"
+            m = re.search(pat, css)
+            self.assertIsNotNone(m, f"第 {col} 列缺少百分比宽度")
+            total += float(m.group(1))
+        self.assertLessEqual(total, 101.0, f"列宽合计 {total}% 超过 100% 必然溢出")
+
+    def test_text_columns_have_ellipsis_fallback(self):
+        """压窄时文本列必须走省略号，而不是撑开或换行。"""
+        css = _css()
+        m = re.search(r"\.agent-list-table \.al-type\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(m)
+        self.assertIn("text-overflow: ellipsis", m.group(1))
+
+
+class AllActionsInMenuTest(unittest.TestCase):
+    """操作列只能有「⋯」，详情等操作全部进菜单（v0.45.0 用户要求）。
+
+    用户：「所有的操作按钮都应该在三个点里面，不应该单独有一个展示的内容」。
+    """
+
+    def test_ops_column_has_only_kebab(self):
+        src = _src()
+        m = re.search(r'<td class="al-ops al-op-cell">(.*?)</td>', src, re.S)
+        self.assertIsNotNone(m, "未找到操作单元格")
+        cell = m.group(1)
+        n_btn = cell.count("<button")
+        self.assertEqual(n_btn, 1, f"操作列应只有 1 个按钮，实际 {n_btn}")
+        self.assertIn('class="kebab"', cell, "唯一按钮必须是「⋯」")
+        self.assertNotIn("al-detail", cell, "详情按钮不得常驻在操作列")
+
+    def test_detail_is_first_menu_item(self):
+        src = _src()
+        start = src.index("function toggleAgentMenu(")
+        body = src[start: start + 2600]
+        idx_detail = body.index('data-pm="detail"')
+        idx_rescan = body.index('data-pm="rescan"')
+        self.assertLess(idx_detail, idx_rescan, "「查看详情」应是菜单第一项")
+
+    def test_kebab_is_always_visible(self):
+        """唯一入口不能藏：kebab 默认必须有可见颜色，不能只在 hover 才出现。"""
+        css = _css()
+        m = re.search(r"\.al-ops \.kebab \{([^}]*)\}", css)
+        self.assertIsNotNone(m)
+        self.assertIn("color: var(--muted)", m.group(1), "kebab 默认必须可见")
+        self.assertNotIn("opacity: 0", m.group(1), "kebab 不得默认隐藏")
+
+
 class ColumnWidthGovernanceTest(unittest.TestCase):
     """`.agent-list-table` 必须用 `table-layout: fixed` + 紧列定宽，防止图标列被撑宽。
 
@@ -1625,46 +1694,39 @@ class ColumnWidthGovernanceTest(unittest.TestCase):
 
     def test_table_layout_is_fixed(self):
         css = _css()
-        m = re.search(r"\.agent-list-table\s*\{([^}]*)\}", css)
-        self.assertIsNotNone(m, "未找到 .agent-list-table 规则")
-        self.assertIn("table-layout: fixed", m.group(1),
-                      ".agent-list-table 必须声明 table-layout: fixed，否则紧列会被 auto 布局撑宽")
+        # v0.45.0 起 `.agent-list-table` 有两条规则（主规则 + min-width 覆盖），
+        # 必须合并检查，否则只看第一条会漏。
+        blocks = re.findall(r"\n\s*\.agent-list-table\s*\{([^}]*)\}", css)
+        self.assertTrue(blocks, "未找到 .agent-list-table 规则")
+        self.assertTrue(any("table-layout: fixed" in b for b in blocks),
+                        ".agent-list-table 必须声明 table-layout: fixed，否则紧列会被 auto 布局撑宽")
 
-    def test_tight_columns_have_px_width(self):
-        """8 个紧列（安装/APP/CLI/CONFIG/技能目录/约束/MCP/操作）必须有 px 定宽。"""
-        css = _css()
-        # 列号 → 期望最小宽度（内容并集 + 20px 内边，向上取 4 的倍数）
-        # 操作列 v0.39.7 由 124 → 104：整行可点后「详情」不再是唯一入口，
-        # 按钮降级为提示，104px 足够容纳 详情 + kebab 且不浪费
-        expected = {3: 56, 4: 48, 5: 48, 6: 70, 7: 82, 8: 78, 9: 78, 10: 104}
-        for col, min_w in expected.items():
-            with self.subTest(col=col):
-                # th 或 td 任一声明了 width 即可（两者通常成对出现）
-                pat = rf"\.agent-list-table t[hd]:nth-child\({col}\)[^{{]*\{{[^}}]*width:\s*(\d+)px"
-                m = re.search(pat, css)
-                self.assertIsNotNone(m, f"第 {col} 列缺少 px 定宽声明")
-                self.assertGreaterEqual(int(m.group(1)), min_w,
-                                        f"第 {col} 列宽度 {m.group(1)}px 小于安全下限 {min_w}px")
+    def test_tight_columns_have_ratio_width(self):
+        """10 列必须都声明**百分比**宽度（v0.45.0，用户要求不出现横向滚动条）。
 
-    def test_text_columns_are_bounded(self):
-        """名称（1）与类型（2）必须**定宽有上限**，否则会吃掉整表宽度。
-
-        v0.39.7 反转（2026-11-10 用户评审后）：原判据是「文本列不得设 px 定宽、应留弹性
-        吸收剩余」，补这条的初衷是防止紧列被平分。但实测发现弹性列的代价更大 ——
-        1280px 窗口下名称 347px 装 44px 文字、类型 347px 装 52px 文字，**两列吃掉 54%
-        宽度却只放 96px 内容**，整表右半边全是空白。
-
-        正确的不变量是「文本列有明确上限，不允许无限膨胀」：
-        定了宽就必须 <= 300px（够放最长客户端名 / 类型名，再长走省略号）。
+        原来 10 列写死 px 合计 1036，容器一窄就溢出、右侧被截断。改成百分比后
+        表格跟着外框压缩，超长文本走省略号。
         """
         css = _css()
-        for col in (1, 2):
+        for col in range(1, 11):
             with self.subTest(col=col):
-                pat = rf"\.agent-list-table t[hd]:nth-child\({col}\)[^{{]*\{{[^}}]*width:\s*(\d+)px"
+                pat = rf"\.agent-list-table t[hd]:nth-child\({col}\)[^{{]*\{{[^}}]*width:\s*([\d.]+)%"
                 m = re.search(pat, css)
-                self.assertIsNotNone(m, f"第 {col} 列（文本列）应设明确上限")
-                self.assertLessEqual(int(m.group(1)), 300,
-                                     f"第 {col} 列宽度 {m.group(1)}px 过大，会挤压状态列")
+                self.assertIsNotNone(m, f"第 {col} 列缺少百分比宽度声明")
+
+    def test_column_widths_sum_to_full(self):
+        """各列百分比合计应为 100%，否则一定留白或溢出。"""
+        css = _css()
+        total = 0.0
+        for col in range(1, 11):
+            pat = rf"\.agent-list-table t[hd]:nth-child\({col}\)[^{{]*\{{[^}}]*width:\s*([\d.]+)%"
+            m = re.search(pat, css)
+            self.assertIsNotNone(m, f"第 {col} 列缺少百分比宽度")
+            total += float(m.group(1))
+        # 允许 85~101：有些列带 min-width 兜底，浏览器会按内容微调；
+        # 关键是不能**超过** 100%（超过就一定溢出、出横向滚动条）。
+        self.assertLessEqual(total, 101.0, f"列宽合计 {total}% 超过 100% 会溢出")
+        self.assertGreaterEqual(total, 85.0, f"列宽合计 {total}% 过小，会留大片空白")
 
     def test_td_overflow_hidden_for_fixed_layout(self):
         """fixed 布局下 td 必须 overflow: hidden，否则超长内容会溢出到相邻列。
