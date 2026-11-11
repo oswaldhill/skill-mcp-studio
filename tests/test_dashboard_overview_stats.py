@@ -75,20 +75,12 @@ def _render_overview():
     js = "\n".join(
         [
             "const SNAP = " + json.dumps(SNAP) + ";",
-            # 共享约束的全局状态（真实页面里由 loadManagement 之后填充）
-            "let SHARED_AUDIT = null;",
             esc,
             _fn("_agentsForPanel"),
             _fn("statCard"),
-            # v0.40.4：共享约束卡片由独立函数产出，renderOverview 会调用它。
-            # 抽取 renderOverview 时必须一并带上，否则 node 侧 ReferenceError。
-            _fn("sharedRulesCard"),
             _fn("renderOverview"),
             "const holder = { _v: '', set innerHTML(v) { this._v = v; }, get innerHTML() { return this._v; } };",
             "const $ = (id) => (id === 'overview-body' ? holder : { textContent: '', innerHTML: '' });",
-            # 依赖真实 DOM，node 里只需存在
-            "function bindSharedRulesBox() {}",
-            "function auditSharedRules() { return Promise.resolve(); }",
             "renderOverview();",
             "process.stdout.write(holder._v);",
         ]

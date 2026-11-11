@@ -3096,49 +3096,10 @@ function renderOverview() {
     '<button class="btn-soft" data-action="merge">修复链接</button>' +
     '<button class="btn-soft" data-action="endpoint-check">全量检查</button>' +
     '<button class="btn-soft" data-goto="settings">管理 MCP 端点</button>' +
-    "</div>" +
-    sharedRulesCard();
-  bindSharedRulesBox();
-  if ($("shared-rules-status") && !SHARED_AUDIT) auditSharedRules();
+    "</div>";
 }
 
-// 共享约束卡片（v0.40.4）：从设置页搬到概览业务区。
-// 用户：「这部分不要放在设置里，也不需要」——它是一条业务流水线（编辑内容 →
-// 检查各 Agent → 同步进去），不是「一次性配置项」。放在概览页快捷操作下方，
-// 与下面「全量检查」「端点状态」同属「管理动作」。
-// 卡片本身复用设置页 .settings-card 的 .rows/.row 语言，视觉不与概览其它区块打架。
-function sharedRulesCard() {
-  return `<div class="settings-card" id="shared-rules-card" style="margin-top:var(--sp-6)">
-    <h4>共享约束</h4>
-    <div class="rows">
-      <div class="row row-block">
-        <span class="k">约束内容</span>
-        <span class="v"><textarea id="shared-rules-text" rows="5" spellcheck="false"
-          aria-label="共享约束内容"
-          placeholder="例如：- 所有回答使用简体中文&#10;- 提交前必须跑全量测试"></textarea></span>
-      </div>
-      <div class="row">
-        <span class="k">同步状态</span>
-        <span class="v" id="shared-rules-summary">尚未检查</span>
-        <span class="shared-actions">
-          <button class="ghost" data-action="shared-rules-audit">检查同步状态</button>
-          <button class="btn-soft" data-action="shared-rules-apply">同步到全部</button>
-          <button class="primary" data-action="shared-rules-save">保存内容</button>
-        </span>
-      </div>
-    </div>
-    <div class="note" style="margin-top:var(--sp-4)">只替换标记块（shared-rules:begin / end），文件里你自己的规则不会被修改；每个 Agent 写前自动备份。</div>
-    <div id="shared-rules-status" style="margin-top:var(--sp-4)"></div>
-  </div>`;
-}
-// 概览页渲染后初始化共享约束输入框（首次渲染才拉内容，避免重复请求）
-function bindSharedRulesBox() {
-  const box = $("shared-rules-text");
-  if (!box || box.dataset.bound) return;
-  box.dataset.bound = "1";
-  box.addEventListener("input", () => { box.dataset.dirty = "1"; });
-  loadSharedRules();
-}
+
 
 
 // ---------------- IDE / Agent ----------------
@@ -3489,8 +3450,25 @@ const skillsCell = `<button type="button" class="al-ico ${skillsCls}" data-popki
       const hit = rulesPaths.filter((x) => x.exists).length;
       const total = rulesPaths.length;
       const tip = rulesPaths.map((x) => `${x.path}${x.exists ? "" : "（未配置）"}`).join("；");
-      const ruleCls = hit === total ? "ok" : (hit > 0 ? "warn" : "");
-      // 0 条也写成 0/M，而不是「未配置」二字：同一列保持数字形态
+      // 颜色语义（v0.40.5 用户要求）：
+      //   无色（中性）= 没有约束文件
+      //   黄（warn）  = 有文件，但里面没有设置好的共享约束内容
+      //   绿（ok）    = 有文件，且已包含共享约束内容
+      // 共享内容为空（没配置）时退回旧口径：有文件即算就绪。
+      const sharedRow = ((typeof SHARED_AUDIT !== "undefined" && SHARED_AUDIT && SHARED_AUDIT.rows) || [])
+        .find((r) => r.name === a.name);
+      const hasSharedContent = typeof SHARED_RULES !== "undefined"
+        && !!(SHARED_RULES && (SHARED_RULES.content || "").trim());
+      let ruleCls;
+      if (hit === 0) {
+        ruleCls = "";
+      } else if (sharedRow && sharedRow.enabled !== false && sharedRow.state === "current") {
+        ruleCls = "ok";
+      } else if (!hasSharedContent) {
+        ruleCls = "ok";
+      } else {
+        ruleCls = "warn";
+      }
       const ruleText = `${hit}/${total}`;
       // 单路径直接开只读预览；多路径（WorkBuddy 两个）先就地列出，再点进去看内容。
       // 两条路径都走 data-action：`view-rules` 是「打开预览」的唯一入口，多路径时
@@ -3500,7 +3478,9 @@ const skillsCell = `<button type="button" class="al-ico ${skillsCls}" data-popki
         : ` data-action="view-rules" data-client="${escapeHtml(a.name)}" data-index="0"`;
       const sharedL = (typeof SHARED_AUDIT !== "undefined" && SHARED_AUDIT && SHARED_AUDIT.rows || [])
         .find((r) => r.name === a.name);
-      const sharedMark = sharedL && sharedL.enabled !== false
+      const hasShared = typeof SHARED_RULES !== "undefined"
+        && !!(SHARED_RULES && (SHARED_RULES.content || "").trim());
+      const sharedMark = (sharedL && sharedL.enabled !== false && hasShared)
         ? (sharedL.state === "current" ? "共享已含"
            : (sharedL.state === "stale" ? "共享过期" : "无共享"))
         : "";
@@ -10574,7 +10554,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.40.4", build: 172, build_number: 172, semver_ok: true, full: "v0.40.4 (build 172)" },
+  app: { name: "Skill MCP Studio", version: "0.40.5", build: 173, build_number: 173, semver_ok: true, full: "v0.40.5 (build 173)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

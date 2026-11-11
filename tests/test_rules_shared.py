@@ -234,56 +234,34 @@ class WiringTest(unittest.TestCase):
         self.assertRegex(lst, r'state === "current"\s*\?\s*"共享已含"', "列表列必须区分「共享已含」")
         self.assertRegex(lst, r'stale"\s*\?\s*"共享过期"', "列表列必须区分「共享过期」")
 
-    def test_card_follows_settings_card_language(self):
-        """共享约束卡片必须复用设置页既有的 row / k / v 语言（v0.40.1 重设计）。
+    def test_no_shared_card_anywhere(self):
+        """共享约束卡片整体删除（v0.40.5 用户要求）。
 
-        上一版把 label 放在 textarea 下方、按钮散在两侧，与设置页其它卡片
-        「label 左 / 控件右 / hairline 分隔」完全不搭（用户：「这个设计有点丑」）。
+        用户：「这个完全是不需要的，不需要放在概览里完全删除；只需要在 IDE 和
+        Agent 的那个 tab 里，在约束的绿色框中，通过不同的颜色来展示出是否有约束
+        文件，以及约束文件中是否有设置的内容」。
         """
         root = Path(__file__).resolve().parents[1]
         gui = (root / "gui/dashboard.html").read_text(encoding="utf-8")
-        start = gui.find('id="shared-rules-card"')
-        self.assertGreater(start, 0)
-        end = gui.find("</div>`;", start)
-        card = gui[start:end]
-        for token in ('class="rows"', 'class="row row-block"', '<span class="k">约束内容</span>',
-                      '<span class="k">同步状态</span>', 'class="shared-actions"'):
-            self.assertIn(token, card, f"卡片缺少 {token}（应复用 settings-card 的行语言）")
+        for dead in ("sharedRulesCard", "bindSharedRulesBox", 'id="shared-rules-card"',
+                     'id="shared-rules-status"', 'id="shared-rules-text"'):
+            self.assertNotIn(dead, gui, f"共享约束卡片残留：{dead}")
 
-    def test_card_lives_on_overview_not_settings(self):
-        """共享约束卡片属于业务区（概览），不属于设置（v0.40.4 用户要求）。
+    def test_rules_cell_uses_three_color_states(self):
+        """约束列按「有无文件 × 有无共享内容」上色（v0.40.5）。
 
-        用户：「这部分不要放在设置里，也不需要」。它是一条业务流水线
-        （编辑内容 → 检查各 Agent → 同步进去），不是一次性配置项。
+        无色 = 没有约束文件；黄 = 有文件但没有共享内容；绿 = 有文件且已含共享内容。
         """
         root = Path(__file__).resolve().parents[1]
         gui = (root / "gui/dashboard.html").read_text(encoding="utf-8")
-        # 1) 设置页的 agents 面板不得再挂它
-        self.assertNotIn("${sharedCard}", gui, "设置页不应再挂共享约束卡片")
-        self.assertNotIn("data-panel=\"agents\">${sharedCard}", gui)
-        # 2) 卡片现在由独立函数产出，且被概览渲染函数调用
-        self.assertIn("function sharedRulesCard()", gui)
-        fn_start = gui.index("function sharedRulesCard()")
-        fn_block = gui[fn_start: fn_start + 2400]
-        self.assertIn('button class="primary"', fn_block, "卡片内仍须用既有 .primary 按钮")
-        self.assertIn('button class="ghost"', fn_block)
-        self.assertIn('button class="btn-soft"', fn_block)
-        ov = gui[gui.index("function renderOverview()"):]
-        ov = ov[: ov.index("\nfunction ")]
-        self.assertIn("sharedRulesCard()", ov, "概览页必须渲染共享约束卡片")
-        # 按钮只用既有三档，不允许新造按钮类
-
-    def test_textarea_style_is_card_scoped(self):
-        root = Path(__file__).resolve().parents[1]
-        gui = (root / "gui/dashboard.html").read_text(encoding="utf-8")
-        self.assertIn(".settings-card .row .v > textarea {", gui,
-                      "卡片内 textarea 必须有作用域样式（不能靠浏览器默认外观）")
-        idx = gui.find(".settings-card .row .v > textarea {")
-        block = gui[idx: gui.find("}", idx)]
-        for prop in ("border-radius: var(--r-control)", "font-family: var(--mono)",
-                     "max-width: 44rem", "resize: vertical"):
-            self.assertIn(prop, block, f"textarea 样式缺 {prop}")
-
-
-if __name__ == "__main__":
-    unittest.main()
+        lst = gui[gui.index("function renderHomeListView("):]
+        lst = lst[: lst.index("\nfunction ")]
+        self.assertIn("hasSharedContent", lst, "约束列必须知道共享内容是否存在")
+        self.assertRegex(lst, r'ruleCls = "warn"', "有文件但缺共享内容时应为 warn")
+        self.assertRegex(lst, r'ruleCls = "ok"', "已含共享内容时应为 ok")
+        self.assertRegex(lst, r'ruleCls = "";', "没有约束文件时应为中性")
+        # 卡片侧同样按共享状态给徽标
+        card = gui[gui.index("function _agentRulesSummary("):]
+        card = card[: card.index("\nfunction ")]
+        self.assertIn("SHARED_AUDIT", card, "卡片摘要必须读共享状态")
+        self.assertRegex(card, r'current:\s*"共享已含"', "卡片摘要必须输出「共享已含」")

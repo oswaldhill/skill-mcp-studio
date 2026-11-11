@@ -7,6 +7,59 @@
 
 ## [Unreleased]
 
+## [v0.40.5] - 2026-11-11
+
+当前发布版本（build 173）。
+
+**共享约束的独立卡片整体删除，只留「约束」列的三态颜色。**
+
+用户：「这个完全是不需要的，不需要放在概览里完全删除；只需要在 IDE 和 Agent 的
+那个 tab 里，在约束的绿色框中，通过不同的颜色来展示出是否有约束文件，以及约束
+文件中是否有设置的内容」。
+
+### 删了什么
+
+独立卡片（编辑框 + 逐 Agent 开关 + 逐行写入 + 状态列表）**整体删除**，包括它
+v0.40.0 → v0.40.4 的三次搬家（设置页 → 概览页）。`sharedRulesCard()` /
+`bindSharedRulesBox()` / `#shared-rules-card` / `#shared-rules-status` /
+`#shared-rules-text` 全部移除。
+
+### 留了什么：一个颜色
+
+「约束」列现在按两件事上色：
+
+| 状态 | 颜色 | 含义 |
+|---|---|---|
+| 没有约束文件 | 中性 | 这个 Agent 没配规则文件 |
+| 有文件，但没有共享内容 | `warn`（黄） | 文件在，你设置的共享约束还没进去 |
+| 有文件，且已含共享内容 | `ok`（绿） | 就绪 |
+
+判定：`hit === 0` → 中性；`sharedRow.state === "current"` → ok；共享内容本身为空
+（还没配过）→ ok；其余（有文件但缺共享块 / 内容过期）→ warn。
+
+卡片视图的徽标同样收口：共享内容为空时**不显示**「共享已含 / 共享过期 / 无共享」——
+没有共享约束这回事，就不该硬造一个状态。
+
+### CLI 能力保留
+
+卡片删了，后端能力没删（写操作安全形状不变）：
+`--shared-rules-get` / `--shared-rules-set` / `--shared-rules-audit` /
+`--shared-rules-apply` / `--shared-rules-toggle`。
+
+### 测试
+
+- 旧的两个卡片测试（结构语言、位置）随卡片一起作废，替换成：
+  `test_no_shared_card_anywhere`（五个标识符一个都不许残留）+
+  `test_rules_cell_uses_three_color_states`（三态颜色分支）。
+- 撤回 `test_dashboard_overview_stats` 上一轮为卡片加的 node 装配。
+- **反向验证 2 条**：重新加回 `sharedRulesCard`、约束列不再给 warn，各自让断言失败。
+- 全量 **1724 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
+### 文档
+
+`docs/DESIGN.md` §2.3c-2c 重写（删掉三次搬家的历史与卡片结构描述，只留三态颜色
+与 CLI 能力表）；`docs/DESIGN.html` 同步。
+
 ## [v0.40.4] - 2026-11-11
 
 当前发布版本（build 172）。
@@ -3837,7 +3890,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.40.4...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.40.5...HEAD
+[v0.40.5]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.5
 [v0.40.4]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.4
 [v0.40.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.3
 [v0.40.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.2

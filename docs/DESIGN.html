@@ -1540,87 +1540,41 @@
     </section>
 
     <section id="s2-3c2c">
-      <h3 id="s2-3c2c">2.3c-2c 共享约束（v0.40.0）<a class="anchor" href="#s2-3c2c" aria-label="锚点">#</a></h3>
-      <p><strong>位置：概览页业务区，不在设置里</strong>（v0.40.4）。用户：「这部分不要放在设置里，也不需要」。
-        它是一条<strong>业务流水线</strong>（编辑内容 → 检查各 Agent → 同步进去），不是配置一次就不动的全局项；
-        按 §5.3 通用 / 业务分离原则，业务动作放对应管理页。现渲染在概览页「快捷操作」下方、
-        「全量检查」上方；卡片结构不变，由 <code>sharedRulesCard()</code> 产出、<code>renderOverview()</code> 调用。
-        设置页 IDE / Agent tab 只保留「IDE / Agent 默认路径」。</p>
-      <p><strong>一段内容同步进所有 Agent 的约束文件</strong>，并能检查哪些没同步、一键强制写入。</p>
+      <h3 id="s2-3c2c">2.3c-2c 共享约束（v0.40.5）<a class="anchor" href="#s2-3c2c" aria-label="锚点">#</a></h3>
+      <p><strong>独立卡片已整体删除</strong>（包括它 v0.40.0 → v0.40.4 的三次搬家：设置页 → 概览页）。
+        用户：「这个完全是不需要的，不需要放在概览里完全删除；只需要在 IDE 和 Agent 的那个 tab 里，
+        在约束的绿色框中，通过不同的颜色来展示出是否有约束文件，以及约束文件中是否有设置的内容」。</p>
       <p><strong>数据模型</strong>：内容存 <code>data/shared_rules.md</code>，写进各文件时用一对标记包住：</p>
       <pre><code>&lt;!-- shared-rules:begin v1 --&gt;
 （用户配置的内容）
 &lt;!-- shared-rules:end --&gt;</code></pre>
-      <p><strong>为什么用标记而不是整体覆盖</strong>：约束文件里还有用户自己的规则，整体覆盖会把它们全部冲掉。
-        标记让写入变成幂等的「替换这一段 / 追加这一段」，块外内容逐字节不动。</p>
+      <p>用标记而不是整体覆盖：约束文件里还有用户自己的规则，整体覆盖会把它们冲掉；标记让写入幂等，块外内容逐字节不动。</p>
+      <h4>「约束」列的三态颜色</h4>
       <table>
-        <thead><tr><th>状态</th><th>含义</th><th>是否可修</th></tr></thead>
+        <thead><tr><th>状态</th><th>颜色</th><th>含义</th></tr></thead>
         <tbody>
-          <tr><td><code>current</code></td><td>块存在且内容一致</td><td>不需要</td></tr>
-          <tr><td><code>stale</code></td><td>块存在但内容与配置不一致</td><td>✅「写入」</td></tr>
-          <tr><td><code>absent</code></td><td>文件存在但没有块</td><td>✅「写入」</td></tr>
-          <tr><td><code>missing</code></td><td>文件不存在</td><td>✅「新建并写入」</td></tr>
-          <tr><td><code>dir</code></td><td>规则目录（Cline / TRAE）</td><td>➖ 跳过</td></tr>
+          <tr><td>没有约束文件</td><td>中性（<code>.tag</code> 无修饰）</td><td>这个 Agent 没配规则文件</td></tr>
+          <tr><td>有文件，但没有共享内容</td><td><code>warn</code>（黄）</td><td>文件在，你设置的共享约束还没进去</td></tr>
+          <tr><td>有文件，且已含共享内容</td><td><code>ok</code>（绿）</td><td>就绪</td></tr>
         </tbody>
       </table>
-      <p>客户端的整体状态取「最需要处理」的那一个：<code>missing &gt; absent &gt; stale &gt; dir &gt; current</code>。</p>
-      <p><strong>卡片复用设置页既有的 <code>.rows &gt; .row</code> 语言</strong>（label 左 / 控件右 / hairline 分隔，
-        与「外观」「后台巡检」「市场源」等卡片同构）：</p>
-      <pre><code>┌ 共享约束 ─────────────────────────────────────────────────────────────┐
-│ 约束内容   [ textarea（等宽 --mono / --fs-xs，max-width 44rem，可纵拉）] │
-│ ───────────────────────────────────────────────────────────────────── │
-│ 同步状态   12/13 个 Agent 参与 · 已同步 4 · 过期 1 · 未包含 2 · 缺文件 6  [检查][同步][保存] │
-│ ───────────────────────────────────────────────────────────────────── │
-│ note：只替换标记块，文件里你自己的规则不会被修改；写前自动备份            │
-│ Codex        [已同步]                                          [开关]  │
-│ Claude Code  [内容过期]                                  [写入] [开关]  │
-│ VS Code      [已关闭]                                          [开关]  │
-└────────────────────────────────────────────────────────────────────────┘</code></pre>
-      <ul>
-        <li><strong>正文行用 <code>.row.row-block</code></strong>（label 顶对齐、控件撑满值列）——设置页既有的「多行内容」行型。</li>
-        <li><strong>按钮组 <code>.shared-actions</code></strong>：<code>margin-left: auto</code> 靠右成组，
-          顺序「检查（.ghost）→ 同步（.btn-soft）→ 保存（.primary）」，<strong>主操作在最右</strong>。</li>
-        <li><strong>卡片内 textarea</strong> 用 <code>.settings-card .row .v &gt; textarea</code> 作用域样式：
-          与 <code>input[type=text]</code> 同边框 / 同圆角 <code>--r-control</code> / 同内边距，
-          只是加了 <code>--mono</code>、<code>max-width: 44rem</code> 与 <code>resize: vertical</code>。</li>
-        <li>状态标签用既有 <code>.tag ok / warn</code> 档位，<strong>没有新增颜色</strong>；
-          状态行 <code>.k</code> 定宽 150px、右侧按钮 <code>margin-left: auto</code>，让「写入」竖着成一条线。</li>
-        <li><strong>上一版为什么丑</strong>：label 放在 textarea 下方、写成两行说明 + 两个角落按钮，
-          完全没走 <code>.row</code> 结构，等于在设置页里嵌了一个异类表单。</li>
-      </ul>
-      <p><strong>逐 Agent 开关</strong>（v0.40.2）：「这里只是设置是否检查同步以及是否需要同步进入各个 Agent」。
-        每行右侧一枚既有 <code>.switch</code>（<code>role="switch"</code>，与技能详情的启停开关同一控件）。</p>
+      <pre><code>hit === 0                          → 中性
+sharedRow.state === "current"      → ok
+共享内容本身为空（还没配过）       → ok（有文件即算就绪）
+其余（有文件但缺共享块 / 内容过期）→ warn</code></pre>
+      <p>卡片视图的 <code>_agentRulesSummary()</code> 同步给徽标：<code>共享已含</code> / <code>共享过期</code> / <code>无共享</code>
+        （共享内容为空时不显示这枚徽标）。数据来自 <code>--shared-rules-audit</code>，设置页 IDE / Agent tab 打开时触发一次。</p>
+      <h4>内容编辑与批量写入</h4>
+      <p>卡片删了，能力仍在（CLI 保留，写操作安全形状不变）：</p>
       <table>
-        <thead><tr><th>开关</th><th>检查</th><th>同步到全部</th><th>单行「写入」</th></tr></thead>
+        <thead><tr><th>能力</th><th>命令</th></tr></thead>
         <tbody>
-          <tr><td>开（默认）</td><td>计入待处理</td><td>会被写入</td><td>可用</td></tr>
-          <tr><td>关</td><td>仍列出但显示「已关闭」</td><td><strong>跳过</strong></td><td>不渲染</td></tr>
+          <tr><td>读 / 写共享内容</td><td><code>--shared-rules-get</code> / <code>--shared-rules-set TEXT</code></td></tr>
+          <tr><td>检查各 Agent</td><td><code>--shared-rules-audit</code></td></tr>
+          <tr><td>写入（指定或全部）</td><td><code>--shared-rules-apply [CLIENT...]</code></td></tr>
+          <tr><td>逐 Agent 开关</td><td><code>--shared-rules-toggle CLIENT on|off</code></td></tr>
         </tbody>
       </table>
-      <ul>
-        <li>关闭是<strong>弱化</strong>不是隐藏：行还在，随时能切回来；<code>row.is-off</code> 只降色阶，<strong>不引入新颜色</strong>。</li>
-        <li>关闭状态存 <code>data/shared_rules_settings.json</code>（gitignore），默认参与。</li>
-        <li>后端也拒绝写未参与的 Agent（<code>apply_client</code> 返回「已关闭共享约束同步」）——界面只是入口，规则在数据层。</li>
-        <li><strong>路径明细收进 title</strong>：这一段的职责是「谁参与、要不要同步」，不是逐条列 13 个 Agent 缺哪个文件。</li>
-      </ul>
-      <p><strong>共享块状态回显到「约束」列</strong>（v0.40.3）：「没法从约束对应的框中展示出，
-        到底有没有增加进我要求的这部分约束」。此前「约束」列只回答「路径存不存在」。</p>
-      <table>
-        <thead><tr><th>共享块状态</th><th>徽标</th><th>类别</th></tr></thead>
-        <tbody>
-          <tr><td><code>current</code></td><td><code>共享已含</code></td><td><code>tag ok</code></td></tr>
-          <tr><td><code>stale</code></td><td><code>共享过期</code></td><td><code>tag warn</code></td></tr>
-          <tr><td><code>absent</code> / <code>missing</code></td><td><code>无共享</code></td><td><code>tag</code>（中性）</td></tr>
-          <tr><td>该 Agent 开关关闭</td><td>不显示</td><td>——</td></tr>
-        </tbody>
-      </table>
-      <ul>
-        <li>卡片：<code>_agentRulesSummary()</code> 读 <code>SHARED_AUDIT</code>，徽标落在 <code>.ac-path-badges</code>。</li>
-        <li>主表列表：<code>renderHomeListView()</code> 的 <code>rulesCell</code> 追加 <code>sharedSpan</code>。</li>
-        <li>数据来自 <code>--shared-rules-audit</code>，<code>loadManagement()</code> 之后自动跑一次，因此<strong>不必先打开设置页</strong>也能看到。</li>
-        <li><strong>断言纪律</strong>：最初写的断言是「文件里出现过 <code>共享已含</code>」——被自己的注释满足了，
-          把映射表换成空串测试照样绿。后来改为抽出两个渲染函数体、断言其中的渲染分支，反向验证才真正报红。</li>
-      </ul>
     </section>
 
     <section id="s2-3d1">
