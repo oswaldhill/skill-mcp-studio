@@ -1303,6 +1303,42 @@ class NoToastTest(unittest.TestCase):
         self.assertIn("modal cfm-card", body, "通知必须是 .cfm-card 弹框家族")
 
 
+class NoticeLayoutTest(unittest.TestCase):
+    """通知弹框的排版与交互统一（v0.41.0 用户要求「信息太乱」）。
+
+    用户截图：绿勾配粉红底、正文居中折行、结论与下一步挤在一句里。
+    """
+
+    def test_icon_color_follows_kind(self):
+        css = _css()
+        # 不再一律 err-bg：ok / warn / err / info 各自上色
+        for kind in ("ok", "warn", "err", "info"):
+            self.assertIn(f".notice-card.notice-{kind} .cfm-icon", css,
+                          f"{kind} 通知的图标必须按语义色上色（不能一律红底）")
+
+    def test_body_left_aligned_title_centered(self):
+        css = _css()
+        m = re.search(r"\.notice-card \.cfm-msg\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(m, "缺少 .notice-card 正文样式")
+        self.assertIn("text-align: left", m.group(1), "通知正文必须左对齐")
+
+    def test_split_notice_separates_next_step(self):
+        src = _src()
+        self.assertIn("function _splitNotice(text)", src, "结论与下一步必须拆分")
+        # 精确匹配「渲染进模板」的那一处（`<div class="notice-action">`）：
+        # 只查裸类名会被 CSS 规则或注释满足，反向验证写不出会失败的用例。
+        # 精确到「模板里那一处」：断言一个更长的、带前导箭头的片段，
+        # 避免别处的同类片段（如 o.action 分支）让断言恒真。
+        # 断言绑定到**拆分出来的那一段**（parts.next），而不是同工程里另一处
+        # 结构相同的 o.action 分支——否则把前者删掉，断言仍被后者满足（实测两次）。
+        self.assertIn("${escapeHtml(parts.next)}", src,
+                      "拆分出的下一步必须渲染进 .notice-action 块")
+        #  与中文不兼容（JS 的  只认 ASCII 单词字符），不得再用它匹配中文动词
+        start = src.index("function _splitNotice(text) {")
+        body = src[start: start + 900]
+        self.assertNotIn("\\b运行", body, "不得用 \\b 匹配中文（实测永不匹配）")
+
+
 class ModalSkeletonTest(unittest.TestCase):
     """对话框统一骨架：头固定 / 主体滚动 / 操作栏固定（v0.39.5）。
 

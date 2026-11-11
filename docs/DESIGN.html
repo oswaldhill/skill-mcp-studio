@@ -1638,6 +1638,31 @@ sharedRow.state === "current"      → ok
       </ul>
     </section>
 
+    <section id="s2-5b3">
+      <h3 id="s2-5b3">2.5b-3 通知弹框的排版与交互（v0.41.0）<a class="anchor" href="#s2-5b3" aria-label="锚点">#</a></h3>
+      <p>用户截图「已完成 / 共享约束已保存（403 B）。写进各 Agent 请运行 --shared-rules-apply」，
+        评语是「信息太乱」。三处问题与对应规则：</p>
+      <table>
+        <thead><tr><th>问题</th><th>现象</th><th>规则</th></tr></thead>
+        <tbody>
+          <tr><td>图标配色与语义矛盾</td><td>「已完成」配粉红底绿勾</td><td><code>.cfm-icon</code> 底色/描边跟随 <code>kind</code>：ok 绿 / warn 黄 / err 红 / info 蓝；<strong>不得一律用 err 红底</strong></td></tr>
+          <tr><td>正文居中折行</td><td>多行中文居中对齐，每行起止位置都在变</td><td>通知正文 <code>.notice-msg</code> <strong>左对齐</strong>；标题与图标保持居中</td></tr>
+          <tr><td>结论与下一步混在一句</td><td>用句号把「发生了什么」和「接下来做什么」串起来</td><td><code>_splitNotice()</code> 拆成<strong>结论</strong>（<code>.cfm-msg</code>）+ <strong>下一步</strong>（<code>.notice-action</code> 强调块）</td></tr>
+        </tbody>
+      </table>
+      <pre><code>┌ .notice-card ────────────────────────┐
+│              ( 40px 圆形图标 )        │  ← 底色跟随 kind
+│              已完成                   │  ← .cfm-title，居中
+│  共享约束已保存（403 B）。            │  ← .cfm-msg，左对齐
+│  ┌────────────────────────────────┐  │
+│  │ › 写进各 Agent 请运行 …apply   │  │  ← .notice-action，accent 底
+│  └────────────────────────────────┘  │
+│               [ 好 ]                  │  ← 进入时已聚焦
+└──────────────────────────────────────┘</code></pre>
+      <p>拆分只在「第一个句末标点后还有内容」且后半句像动作时生效。注意 <strong>不要用 <code>\b</code> 匹配中文</strong>：
+        JS 的 <code>\b</code> 只认 ASCII 单词字符，中文与 <code>--</code> 之间不构成词边界，实测永不匹配。</p>
+    </section>
+
     <section id="s2-4">
       <h3 id="s2-4">2.4 元信息与数字<a class="anchor" href="#s2-4" aria-label="锚点">#</a></h3>
       <ul>

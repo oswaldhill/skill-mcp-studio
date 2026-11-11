@@ -658,15 +658,28 @@
 
   /* 确认对话框 */
   .cfm-card { text-align: center; --modal-w: min(400px, 94vw); padding: var(--sp-9b) var(--sp-9a) var(--sp-9); }
+  /* 图标徽标（v0.41.0 重排）：底色/描边跟随语义色，**不再一律红底**。
+     用户截图里「已完成」配的是粉红底绿勾 —— 红底会读成"出错了"，与标题冲突。
+     直径 40px（原 48px）：通知类弹框的重心应该在文字，图标只是状态锚点。 */
   .cfm-icon {
-    width: 48px; height: 48px; border-radius: 50%;
-    margin: 0 auto var(--sp-7a);
+    width: 40px; height: 40px; border-radius: 50%;
+    margin: 0 auto var(--sp-6);
     display: flex; align-items: center; justify-content: center;
-    font-size: var(--fs-lg); font-weight: 700; font-family: var(--mono);
-    background: var(--err-bg); color: var(--err);
-    border: 1px solid var(--err-border);
+    font-size: var(--fs-md); font-weight: 700; font-family: var(--mono);
+    background: var(--err-bg); color: var(--err); border: 1px solid var(--err-border);
   }
+  .notice-card .cfm-icon { background: var(--panel-2); color: var(--muted); border-color: var(--line); }
+  .notice-card.notice-ok .cfm-icon { background: var(--ok-bg); color: var(--ok); border-color: var(--ok-border); }
+  .notice-card.notice-warn .cfm-icon { background: var(--warn-bg); color: var(--warn); border-color: var(--warn-border); }
+  .notice-card.notice-err .cfm-icon { background: var(--err-bg); color: var(--err); border-color: var(--err-border); }
+  .notice-card.notice-info .cfm-icon { background: var(--accent-bg); color: var(--accent); border-color: var(--accent-border); }
   .cfm-card .cfm-title { font-size: var(--fs-md); font-weight: 600; color: var(--text); margin: 0 0 var(--sp-2); }
+  /* 通知类正文左对齐（v0.41.0）：居中 + 折行是这轮「信息太乱」的主因之一，
+     多行中文居中后每行起止位置都在变，眼睛要重新找起点。确认框保持居中。 */
+  .notice-card { text-align: center; }
+  .notice-card .cfm-title { margin-bottom: var(--sp-5); }
+  .notice-card .cfm-msg { text-align: left; margin: 0; }
+  .notice-card .notice-body { text-align: left; }
   .cfm-card .cfm-msg { font-size: var(--fs-sm); color: var(--muted); margin: 0 0 var(--sp-9); line-height: 1.55; white-space: pre-line; }
 
   /* 信息弹框（.notice-card，DESIGN.md §2.5b-2）
@@ -2441,6 +2454,24 @@ function showBanner(kind, text) {
   const k = NOTICE_META[kind] ? kind : "info";
   modalNotice(k, NOTICE_META[k].label, text);
 }
+
+// 通知正文拆分（v0.41.0）：把「发生了什么」与「接下来做什么」分开。
+// 用户截图「信息太乱」的根源是两者写在同一句里，靠一个句号分隔——
+//   「共享约束已保存（403 B）。写进各 Agent 请运行 --shared-rules-apply」
+// 拆成：结论（.cfm-msg）+ 下一步（.notice-action，独立强调块）。
+// 只在「第一个句号/分号后面还有内容」时拆，且后半句必须像动作。
+function _splitNotice(text) {
+  const t = String(text || "").trim();
+  const m = t.match(/^([\s\S]{0,200}?[。；;!?！？])([\s\S]+)$/);
+  if (!m) return { lead: t, next: "" };
+  const next = m[2].trim();
+  // 后半句像「动作」才拆：含"请/需要/可/运行/执行/点击/到"或以命令行开头
+  // 不用 \b：JS 的 \b 只认 ASCII 单词字符，中文前后永不构成词边界（实测「运行」匹配失败）
+  const looksLikeAction = /^(请|需要|可|运行|执行|点击|打开|到|用)/.test(next)
+    || /^--?\w/.test(next)
+    || /(请|需要|可以|可)?.{0,8}(运行|执行|点击|打开|添加|配置)/.test(next);
+  return looksLikeAction ? { lead: m[1].trim(), next } : { lead: t, next: "" };
+}
 // v0.40.9：横幅已移除，结果通知统一走弹框。保留空函数是为了让既有的
 // 「操作前清掉上一次提示」调用点继续成立（弹框本来就是一次性、会自己关掉）。
 function clearBanner() {}
@@ -2544,6 +2575,11 @@ function modalNotice(kind, title, message, opts) {
   const safeTitle = escapeHtml(title || meta.label);
   const body = message == null ? "" : String(message);
   const o = opts || {};
+  // 结论 / 下一步分开渲染（见 _splitNotice）
+  const parts = _splitNotice(body);
+  const splitHtml = parts.next
+    ? `<div class="notice-action"><span class="notice-action-icon" aria-hidden="true">›</span>${escapeHtml(parts.next)}</div>`
+    : "";
   const statsHtml = Array.isArray(o.stats) && o.stats.length
     ? `<div class="notice-stats">${o.stats.map((st) =>
         `<div class="notice-stat${st.tone ? " " + st.tone : ""}">
@@ -2557,7 +2593,8 @@ function modalNotice(kind, title, message, opts) {
   mountModal(`<div class="modal-backdrop"><div class="modal cfm-card notice-card notice-${kind}" role="dialog" aria-modal="true" aria-label="${safeTitle}" tabindex="-1">
     <div class="cfm-icon notice-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">${meta.path}</svg></div>
     <div class="cfm-title">${safeTitle}</div>
-    ${body ? `<div class="cfm-msg notice-msg">${renderNoticeBody(body)}</div>` : ""}
+    ${parts.lead ? `<div class="cfm-msg notice-msg">${renderNoticeBody(parts.lead)}</div>` : ""}
+    ${splitHtml}
     ${statsHtml}
     ${actionHtml}
     <div class="actions">
@@ -10616,7 +10653,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.40.9", build: 177, build_number: 177, semver_ok: true, full: "v0.40.9 (build 177)" },
+  app: { name: "Skill MCP Studio", version: "0.41.0", build: 178, build_number: 178, semver_ok: true, full: "v0.41.0 (build 178)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

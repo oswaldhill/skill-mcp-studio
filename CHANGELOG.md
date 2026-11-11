@@ -7,6 +7,44 @@
 
 ## [Unreleased]
 
+## [v0.41.0] - 2026-11-11
+
+当前发布版本（build 178）。
+
+**通知弹框的排版与交互统一，写进 UI 规范。**
+
+用户截图「已完成 / 共享约束已保存（403 B）。写进各 Agent 请运行 --shared-rules-apply」，
+评语「信息太乱」。
+
+### 三处问题与修复
+
+| 问题 | 现象 | 修复 |
+|---|---|---|
+| 图标配色与语义矛盾 | 「已完成」配**粉红底绿勾** | `.cfm-icon` 底色/描边跟随 `kind`（ok 绿 / warn 黄 / err 红 / info 蓝），直径 48 → 40px |
+| 正文居中折行 | 多行中文居中，每行起止位置都在变 | 通知正文 `.notice-msg` **左对齐**；标题与图标保持居中 |
+| 结论与下一步混在一句 | 用句号把两者串起来 | `_splitNotice()` 拆成**结论** + **下一步**（`.notice-action` 强调块，带 `›` 前导） |
+
+### 拆分规则
+
+只在「第一个句末标点后还有内容」**且**后半句像动作时拆（以「请 / 需要 / 可 / 运行 /
+执行 / 点击 / 打开」开头，或以 `--flag` 开头，或含这些动词）。
+
+**踩到一个中文正则的坑**：最初写 `/\b运行\b/`，永不匹配——JS 的 `\b` 只认 ASCII
+单词字符，中文与 `--` 之间不构成词边界。改成不含 `\b` 的写法后正常。
+
+### 测试
+
+- 新增 `NoticeLayoutTest`（3 项）：图标按 kind 上色、正文左对齐、拆分逻辑存在且
+  下一步绑定到 `parts.next`。
+- **反向验证 3 条**：去掉 ok 图标配色、正文改回居中、去掉下一步渲染，各自失败。
+- 断言写失败两次才有效：`class="notice-action"` 与 `<div class="notice-action">` 都被
+  工程里**另一处结构相同的 `o.action` 分支**满足 —— 最后绑定到独有的 `${escapeHtml(parts.next)}`。
+- 全量 **1730 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
+### 文档
+
+`docs/DESIGN.md` 新增 §2.5b-3（结构示意 + 拆分规则 + 交互）；`DESIGN.html` 同步。
+
 ## [v0.40.9] - 2026-11-11
 
 当前发布版本（build 177）。
@@ -4062,7 +4100,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.40.9...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.41.0...HEAD
+[v0.41.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.41.0
 [v0.40.9]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.9
 [v0.40.8]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.8
 [v0.40.7]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.7
