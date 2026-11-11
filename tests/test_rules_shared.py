@@ -272,6 +272,21 @@ class AgentMenuRulesEntryTest(unittest.TestCase):
         for key in ("needRules", "rulesPaths", "sharedState", "sharedBytes", "items"):
             self.assertIn(key, block, f"日志缺 {key}")
 
+    def test_apply_result_reads_applied_not_rows(self):
+        """`--shared-rules-apply` 的结果必须读 `applied[]`（v0.45.3）。
+
+        CLI 输出是 `{"ok": true, "applied": [{ok, client, changed, results, reason}]}`，
+        GUI 却去读 `payload.rows`（那是 `--shared-rules-audit` 的结构）→ rowOut 恒为 {}
+        → state 为空 → 明明写成功却报「未写入」（用户截图：写入报错了）。
+        """
+        start = self.gui.index("async function fixRulesFor(name)")
+        rest = self.gui[start:]
+        nxt = rest.find("\nasync function ", 10)
+        body = rest[: nxt if nxt > 0 else 4000]
+        self.assertIn("payload.applied", body, "必须读 applied[]")
+        self.assertNotIn("payload.rows", body, "audit 的 rows 结构不能用来解析 apply 结果")
+        self.assertIn('"--format", "json"', body, "必须带 --format json 才有结构化输出")
+
     def test_dispatch_and_writer_exist(self):
         self.assertIn('pm === "fix-rules"', self.gui, "菜单动作未分发")
         self.assertIn("async function fixRulesFor(name)", self.gui, "缺写入实现")

@@ -1639,6 +1639,11 @@
         按钮填充，而「写入共享约束」的判定依赖它 → 菜单里永远没有这一项。修法：① <code>loadManagement()</code>
         成功后与 <code>loadRules()</code> 同批拉 <code>auditSharedRules()</code>；② 审计缺失时 <code>needFixRulesFor</code>
         返回 <code>true</code>，与约束格的黄色分支一致。<strong>设计原则：两处 UI 读同一份状态时，缺数据时的默认值必须一致。</strong></p>
+      <p><strong>CLI 结果结构必须对得上</strong>（v0.45.3）：<code>--shared-rules-apply</code> 返回
+        <code>{ok, applied:[{client, ok, changed, results}]}</code>，而 GUI 读了 <code>--shared-rules-audit</code> 的
+        <code>rows</code> → 结构取空 → <strong>成功被渲染成失败</strong>。调用方必须按命令名对着各自 schema 解析，
+        并带 <code>--format json</code>（否则 stdout 是文本，<code>JSON.parse</code> 静默失败）。
+        门禁：<code>test_apply_result_reads_applied_not_rows</code>。</p>
       <p><strong>菜单自检日志（v0.44.2）</strong>：菜单打开时在 devtools 打印一行 <code>[agent-menu]</code>，
         含 <code>needSkills / needMcp / needRules</code> 三个布尔值、约束路径、共享状态、共享内容字节数与
         <strong>实际渲染出的菜单项</strong>。报「菜单和描述不一致」时先看这行日志，即可定位是哪一项判定不成立。</p>

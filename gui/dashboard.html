@@ -10516,18 +10516,40 @@ async function fixRulesFor(name) {
   );
   if (!ok) return;
   await runTaskModal(`写入 ${name} 的共享约束`, async () => {
-    const res = await runCli(["--shared-rules-apply", name]);
+    const res = await runCli(["--shared-rules-apply", name, "--format", "json"]);
     if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
     let payload = {};
     try { payload = JSON.parse(stripAnsi(res.stdout || "{}")); } catch (e) { payload = {}; }
-    const rowOut = ((payload && payload.rows) || []).find((r) => r.name === name) || (payload && payload.rows && payload.rows[0]) || {};
-    const state = rowOut.state || "";
-    const good = res.code === 0 && (state === "current" || state === "covered" || payload.ok === true);
-    if (good) {
-      return { ok: true, message: `${name} 的共享约束已写入（${state || "ok"}）` };
+    // 正确形状是 `applied[]`，不是 `rows[]`（那是 --shared-rules-audit 的结构）。
+    // 读错字段时 rowOut 恒为 {}，`state` 为空 → 明明成功却报「未写入」（用户截图）。
+    const entry = ((payload && payload.applied) || []).find((r) => r.client === name)
+      || ((payload && payload.applied) || [])[0] || null;
+    if (!entry) {
+      return {
+        ok: false,
+        message: `${name} 的共享约束未写入`,
+        detail: payload.reason || cliFailLines(res) || cliErrDetail(res) || "未返回结构化结果",
+      };
     }
-    const reason = rowOut.reason || payload.reason || cliFailLines(res) || cliErrDetail(res) || "未知原因";
-    return { ok: false, message: `${name} 的共享约束未写入`, detail: reason };
+    const perPath = entry.results || [];
+    const failed = perPath.filter((x) => !x.ok);
+    const changed = Number(entry.changed || 0);
+    const lines = perPath.map((x) => `${x.path}：${x.reason || x.state || (x.ok ? "已写入" : "失败")}`);
+    if (entry.ok && res.code === 0) {
+      return {
+        ok: true,
+        message: changed > 0
+          ? `${name} 的共享约束已写入（${changed} 处更新）`
+          : `${name} 的共享约束已是最新，无需改动`,
+        detail: lines.join("\n"),
+      };
+    }
+    return {
+      ok: false,
+      message: `${name} 的共享约束未写入`,
+      detail: [entry.reason, ...lines, ...failed.map((x) => x.reason)].filter(Boolean).join("\n")
+        || cliFailLines(res) || cliErrDetail(res) || "未知原因",
+    };
   }, async () => {
     // 写完必须重拉「约束」数据与共享审计，否则格子颜色不会变 —— 那正是用户要的反馈。
     // 注意：refreshBlocks 没有 rules 这一档；约束数据走 loadRules()，
@@ -10863,7 +10885,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.45.2", build: 191, build_number: 191, semver_ok: true, full: "v0.45.2 (build 191)" },
+  app: { name: "Skill MCP Studio", version: "0.45.3", build: 192, build_number: 192, semver_ok: true, full: "v0.45.3 (build 192)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

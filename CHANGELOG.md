@@ -7,6 +7,67 @@
 
 ## [Unreleased]
 
+## [v0.45.3] - 2026-11-11
+
+当前发布版本（build 192）。
+
+**修「写入报错」：GUI 读错了 CLI 的结果结构。**
+
+### 真相
+
+CLI 实际**成功了**：
+
+```json
+{"ok": true, "applied": [{"ok": true, "client": "Codex", "changed": 0,
+  "results": [{"path": "~/.codex/AGENTS.md", "state": "current", "reason": "已是最新"}]}]}
+```
+
+GUI 却去读 `payload.rows` —— 那是 `--shared-rules-audit` 的结构。`rowOut` 恒为 `{}`、
+`state` 为空、`payload.ok === true` 是唯一能命中的分支……但代码里 `good` 还要求
+`state === "current" || payload.ok === true`，**`payload.ok` 为 true 时本该判成功** ——
+实际那版跑的是 `--shared-rules-apply NAME`（**没带 `--format json`**），stdout 是
+人类可读文本 `✅ Codex：0 处更新`，`JSON.parse` 静默失败成 `{}`，于是 `payload.ok`
+是 `undefined` → 判为失败。
+
+两个错误叠在一起：
+
+| 错误 | 后果 |
+|---|---|
+| 没带 `--format json` | stdout 是文本，`JSON.parse` 失败，`payload` 为 `{}` |
+| 读 `payload.rows` | 即使解析成功也取不到 apply 的结果（结构是 `applied[]`） |
+
+### 修复
+
+```js
+const res = await runCli(["--shared-rules-apply", name, "--format", "json"]);
+const entry = (payload.applied || []).find((r) => r.client === name) || payload.applied[0];
+```
+
+结果弹框现在如实报告：
+
+- 有改动 → 「Codex 的共享约束已写入（N 处更新）」
+- 无改动 → 「Codex 的共享约束已是最新，无需改动」
+- 真失败 → 逐路径列出原因
+
+### 验证（用真实 CLI 输出跑新解析）
+
+```json
+{"ok": true, "message": "Codex 的共享约束已是最新，无需改动",
+ "detail": "~/.codex/AGENTS.md：已是最新"}
+```
+
+### 测试
+
+- 新增 `test_apply_result_reads_applied_not_rows`：必须读 `applied[]`、不得读 `rows`、
+  必须带 `--format json`。
+- **反向验证 1 条**：改回读 `rows` 立即失败。
+- 全量 **1773 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
+### 文档
+
+`docs/DESIGN.md` §2.3c-2c 补「CLI 结果结构必须对得上」两条命令的 schema 对照；
+`DESIGN.html` 同步。
+
 ## [v0.45.2] - 2026-11-11
 
 当前发布版本（build 191）。
@@ -4762,7 +4823,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.45.2...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.45.3...HEAD
+[v0.45.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.45.3
 [v0.45.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.45.2
 [v0.45.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.45.1
 [v0.45.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.45.0

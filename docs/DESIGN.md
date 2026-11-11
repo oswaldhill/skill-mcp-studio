@@ -1284,6 +1284,27 @@ host.innerHTML = ...   // host 为 null → TypeError
 > 已达标）→ 不出现修复项。格子说「有问题」，菜单说「没问题」，这是最难查的一类
 > bug——两边各自看都「符合代码」。
 
+**CLI 结果结构必须对得上（v0.45.3，一次真实误报）**
+
+写入共享约束后弹框报「未完成」，但 CLI 实际返回成功：
+
+```
+{"ok": true, "applied": [{"ok": true, "client": "Codex", "changed": 0,
+  "results": [{"path": "~/.codex/AGENTS.md", "state": "current", "reason": "已是最新"}]}]}
+```
+
+GUI 却读 `payload.rows`——那是 `--shared-rules-audit` 的结构。`rowOut` 恒为 `{}`、
+`state` 为空，于是**成功被渲染成失败**。
+
+| 命令 | 结果结构 |
+|---|---|
+| `--shared-rules-audit` | `{ok, rows: [{name, state, paths}], summary}` |
+| `--shared-rules-apply` | `{ok, applied: [{client, ok, changed, results: [{path, state, reason}]}]}` |
+
+> 规则：**调用方按命令名对着各自的 schema 解析**，不共用同一个形状假设。
+> 而且必须带 `--format json`——不带时 stdout 是人类可读文本，`JSON.parse` 会静默失败。
+> 门禁：`test_apply_result_reads_applied_not_rows`。
+
 **菜单自检日志（v0.44.2）**：菜单打开时在 devtools 打印一行 `[agent-menu]`，含
 `needSkills / needMcp / needRules` 三个布尔值、该 Agent 的约束路径、共享状态、共享
 内容字节数与**实际渲染出的菜单项**。用户报「菜单和我说的不一致」时，先看这行日志
