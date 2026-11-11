@@ -10386,6 +10386,14 @@ function toggleAgentMenu(btnEl, name) {
     <button class="pm-item danger" data-pm="remove" data-name="${escapeHtml(name)}">${ICONS.cross}<span>移出管理</span></button>
   </div>`;
   setupMenuA11y(root);
+  // 自检（v0.44.2）：判定依据落到控制台，出现「格子黄但菜单没有修复项」时可直接核对。
+  console.info("[agent-menu]", name, {
+    needSkills, needMcp, needRules,
+    rulesPaths: (((typeof RULES_DATA !== "undefined" && RULES_DATA && RULES_DATA.rows) || []).find((r) => r.name === name) || {}).paths || [],
+    sharedState: (((typeof SHARED_AUDIT !== "undefined" && SHARED_AUDIT && SHARED_AUDIT.rows) || []).find((r) => r.name === name) || {}).state,
+    sharedBytes: (typeof SHARED_RULES !== "undefined" && SHARED_RULES && (SHARED_RULES.content || "").length) || 0,
+    items: [...root.querySelectorAll("[data-pm]")].map((b) => b.dataset.pm),
+  });
 }
 function runAgentMenu(pm, name) {
   closePop();
@@ -10799,7 +10807,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.44.1", build: 185, build_number: 185, semver_ok: true, full: "v0.44.1 (build 185)" },
+  app: { name: "Skill MCP Studio", version: "0.44.2", build: 186, build_number: 186, semver_ok: true, full: "v0.44.2 (build 186)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

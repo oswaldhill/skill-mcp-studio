@@ -200,6 +200,19 @@ class AgentMenuRulesEntryTest(unittest.TestCase):
         self.assertIn("current", body)
         self.assertIn("covered", body)
 
+    def test_menu_logs_decision_basis(self):
+        """菜单打开时必须把判定依据打到控制台（v0.44.2）。
+
+        用户反馈「菜单和你描述的不一致」时，若没有这份日志，只能靠猜是哪一项判定
+        不成立。日志包含 needSkills / needMcp / needRules 三个布尔值、约束路径、
+        共享状态、共享内容字节数与实际渲染出的菜单项。
+        """
+        self.assertIn('console.info("[agent-menu]"', self.gui, "菜单缺判定依据日志")
+        start = self.gui.index('console.info("[agent-menu]"')
+        block = self.gui[start: start + 700]
+        for key in ("needRules", "rulesPaths", "sharedState", "sharedBytes", "items"):
+            self.assertIn(key, block, f"日志缺 {key}")
+
     def test_dispatch_and_writer_exist(self):
         self.assertIn('pm === "fix-rules"', self.gui, "菜单动作未分发")
         self.assertIn("async function fixRulesFor(name)", self.gui, "缺写入实现")

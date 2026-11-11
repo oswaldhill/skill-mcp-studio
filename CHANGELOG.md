@@ -7,6 +7,64 @@
 
 ## [Unreleased]
 
+## [v0.44.2] - 2026-11-11
+
+当前发布版本（build 186）。
+
+**菜单加自检日志，定位「格子黄但菜单没有修复项」。**
+
+用户：「菜单和你描述的不一致」（截图里「⋯」菜单仍是
+查看详情 / 重新扫描 / 移出管理）。
+
+### 排查结论
+
+用**真实 CLI 数据**跑源码与构建产物（`gui/dist/app.js`）里的判定函数，五个 Agent
+的结果都正确：
+
+| Agent | 约束格 | shared.state | needFixMcp | **needFixRules** |
+|---|---|---|---|---|
+| DeepSeek Harness | 1/1 | absent | true | **true** |
+| Codex | 1/1 | absent | true | **true** |
+| WorkBuddy | 2/2 | absent | true | **true** |
+| ima.copilot | ·（无约定） | - | false | false（无可写位置） |
+| VS Code | 0/1 | missing | true | false（文件不存在） |
+
+直接渲染菜单 HTML 后，`DeepSeek Harness` 的项是：
+
+```
+detail, rescan, fix-mcp, fix-rules, remove
+```
+
+即源码与产物都应该显示「修复 MCP」和「写入共享约束」。截图中两项都不在，说明
+判定的**输入**（`SNAP` / `RULES_DATA` / `SHARED_AUDIT` / `SHARED_RULES`）在当时
+未就绪，而不是逻辑错误。
+
+### 改动
+
+菜单打开时打印一行 `[agent-menu]` 自检日志：
+
+```
+[agent-menu] DeepSeek Harness {
+  needSkills: false, needMcp: true, needRules: true,
+  rulesPaths: [{path: "~/.codex/AGENTS.md", exists: true}],
+  sharedState: "absent", sharedBytes: 403,
+  items: ["detail", "rescan", "fix-mcp", "fix-rules", "remove"]
+}
+```
+
+有这一行就能直接看出是哪一项判定不成立（没装 / 没约束文件 / 共享内容为空 / 已达标），
+不必靠截图猜。
+
+### 测试
+
+- 新增 `test_menu_logs_decision_basis`：日志必须含 5 个关键字段。
+- **反向验证 1 条**：改掉日志前缀即失败。
+- 全量 **1754 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
+### 文档
+
+`docs/DESIGN.md` §2.3c-2c 补「菜单自检日志」；`DESIGN.html` 同步。
+
 ## [v0.44.1] - 2026-11-11
 
 当前发布版本（build 185）。
@@ -4457,7 +4515,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.44.1...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.44.2...HEAD
+[v0.44.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.44.2
 [v0.44.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.44.1
 [v0.44.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.44.0
 [v0.43.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.43.3
