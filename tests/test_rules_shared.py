@@ -142,6 +142,37 @@ class WiringTest(unittest.TestCase):
         self.assertIn("function applySharedRules(client)", gui, "GUI 缺强制写入")
         self.assertIn('data-action="shared-rules-apply"', gui)
 
+    def test_card_follows_settings_card_language(self):
+        """共享约束卡片必须复用设置页既有的 row / k / v 语言（v0.40.1 重设计）。
+
+        上一版把 label 放在 textarea 下方、按钮散在两侧，与设置页其它卡片
+        「label 左 / 控件右 / hairline 分隔」完全不搭（用户：「这个设计有点丑」）。
+        """
+        root = Path(__file__).resolve().parents[1]
+        gui = (root / "gui/dashboard.html").read_text(encoding="utf-8")
+        start = gui.find('id="shared-rules-card"')
+        self.assertGreater(start, 0)
+        end = gui.find("</div>`;", start)
+        card = gui[start:end]
+        for token in ('class="rows"', 'class="row row-block"', '<span class="k">约束内容</span>',
+                      '<span class="k">同步状态</span>', 'class="shared-actions"'):
+            self.assertIn(token, card, f"卡片缺少 {token}（应复用 settings-card 的行语言）")
+        # 按钮只用既有三档，不允许新造按钮类
+        self.assertIn('button class="primary"', card)
+        self.assertIn('button class="ghost"', card)
+        self.assertIn('button class="btn-soft"', card)
+
+    def test_textarea_style_is_card_scoped(self):
+        root = Path(__file__).resolve().parents[1]
+        gui = (root / "gui/dashboard.html").read_text(encoding="utf-8")
+        self.assertIn(".settings-card .row .v > textarea {", gui,
+                      "卡片内 textarea 必须有作用域样式（不能靠浏览器默认外观）")
+        idx = gui.find(".settings-card .row .v > textarea {")
+        block = gui[idx: gui.find("}", idx)]
+        for prop in ("border-radius: var(--r-control)", "font-family: var(--mono)",
+                     "max-width: 44rem", "resize: vertical"):
+            self.assertIn(prop, block, f"textarea 样式缺 {prop}")
+
 
 if __name__ == "__main__":
     unittest.main()

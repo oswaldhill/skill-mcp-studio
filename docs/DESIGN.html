@@ -1559,16 +1559,29 @@
         </tbody>
       </table>
       <p>客户端的整体状态取「最需要处理」的那一个：<code>missing &gt; absent &gt; stale &gt; dir &gt; current</code>。</p>
-      <pre><code>┌ 共享约束 ─────────────────────────────── [检查同步状态] [同步到全部] ┐
-│ 约束内容                                                              │
-│ [ textarea（等宽，6 行）                                            ] │
-│ 保存后点「检查同步状态」…                        [保存内容]           │
-│ 13 个客户端：已同步 4 · 内容过期 1 · 未包含 2 · 文件不存在 6          │
-│   VS Code     [未包含]  [写入]                                        │
-│   Codex       [已同步]                                                │
-└───────────────────────────────────────────────────────────────────────┘</code></pre>
-      <p>三个按钮都用既有 <code>.ghost</code> / <code>.primary</code> / <code>.btn-soft sm</code> 家族，不新造按钮样式；
-        状态用既有 <code>.tag ok/warn</code> 档位，<strong>没有新增颜色</strong>；只给「可以修」的行渲染按钮。</p>
+      <p><strong>卡片复用设置页既有的 <code>.rows &gt; .row</code> 语言</strong>（label 左 / 控件右 / hairline 分隔，
+        与「外观」「后台巡检」「市场源」等卡片同构）：</p>
+      <pre><code>┌ 共享约束 ─────────────────────────────────────────────────────────────┐
+│ 约束内容   [ textarea（等宽 --mono / --fs-xs，max-width 44rem，可纵拉）] │
+│ ───────────────────────────────────────────────────────────────────── │
+│ 同步状态   13 个客户端 · 已同步 4 · 过期 1 · 未包含 2 · 缺文件 6  [检查][同步][保存] │
+│ ───────────────────────────────────────────────────────────────────── │
+│ note：只替换标记块，文件里你自己的规则不会被修改；写前自动备份            │
+│ Codex        [已同步]                                                   │
+│ Claude Code  [内容过期]                                    [写入]       │
+└────────────────────────────────────────────────────────────────────────┘</code></pre>
+      <ul>
+        <li><strong>正文行用 <code>.row.row-block</code></strong>（label 顶对齐、控件撑满值列）——设置页既有的「多行内容」行型。</li>
+        <li><strong>按钮组 <code>.shared-actions</code></strong>：<code>margin-left: auto</code> 靠右成组，
+          顺序「检查（.ghost）→ 同步（.btn-soft）→ 保存（.primary）」，<strong>主操作在最右</strong>。</li>
+        <li><strong>卡片内 textarea</strong> 用 <code>.settings-card .row .v &gt; textarea</code> 作用域样式：
+          与 <code>input[type=text]</code> 同边框 / 同圆角 <code>--r-control</code> / 同内边距，
+          只是加了 <code>--mono</code>、<code>max-width: 44rem</code> 与 <code>resize: vertical</code>。</li>
+        <li>状态标签用既有 <code>.tag ok / warn</code> 档位，<strong>没有新增颜色</strong>；
+          状态行 <code>.k</code> 定宽 150px、右侧按钮 <code>margin-left: auto</code>，让「写入」竖着成一条线。</li>
+        <li><strong>上一版为什么丑</strong>：label 放在 textarea 下方、写成两行说明 + 两个角落按钮，
+          完全没走 <code>.row</code> 结构，等于在设置页里嵌了一个异类表单。</li>
+      </ul>
     </section>
 
     <section id="s2-3d1">

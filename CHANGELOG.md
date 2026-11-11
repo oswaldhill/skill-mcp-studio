@@ -7,6 +7,54 @@
 
 ## [Unreleased]
 
+## [v0.40.1] - 2026-11-11
+
+当前发布版本（build 169）。
+
+**共享约束卡片重设计：改用设置页既有的 `.rows > .row` 语言。**
+
+用户截图反馈：「这个设计有点丑，请严格按照 UI 规范中定义的控件内容重新设计」。
+
+### 上一版为什么丑
+
+v0.40.0 的卡片是自己发明的一套结构：
+
+- label「约束内容」放在 **textarea 下方**（正常表单是 label 在上或在左）；
+- 说明文字拆成两行，按钮散在左右两个角落（「检查同步状态 / 同步到全部」在顶部
+  右侧、「保存内容」在底部右侧）；
+- textarea 没用任何作用域样式，直接吃浏览器默认外观，**宽度只有 220px**、
+  与旁边卡片控件不同族。
+
+等于在设置页里嵌了一个异类表单——设置页其它卡片（外观 / 后台巡检 / 市场源 /
+IDE 默认路径）全是「label 左 150px / 控件右 / hairline 分隔」。
+
+### 重设计
+
+| 项 | 改前 | 改后 |
+|---|---|---|
+| 结构 | 自造的两行说明 + 角落按钮 | `.rows` → `.row.row-block`（正文）+ `.row`（状态） |
+| label | textarea 下方 | 左侧 `.k` 列，150px，与其它卡片同宽 |
+| textarea | 浏览器默认（220px 宽） | `.settings-card .row .v > textarea`：同边框、同 `--r-control` 圆角、同内边距，`--mono` 等宽、`max-width: 44rem`、`resize: vertical` |
+| 按钮 | 散在顶部右侧 + 底部右侧 | `.shared-actions` 靠右成组：检查（`.ghost`）→ 同步（`.btn-soft`）→ 保存（`.primary`），**主操作在最右** |
+| 状态摘要 | 单独一行 note | 收进「同步状态」行的 `.v` 里 |
+| 状态列表 | 无边框罗列 | `.rows > .row`：名称定宽 150px、状态跟随、写入按钮 `margin-left: auto` 竖成一条线 |
+
+**没有新增按钮样式、没有新增颜色**：三类按钮全是既有 `button.ghost` /
+`.btn-soft` / `.primary`，状态标签全是既有 `.tag ok / warn`。
+
+### 测试
+
+- 新增 2 项断言：卡片必须含 `.rows` / `.row.row-block` / 两个 `.k` / `.shared-actions`
+  且只用既有三档按钮；textarea 必须有作用域样式（圆角 token、等宽字体、限宽、可纵拉）。
+- **反向验证 3 条**：去掉 `row-block`、去掉 `.shared-actions`、textarea 去掉圆角 token，
+  各自让断言失败。
+- 全量 **1718 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
+### 文档
+
+`docs/DESIGN.md` §2.3c-2c 的「界面」小节重写（含上一版为什么丑的复盘）；
+`docs/DESIGN.html` 同步。
+
 ## [v0.40.0] - 2026-11-11
 
 当前发布版本（build 168）。
@@ -3655,7 +3703,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.40.0...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.40.1...HEAD
+[v0.40.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.1
 [v0.40.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.0
 [v0.39.8]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.39.8
 [v0.39.7]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.39.7
