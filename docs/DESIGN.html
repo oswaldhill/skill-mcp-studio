@@ -1553,6 +1553,14 @@
         （名称 20% / 类型 15% / 安装 5.5% / APP 4.5% / CLI 4.5% / CONFIG 7% / 技能目录 8% /
         约束 9% / MCP 8% / 操作 5%，合计 100%），配合 <code>table-layout: fixed</code> 按容器分配。
         实测 720px / 560px 容器下 <code>scrollWidth === clientWidth</code>，无横向滚动。</p>
+      <p><strong>确认弹框按破坏性分色</strong>（v0.45.1）：<code>danger=true</code> 用
+        <code>.cfm-btn-danger</code> + 红图标；<code>false</code> 用 <strong><code>.cfm-btn-primary</code></strong>（accent）
+        + 中性图标（<code>.cfm-card.cfm-info .cfm-icon</code>）。图标统一为 <code>NOTICE_META</code> 的描边 SVG，
+        不再用字面 <code>!</code>。<strong>红色只给「删除 / 覆盖 不可逆」</strong>；写入约束虽覆盖但有备份，
+        属可逆操作，用主色。<code>.cfm-msg</code> 不解析 Markdown，正文不得出现 <code>**</code>。</p>
+      <p><strong>共享约束徽标文案</strong>：<code>absent</code>/<code>missing</code> 曾兜底成「无共享」造成误解，
+        现按状态给 <code>已写入 / 待更新 / 未写入</code> 并配 title 说明下一步。设置里没填内容时
+        <strong>根本不显示</strong>该徽标。</p>
       <p><strong>操作列只保留「⋯」</strong>（v0.45.0）：详情并入菜单第一项 + 整行可点；
         kebab <strong>默认始终可见</strong>（唯一入口不能藏），hover 加深。</p>
       <p><strong>操作列：<code>.al-op-cell</code> 显式类 + 中心对齐</strong>（v0.44.0）：

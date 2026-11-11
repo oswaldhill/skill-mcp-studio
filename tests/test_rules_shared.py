@@ -370,8 +370,10 @@ class WiringTest(unittest.TestCase):
             raise AssertionError(f"{name} 未闭合")
 
         card = _fn("_agentRulesSummary")
-        self.assertRegex(card, r'current:\s*"共享已含"', "卡片摘要必须按共享状态输出「共享已含」")
-        self.assertRegex(card, r'stale:\s*"共享过期"', "卡片摘要必须输出「共享过期」")
+        # 文案改为 SHARED_MARK 映射后（v0.45.1），断言「渲染分支」而非字面词。
+        self.assertRegex(card, r'current:\s*"已写入"', "卡片摘要必须把 current 渲染成「已写入」")
+        self.assertRegex(card, r'absent:\s*"未写入"', "卡片摘要必须把 absent 渲染成「未写入」")
+        self.assertRegex(card, r'stale:\s*"待更新"', "卡片摘要必须把 stale 渲染成「待更新」")
         self.assertIn("SHARED_AUDIT", card, "卡片摘要必须读共享审计结果")
 
         lst = _fn("renderHomeListView")
@@ -379,8 +381,8 @@ class WiringTest(unittest.TestCase):
         # 才算「显示出来了」。只查变量名会被「定义了但没渲染」骗过去
         # （第一次写这条断言时就踩了：把变量改名，测试照样绿）。
         self.assertRegex(lst, r'\$\{sharedSpan\}', "主表列表必须把共享状态渲染进单元格")
-        self.assertIn("共享已含", lst, "列表列必须区分「共享已含」")
-        self.assertIn("共享过期", lst, "列表列必须区分「共享过期」")
+        self.assertIn("已写入", lst, "列表列必须区分「已写入」")
+        self.assertIn("待更新", lst, "列表列必须区分「待更新」")
         self.assertIn('"covered"', lst, "语义一致（covered）也必须算已含（v0.43.0）")
 
     def test_shared_card_is_content_only_in_settings(self):
@@ -427,5 +429,5 @@ class WiringTest(unittest.TestCase):
         card = gui[gui.index("function _agentRulesSummary("):]
         card = card[: card.index("\nfunction ")]
         self.assertIn("SHARED_AUDIT", card, "卡片摘要必须读共享状态")
-        self.assertIn("共享已含", card, "卡片摘要必须输出「共享已含」")
+        self.assertIn("已写入", card, "卡片摘要必须输出「已写入」")
         self.assertIn("covered", card, "语义一致（covered）也必须算已含（v0.43.0）")

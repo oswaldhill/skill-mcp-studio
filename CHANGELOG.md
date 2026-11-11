@@ -7,6 +7,60 @@
 
 ## [Unreleased]
 
+## [v0.45.1] - 2026-11-11
+
+当前发布版本（build 190）。
+
+**共享徽标文案改准确 + 确认弹框按破坏性分色。**
+
+用户：「这个无共享是什么意思？这个弹框样式仍然没有按照统一的 UI 规范中定义的来」。
+
+### 一、「无共享」是什么意思——它本来就是个错词
+
+`absent` / `missing` 两种状态都兜底成「无共享」，但实际含义是**文件里还没写进去**，
+不是「设置里没填内容」（那种情况根本不显示徽标）。
+
+| `sharedL.state` | 改前 | 改后 | title |
+|---|---|---|---|
+| `current` | 共享已含 | **已写入** | 共享约束已写入这个文件 |
+| `covered` | 共享已含 | **已写入** | 文件里已有同义内容（语义一致） |
+| `stale` | 共享过期 | **待更新** | 共享内容改过了，点「⋯」→ 写入共享约束 |
+| `absent` | 无共享 | **未写入** | 文件里没有共享块；点「⋯」→ 写入共享约束 |
+| `missing` | 无共享 | **未写入** | 文件还不存在；先让该客户端生成规则文件 |
+
+设置页卡片的摘要徽标同步改成同一套文案。
+
+### 二、确认弹框不符合规范
+
+| 问题 | 改前 | 改后 |
+|---|---|---|
+| 主按钮 | 一律 `.cfm-btn-danger`（红） | `danger` 分色：真 → 红；假 → **`.cfm-btn-primary`**（accent） |
+| 图标 | 字面 `!` 字符 | `.cfm-icon` + `NOTICE_META` 描边 SVG |
+| 图标底色 | 一律 err 红 | `.cfm-card.cfm-info .cfm-icon` → 中性色 |
+| 正文 | `**意思相同**` 星号 | 「意思相同」 |
+
+**红色只给「删除 / 覆盖 不可逆」**。写入约束虽覆盖但有备份、可撤销，属可逆操作。
+高风险强确认弹框（`.cfm-danger`）同样换成 SVG 图标。
+
+### 三、实测（浏览器里量）
+
+```
+非破坏性确认： cardClass=cfm-card cfm-info   icon=rgb(161,161,170) 主按钮=cfm-btn-primary
+破坏性确认：   cardClass=cfm-card cfm-danger icon=rgb(248,113,113) 主按钮=cfm-btn-danger
+```
+
+### 测试
+
+- 新增 `ConfirmDialogSemanticsTest`（5 项）+ `SharedBadgeLabelTest`（2 项）。
+- **反向验证 3 条**：主按钮改回一律红、info 图标改回 err 色、徽标改回「无共享」，各自失败。
+- 徽标断言写失败一次才有效：只查 `|| "无共享"` 会被无关代码满足，改为直接断言映射值。
+- 全量 **1771 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
+### 文档
+
+`docs/DESIGN.md` §2.3c-2c / §2.3d-2 补「确认弹框按破坏性分色」与「共享约束徽标文案」
+两张对照表；`DESIGN.html` 同步。
+
 ## [v0.45.0] - 2026-11-11
 
 当前发布版本（build 189）。
@@ -4670,7 +4724,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.45.0...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.45.1...HEAD
+[v0.45.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.45.1
 [v0.45.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.45.0
 [v0.44.4]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.44.4
 [v0.44.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.44.3

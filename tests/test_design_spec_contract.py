@@ -1500,6 +1500,68 @@ class ModalFamilyConsistencyTest(unittest.TestCase):
         self.assertIn("var(--sp-6)", ad.group(1), "详情弹框主体顶部内边必须与表单弹框一致")
 
 
+class ConfirmDialogSemanticsTest(unittest.TestCase):
+    """确认弹框按破坏性分色（v0.45.1 用户截图）。
+
+    用户截图：「写入共享约束到 Codex」的确认框用了红主按钮 + 红圈图标，
+    正文还露着 `**意思相同**` 的 Markdown 星号。
+    """
+
+    def test_non_danger_uses_primary_button(self):
+        src = _src()
+        self.assertIn('${danger ? "cfm-btn-danger" : "cfm-btn-primary"}', src,
+                      "主按钮必须按 danger 分色：非破坏性用 accent 主色")
+
+    def test_danger_class_on_card(self):
+        src = _src()
+        self.assertIn('${danger ? "cfm-danger" : "cfm-info"}', src,
+                      "卡片需带语义类，图标才能分色")
+
+    def test_info_icon_is_neutral(self):
+        css = _css()
+        self.assertRegex(css, r"\.cfm-card\.cfm-info \.cfm-icon \{[^}]*var\(--muted\)",
+                         "非破坏性确认的图标必须是中性色，不能沿用 err 红")
+
+    def test_icon_is_svg_not_glyph(self):
+        src = _src()
+        self.assertNotIn('<div class="cfm-icon">!</div>', src,
+                         "图标不得用字面 ! 字符")
+        self.assertIn("NOTICE_META.warn.path", src, "图标应复用 NOTICE_META 的描边 SVG")
+
+    def test_no_markdown_stars_in_confirm_message(self):
+        """`.cfm-msg` 不解析 Markdown，正文不得出现 ** 星号。"""
+        src = _src()
+        start = src.index('`写入共享约束到 ${name}`')
+        block = src[start: start + 400]
+        self.assertNotIn("**", block, "确认正文不得含 Markdown 星号")
+
+
+class SharedBadgeLabelTest(unittest.TestCase):
+    """共享约束徽标文案必须说明「文件里的状态」（v0.45.1）。
+
+    用户问「这个无共享是什么意思？」——absent/missing 曾兜底成「无共享」，
+    与「设置里没填内容」混淆，而两者处置完全不同。
+    """
+
+    def test_absent_and_missing_have_distinct_labels(self):
+        src = _src()
+        self.assertIn("absent:", src)
+        self.assertIn("未写入", src, "absent 应显示「未写入」")
+        # 断言到**具体映射值**，而不是只查有没有 `|| "无共享"` 这个兜底写法：
+        # 后者可以被任何一行无关代码满足，反向验证写不出会失败的用例（实测踩到）。
+        self.assertIn('absent: ["warn", "未写入"', src, "absent 映射必须直接写「未写入」")
+        self.assertIn('missing: ["warn", "未写入"', src, "missing 映射必须直接写「未写入」")
+        self.assertNotIn('"无共享"', src, "界面文案中不得再出现「无共享」")
+
+    def test_each_state_has_hint(self):
+        src = _src()
+        start = src.index("const SHARED_MARK = {")
+        block = src[start: start + 900]
+        for state in ("current", "covered", "stale", "absent", "missing"):
+            self.assertIn(state + ":", block, f"SHARED_MARK 缺 {state}")
+        self.assertIn("写入共享约束", block, "提示必须告诉用户下一步怎么做")
+
+
 class NoticeLayoutTest(unittest.TestCase):
     """通知弹框的排版与交互统一（v0.41.0 用户要求「信息太乱」）。
 

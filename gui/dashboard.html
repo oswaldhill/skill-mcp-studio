@@ -697,6 +697,12 @@
   .notice-card.notice-warn .cfm-icon { background: var(--warn-bg); color: var(--warn); border-color: var(--warn-border); }
   .notice-card.notice-err .cfm-icon { background: var(--err-bg); color: var(--err); border-color: var(--err-border); }
   .notice-card.notice-info .cfm-icon { background: var(--accent-bg); color: var(--accent); border-color: var(--accent-border); }
+  /* 非破坏性确认（v0.45.1）：.cfm-icon 默认是 err 红（为危险确认而设）。
+     「写入共享约束」这类**可逆**操作必须用中性色，否则与「删除」视觉同权。 */
+  .cfm-card.cfm-info .cfm-icon { background: var(--panel-2); color: var(--muted); border-color: var(--line); }
+  /* 破坏性确认：显式声明 err 色，不依赖 .cfm-icon 的默认值 —— 语义类要有自己的规则，
+     否则读代码的人无法判断「这个类到底改变了什么」。 */
+  .cfm-card.cfm-danger .cfm-icon { background: var(--err-bg); color: var(--err); border-color: var(--err-border); }
   .cfm-card .cfm-title { font-size: var(--fs-md); font-weight: 600; color: var(--text); margin: 0 0 var(--sp-2); }
   /* 通知类正文左对齐（v0.41.0）：居中 + 折行是这轮「信息太乱」的主因之一，
      多行中文居中后每行起止位置都在变，眼睛要重新找起点。确认框保持居中。 */
@@ -808,6 +814,14 @@
   }
   .cfm-btn-cancel:hover { background: var(--line); }
   .cfm-btn-cancel:active { transform: scale(.97); }
+  /* 普通确认的主按钮（v0.45.1）：非破坏性操作用 accent 主色，不用红色。
+     红色专属于「删除 / 覆盖 不可逆」这一类，否则用户会以为点下去有损失。 */
+  .cfm-btn-primary {
+    background: var(--accent); color: var(--on-accent); border: none;
+    box-shadow: var(--shadow-accent);
+  }
+  .cfm-btn-primary:hover { background: var(--accent-strong); box-shadow: var(--shadow-accent-hover); }
+  .cfm-btn-primary:active { transform: scale(.97); }
   .cfm-btn-danger {
     background: var(--err); color: var(--on-accent); border: none;
     box-shadow: var(--shadow-err);
@@ -2770,22 +2784,23 @@ function confirmModal(title, message, danger, confirmText) {
     let settled = false;
     const settle = (val) => { if (!settled) { settled = true; _pendingConfirm = null; resolve(val); } };
     _pendingConfirm = () => settle(false);
-    const iconHtml = danger
-      ? '<div class="cfm-icon">!</div>'
-      : '';
+    // 图标统一走 NOTICE_META 的描边 SVG（与 modalNotice 同一套），
+    // 不再用字面 "!" 字符——各系统字体下磅值不一，且与通知弹框的图标风格割裂。
+    const iconPath = danger ? NOTICE_META.warn.path : NOTICE_META.info.path;
+    const iconHtml = `<div class="cfm-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">${iconPath}</svg></div>`;
     // v0.31.0：danger 只是视觉强调（红色按钮），确认文案可自定义——
     // 升级是覆盖性写操作该用红色，但按钮写死「确认删除」会误导
     // （用户截图反馈「升级服务为什么是确认删除」）。
     const yesText = confirmText || (danger ? "确认删除" : "确认");
     // 走 mountModal 而不是直接写 innerHTML：必须 showModal() 进入 top layer，
     // 否则会被同为 top layer 的结果面板整个盖住（用户看不到确认框）。
-    mountModal(`<div class="modal-backdrop"><div class="modal cfm-card" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}" tabindex="-1">
+    mountModal(`<div class="modal-backdrop"><div class="modal cfm-card ${danger ? "cfm-danger" : "cfm-info"}" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}" tabindex="-1">
       ${iconHtml}
       <div class="cfm-title">${escapeHtml(title)}</div>
       <div class="cfm-msg">${escapeHtml(message)}</div>
       <div class="actions">
         <button class="cfm-btn-cancel" id="cfm-no">取消</button>
-        <button class="cfm-btn-danger" id="cfm-yes">${escapeHtml(yesText)}</button>
+        <button class="${danger ? "cfm-btn-danger" : "cfm-btn-primary"}" id="cfm-yes">${escapeHtml(yesText)}</button>
       </div>
     </div></div>`);
     $("cfm-no").onclick = () => { settle(false); closeModal(); };
@@ -2799,8 +2814,8 @@ function confirmModal(title, message, danger, confirmText) {
  */
 function confirmTypedKeyModal(title, message, keyName) {
   return new Promise((resolve) => {
-    mountModal(`<div class="modal-backdrop"><div class="modal cfm-card">
-      <div class="cfm-icon">!</div>
+    mountModal(`<div class="modal-backdrop"><div class="modal cfm-card cfm-danger">
+      <div class="cfm-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">${NOTICE_META.warn.path}</svg></div>
       <div class="cfm-title">${escapeHtml(title)}</div>
       <div class="cfm-msg">${escapeHtml(message)}</div>
       <div class="cfm-typed"><input id="cfm-typed-input" type="text" autocomplete="off" spellcheck="false"
@@ -3653,13 +3668,21 @@ const skillsCell = `<button type="button" class="al-ico ${skillsCls}" data-popki
         .find((r) => r.name === a.name);
       const hasShared = typeof SHARED_RULES !== "undefined"
         && !!(SHARED_RULES && (SHARED_RULES.content || "").trim());
-      const sharedMark = (sharedL && sharedL.enabled !== false && hasShared)
-        ? ({ current: "共享已含", covered: "共享已含", stale: "共享过期" })[sharedL.state] || "无共享"
-        : "";
-      const sharedMarkCls = sharedL && (sharedL.state === "current" || sharedL.state === "covered") ? "ok"
-        : (sharedL && sharedL.state === "stale" ? "warn" : "");
-      const sharedSpan = sharedMark
-        ? `<span class="tag ${sharedMarkCls}" title="共享约束：${sharedMark}">${sharedMark}</span>`
+      // 共享块状态徽标（v0.45.1）：文案必须说「文件里的状态」，不是「有没有内容」。
+      // 此前 absent/missing 都兜底成「无共享」，用户看不出是「设置里没填」还是
+      // 「文件里还没写进去」——两者处置完全不同（后者点「⋯」→ 写入共享约束即可）。
+      const SHARED_MARK = {
+        current: ["ok", "已写入", "共享约束已写入这个文件"],
+        covered: ["ok", "已写入", "文件里已有同义内容（语义一致，无需再写）"],
+        stale: ["warn", "待更新", "共享内容改过了，这个文件还是旧版；点「⋯」→ 写入共享约束"],
+        absent: ["warn", "未写入", "文件里没有共享块；点「⋯」→ 写入共享约束"],
+        missing: ["warn", "未写入", "文件还不存在；先让该客户端生成规则文件"],
+      };
+      const mark = (sharedL && sharedL.enabled !== false && hasShared) ? SHARED_MARK[sharedL.state] : null;
+      const sharedMark = mark ? mark[1] : "";
+      const sharedMarkCls = mark ? mark[0] : "";
+      const sharedSpan = mark
+        ? `<span class="tag ${sharedMarkCls}" title="${escapeHtml(mark[2])}">${sharedMark}</span>`
         : "";
       rulesCell = `<button type="button" class="tag tag-btn ${ruleCls}"${ruleAttrs} title="${escapeHtml(tip)}" aria-label="约束文件 ${ruleText}，点击查看">${ruleText}</button>${sharedSpan}`;
     }
@@ -5024,7 +5047,8 @@ function _agentRulesSummary(t) {
     .find((r) => r.name === t.name);
   const sharedOn = shared ? shared.enabled !== false : true;
   const sharedState = shared && sharedOn ? shared.state : "";
-  const sharedText = { current: "共享已含", covered: "共享已含", stale: "共享过期", absent: "无共享", missing: "无共享" }[sharedState] || "";
+  // 与主表「约束」列同一套文案（v0.45.1）：absent/missing 都是「未写入」，不再是「无共享」
+  const sharedText = { current: "已写入", covered: "已写入", stale: "待更新", absent: "未写入", missing: "未写入" }[sharedState] || "";
   const sharedCls = { current: "ok", covered: "ok", stale: "warn", absent: "", missing: "" }[sharedState] || "";
   const sharedTip = sharedState === "current"
     ? "已包含当前共享约束"
@@ -10480,7 +10504,7 @@ async function fixRulesFor(name) {
   }
   const ok = await confirmModal(
     `写入共享约束到 ${name}`,
-    `将把共享约束写入以下文件的 shared-rules 标记块，并替换文件里**意思相同**的旧条目：\n\n`
+    `将把共享约束写入以下文件的 shared-rules 标记块，并替换文件里「意思相同」的旧条目：\n\n`
       + paths.map((x) => `· ${x}`).join("\n")
       + "\n\n写前自动备份，你自己的其它规则不动。继续？",
     false,
@@ -10834,7 +10858,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.45.0", build: 189, build_number: 189, semver_ok: true, full: "v0.45.0 (build 189)" },
+  app: { name: "Skill MCP Studio", version: "0.45.1", build: 190, build_number: 190, semver_ok: true, full: "v0.45.1 (build 190)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",
