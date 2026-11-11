@@ -192,7 +192,6 @@ class WiringTest(unittest.TestCase):
                          "逐 Agent 开关不应再出现在界面（v0.40.5 用户要求）")
         self.assertIn("function auditSharedRules()", gui, "GUI 缺检查同步状态")
         self.assertIn("function applySharedRules(client)", gui, "GUI 缺强制写入")
-        self.assertIn('data-action="shared-rules-apply"', gui)
 
     def test_shared_state_surfaces_in_rules_cells(self):
         """共享块状态必须出现在**约束对应的格子**里（v0.40.3 用户要求）。
@@ -251,6 +250,12 @@ class WiringTest(unittest.TestCase):
         # 位置：设置页 agents tab，且不再出现在概览
         self.assertIn('data-panel="agents">${sharedRulesCard()}', gui,
                       "卡片必须挂在设置页 IDE / Agent tab")
+        # v0.40.8：「设置里应该只保存，不需要同步」——卡片里不得出现同步动作
+        card = gui[gui.index("function sharedRulesCard()"):]
+        card = card[: card.index("\n}")]
+        self.assertIn('data-action="shared-rules-save"', card, "卡片必须有「保存」")
+        self.assertNotIn('shared-rules-apply', card, "卡片里不应有同步按钮")
+        self.assertNotIn('shared-rules-audit', card, "卡片里不应有检查按钮")
         ov = gui[gui.index("function renderOverview()"):]
         ov = ov[: ov.index("\nfunction ")]
         self.assertNotIn("sharedRulesCard()", ov, "概览页不应再渲染该卡片")

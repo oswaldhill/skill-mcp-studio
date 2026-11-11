@@ -1554,14 +1554,15 @@
       </table>
       <pre><code>┌ 共享约束 ──────────────────────────────────────────────┐
 │ 约束内容   [ textarea（等宽 --mono / --fs-xs，max-width 44rem）] │
-│           保存后会写进每个 Agent 的约束文件…  [保存并同步]        │
+│           这里只保存内容…                              [保存]     │
 └────────────────────────────────────────────────────────┘</code></pre>
       <ul>
         <li><strong>位置</strong>：设置页 → IDE / Agent tab <strong>顶部</strong>（在「IDE / Agent 默认路径」之上）。</li>
         <li><strong>同步行、状态一览、逐 Agent 开关全部删除</strong>——「这个 Agent 有没有共享内容」由同一个 tab
           下面 Agent 列表的<strong>「约束」列颜色</strong>回答，不需要第二套表达。</li>
-        <li>「保存并同步」一个按钮做两件事：先 <code>--shared-rules-set</code> 存内容，再
-          <code>--shared-rules-apply</code> 写进各 Agent（备份 → 原子写 → 回读校验）。</li>
+        <li><strong>设置里只保存，不同步</strong>（v0.40.8）：「设置里应该只保存，不需要同步」。
+          卡片里只有一枚 <code>.primary</code>「保存」；写进各 Agent 是一次独立动作，经 CLI
+          <code>--shared-rules-apply [CLIENT...]</code> 执行（备份 → 原子写 → 回读校验）。</li>
         <li>清空内容再保存 = 停用该功能。</li>
       </ul>
       <p><strong>数据模型</strong>：内容存 <code>data/shared_rules.md</code>，写进各文件时用一对标记包住：</p>

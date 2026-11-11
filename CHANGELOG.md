@@ -7,6 +7,40 @@
 
 ## [Unreleased]
 
+## [v0.40.8] - 2026-11-11
+
+当前发布版本（build 176）。
+
+**共享约束：设置里只保存，不同步。**
+
+用户：「设置里应该只保存，不需要同步」。
+
+### 改动
+
+| 项 | 改前 | 改后 |
+|---|---|---|
+| 按钮 | `保存并同步`（保存后自动 apply） | **`保存`**（只存内容） |
+| 保存后的行为 | `--shared-rules-set` + `--shared-rules-apply` | 只 `--shared-rules-set` |
+| 说明文案 | 「保存后会写进每个 Agent…」 | 「这里只保存内容。写进各 Agent 需另行执行同步命令…」 |
+
+写进各 Agent 仍是一次独立动作，经 CLI `--shared-rules-apply [CLIENT...]`
+（备份 → 原子写 → 回读校验），只是**不出现在设置页的按钮里**。
+
+设置页的职责收回到「维护这段内容」；「这个 Agent 有没有」看同 tab 下 Agent
+列表「约束」列的颜色。
+
+### 测试
+
+- 新增断言：卡片里必须有 `shared-rules-save`，**不得有** `shared-rules-apply` /
+  `shared-rules-audit`。卡片说明文字也去掉 apply 字样，否则会被断言误判成按钮。
+- **反向验证**：卡片里加回同步按钮，断言立刻失败。
+- 删除一处与新规则冲突的旧断言（`assertIn('data-action="shared-rules-apply"')`）。
+- 全量 **1724 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
+### 文档
+
+`docs/DESIGN.md` §2.3c-2c 改正；`docs/DESIGN.html` 同步。
+
 ## [v0.40.7] - 2026-11-11
 
 当前发布版本（build 175）。
@@ -3982,7 +4016,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.40.7...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.40.8...HEAD
+[v0.40.8]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.8
 [v0.40.7]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.7
 [v0.40.6]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.6
 [v0.40.5]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.5

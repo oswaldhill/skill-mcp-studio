@@ -3107,8 +3107,10 @@ function renderOverview() {
 //   v0.40.6 找回输入框，但同步行 / 状态一览仍在
 //   v0.40.7 只留红框里的部分：标题 + 约束内容输入框，归位到**设置页 IDE / Agent tab**
 //
-// 同步怎么做：内容保存后用 `--shared-rules-apply` 一步写完（不定制界面），
-// 各 Agent 是否已包含共享内容，看 IDE / Agent 页「约束」列的颜色（绿 = 已含）。
+// v0.40.8 用户定案：「设置里应该只保存，不需要同步」。
+// 设置页只负责**维护这段内容**；写进各 Agent 是一次独立动作，不在设置里做
+// （同步能力仍在 CLI：--shared-rules-apply [CLIENT...]）。
+// 各 Agent 是否已包含共享内容，看本页 Agent 列表「约束」列的颜色（绿 = 已含）。
 function sharedRulesCard() {
   return `<div class="settings-card" id="shared-rules-card">
     <h4>共享约束</h4>
@@ -3121,8 +3123,8 @@ function sharedRulesCard() {
       </div>
     </div>
     <div class="card-link">
-      <div class="grow note">保存后会写进每个 Agent 的约束文件（只替换 shared-rules 标记块，你自己的规则不动；写前自动备份）。</div>
-      <button class="btn-soft" data-action="shared-rules-apply">保存并同步</button>
+      <div class="grow note">这里只保存内容。写进各 Agent 需另行执行同步命令（只替换 shared-rules 标记块，你自己的规则不动；写前自动备份）。</div>
+      <button class="primary" data-action="shared-rules-save">保存</button>
     </div>
   </div>`;
 }
@@ -8561,8 +8563,8 @@ async function saveSharedRules() {
     showBanner("ok", "共享约束已清空（同步功能停用）");
     return;
   }
-  // 「保存并同步」：保存后立刻写进各 Agent，不再要求用户点第二次
-  await applySharedRules("");
+  // v0.40.8：设置页只保存，不再自动同步进各 Agent（同步是独立动作，走 CLI）
+  showBanner("ok", `共享约束已保存（${payload.bytes} B）。写进各 Agent 请运行 --shared-rules-apply`);
 }
 
 function _sharedStateLabel(state) {
@@ -10595,7 +10597,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.40.7", build: 175, build_number: 175, semver_ok: true, full: "v0.40.7 (build 175)" },
+  app: { name: "Skill MCP Studio", version: "0.40.8", build: 176, build_number: 176, semver_ok: true, full: "v0.40.8 (build 176)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",
