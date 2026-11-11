@@ -7,6 +7,73 @@
 
 ## [Unreleased]
 
+## [v0.46.0] - 2026-11-11
+
+当前发布版本（build 193）。
+
+**多约束文件按职责分流，不再把同一份内容塞进每个文件。**
+
+用户：「对于这种有多个约束文件的，是否真的需要多个，还是只需要改一个就可以了？
+修改的方案是什么？优先写到哪个里面？」
+
+### 一、是否真的需要两个：需要，而且职责不同
+
+全仓只有 WorkBuddy 声明了两个用户级约束文件：
+
+| 文件 | 职责 | 本机内容示例 |
+|---|---|---|
+| `~/.workbuddy/SOUL.md` | 人格 / 行为准则（怎么做事） | Core Truths、Boundaries、Memory-Grid 规则 |
+| `~/.workbuddy/USER.md` | 用户档案（我是谁） | 姓名、角色、技术栈、沟通偏好 |
+
+两个都该保留，但**同一份内容不该同时写进两个**——此前就是那样，等于把「怎么做事」
+塞进「我是谁」里。
+
+### 二、方案与优先级
+
+注册表新增 `rules_roles`（与 `rules_paths` 一一对应）：
+
+```python
+rules_roles=[["behavior"], ["profile", "preference"]]
+```
+
+内容逐条分类（优先级 `profile > preference > behavior`），**每类只写一个文件**：
+
+| 类别 | 关键词 | 落到 |
+|---|---|---|
+| `profile` | 我的名字 / 称呼我 / 我是… | `USER.md` |
+| `preference` | 偏好 / 习惯 / 沟通方式 | `USER.md` |
+| `behavior` | 回答 / 必须 / 禁止 / 语气 | `SOUL.md` |
+| 未命中 | — | 不写（避免污染人格文件） |
+
+**优先写哪个**：看这句说的是「怎么做事」（→ SOUL）还是「我是谁」（→ USER）。
+
+### 三、边界处理
+
+- **没有 `rules_roles` 的客户端保持旧行为**（全部路径都写）——不为一个特例改变 13 个客户端的语义。
+- 该文件不接收内容时：若里面有旧块则**清掉**（`state: cleared`），避免残留过期规则。
+- 确认弹框会列出每个文件收什么：`· ~/.workbuddy/SOUL.md（行为准则）`。
+
+### 实测（dry-run）
+
+```
+~/.workbuddy/SOUL.md  → state: absent, changed: true      （写入行为准则）
+~/.workbuddy/USER.md  → state: skip, reason: 该文件职责不接收共享约束
+```
+
+### 测试
+
+- 新增 `MultiFileRoutingTest`（6 项）：类别匹配、行为进 SOUL、档案进 USER、
+  跨文件不重复、无角色声明保持旧行为、WorkBuddy 角色已登记。
+- **反向验证 1 条**：关闭分流立即失败。
+- 断言写失败一次才有效：用「含『中文』」判断会把「称呼我时用中文」误判成行为准则，
+  改为整条比对后才有意义。
+- 全量 **1779 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
+### 文档
+
+`docs/DESIGN.md` §2.3c-2c 补「多个约束文件按职责分流」整节（职责表 + 类别表 + 边界）；
+`DESIGN.html` 同步。
+
 ## [v0.45.3] - 2026-11-11
 
 当前发布版本（build 192）。
@@ -4823,7 +4890,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.45.3...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.46.0...HEAD
+[v0.46.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.46.0
 [v0.45.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.45.3
 [v0.45.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.45.2
 [v0.45.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.45.1

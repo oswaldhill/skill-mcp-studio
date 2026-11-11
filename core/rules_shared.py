@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -342,12 +343,29 @@ def apply_client(client: str, content: Optional[str] = None,
     if not paths:
         return {"ok": False, "reason": f"{tool.get('name')} 没有声明约束文件"}
 
-    block = block_for(body)
+    routed = any(roles_for(tool, i) for i in range(len(paths)))
     results: List[Dict[str, Any]] = []
     for idx, raw in enumerate(paths):
-        state = _path_state(raw, body)
+        # 按文件职责筛选内容（v0.46.0）：没声明角色就沿用旧行为（全部写入）。
+        body_for_path = lines_for_roles(body, roles_for(tool, idx)) if routed else body
+        block = block_for(body_for_path) if (body_for_path or "").strip() else ""
+        state = _path_state(raw, body_for_path)
         if state["state"] in ("dir",):
             results.append(dict(state, ok=False, skipped=True))
+            continue
+        if routed and roles_for(tool, idx) and not block:
+            # 这个文件不接收任何内容 → 若它里面有旧块，清掉，避免残留过期规则。
+            p_clear = Path(os.path.expanduser(raw))
+            existing_clear = _read_text(p_clear) if p_clear.is_file() else None
+            if existing_clear and extract(existing_clear) is not None:
+                cleared = re.sub(re.escape(BEGIN) + r"[\s\S]*?" + re.escape(END) + r"\n?",
+                                 "", existing_clear).rstrip("\n") + "\n"
+                res = write_rules(tool.get("name"), cleared, index=idx, registry=registry)
+                results.append({"path": raw, "state": "cleared", "reason": "该文件职责不接收共享约束，已移除旧块",
+                                "ok": bool(res.get("ok")), "changed": bool(res.get("ok"))})
+            else:
+                results.append({"path": raw, "state": "skip", "reason": "该文件职责不接收共享约束",
+                                "ok": True, "changed": False})
             continue
         if state["state"] == "current":
             results.append(dict(state, ok=True, changed=False))
@@ -357,7 +375,7 @@ def apply_client(client: str, content: Optional[str] = None,
             continue
         p = Path(os.path.expanduser(raw))
         existing = _read_text(p) or ""
-        merged = apply(existing, block, body)
+        merged = apply(existing, block, body_for_path)
         res = write_rules(tool.get("name"), merged, index=idx, registry=registry)
         results.append(dict(state, ok=bool(res.get("ok")), changed=bool(res.get("ok")),
                             backup=res.get("backup", ""), reason=res.get("reason", "")))
@@ -371,3 +389,85 @@ def apply_client(client: str, content: Optional[str] = None,
         "results": results,
         "reason": "" if not failed else f"{len(failed)} 个路径未完成",
     }
+
+# ---------------- 多约束文件：按职责分流（v0.46.0） ----------------
+#
+# 用户：「对于这种有多个约束文件的，是否真的需要多个，还是只需要改一个就可以了？
+#       修改的方案是什么？优先写到哪个里面？」
+#
+# 现实：WorkBuddy 有两个文件，职责完全不同 ——
+#   SOUL.md  人格 / 行为准则（怎么做事）
+#   USER.md  用户档案（我是谁：姓名、角色、技术栈、沟通偏好）
+#
+# 此前把所有内容同时写进两个文件，等于把「怎么做事」塞进「我是谁」里，同一个块
+# 出现两遍，两边各自维护。现在按**内容分类**选文件：
+#
+#   每条共享内容先分类 → 只有包含任一类别的文件才写 → 每类只写进最合适的那一个。
+#
+# 没有声明 `rules_roles` 的客户端保持旧行为（全部路径都写）——不为一个特例改变
+# 所有客户端的语义。角色表放在注册表里，用户可以按需扩充。
+
+#: 内容分类的关键词。命中即归入该类；一条内容可以属于多类，但**只会写进一个文件**。
+CATEGORY_KEYWORDS: Dict[str, List[str]] = {
+    # 用户档案：我是谁
+    "profile": ["我的名字", "我叫", "my name", "调用我", "称呼我", "我是系统架构",
+                "用户偏好", "我的技术栈", "user-profile", "user profile"],
+    # 工作偏好 / 协作方式
+    "preference": ["偏好", "prefer", "习惯", "沟通方式", "communication style"],
+    # 通用行为准则（怎么做事）
+    "behavior": ["必须使用中文", "包括思考过程", "回答", "不要", "禁止", "应该",
+                 "生成", "响应", "语言", "语气", "tone", "style"],
+}
+#: 匹配时的大小写折叠（中文无影响，英文关键词用小写比较）。
+_PROFILE_KEYS = ["profile", "preference", "behavior"]
+
+
+def category_of(line: str) -> Optional[str]:
+    """把一条共享内容归到一个类别。
+
+    优先级：profile > preference > behavior > None。
+    「必须先说我是谁」排在前面，是因为用户档案类内容最容易误归进「行为准则」。
+    """
+    low = (line or "").lower()
+    for cat in ("profile", "preference", "behavior"):
+        for kw in CATEGORY_KEYWORDS[cat]:
+            if kw.lower() in low:
+                return cat
+    return None
+
+
+def lines_for_roles(content: str, roles: List[str]) -> str:
+    """按文件角色筛选共享内容：只保留属于这些角色的条目。"""
+    if not roles:
+        return ""
+    kept = [ln for ln in content_lines(content) if category_of(ln) in roles]
+    return "\n".join(kept) + ("\n" if kept else "")
+
+
+def roles_for(tool: Dict[str, Any], index: int) -> List[str]:
+    """取第 index 个约束路径的角色；没有声明就返回空（= 旧行为，全部写）。"""
+    roles = tool.get("rules_roles") or []
+    if index < len(roles):
+        return list(roles[index] or [])
+    return []
+
+
+def allocation(tool: Dict[str, Any], content: str) -> List[Dict[str, Any]]:
+    """计算「每条内容写进哪个文件」，供界面展示（纯函数，便于单测）。
+
+    返回 [{path, roles, lines, why}]；没有角色声明时 roles 为空、lines 为全部内容。
+    """
+    paths = tool.get("rules_paths") or []
+    out: List[Dict[str, Any]] = []
+    body = content or ""
+    routed = any(roles_for(tool, i) for i in range(len(paths)))
+    for i, raw in enumerate(paths):
+        roles = roles_for(tool, i)
+        if routed:
+            lines = [ln for ln in content_lines(body) if category_of(ln) in roles]
+            why = "按职责分流：" + "、".join(roles) if roles else "该文件不接收共享约束"
+        else:
+            lines = content_lines(body)
+            why = "未声明文件职责，全部写入"
+        out.append({"path": raw, "roles": roles, "lines": lines, "why": why})
+    return out

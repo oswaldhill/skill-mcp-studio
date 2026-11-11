@@ -10507,10 +10507,23 @@ async function fixRulesFor(name) {
       "请先在「设置 → IDE / Agent → 共享约束」填写约束内容并保存，再来写入各客户端。");
     return;
   }
+  // 多文件客户端按职责分流（v0.46.0）：把「哪个文件写什么、哪个跳过」直接列出来，
+  // 否则用户看不出为什么不是每个文件都写。
+  const toolMeta = ((SNAP && SNAP.mainstream_tools) || []).find((t) => t.name === name) || {};
+  const roles = toolMeta.rules_roles || [];
+  const roleName = { behavior: "行为准则", profile: "用户档案", preference: "偏好" };
+  const plan = (roles.length && roles.some((r) => r && r.length))
+    ? paths.map((p, i) => {
+        const r = roles[i] || [];
+        return r.length
+          ? `· ${p}（${r.map((x) => roleName[x] || x).join(" / ")}）`
+          : `· ${p}（不接收共享约束，将跳过）`;
+      }).join("\n")
+    : paths.map((p) => `· ${p}`).join("\n");
   const ok = await confirmModal(
     `写入共享约束到 ${name}`,
     `将把共享约束写入以下文件的 shared-rules 标记块，并替换文件里「意思相同」的旧条目：\n\n`
-      + paths.map((x) => `· ${x}`).join("\n")
+      + plan
       + "\n\n写前自动备份，你自己的其它规则不动。继续？",
     false,
   );
@@ -10885,7 +10898,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.45.3", build: 192, build_number: 192, semver_ok: true, full: "v0.45.3 (build 192)" },
+  app: { name: "Skill MCP Studio", version: "0.46.0", build: 193, build_number: 193, semver_ok: true, full: "v0.46.0 (build 193)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

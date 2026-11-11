@@ -1639,6 +1639,12 @@
         按钮填充，而「写入共享约束」的判定依赖它 → 菜单里永远没有这一项。修法：① <code>loadManagement()</code>
         成功后与 <code>loadRules()</code> 同批拉 <code>auditSharedRules()</code>；② 审计缺失时 <code>needFixRulesFor</code>
         返回 <code>true</code>，与约束格的黄色分支一致。<strong>设计原则：两处 UI 读同一份状态时，缺数据时的默认值必须一致。</strong></p>
+      <p><strong>多个约束文件按职责分流</strong>（v0.46.0）：全仓只有 WorkBuddy 有两个用户级约束文件，
+        且职责完全不同——<code>SOUL.md</code> 是人格/行为准则（怎么做事），<code>USER.md</code> 是用户档案
+        （我是谁）。此前同一份内容同时写进两个文件。现在注册表用 <code>rules_roles</code> 声明每个文件的职责，
+        内容逐条分类（<code>profile</code> / <code>preference</code> / <code>behavior</code>）后**每类只写一个文件**，
+        未命中的类别不写。<strong>没有 <code>rules_roles</code> 的客户端保持旧行为</strong>（全部写入），
+        不为一个特例改变所有客户端语义。确认弹框会列出每个文件收什么。</p>
       <p><strong>CLI 结果结构必须对得上</strong>（v0.45.3）：<code>--shared-rules-apply</code> 返回
         <code>{ok, applied:[{client, ok, changed, results}]}</code>，而 GUI 读了 <code>--shared-rules-audit</code> 的
         <code>rows</code> → 结构取空 → <strong>成功被渲染成失败</strong>。调用方必须按命令名对着各自 schema 解析，

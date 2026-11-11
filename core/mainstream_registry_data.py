@@ -52,6 +52,7 @@ def _entry(
     mcp_format: str = "json",
     mcp_key_path: str = "mcpServers",
     rules_paths: List[str] = None,
+    rules_roles: List[List[str]] = None,
     aliases: List[str] = None,
     by_os: Dict[str, Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
@@ -95,6 +96,10 @@ def _entry(
         entry["mcp_key_path"] = mcp_key_path.split(".") if mcp_key_path else ["mcpServers"]
     if resolved_rules:
         entry["rules_paths"] = list(resolved_rules)
+    # 每个约束文件的职责（v0.46.0）：与 rules_paths 一一对应。
+    # 有值时共享内容按类别分流；没有值时沿用旧行为（全部写入）。
+    if rules_roles:
+        entry["rules_roles"] = [list(r or []) for r in rules_roles]
     if aliases:
         entry["aliases"] = list(aliases)
     return entry
@@ -501,6 +506,10 @@ MAINSTREAM_TOOLS: List[Dict[str, Any]] = [
         skills_path="~/.workbuddy/skills",
         mcp_config_path="~/.workbuddy/mcp.json",
         rules_paths=["~/.workbuddy/SOUL.md", "~/.workbuddy/USER.md"],
+        # 两个文件的职责完全不同（v0.46.0）：SOUL 是人格/行为准则，USER 是用户档案。
+        # 声明角色后，共享内容按类别分流——「怎么做事」进 SOUL，「我是谁」进 USER，
+        # 不再把同一块同时塞进两个文件。
+        rules_roles=[["behavior"], ["profile", "preference"]],
         aliases=["workbuddy"],
         by_os={
             "windows": {

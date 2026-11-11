@@ -302,6 +302,71 @@ class AgentMenuRulesEntryTest(unittest.TestCase):
                          "写完必须重拉约束数据，否则格子颜色不变")
 
 
+class MultiFileRoutingTest(unittest.TestCase):
+    """多个约束文件按职责分流（v0.46.0 用户要求）。
+
+    用户：「对于这种有多个约束文件的，是否真的需要多个，还是只需要改一个就可以了？
+    修改的方案是什么？优先写到哪个里面？」
+
+    WorkBuddy 的两个文件职责完全不同：SOUL.md 是人格/行为准则，USER.md 是用户档案。
+    此前把所有内容同时写进两个文件，等于把「怎么做事」塞进「我是谁」里。
+    """
+
+    TOOL = {
+        "name": "WorkBuddy",
+        "rules_paths": ["~/.workbuddy/SOUL.md", "~/.workbuddy/USER.md"],
+        "rules_roles": [["behavior"], ["profile", "preference"]],
+    }
+    CONTENT = (
+        "所有回答包括思考过程，都必须使用中文\n"
+        "开始或恢复任务时，加载 hermes-continuity\n"
+        "我的名字是 oswaldhill，称呼我时用中文\n"
+    )
+
+    def test_category_matching(self):
+        self.assertEqual(rs.category_of("所有回答都必须使用中文"), "behavior")
+        self.assertEqual(rs.category_of("我的名字是 oswaldhill"), "profile")
+        self.assertEqual(rs.category_of("沟通方式偏好简洁"), "preference")
+        self.assertIsNone(rs.category_of("随便一句话"))
+
+    def test_behavior_goes_to_soul_only(self):
+        reals = rs.allocation(self.TOOL, self.CONTENT)
+        soul = next(a for a in reals if a["path"].endswith("SOUL.md"))
+        user = next(a for a in reals if a["path"].endswith("USER.md"))
+        behavior_line = "所有回答包括思考过程，都必须使用中文"
+        self.assertIn(behavior_line, soul["lines"], "行为准则应进 SOUL")
+        # 不能用「含『中文』」判断：用户档案那行「称呼我时用中文」也含这两个字。
+        self.assertNotIn(behavior_line, user["lines"], "行为准则不得同时写进 USER")
+
+    def test_profile_goes_to_user_only(self):
+        reals = rs.allocation(self.TOOL, self.CONTENT)
+        soul = next(a for a in reals if a["path"].endswith("SOUL.md"))
+        user = next(a for a in reals if a["path"].endswith("USER.md"))
+        self.assertTrue(any("oswaldhill" in ln for ln in user["lines"]), "用户档案应进 USER")
+        self.assertFalse(any("oswaldhill" in ln for ln in soul["lines"]),
+                         "用户档案不得同时写进 SOUL")
+
+    def test_no_duplicate_across_files(self):
+        """同一条内容不得同时出现在两个文件里。"""
+        reals = rs.allocation(self.TOOL, self.CONTENT)
+        seen = []
+        for a in reals:
+            seen.extend(a["lines"])
+        self.assertEqual(len(seen), len(set(seen)), "同一条内容只能归一个文件")
+
+    def test_tool_without_roles_keeps_old_behavior(self):
+        """没声明职责的客户端仍全部写入——不为一个特例改变所有语义。"""
+        plain = {"name": "X", "rules_paths": ["~/a.md", "~/b.md"]}
+        reals = rs.allocation(plain, self.CONTENT)
+        for a in reals:
+            self.assertTrue(len(a["lines"]) > 0, "无角色声明时应写全部内容")
+
+    def test_workbuddy_registered_roles(self):
+        tool = rs.find_tool("WorkBuddy")
+        self.assertEqual(tool.get("rules_roles"), [["behavior"], ["profile", "preference"]],
+                         "WorkBuddy 必须在注册表里声明两文件职责")
+
+
 class SemanticMatchTest(unittest.TestCase):
     """「意思一样即算达标」+「把文件里类似内容替换掉」（v0.43.0 用户要求）。
 
