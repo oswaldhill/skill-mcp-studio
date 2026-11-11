@@ -41,6 +41,50 @@ END = "<!-- shared-rules:end -->"
 _DEFAULT_PATH = "data/shared_rules.md"
 
 
+#: 逐 Agent 的参与开关存在哪。``None`` = 跟随全局（默认参与）。
+_SETTINGS_PATH = "data/shared_rules_settings.json"
+
+
+def settings_path() -> str:
+    return os.path.normpath(
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", _SETTINGS_PATH)
+    )
+
+
+def load_settings() -> Dict[str, bool]:
+    """读逐 Agent 开关：``{客户端名: 是否参与}``。缺失 = 参与（默认开）。"""
+    import json
+
+    try:
+        with open(settings_path(), "r", encoding="utf-8") as fh:
+            raw = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    clients = raw.get("clients") if isinstance(raw, dict) else None
+    if not isinstance(clients, dict):
+        return {}
+    return {str(k): bool(v) for k, v in clients.items()}
+
+
+def set_client_enabled(client: str, enabled: bool) -> Dict[str, Any]:
+    """开 / 关某个 Agent 的参与开关；写盘沿用「临时文件 + os.replace」。"""
+    import json
+
+    if not (client or "").strip():
+        return {"ok": False, "reason": "客户端名为空"}
+    data = {"clients": load_settings()}
+    data["clients"][client] = bool(enabled)
+    path = Path(settings_path())
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        os.replace(tmp, path)
+    except OSError as exc:
+        return {"ok": False, "reason": f"保存失败：{exc}"}
+    return {"ok": True, "client": client, "enabled": bool(enabled)}
+
+
 def content_path() -> str:
     return os.path.normpath(
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", _DEFAULT_PATH)
@@ -116,6 +160,7 @@ def audit(content: Optional[str] = None,
           registry: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """只读检查：每个声明了约束文件的客户端，其各路径与共享块的差异。"""
     body = read_content() if content is None else content
+    flags = load_settings()
     rows: List[Dict[str, Any]] = []
     counts = {"current": 0, "stale": 0, "absent": 0, "missing": 0, "dir": 0, "clients": 0}
     for tool in (registry or MAINSTREAM_TOOLS):
@@ -134,6 +179,9 @@ def audit(content: Optional[str] = None,
             "name": tool.get("name"),
             "type": tool.get("type"),
             "state": worst,
+            # enabled=False 的 Agent 仍列出来（用户要能看到并随时切回来），
+            # 但不计入「待处理」，也不参与「同步到全部」。
+            "enabled": flags.get(tool.get("name"), True),
             "paths": states,
         })
     return {
@@ -172,6 +220,9 @@ def apply_client(client: str, content: Optional[str] = None,
     tool = find_tool(client, registry)
     if not tool:
         return {"ok": False, "reason": f"未知客户端：{client}"}
+    # 未参与的 Agent 不允许被写入：开关的意义就是「这个来源我不管」。
+    if not load_settings().get(tool.get("name"), True):
+        return {"ok": False, "reason": f"{tool.get('name')} 已关闭共享约束同步"}
     paths = tool.get("rules_paths") or []
     if not paths:
         return {"ok": False, "reason": f"{tool.get('name')} 没有声明约束文件"}

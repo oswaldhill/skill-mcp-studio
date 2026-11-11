@@ -7,6 +7,48 @@
 
 ## [Unreleased]
 
+## [v0.40.2] - 2026-11-11
+
+当前发布版本（build 170）。
+
+**共享约束：逐 Agent 开关，职责收敛成「参不参与 / 要不要同步」。**
+
+用户：「这里只是设置是否检查同步以及是否需要同步进入各个 Agent」。
+
+### 上一版的错位
+
+v0.40.1 把每一行的 `[状态标签] [写入]` 并排放，13 个 Agent × 2 个按钮铺满整张
+卡片——看起来像一张待办清单，而不是「设置哪些 Agent 参与」。用户要的是**开关**，
+不是逐条修复按钮。
+
+### 改动
+
+| 项 | 改前 | 改后 |
+|---|---|---|
+| 每行右侧 | `[写入]` 按钮 | 既有 `.switch`（`role="switch"`），语义「参与 / 不参与」 |
+| 关闭的 Agent | 状态标签照常显示待修 | 显示「已关闭」，行弱化（`row.is-off` 只降色阶），**仍列出**可随时切回 |
+| 同步到全部 | 所有非 missing 的 Agent | **跳过已关闭的** |
+| 单行「写入」 | 所有待修的 | 关闭的不渲染 |
+| 摘要 | `13 个客户端` | `12/13 个 Agent 参与 · …` |
+| 路径明细 | 每行内联（撑高） | 收进状态标签的 `title` |
+
+### 规则在数据层，不只在界面
+
+`--shared-rules-toggle CLIENT on|off` 写 `data/shared_rules_settings.json`（gitignore，
+默认参与）。`apply_client` 对关闭的 Agent 直接返回「已关闭共享约束同步」——
+即使有人绕过界面直接调 CLI，也写不进去。
+
+### 测试
+
+- 新增 `ClientToggleTest`（5 项）：默认参与、关闭后审计回报、关闭后拒绝写入、
+  另一个不受影响、设置持久化。
+- **反向验证 2 条**：去掉 apply 里的开关守卫、审计不再回报开关状态，各自让断言失败。
+- 全量 **1723 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
+### 文档
+
+`docs/DESIGN.md` §2.3c-2c 补「逐 Agent 开关」语义表；`docs/DESIGN.html` 同步。
+
 ## [v0.40.1] - 2026-11-11
 
 当前发布版本（build 169）。
@@ -3703,7 +3745,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.40.1...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.40.2...HEAD
+[v0.40.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.2
 [v0.40.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.1
 [v0.40.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.0
 [v0.39.8]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.39.8

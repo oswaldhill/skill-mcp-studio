@@ -127,6 +127,54 @@ class ApplyClientTest(unittest.TestCase):
         self.assertEqual(r["rows"][0]["state"], "stale")
 
 
+class ClientToggleTest(unittest.TestCase):
+    """逐 Agent 参与开关（v0.40.2 用户要求）。
+
+    用户：「这里只是设置是否检查同步以及是否需要同步进入各个 Agent」——
+    卡片职责收敛成两个开关位：参不参与检查、允不允许写进去。
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.settings = Path(self.tmp) / "shared_rules_settings.json"
+        self.file = Path(self.tmp) / "AGENTS.md"
+        self.file.write_text("# mine\n", encoding="utf-8")
+        self.registry = [{"name": "T", "type": "AI Agent", "rules_paths": [str(self.file)]},
+                         {"name": "U", "type": "AI Agent", "rules_paths": [str(self.file)]}]
+        self._patch = __import__("unittest.mock", fromlist=["patch"]).patch.object(
+            rs, "settings_path", lambda: str(self.settings))
+        self._patch.start()
+
+    def tearDown(self):
+        self._patch.stop()
+
+    def test_default_is_enabled(self):
+        self.assertTrue(rs.audit("#x", registry=self.registry)["rows"][0]["enabled"])
+
+    def test_toggle_off_reflected_in_audit(self):
+        rs.set_client_enabled("T", False)
+        rows = {r["name"]: r for r in rs.audit("#x", registry=self.registry)["rows"]}
+        self.assertFalse(rows["T"]["enabled"])
+        self.assertTrue(rows["U"]["enabled"], "只关一个，另一个不受影响")
+
+    def test_disabled_client_refuses_write(self):
+        rs.set_client_enabled("T", False)
+        res = rs.apply_client("T", "# shared\n", registry=self.registry)
+        self.assertFalse(res["ok"])
+        self.assertIn("已关闭", res["reason"])
+        self.assertNotIn("shared-rules", self.file.read_text(encoding="utf-8"),
+                         "关闭的 Agent 不允许被写入")
+
+    def test_enabled_client_still_writes(self):
+        rs.set_client_enabled("T", False)
+        res = rs.apply_client("U", "# shared\n", registry=[self.registry[1]])
+        self.assertTrue(res["ok"])
+
+    def test_settings_file_persists(self):
+        rs.set_client_enabled("T", False)
+        self.assertEqual(rs.load_settings(), {"T": False})
+
+
 class WiringTest(unittest.TestCase):
     def test_cli_and_gui_and_rust(self):
         root = Path(__file__).resolve().parents[1]
@@ -137,7 +185,11 @@ class WiringTest(unittest.TestCase):
         rs_ = (root / "src-tauri/src/lib.rs").read_text(encoding="utf-8")
         for flag in ("--shared-rules-audit", "--shared-rules-set", "--shared-rules-apply"):
             self.assertIn(flag, rs_, f"Rust 白名单缺 {flag}")
+        self.assertIn("--shared-rules-toggle", scan, "CLI 缺逐 Agent 开关")
+        self.assertIn("--shared-rules-toggle", rs_, "Rust 白名单缺逐 Agent 开关")
         gui = (root / "gui/dashboard.html").read_text(encoding="utf-8")
+        self.assertIn('data-action="shared-rules-toggle"', gui, "GUI 缺逐 Agent 开关")
+        self.assertIn('role="switch"', gui, "开关必须用既有 .switch 控件")
         self.assertIn("function auditSharedRules()", gui, "GUI 缺检查同步状态")
         self.assertIn("function applySharedRules(client)", gui, "GUI 缺强制写入")
         self.assertIn('data-action="shared-rules-apply"', gui)

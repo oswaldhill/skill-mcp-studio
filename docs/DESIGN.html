@@ -1564,11 +1564,12 @@
       <pre><code>┌ 共享约束 ─────────────────────────────────────────────────────────────┐
 │ 约束内容   [ textarea（等宽 --mono / --fs-xs，max-width 44rem，可纵拉）] │
 │ ───────────────────────────────────────────────────────────────────── │
-│ 同步状态   13 个客户端 · 已同步 4 · 过期 1 · 未包含 2 · 缺文件 6  [检查][同步][保存] │
+│ 同步状态   12/13 个 Agent 参与 · 已同步 4 · 过期 1 · 未包含 2 · 缺文件 6  [检查][同步][保存] │
 │ ───────────────────────────────────────────────────────────────────── │
 │ note：只替换标记块，文件里你自己的规则不会被修改；写前自动备份            │
-│ Codex        [已同步]                                                   │
-│ Claude Code  [内容过期]                                    [写入]       │
+│ Codex        [已同步]                                          [开关]  │
+│ Claude Code  [内容过期]                                  [写入] [开关]  │
+│ VS Code      [已关闭]                                          [开关]  │
 └────────────────────────────────────────────────────────────────────────┘</code></pre>
       <ul>
         <li><strong>正文行用 <code>.row.row-block</code></strong>（label 顶对齐、控件撑满值列）——设置页既有的「多行内容」行型。</li>
@@ -1581,6 +1582,21 @@
           状态行 <code>.k</code> 定宽 150px、右侧按钮 <code>margin-left: auto</code>，让「写入」竖着成一条线。</li>
         <li><strong>上一版为什么丑</strong>：label 放在 textarea 下方、写成两行说明 + 两个角落按钮，
           完全没走 <code>.row</code> 结构，等于在设置页里嵌了一个异类表单。</li>
+      </ul>
+      <p><strong>逐 Agent 开关</strong>（v0.40.2）：「这里只是设置是否检查同步以及是否需要同步进入各个 Agent」。
+        每行右侧一枚既有 <code>.switch</code>（<code>role="switch"</code>，与技能详情的启停开关同一控件）。</p>
+      <table>
+        <thead><tr><th>开关</th><th>检查</th><th>同步到全部</th><th>单行「写入」</th></tr></thead>
+        <tbody>
+          <tr><td>开（默认）</td><td>计入待处理</td><td>会被写入</td><td>可用</td></tr>
+          <tr><td>关</td><td>仍列出但显示「已关闭」</td><td><strong>跳过</strong></td><td>不渲染</td></tr>
+        </tbody>
+      </table>
+      <ul>
+        <li>关闭是<strong>弱化</strong>不是隐藏：行还在，随时能切回来；<code>row.is-off</code> 只降色阶，<strong>不引入新颜色</strong>。</li>
+        <li>关闭状态存 <code>data/shared_rules_settings.json</code>（gitignore），默认参与。</li>
+        <li>后端也拒绝写未参与的 Agent（<code>apply_client</code> 返回「已关闭共享约束同步」）——界面只是入口，规则在数据层。</li>
+        <li><strong>路径明细收进 title</strong>：这一段的职责是「谁参与、要不要同步」，不是逐条列 13 个 Agent 缺哪个文件。</li>
       </ul>
     </section>
 

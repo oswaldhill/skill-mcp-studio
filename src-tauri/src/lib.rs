@@ -638,6 +638,7 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
         "--shared-rules-get",
         "--shared-rules-set",
         "--shared-rules-apply",
+        "--shared-rules-toggle",
         "--read-rules",
         "--write-rules",
         "--rules-file",

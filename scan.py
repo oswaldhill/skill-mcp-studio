@@ -879,6 +879,15 @@ def _run_shared_rules(args) -> int:
 
     as_json = str(getattr(args, "format", "text") or "text").lower() == "json"
 
+    if getattr(args, "shared_rules_toggle", None):
+        client, flag = args.shared_rules_toggle
+        enabled = str(flag).lower() in ("on", "true", "1", "yes")
+        res = rules_shared.set_client_enabled(client, enabled)
+        print(json.dumps(res, ensure_ascii=False) if as_json
+              else (f"✅ {client}：{'参与' if enabled else '不参与'}共享约束同步"
+                    if res.get("ok") else f"❌ {res.get('reason')}"))
+        return 0 if res.get("ok") else 2
+
     if getattr(args, "shared_rules_get", False):
         body = rules_shared.read_content()
         payload = {"ok": True, "content": body,
@@ -914,7 +923,8 @@ def _run_shared_rules(args) -> int:
               f"缺失 {s_['absent']} · 文件不存在 {s_['missing']} · 目录跳过 {s_['dir']}")
         for row in payload["rows"]:
             mark = {"current": "✅", "stale": "🟡", "absent": "⬜", "missing": "⬜", "dir": "➖"}.get(row["state"], "?")
-            print(f"    {mark} {row['name']:<20} {row['state']}")
+            off = "" if row.get("enabled", True) else "  （已关闭同步）"
+            print(f"    {mark} {row['name']:<20} {row['state']}{off}")
         return 0
 
     targets = getattr(args, "shared_rules_apply", None)
@@ -929,7 +939,7 @@ def _run_shared_rules(args) -> int:
     else:
         # 不指定客户端 = 所有「已有约束文件」的客户端（文件不存在的由用户显式点名再建）
         names = [row["name"] for row in rules_shared.audit(body)["rows"]
-                 if row["state"] != "missing"]
+                 if row["state"] != "missing" and row.get("enabled", True)]
     results = [rules_shared.apply_client(n, body, dry_run=bool(getattr(args, "dry_run", False)))
                for n in names]
     ok = all(r.get("ok") for r in results)
@@ -3230,6 +3240,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="保存共享约束内容（空串 = 清空，等于停用）",
     )
     parser.add_argument(
+        "--shared-rules-toggle", nargs=2, metavar=("CLIENT", "on|off"),
+        help="开 / 关某个 Agent 的共享约束参与开关（关掉的 Agent 不参与检查与同步）",
+    )
+    parser.add_argument(
         "--shared-rules-apply", nargs="*", default=None, metavar="CLIENT",
         help="把共享约束块同步进指定客户端（不指定 = 所有已配置的客户端）；"
              "只替换/插入标记块，块外内容逐字节不动；写前自动备份",
@@ -3834,7 +3848,8 @@ def main() -> int:
     if (getattr(args, "shared_rules_audit", False)
             or getattr(args, "shared_rules_get", False)
             or getattr(args, "shared_rules_set", None) is not None
-            or getattr(args, "shared_rules_apply", None) is not None):
+            or getattr(args, "shared_rules_apply", None) is not None
+            or getattr(args, "shared_rules_toggle", None)):
         return _run_shared_rules(args)
     if (getattr(args, "set_tool_path", None)
             or getattr(args, "reset_tool_path", None)
