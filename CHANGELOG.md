@@ -7,6 +7,56 @@
 
 ## [Unreleased]
 
+## [v0.43.2] - 2026-11-11
+
+当前发布版本（build 182）。
+
+**主表补上贯通整列的竖线 + 操作列改中心对齐。**
+
+用户第三轮：「好像还是没有对齐，中间的线还是断的。操作的这个标题栏和下面的内容
+操作按钮没有居中对齐」。
+
+### 一、竖线是断的：根因是根本没有竖线
+
+前两轮我一直在调「列宽对齐」，但**主表从来没有列分隔线**——只有横线，靠列宽对齐
+"看起来"像分隔。表头与表体之间也没有一条连续的竖线。
+
+修复：
+
+| 项 | 改前 | 改后 |
+|---|---|---|
+| 表格布局 | `border-collapse: collapse` | `separate` + `border-spacing: 0` |
+| 列分隔 | 无 | 每个单元格 `:not(:last-child)::after` 画 `absolute; top:0; bottom:0; width:1px` |
+| 表头背景 | 无（穿线会露白） | `background: var(--bg-elev)` |
+| 末行底边 | 有（与容器边框重线） | 去掉 |
+
+> 为什么不用 `border-right`：`collapse` 会合边、伪元素被裁；单独加右边框，表头与
+> 表体之间仍被横向 border 断开。
+
+### 二、操作列：右对齐 → 中心对齐
+
+v0.43.1 用的是右对齐（表头文字右缘 = 按钮右缘）。但两者**盒子宽度不同**，视觉中心
+相差 **19px**，所以两轮都被读成「没有居中对齐」。
+
+改为 `text-align: center` + `.al-ops { justify-content: center }`。
+
+### 三、一个测试正则的缺陷
+
+`test_td_overflow_hidden_for_fixed_layout` 用的 `\.agent-list-table td\s*\{` 会先匹配到
+`td:nth-child(10)` 那条（`\s*` 允许零宽）——它一直在检查错误的规则。新增
+`th, td { position: relative }` 多选择器规则后彻底暴露。修正为**行首锚定**的
+`^\s*\.agent-list-table td\s*\{`。
+
+### 测试
+
+- 新增 `ListVerticalRulesTest`（3 项）：竖线伪元素、collapse 已禁用、表头有背景。
+- **反向验证 2 条**：去掉竖线伪元素、collapse 改回，各自失败。
+- 全量 **1744 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
+### 文档
+
+`docs/DESIGN.md` §2.3d-2 补「列间竖线必须贯通」与「操作列中心对齐」；`DESIGN.html` 同步。
+
 ## [v0.43.1] - 2026-11-11
 
 当前发布版本（build 181）。
@@ -4247,7 +4297,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.43.1...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.43.2...HEAD
+[v0.43.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.43.2
 [v0.43.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.43.1
 [v0.43.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.43.0
 [v0.42.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.42.0

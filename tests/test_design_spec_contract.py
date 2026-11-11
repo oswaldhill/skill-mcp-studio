@@ -1303,6 +1303,36 @@ class NoToastTest(unittest.TestCase):
         self.assertIn("modal cfm-card", body, "通知必须是 .cfm-card 弹框家族")
 
 
+class ListVerticalRulesTest(unittest.TestCase):
+    """主表必须有贯通整列的竖线（v0.43.2）。
+
+    用户两轮反馈「中间的线还是断的」。原来表格只有横线 + `border-collapse: collapse`，
+    列与列之间靠宽度对齐"看起来"像分隔；表头与表体之间没有一条连续的竖线。
+    """
+
+    def test_cells_draw_vertical_rule(self):
+        css = _css()
+        self.assertRegex(css, r"\.agent-list-table th:not\(:last-child\)::after",
+                         "单元格必须用 ::after 画竖线")
+        m = re.search(r"\.agent-list-table td:not\(:last-child\)::after\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(m, "缺少 td 竖线规则")
+        for prop in ("position: absolute", "top: 0", "bottom: 0", "width: 1px"):
+            self.assertIn(prop, m.group(1), f"竖线规则缺 {prop}")
+
+    def test_collapse_disabled(self):
+        """`border-collapse: collapse` 下伪元素会被合边裁掉，必须改 separate。"""
+        css = _css()
+        m = re.search(r"\.agent-list-table \{([^}]*)\}", css)
+        self.assertIsNotNone(m)
+        self.assertIn("border-collapse: separate", m.group(1))
+        self.assertIn("border-spacing: 0", m.group(1))
+
+    def test_header_has_background(self):
+        """separate 布局下表头背景需要显式给，否则竖线穿过表头时露白。"""
+        css = _css()
+        self.assertRegex(css, r"\.agent-list-table thead th \{[^}]*background")
+
+
 class OperationColumnAxisTest(unittest.TestCase):
     """操作列：表头与按钮必须同轴，且分隔线不被光晕糊住（v0.43.1）。
 
@@ -1313,10 +1343,13 @@ class OperationColumnAxisTest(unittest.TestCase):
     """
 
     def test_th_alignment_beats_main_rule(self):
+        """操作列表头必须与按钮**中心对齐**且压过 th 主规则（v0.43.2）。"""
         css = _css()
-        m = re.search(r"\.agent-list-table thead th:nth-child\(10\)\s*\{([^}]*)\}", css)
+        m = re.search(r"\.agent-list-table thead th:nth-child\(10\)[^{]*\{([^}]*)\}", css)
         self.assertIsNotNone(m, "操作列表头必须用 thead 层级提高特异性（否则被 th 主规则覆盖）")
-        self.assertIn("text-align: right", m.group(1))
+        self.assertIn("text-align: center", m.group(1),
+                      "表头与按钮须中心对齐（右对齐时视觉中心差 19px）")
+        self.assertRegex(css, r"\.al-ops\s*\{[^}]*justify-content: center")
 
     def test_ops_cell_overflow_visible(self):
         css = _css()
@@ -1560,12 +1593,25 @@ class ColumnWidthGovernanceTest(unittest.TestCase):
                                      f"第 {col} 列宽度 {m.group(1)}px 过大，会挤压状态列")
 
     def test_td_overflow_hidden_for_fixed_layout(self):
-        """fixed 布局下 td 必须 overflow: hidden，否则超长内容会溢出到相邻列。"""
+        """fixed 布局下 td 必须 overflow: hidden，否则超长内容会溢出到相邻列。
+
+        v0.43.1 例外：操作列显式改为 visible（按钮 hover 光晕需要不被裁切），
+        主规则仍保持 hidden 作为其它列的兜底。
+        """
         css = _css()
-        m = re.search(r"\.agent-list-table td\s*\{([^}]*)\}", css)
-        self.assertIsNotNone(m, "未找到 .agent-list-table td 规则")
+        # 注意：`\.agent-list-table td\s*\{` 会先匹配到
+        # `.agent-list-table td:nth-child(10)` 那条（`td` 后面直接是 `:`，\s* 允许零宽）。
+        # 必须锚定「td 后面紧跟空格或右括号」，否则拿到的是操作列的覆盖规则。
+        # 必须用 `[^{]*` 跳过 `, .agent-list-table td` 这种多选择器：
+        # 第 1 行「竖线贯通」规则写的是 `.agent-list-table th, .agent-list-table td {`，
+        # 单选择器正则会把它的声明当成 td 主规则（实测踩到）。
+        m = re.search(r"^\s*\.agent-list-table td\s*\{([^}]*)\}", css, re.M)
+        self.assertIsNotNone(m, "未找到独立的 .agent-list-table td 主规则")
         self.assertIn("overflow: hidden", m.group(1),
                       "fixed 布局下 td 必须 overflow: hidden 兜底裁切")
+        op = re.search(r"\.agent-list-table td:nth-child\(10\)\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(op, "操作列应有独立的 overflow 覆盖")
+        self.assertIn("overflow: visible", op.group(1), "操作列不得裁切 hover 光晕")
 
     def test_al_scope_is_deboxed(self):
         """`.al-scope`（分层作用域档数注记）必须去盒化：无 border、无 padding、无 background。

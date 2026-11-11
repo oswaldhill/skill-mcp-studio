@@ -1027,6 +1027,21 @@ HTML 里写死的 `0` 上 —— 其余三项启动即有数字，唯独它显�
 | MCP 空态 | 「不支持」两字 | 与约束一致的 `—`（`.tag.tag-none`） |
 | 进详情 | 只能点右上角「详情」按钮 | **整行可点**（`tr[data-row-open]`，含键盘 Enter/Space）；按钮降级为提示 |
 
+**列间竖线必须贯通**（v0.43.2）：主表**没有**列分隔线，全靠宽度对齐"看起来"像
+分隔；表头与表体之间也没有连续竖线，用户两轮反馈「中间的线还是断的」。
+
+做法：`border-collapse: separate` + `border-spacing: 0`，每个单元格用
+`:not(:last-child)::after` 画一条 `position: absolute; top: 0; bottom: 0; width: 1px`
+的竖线（`right: -0.5px` 让 1px 线骑在列边界上）。表头补 `background: var(--bg-elev)`
+（separate 布局下不显式给会被竖线穿出白缝），最后一行去掉 `border-bottom` 避免与容器边框重线。
+
+> 为什么不用 `border-right`：`border-collapse: collapse` 下相邻单元格会合边，伪元素
+> 会被裁掉；而单独给每个 `th`/`td` 加右边框，表头与表体之间仍会被横向 border 断开。
+
+**操作列表头与按钮中心对齐**（v0.43.2）：v0.43.1 用的是右对齐（让表头文字右缘 =
+按钮右缘），但两者盒子宽度不同，**视觉中心相差 19px**，用户两轮都读成「没有居中
+对齐」。改为 `text-align: center` + `.al-ops { justify-content: center }`。
+
 **`table-layout: fixed` 的隐藏行为**（v0.43.1）：所有列的 `width` 合计小于表格宽时，
 浏览器会**按比例放大每一列**，用户写的 px 变成比例而非定值（实测 10 列合计 958px、
 容器 1061px → 名称 220 被放到 243.6、操作 128 被放到 141.8）。必须留一列

@@ -1534,6 +1534,13 @@
           <tr><td>进详情</td><td>只能点右上角「详情」按钮</td><td><strong>整行可点</strong>（<code>tr[data-row-open]</code>，含键盘 Enter/Space）；按钮降级为提示</td></tr>
         </tbody>
       </table>
+      <p><strong>列间竖线必须贯通</strong>（v0.43.2）：主表原先没有列分隔线，全靠宽度对齐「看起来」像分隔；
+        表头与表体之间也没有连续竖线。做法：<code>border-collapse: separate</code> + <code>border-spacing: 0</code>，
+        每个单元格用 <code>:not(:last-child)::after</code> 画 <code>absolute; top:0; bottom:0; width:1px</code> 的竖线
+        （<code>right: -0.5px</code> 骑在列边界上），表头补 <code>background</code>，最后一行去掉底边框。
+        不用 <code>border-right</code> 是因为 <code>collapse</code> 会合边、伪元素被裁。</p>
+      <p><strong>操作列表头与按钮中心对齐</strong>（v0.43.2）：v0.43.1 用右对齐，但两者盒子宽度不同，
+        <strong>视觉中心相差 19px</strong>。改为 <code>text-align: center</code> + <code>.al-ops { justify-content: center }</code>。</p>
       <p><strong><code>table-layout: fixed</code> 的隐藏行为</strong>（v0.43.1）：所有列宽度合计小于表格宽时，
         浏览器会<strong>按比例放大每一列</strong>，px 变成比例而非定值（实测合计 958 / 容器 1061 →
         名称 220→243.6、操作 128→141.8）。必须留一列 <code>width: auto</code> 吸收剩余。</p>

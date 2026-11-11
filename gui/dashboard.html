@@ -1196,7 +1196,19 @@
   .agent-list-wrap { margin-top: var(--sp-6); }
   .agent-list-count { font-size: var(--fs-xs); color: var(--muted); margin-bottom: var(--sp-3); }
   /* table-layout: fixed —— 列宽治理（2026-10-14），理由与定宽数值见下方「紧列定宽」注释块。 */
-  .agent-list-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); table-layout: fixed; }
+  /* v0.43.2：改 border-spacing:0 + border-collapse:separate。
+     为什么：用户多轮反馈「中间的线是断的」——表头与表体之间、行与行之间没有一条
+     贯通整列的竖线。原来只有横线，靠列宽对齐"看起来"像分隔。
+     现在每个单元格用 ::after 画一条 1px 竖线，从表头顶一直连到最后一行。 */
+  .agent-list-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: var(--fs-sm); table-layout: fixed; }
+  .agent-list-table th, .agent-list-table td { position: relative; }
+  .agent-list-table th:not(:last-child)::after,
+  .agent-list-table td:not(:last-child)::after {
+    content: ""; position: absolute; top: 0; bottom: 0; right: -0.5px; width: 1px;
+    background: var(--line); pointer-events: none;
+  }
+  .agent-list-table thead th { background: var(--bg-elev); }
+  .agent-list-table tbody tr:last-child td { border-bottom: none; }
   .agent-list-table th {
     text-align: left; font-size: var(--fs-2xs); text-transform: uppercase; letter-spacing: .06em;
     color: var(--faint); font-weight: 600; padding: var(--sp-3a) var(--sp-4); border-bottom: 1px solid var(--line-strong);
@@ -1248,8 +1260,11 @@
      现在两边都以单元格内容盒的右缘为准，轴线一致。 */
   /* 特异性要压过 `.agent-list-table th { text-align: left }`（同为 0,1,1，后者定义在前，
      但 `th` 主规则在文件更下方 → 实测覆盖了本规则）。提到 thead 层级确保生效。 */
-  .agent-list-table thead th:nth-child(10) { text-align: right; padding-right: var(--sp-4); }
-  .agent-list-table td:nth-child(10) { padding-right: var(--sp-4); }
+  /* 操作列：表头与按钮**中心对齐**（v0.43.2）。此前右对齐，表头文字右缘与按钮右缘
+     虽然重合，但两者宽度不同 → 视觉中心相差 19px，用户两轮都读成「没有居中对齐」。 */
+  .agent-list-table thead th:nth-child(10),
+  .agent-list-table td:nth-child(10) { text-align: center; }
+  .al-ops { justify-content: center; }
   .agent-list-table th:nth-child(3),
   .agent-list-table th:nth-child(7),
   .agent-list-table th:nth-child(8),
@@ -10682,7 +10697,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.43.1", build: 181, build_number: 181, semver_ok: true, full: "v0.43.1 (build 181)" },
+  app: { name: "Skill MCP Studio", version: "0.43.2", build: 182, build_number: 182, semver_ok: true, full: "v0.43.2 (build 182)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",
