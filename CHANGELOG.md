@@ -7,6 +7,71 @@
 
 ## [Unreleased]
 
+## [v0.40.0] - 2026-11-11
+
+当前发布版本（build 168）。
+
+**新功能：共享约束——一段内容同步进所有 Agent 的约束文件。**
+
+用户需求：「可以配置一个需要在所有 Agent 中增加的约束内容，然后可以通过同步管理
+（和 skill 一样），检查每一个 Agent 是否都拥有这个约束内容；如果没有，可以点击
+强制更新进去」。
+
+### 一、数据模型：标记块，不是整体覆盖
+
+内容存 `data/shared_rules.md`（gitignore），写进各文件时用一对标记包住：
+
+```markdown
+<!-- shared-rules:begin v1 -->
+（用户配置的内容）
+<!-- shared-rules:end -->
+```
+
+**为什么不整体覆盖文件**：约束文件里还有用户自己的规则（本机 `~/.codex/AGENTS.md`
+就有 2150 B 自己的内容），整体覆盖会把它们全部冲掉。标记让写入变成幂等的
+「替换这一段 / 追加这一段」，**块外内容逐字节不动**。
+
+### 二、四种状态 + 一键强制写入
+
+| 状态 | 含义 | 可修 |
+|---|---|---|
+| `current` | 块存在且内容一致 | 不需要 |
+| `stale` | 块存在但内容变了 | ✅「写入」 |
+| `absent` | 文件存在但没有块 | ✅「写入」 |
+| `missing` | 文件不存在 | ✅「新建并写入」 |
+| `dir` | 规则目录（Cline / TRAE） | ➖ 跳过 |
+
+客户端整体状态取「最需要处理」的那一个：`missing > absent > stale > dir > current`。
+
+### 三、入口
+
+| 入口 | 用法 |
+|---|---|
+| 设置页 IDE / Agent tab 顶部 | 「共享约束」卡片：textarea 编辑 → 保存内容 → 检查同步状态 → 逐行「写入」/「同步到全部」 |
+| CLI | `--shared-rules-get` / `--shared-rules-set TEXT` / `--shared-rules-audit` / `--shared-rules-apply [CLIENT...]` |
+
+### 设计取舍
+
+- 按钮全用既有 `.ghost` / `.primary` / `.btn-soft sm` 家族，**没有新造按钮样式**；
+- 状态用既有 `.tag ok/warn` 档位，**没有新增颜色**；
+- 只给「可以修」的行渲染按钮，已同步与目录跳过不渲染——不留死路。
+
+### 安全形状
+
+`--shared-rules-apply` 逐客户端、逐路径执行，写前经 `write_rules` 的
+「备份 → 原子写 → 回读校验」；部分失败如实回报每个客户端的失败原因，不合并成总数。
+
+### 测试
+
+- 新增 `tests/test_rules_shared.py`（19 项）：标记块往返、幂等、块后内容保留、
+  四种路径状态、apply 的新建 / 保留用户内容 / dry-run / 空内容拒绝、CLI+GUI+Rust 接线。
+- **反向验证 2 条**：替换时吃掉块后内容、追加时冲掉原内容，各自让断言失败。
+- 全量 **1716 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
+### 文档
+
+`docs/DESIGN.md` 新增 §2.3c-2c；`docs/DESIGN.html` 同步。
+
 ## [v0.39.8] - 2026-11-10
 
 当前发布版本（build 167）。
@@ -3590,7 +3655,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.39.8...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.40.0...HEAD
+[v0.40.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.0
 [v0.39.8]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.39.8
 [v0.39.7]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.39.7
 [v0.39.6]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.39.6

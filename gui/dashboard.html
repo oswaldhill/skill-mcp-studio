@@ -2345,6 +2345,7 @@ let SNAP = null;
 let GIT_SOURCES = { loading: false, items: [], summary: null, error: "", adoptTried: false, autoAdopted: null, adoptError: "" };
 // 约束文件数据（v0.37.9）：主表的「约束」列与设置页逐 Agent 行共用。
 let RULES_DATA = null;
+let SHARED_RULES = null;
 let RULES_ERROR = "";
 // 端点连通性结果 —— **独立于审计快照 SNAP**。
 // 审计只判配置（不探活），端点通断只由用户手动点「检查端点连通性」触发，
@@ -5687,6 +5688,25 @@ function renderSettings() {
   </div>`;
 
   // 「IDE / Agent」：内置注册表清单（数据来自内置数据库），支持卡片/列表视图
+  // 共享约束（v0.40.0 用户需求）：一段内容同步进所有 Agent 的约束文件。
+  // 内容存 data/shared_rules.md，写进各文件时用标记块包住，只替换块内、块外不动。
+  const sharedCard = `<div class="settings-card" id="shared-rules-card">
+    <h4>共享约束</h4>
+    <div class="card-link"><div class="grow note">一段内容同步进所有 Agent 的约束文件。只替换标记块，文件里你自己的规则不会被动。</div>
+      <button class="ghost" data-action="shared-rules-audit">检查同步状态</button>
+      <button class="primary" data-action="shared-rules-apply">同步到全部</button>
+    </div>
+    <div class="form-field" style="margin-top:var(--sp-4)">
+      <label for="shared-rules-text">约束内容</label>
+      <textarea id="shared-rules-text" rows="6" spellcheck="false"
+        placeholder="例如：- 所有回答使用简体中文&#10;- 提交前必须跑全量测试"></textarea>
+    </div>
+    <div class="card-link"><div class="grow note" id="shared-rules-hint">保存后点「检查同步状态」看各 Agent 是否都已包含。</div>
+      <button class="ghost" data-action="shared-rules-save">保存内容</button>
+    </div>
+    <div id="shared-rules-status" style="margin-top:var(--sp-4)"></div>
+  </div>`;
+
   const agentsCard = `<div class="settings-card">
     <h4>IDE / Agent 默认路径</h4>
     <div class="card-link"><div class="grow note">内置注册表已收录主流 IDE / Agent 的默认 APP / CLI / CONFIG 路径；点「详情」可编辑。</div>
@@ -5750,12 +5770,17 @@ function renderSettings() {
   el.innerHTML =
     `<div class="settings-tab-panel" data-panel="appearance">${appearanceCard}${patrolCard}${configPortCard}${_aboutCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="general">${gitSourcesCard}${usageCard}${marketSourcesCard}${backupCard}${githubTokenCard}${webdavCard}</div>` +
-    `<div class="settings-tab-panel hidden" data-panel="agents">${agentsCard}</div>` +
+    `<div class="settings-tab-panel hidden" data-panel="agents">${sharedCard}${agentsCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="mcp">${mcpCard}</div>`;
 
   el.querySelectorAll("[data-theme-btn]").forEach((b) => {
     b.addEventListener("click", () => applyTheme(b.dataset.themeBtn, true));
   });
+  if ($("shared-rules-text")) {
+    const box = $("shared-rules-text");
+    box.addEventListener("input", () => { box.dataset.dirty = "1"; });
+    loadSharedRules();
+  }
   applyTheme(currentThemeMode(), false);
   el.querySelectorAll("[data-scale-btn]").forEach((b) => {
     b.addEventListener("click", () => applyScale(parseFloat(b.dataset.scaleBtn), true));
@@ -8416,6 +8441,89 @@ function renderEndpointStatus() {
 // 之前完全没有入口（用户：「这个功能是否缺失了」）——确实是缺失。
 // 弹框只编辑**路径类字段**，保存时逐字段调 --set-tool-path / --reset-tool-path，
 // 清空某个字段 = 恢复内置默认值。
+// ---------------- 共享约束（v0.40.0） ----------------
+// 三个动作：保存内容 / 检查同步 / 同步到全部。
+// 检查是只读的（--shared-rules-audit），同步才写文件，且逐 Agent 独立成败。
+async function loadSharedRules() {
+  const res = await runCli(["--shared-rules-get", "--format", "json"]);
+  let payload = null;
+  try { payload = JSON.parse(stripAnsi((res && res.stdout) || "{}")); } catch (e) { payload = null; }
+  SHARED_RULES = payload && payload.ok ? payload : null;
+  const box = $("shared-rules-text");
+  if (box && !box.dataset.dirty) box.value = (SHARED_RULES && SHARED_RULES.content) || "";
+}
+
+async function saveSharedRules() {
+  const box = $("shared-rules-text");
+  const text = ((box && box.value) || "").replace(/\s+$/, "");
+  const res = await runCli(["--shared-rules-set", text, "--format", "json"]);
+  let payload = null;
+  try { payload = JSON.parse(stripAnsi((res && res.stdout) || "{}")); } catch (e) { payload = null; }
+  if (!payload || !payload.ok) {
+    showBanner("err", "保存共享约束失败：" + ((payload && payload.reason) || cliErrDetail(res)));
+    return;
+  }
+  if (box) box.dataset.dirty = "";
+  showBanner("ok", text ? `共享约束已保存（${payload.bytes} B）` : "共享约束已清空（同步功能停用）");
+  await auditSharedRules();
+}
+
+function _sharedStateLabel(state) {
+  return {
+    current: ["ok", "已同步"],
+    stale: ["warn", "内容过期"],
+    absent: ["", "未包含"],
+    missing: ["", "文件不存在"],
+    dir: ["", "目录跳过"],
+  }[state] || ["", state || "未知"];
+}
+
+async function auditSharedRules() {
+  const res = await runCli(["--shared-rules-audit", "--format", "json"]);
+  let payload = null;
+  try { payload = JSON.parse(stripAnsi((res && res.stdout) || "{}")); } catch (e) { payload = null; }
+  const host = $("shared-rules-status");
+  if (!host) return;
+  if (!payload || !payload.ok) {
+    host.innerHTML = `<div class="empty">检查失败：${escapeHtml(cliErrDetail(res))}</div>`;
+    return;
+  }
+  const sum = payload.summary || {};
+  const rows = (payload.rows || []).map((row) => {
+    const [cls, label] = _sharedStateLabel(row.state);
+    // 只给「可以修」的行按钮：目录跳过的没什么可做，已同步的不需要。
+    const canFix = row.state === "stale" || row.state === "absent" || row.state === "missing";
+    const btn = canFix
+      ? `<button class="btn-soft sm" data-action="shared-rules-apply" data-client="${escapeHtml(row.name)}">${row.state === "missing" ? "新建并写入" : "写入"}</button>`
+      : "";
+    const tip = (row.paths || []).map((x) => `${x.path}${x.reason ? "（" + x.reason + "）" : ""}`).join("；");
+    return `<div class="row"><span class="k">${escapeHtml(row.name)}</span>
+      <span class="v"><span class="tag ${cls}" title="${escapeHtml(tip)}">${label}</span>${btn}</span></div>`;
+  }).join("");
+  host.innerHTML = `<div class="note" style="margin-bottom:var(--sp-3)">${sum.clients || 0} 个客户端：已同步 ${sum.current || 0} · 内容过期 ${sum.stale || 0} · 未包含 ${sum.absent || 0} · 文件不存在 ${sum.missing || 0}${sum.dir ? ` · 目录跳过 ${sum.dir}` : ""}</div>
+    <div class="rows">${rows || '<div class="row"><span class="v note">没有声明约束文件的客户端</span></div>'}</div>`;
+}
+
+async function applySharedRules(client) {
+  const args = ["--shared-rules-apply"];
+  if (client) args.push(client);
+  args.push("--format", "json");
+  const label = client || "全部 Agent";
+  await runTaskModal(`同步共享约束到 ${label}`, async () => {
+    const res = await runCli(args);
+    let payload = null;
+    try { payload = JSON.parse(stripAnsi((res && res.stdout) || "{}")); } catch (e) { payload = null; }
+    if (!payload) return { ok: false, message: "工具未能执行", detail: cliErrDetail(res) };
+    if (!payload.ok) {
+      const failed = (payload.applied || []).filter((r) => !r.ok)
+        .map((r) => `- ${r.client}：${r.reason || "写入失败"}`).join("\n");
+      return { ok: false, message: "部分客户端未完成", detail: failed || "未知原因" };
+    }
+    const changed = (payload.applied || []).reduce((n, r) => n + (r.changed || 0), 0);
+    return { ok: true, message: `${(payload.applied || []).length} 个客户端已处理（${changed} 处更新）` };
+  }, () => auditSharedRules());
+}
+
 function openToolPathEditor(name) {
   const a = (SNAP && SNAP.mainstream_tools || []).find((x) => x.name === name);
   if (!a) { modalNotice("err", "未找到客户端", name); return; }
@@ -9748,6 +9856,9 @@ document.addEventListener("click", (e) => {
     else if (a === "refresh-rules") loadRules();
     else if (a === "view-rules") openRulesModal(act.dataset.client, parseInt(act.dataset.index || "0", 10));
     else if (a === "list-rules") togglePathPop(act, "rules");
+    else if (a === "shared-rules-save") saveSharedRules();
+    else if (a === "shared-rules-audit") auditSharedRules();
+    else if (a === "shared-rules-apply") applySharedRules(act.dataset.client || "");
     else if (a === "git-source-remove") confirmRemoveGitSource(act.dataset.id);
     else if (a === "git-source-set-primary") setPrimaryGitSource(act.dataset.id);
     else if (a === "add-agent") renderAddPanel();
@@ -10368,7 +10479,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.39.8", build: 167, build_number: 167, semver_ok: true, full: "v0.39.8 (build 167)" },
+  app: { name: "Skill MCP Studio", version: "0.40.0", build: 168, build_number: 168, semver_ok: true, full: "v0.40.0 (build 168)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

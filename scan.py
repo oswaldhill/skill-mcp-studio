@@ -862,6 +862,87 @@ def _run_attach_endpoints(args, config, config_path) -> int:
     return 0 if result["status"] in ("ok", "dry-run") else 2
 
 
+def _run_shared_rules(args) -> int:
+    """共享约束块：读 / 写配置，以及同步进各 Agent 的约束文件。
+
+    用户需求（2026-11-11）：「配置一个需要在所有 Agent 中增加的约束内容，然后
+    通过同步管理（和 skill 一样）检查每一个 Agent 是否都拥有这个约束内容；
+    没有的话可以强制更新进去」。
+
+    写入用一对标记包住内容，只替换标记块——约束文件里还有用户自己的规则，
+    整体覆盖会把它们冲掉。``--shared-rules-apply`` 逐客户端、逐路径执行，
+    部分失败也如实回报，不合并成一个总数。
+    """
+    import json
+
+    import rules_shared
+
+    as_json = str(getattr(args, "format", "text") or "text").lower() == "json"
+
+    if getattr(args, "shared_rules_get", False):
+        body = rules_shared.read_content()
+        payload = {"ok": True, "content": body,
+                   "bytes": len(body.encode("utf-8")), "path": rules_shared.content_path()}
+        print(json.dumps(payload, ensure_ascii=False, indent=2) if as_json
+              else (body if body.strip() else "（共享约束内容为空）"))
+        return 0
+
+    if getattr(args, "shared_rules_set", None) is not None:
+        text = args.shared_rules_set
+        # 允许 @file 形式，避免命令行里塞超长正文
+        if text.startswith("@"):
+            try:
+                text = open(text[1:], "r", encoding="utf-8").read()
+            except OSError as exc:
+                print(json.dumps({"ok": False, "reason": f"读取失败：{exc}"}, ensure_ascii=False)
+                      if as_json else f"❌ 读取失败：{exc}")
+                return 2
+        res = rules_shared.write_content(text)
+        print(json.dumps(res, ensure_ascii=False) if as_json
+              else (f"✅ 已保存共享约束（{res.get('bytes', 0)} B）" if res.get("ok")
+                    else f"❌ {res.get('reason')}"))
+        return 0 if res.get("ok") else 2
+
+    if getattr(args, "shared_rules_audit", False):
+        payload = rules_shared.audit()
+        if as_json:
+            print(json.dumps(payload, ensure_ascii=False))
+            return 0
+        s_ = payload["summary"]
+        print(f"  共享约束块（{payload['content_bytes']} B, {payload['digest']}）")
+        print(f"  {s_['clients']} 个客户端：已同步 {s_['current']} · 内容过期 {s_['stale']} · "
+              f"缺失 {s_['absent']} · 文件不存在 {s_['missing']} · 目录跳过 {s_['dir']}")
+        for row in payload["rows"]:
+            mark = {"current": "✅", "stale": "🟡", "absent": "⬜", "missing": "⬜", "dir": "➖"}.get(row["state"], "?")
+            print(f"    {mark} {row['name']:<20} {row['state']}")
+        return 0
+
+    targets = getattr(args, "shared_rules_apply", None)
+    if not rules_shared.read_content().strip():
+        payload = {"ok": False, "reason": "共享内容为空，先 --shared-rules-set 写内容"}
+        print(json.dumps(payload, ensure_ascii=False) if as_json else f"❌ {payload['reason']}")
+        return 2
+
+    body = rules_shared.read_content()
+    if targets:
+        names = [t for t in targets if t]
+    else:
+        # 不指定客户端 = 所有「已有约束文件」的客户端（文件不存在的由用户显式点名再建）
+        names = [row["name"] for row in rules_shared.audit(body)["rows"]
+                 if row["state"] != "missing"]
+    results = [rules_shared.apply_client(n, body, dry_run=bool(getattr(args, "dry_run", False)))
+               for n in names]
+    ok = all(r.get("ok") for r in results)
+    payload = {"ok": ok, "applied": results}
+    if as_json:
+        print(json.dumps(payload, ensure_ascii=False))
+    else:
+        for r in results:
+            mark = "✅" if r.get("ok") else "❌"
+            print(f"  {mark} {r.get('client', '?')}：{r.get('changed', 0)} 处更新 {r.get('reason', '')}")
+    return 0 if ok else 2
+
+
 def _run_tool_path_commands(args) -> int:
     """路径覆盖的读写（--set-tool-path / --reset-tool-path / --list-tool-paths）。
 
@@ -3136,6 +3217,24 @@ def build_parser() -> argparse.ArgumentParser:
              "`--reset-tool-path TOOL` 清整个工具",
     )
     parser.add_argument(
+        "--shared-rules-audit", action="store_true",
+        help="只读检查：每个 Agent 的约束文件里是否都有当前共享约束块，"
+             "以及内容是否与配置一致（不写任何文件）",
+    )
+    parser.add_argument(
+        "--shared-rules-get", action="store_true",
+        help="读取当前共享约束内容（配合 --format json）",
+    )
+    parser.add_argument(
+        "--shared-rules-set", type=str, default=None, metavar="TEXT",
+        help="保存共享约束内容（空串 = 清空，等于停用）",
+    )
+    parser.add_argument(
+        "--shared-rules-apply", nargs="*", default=None, metavar="CLIENT",
+        help="把共享约束块同步进指定客户端（不指定 = 所有已配置的客户端）；"
+             "只替换/插入标记块，块外内容逐字节不动；写前自动备份",
+    )
+    parser.add_argument(
         "--list-tool-paths", action="store_true",
         help="列出当前的路径覆盖（内置注册表之上叠加的那层）",
     )
@@ -3732,6 +3831,11 @@ def main() -> int:
             or getattr(args, "read_rules", None)
             or getattr(args, "write_rules", None)):
         return _run_rules(args)
+    if (getattr(args, "shared_rules_audit", False)
+            or getattr(args, "shared_rules_get", False)
+            or getattr(args, "shared_rules_set", None) is not None
+            or getattr(args, "shared_rules_apply", None) is not None):
+        return _run_shared_rules(args)
     if (getattr(args, "set_tool_path", None)
             or getattr(args, "reset_tool_path", None)
             or getattr(args, "list_tool_paths", False)):

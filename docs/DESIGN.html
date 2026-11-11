@@ -1539,6 +1539,38 @@
         正确的不变量是「文本列有明确上限」（&le; 300px）。</p>
     </section>
 
+    <section id="s2-3c2c">
+      <h3 id="s2-3c2c">2.3c-2c 共享约束（v0.40.0）<a class="anchor" href="#s2-3c2c" aria-label="锚点">#</a></h3>
+      <p><strong>一段内容同步进所有 Agent 的约束文件</strong>，并能检查哪些没同步、一键强制写入。</p>
+      <p><strong>数据模型</strong>：内容存 <code>data/shared_rules.md</code>，写进各文件时用一对标记包住：</p>
+      <pre><code>&lt;!-- shared-rules:begin v1 --&gt;
+（用户配置的内容）
+&lt;!-- shared-rules:end --&gt;</code></pre>
+      <p><strong>为什么用标记而不是整体覆盖</strong>：约束文件里还有用户自己的规则，整体覆盖会把它们全部冲掉。
+        标记让写入变成幂等的「替换这一段 / 追加这一段」，块外内容逐字节不动。</p>
+      <table>
+        <thead><tr><th>状态</th><th>含义</th><th>是否可修</th></tr></thead>
+        <tbody>
+          <tr><td><code>current</code></td><td>块存在且内容一致</td><td>不需要</td></tr>
+          <tr><td><code>stale</code></td><td>块存在但内容与配置不一致</td><td>✅「写入」</td></tr>
+          <tr><td><code>absent</code></td><td>文件存在但没有块</td><td>✅「写入」</td></tr>
+          <tr><td><code>missing</code></td><td>文件不存在</td><td>✅「新建并写入」</td></tr>
+          <tr><td><code>dir</code></td><td>规则目录（Cline / TRAE）</td><td>➖ 跳过</td></tr>
+        </tbody>
+      </table>
+      <p>客户端的整体状态取「最需要处理」的那一个：<code>missing &gt; absent &gt; stale &gt; dir &gt; current</code>。</p>
+      <pre><code>┌ 共享约束 ─────────────────────────────── [检查同步状态] [同步到全部] ┐
+│ 约束内容                                                              │
+│ [ textarea（等宽，6 行）                                            ] │
+│ 保存后点「检查同步状态」…                        [保存内容]           │
+│ 13 个客户端：已同步 4 · 内容过期 1 · 未包含 2 · 文件不存在 6          │
+│   VS Code     [未包含]  [写入]                                        │
+│   Codex       [已同步]                                                │
+└───────────────────────────────────────────────────────────────────────┘</code></pre>
+      <p>三个按钮都用既有 <code>.ghost</code> / <code>.primary</code> / <code>.btn-soft sm</code> 家族，不新造按钮样式；
+        状态用既有 <code>.tag ok/warn</code> 档位，<strong>没有新增颜色</strong>；只给「可以修」的行渲染按钮。</p>
+    </section>
+
     <section id="s2-3d1">
       <h3 id="s2-3d1">2.3d-1 主表状态列一律可点（v0.39.6）<a class="anchor" href="#s2-3d1" aria-label="锚点">#</a></h3>
       <p>主表「安装 / 技能目录 / 约束 / MCP」四列的状态徽标<strong>全部是按钮</strong>，点开各自的明细。
