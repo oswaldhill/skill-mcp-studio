@@ -7,6 +7,52 @@
 
 ## [Unreleased]
 
+## [v0.40.9] - 2026-11-11
+
+当前发布版本（build 177）。
+
+**全项目禁止吐司/横幅：结果通知一律走 `.cfm-card` 弹框。**
+
+用户：「整个项目都不允许使用这种吐司，都必须使用弹框。弹框的样式必须按照统一的
+UI 规范进行设置」。
+
+### 改动
+
+| 项 | 改前 | 改后 |
+|---|---|---|
+| `showBanner()` | 写 `#banner` 元素（顶部横幅） | **委托 `modalNotice()`** → `.cfm-card` 弹框家族 |
+| `#banner` 元素 | 页面常驻 | **删除** |
+| `.banner` 样式 | 4 条 | **删除**（无引用死 CSS） |
+| 自动发现提示 | `class="banner warn"` | `.agent-notice` 页面内常驻提示块 |
+
+**`showBanner` 保留函数名与签名**：57 个调用点一个都不用改，语义也没变
+（「给用户一条结果通知」），只是换成规范弹框。
+
+### 唯一保留的页面内提示
+
+`.agent-notice`（如「自动发现 N 个新客户端待纳入」）。它不是结果通知，而是一条
+**必须一直可见到用户处理**的待办状态——弹框会挡住页面、关掉就看不见了。用
+`--warn-bg` / `--warn-border` + `.tag` 家族，不引入新视觉语言。
+
+### 一条门禁的措辞要求
+
+规范里提到已删除的类时，必须写成「没有 `.banner` 这一类了」这种**否定式**——
+`test_spec_referenced_classes_exist_in_code` 按上下文 40 字符内的
+「没有/不存在/不是/非」区分「引用」与「澄清」。写成「`.banner` 已整体移除」会被
+当成引用而报红（实测踩到）。
+
+### 测试
+
+- 新增 `NoToastTest`（3 项）：无横幅元素/样式/用法、`showBanner` 必须委托
+  `modalNotice`、通知必须是 `.modal cfm-card` 家族。
+- **反向验证 2 条**：加回横幅元素、`showBanner` 改回写横幅，各自让断言失败。
+- 全量 **1727 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
+### 文档
+
+`docs/DESIGN.md` §2.5b-2 与 §2.3 表格更正「`.banner` 只留给非阻塞告知」的旧口径；
+`docs/DESIGN.html` 同步。
+
 ## [v0.40.8] - 2026-11-11
 
 当前发布版本（build 176）。
@@ -4016,7 +4062,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.40.8...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.40.9...HEAD
+[v0.40.9]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.9
 [v0.40.8]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.8
 [v0.40.7]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.7
 [v0.40.6]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.6

@@ -1909,7 +1909,14 @@ sharedRow.state === "current"      → ok
           <code>dsh</code> 字段；扫描入口必须传 <code>None</code> 让 <code>dsh_plugins.scan()</code>
           自己解析默认根目录，传 <code>"~/.dsh"</code> 字面量会以未展开路径找 profiles，结果恒为 0。</li></li>
       </ul>
-    </section>
+    <p><strong>落地（v0.40.9）</strong>：<code>showBanner()</code> 已不再是顶部横幅——
+        它内部直接调 <code>modalNotice(kind, 标题, 正文)</code>，即
+        <code>.cfm-card</code> + <code>.cfm-icon/.cfm-title/.cfm-msg/.cfm-btn-cancel</code>
+        的规范弹框家族。原先的横幅元素与样式一并删除，<code>clearBanner</code> 保留为空函数，
+        让既有的「操作前清掉上一次提示」调用点继续成立。</p>
+      <p>唯一保留的<strong>页面内常驻提示块</strong>是 <code>.agent-notice</code>（如「自动发现 N 个新客户端」）：
+        它不是结果通知，而是一条必须一直可见的待办状态，所以放在页面里。</p>
+      </section>
 
     <!-- ═══ 2.9 ═══ -->
     <section id="s2-9">

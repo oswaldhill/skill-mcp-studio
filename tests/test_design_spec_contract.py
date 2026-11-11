@@ -1274,6 +1274,35 @@ class ListStatusCellsClickableTest(unittest.TestCase):
         self.assertIn(".tag-btn:hover", css)
 
 
+class NoToastTest(unittest.TestCase):
+    """结果通知一律弹框，页面里不得再有吐司/横幅（v0.40.9 用户定案）。
+
+    用户：「整个项目都不允许使用这种吐司，都必须使用弹框。弹框的样式必须按照
+    统一的 UI 规范进行设置」。
+    """
+
+    def test_no_banner_element_or_style(self):
+        src = _src()
+        self.assertNotIn('id="banner"', src, "页面级横幅元素已删除")
+        css = _css()
+        self.assertNotRegex(css, r"\n\s*\.banner[\s.]", "横幅样式已删除")
+        self.assertNotIn('class="banner', src, "不得再出现横幅用法")
+
+    def test_show_banner_routes_to_modal(self):
+        src = _src()
+        # showBanner 必须委托给 modalNotice（.cfm-card 家族），不得自建容器
+        start = src.index("function showBanner(kind, text)")
+        body = src[start: start + 600]
+        self.assertIn("modalNotice(", body, "showBanner 必须走统一弹框")
+
+    def test_notice_card_family_is_the_modal(self):
+        src = _src()
+        start = src.index("function modalNotice(")
+        body = src[start: start + 1600]
+        self.assertIn("modal-backdrop", body)
+        self.assertIn("modal cfm-card", body, "通知必须是 .cfm-card 弹框家族")
+
+
 class ModalSkeletonTest(unittest.TestCase):
     """对话框统一骨架：头固定 / 主体滚动 / 操作栏固定（v0.39.5）。
 

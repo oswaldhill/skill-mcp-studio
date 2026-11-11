@@ -280,10 +280,6 @@
   .seg-btn.active { background: var(--panel); color: var(--text); font-weight: 600; box-shadow: var(--shadow-card); }
 
   /* ============ banner ============ */
-  .banner { border-radius: var(--r-card); padding: var(--sp-4) var(--sp-6); margin: 0 0 var(--sp-6); font-size: var(--fs-sm); }
-  .banner.err { background: var(--err-bg); border: 1px solid var(--err-border); color: var(--err); }
-  .banner.ok { background: var(--ok-bg); border: 1px solid var(--ok-border); color: var(--ok); }
-  .banner.warn { background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn); }
 
   /* ============ stat / quick ============ */
   .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: var(--gap-5); margin-bottom: var(--sp-7a); }
@@ -1449,6 +1445,15 @@
   .agent-card .ac-path-expanded { display: none; flex-direction: column; gap: var(--gap-1); min-width: 0; }
   .agent-card .ac-path-row.is-expanded .ac-path-collapsed { display: none; }
   .agent-card .ac-path-row.is-expanded .ac-path-expanded { display: flex; }
+  /* 页面内常驻提示块（v0.40.9）：用于「有 N 个新客户端待纳入」这类**必须一直可见**
+     的信息。它不是结果通知（结果通知一律走弹框），而是一条待办状态：
+     用户处理完之前都得看得到，所以放在页面里，并且用 .tag 家族 + hairline，
+     不引入新的视觉语言。 */
+  .agent-notice { display: flex; align-items: flex-start; gap: var(--gap-3); padding: var(--sp-5) var(--sp-6);
+    margin: 0 0 var(--sp-4); background: var(--warn-bg); border: 1px solid var(--warn-border);
+    border-radius: var(--r-card); font-size: var(--fs-sm); color: var(--text); }
+  .agent-notice .an-body { flex: 1; min-width: 0; line-height: 1.6; }
+  .agent-notice .an-note { margin-top: var(--sp-1); color: var(--muted); font-size: var(--fs-xs); }
   .agent-card .ac-path-collapse {
     align-self: flex-start; font-family: var(--mono); font-size: var(--fs-2xs); font-weight: 500;
     line-height: 1.4; color: var(--faint); background: transparent; border: none;
@@ -2160,7 +2165,7 @@
   </aside>
 
   <main>
-    <div id="banner" role="status" aria-live="polite"></div>
+
 
     <!-- ===== 概览 ===== -->
     <section id="page-overview">
@@ -2422,12 +2427,23 @@ function applyScale(scale, persist) {
 }
 applyScale(currentScale(), false);
 
+// 结果通知一律用弹框（v0.40.9 用户定案）：「整个项目都不允许使用这种吐司，
+// 都必须使用弹框。弹框的样式必须按照统一的 UI 规范进行设置」。
+//
+// 保留 showBanner 这个名字与签名：57 个调用点全部不用改，语义也没变
+// （「给用户一条结果通知」）。实现改为复用既有的 modalNotice —— 它已经是
+// .cfm-card + .cfm-icon/.cfm-title/.cfm-msg/.cfm-btn-cancel 的规范弹框家族，
+// 带 role="dialog"、焦点落到出口按钮，不需要再造一套。
+//
+// 为什么不再用顶部横幅：它是页面里的常驻元素，会顶开标题、在滚动时留在视野外，
+// 而且没有关闭动作；规范里结果类反馈只有弹框一种形态（DESIGN.md §2.5b-2）。
 function showBanner(kind, text) {
-  const b = $("banner");
-  b.className = "banner " + kind;
-  b.textContent = text;
+  const k = NOTICE_META[kind] ? kind : "info";
+  modalNotice(k, NOTICE_META[k].label, text);
 }
-function clearBanner() { const b = $("banner"); b.className = ""; b.textContent = ""; }
+// v0.40.9：横幅已移除，结果通知统一走弹框。保留空函数是为了让既有的
+// 「操作前清掉上一次提示」调用点继续成立（弹框本来就是一次性、会自己关掉）。
+function clearBanner() {}
 
 // 把 `.modal-form` 的直接子节点重排成「头 / 身 / 尾」三段（v0.39.5）。
 // 目的：操作按钮永远可见——此前整个弹框一起滚，按钮会被滚出视口。
@@ -3152,7 +3168,10 @@ function renderAgents() {
   const discovered = (SNAP && SNAP.discovered_candidates) || [];
   let discHtml = "";
   if (discovered.length) {
-    discHtml = `<div class="banner warn">自动发现 ${discovered.length} 个新客户端（尚未纳入注册表）：${discovered.map((d) => `<span class="tag">${escapeHtml(d.name)}</span>`).join(" ")}<div class="note" style="margin-top:var(--sp-1)">点右上角「添加 IDE / API」纳入，或运行 CLI <code>--add-client &lt;name&gt;</code>。</div></div>`;
+    discHtml = `<div class="agent-notice" role="status">
+      <div class="an-body">自动发现 ${discovered.length} 个新客户端（尚未纳入注册表）：${discovered.map((d) => `<span class="tag">${escapeHtml(d.name)}</span>`).join(" ")}
+        <div class="an-note">点右上角「添加 IDE / API」纳入，或运行 CLI <code>--add-client &lt;name&gt;</code>。</div>
+      </div></div>`;
   }
   if (!visible.length) { el.innerHTML = discHtml + '<div class="empty">无客户端数据</div>'; return; }
 
@@ -10597,7 +10616,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.40.8", build: 176, build_number: 176, semver_ok: true, full: "v0.40.8 (build 176)" },
+  app: { name: "Skill MCP Studio", version: "0.40.9", build: 177, build_number: 177, semver_ok: true, full: "v0.40.9 (build 177)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",
