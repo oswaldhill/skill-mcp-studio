@@ -7,6 +7,54 @@
 
 ## [Unreleased]
 
+## [v0.40.3] - 2026-11-11
+
+当前发布版本（build 171）。
+
+**共享块状态回显到「约束」列：一眼看出哪些 Agent 缺了共享约束。**
+
+用户：「在外面正式功能的上方，没法从约束对应的框中展示出，到底有没有增加进我
+要求的这部分约束」。
+
+### 问题
+
+「约束」列此前只回答「**路径存不存在**」（`1/1` / `0/1`），不回答「**共享块在不在**」。
+共享约束配好之后，要判断某个 Agent 到底加进去没有，只能去设置页挨个看——而设置页
+里那段恰好是「参与开关」，不是「内容在不在」。
+
+### 改动
+
+卡片与主表列表的「约束」处各加一枚并列徽标（同一 `.tag` 家族，不新造样式）：
+
+| 共享块状态 | 徽标 | 类别 |
+|---|---|---|
+| `current` | `共享已含` | `tag ok` |
+| `stale` | `共享过期` | `tag warn` |
+| `absent` / `missing` | `无共享` | `tag`（中性） |
+| 该 Agent 开关关闭 | 不显示 | —— |
+
+`SHARED_AUDIT` 在 `loadManagement()` 之后自动跑一次，**不必先打开设置页**也能看到。
+
+### 一条失败的门禁教训
+
+第一版断言写的是「文件里出现过 `共享已含` 这几个字」，反向验证时把映射表换成空串，
+**测试照样绿**——因为那三个字在我自己的注释里出现了一次。改成从源码抽出
+`_agentRulesSummary()` / `renderHomeListView()` 两个函数体、断言其中的**渲染分支**
+（`current: "共享已含"`、`${sharedSpan}`），反向验证才真正报红。
+
+同一条教训这轮踩了两次（第一次是改成精确匹配但匹配到了注释）。**断言的对象必须是
+被执行的代码路径，不是文本里出现过什么。**
+
+### 测试
+
+- 新增 1 项断言（校验卡片与列表的渲染分支）。
+- **反向验证 2 条**：卡片映射表清空、列表不渲染 `${sharedSpan}`，各自让断言失败。
+- 全量 **1724 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过（含 ruff）。
+
+### 文档
+
+`docs/DESIGN.md` §2.3c-2c 补「共享块状态回显」小节；`docs/DESIGN.html` 同步。
+
 ## [v0.40.2] - 2026-11-11
 
 当前发布版本（build 170）。
@@ -3745,7 +3793,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.40.2...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.40.3...HEAD
+[v0.40.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.3
 [v0.40.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.2
 [v0.40.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.1
 [v0.40.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.0

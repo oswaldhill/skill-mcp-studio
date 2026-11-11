@@ -2368,6 +2368,8 @@ let GIT_SOURCES = { loading: false, items: [], summary: null, error: "", adoptTr
 // 约束文件数据（v0.37.9）：主表的「约束」列与设置页逐 Agent 行共用。
 let RULES_DATA = null;
 let SHARED_RULES = null;
+// 共享约束的逐 Agent 审计结果（cards / list 的「约束」列用它标出是否已含共享块）
+let SHARED_AUDIT = null;
 let RULES_ERROR = "";
 // 端点连通性结果 —— **独立于审计快照 SNAP**。
 // 审计只判配置（不探活），端点通断只由用户手动点「检查端点连通性」触发，
@@ -3454,7 +3456,18 @@ const skillsCell = `<button type="button" class="al-ico ${skillsCls}" data-popki
       const ruleAttrs = total > 1
         ? ` data-action="list-rules" data-client="${escapeHtml(a.name)}"`
         : ` data-action="view-rules" data-client="${escapeHtml(a.name)}" data-index="0"`;
-      rulesCell = `<button type="button" class="tag tag-btn ${ruleCls}"${ruleAttrs} title="${escapeHtml(tip)}" aria-label="约束文件 ${ruleText}，点击查看">${ruleText}</button>`;
+      const sharedL = (typeof SHARED_AUDIT !== "undefined" && SHARED_AUDIT && SHARED_AUDIT.rows || [])
+        .find((r) => r.name === a.name);
+      const sharedMark = sharedL && sharedL.enabled !== false
+        ? (sharedL.state === "current" ? "共享已含"
+           : (sharedL.state === "stale" ? "共享过期" : "无共享"))
+        : "";
+      const sharedMarkCls = sharedL && sharedL.state === "current" ? "ok"
+        : (sharedL && sharedL.state === "stale" ? "warn" : "");
+      const sharedSpan = sharedMark
+        ? `<span class="tag ${sharedMarkCls}" title="共享约束：${sharedMark}">${sharedMark}</span>`
+        : "";
+      rulesCell = `<button type="button" class="tag tag-btn ${ruleCls}"${ruleAttrs} title="${escapeHtml(tip)}" aria-label="约束文件 ${ruleText}，点击查看">${ruleText}</button>${sharedSpan}`;
     }
     // 整行可点（v0.39.7）：行本身成为「看详情」的主入口，不再要求瞄准右上角按钮。
     // 行内按钮（计数徽标 / 约束 / MCP）自己 stopPropagation，互不抢事件。
@@ -4811,8 +4824,22 @@ function _agentRulesSummary(t) {
   // 每个路径一枚 `.ac-path-val` 胶囊（与 APP/CLI/CONFIG 同款），点击打开只读预览；
   // 状态徽标贴在第一行右侧（`.ac-path-badges`，与 Skills 行同一位置）。
   const items = paths.map((p, idx) => {
-    const badge = idx === 0
-      ? `<span class="ac-path-badges"><span class="tag ${cls}" title="${escapeHtml(tip)}">${hit}/${total}</span></span>`
+    // 共享约束块状态（v0.40.3）：用户要求「从约束对应的框里能看出到底有没有加上
+  // 我要求的那部分约束」。有审计结果时，把共享块的四态并进同一枚徽标。
+  const shared = (typeof SHARED_AUDIT !== "undefined" && SHARED_AUDIT && SHARED_AUDIT.rows || [])
+    .find((r) => r.name === t.name);
+  const sharedOn = shared ? shared.enabled !== false : true;
+  const sharedState = shared && sharedOn ? shared.state : "";
+  const sharedText = { current: "共享已含", stale: "共享过期", absent: "无共享", missing: "无共享" }[sharedState] || "";
+  const sharedCls = { current: "ok", stale: "warn", absent: "", missing: "" }[sharedState] || "";
+  const sharedTip = sharedState === "current"
+    ? "已包含当前共享约束"
+    : sharedState ? "尚未包含当前共享约束（可在设置页同步进去）" : "";
+  const badge = idx === 0
+      ? `<span class="ac-path-badges">
+          <span class="tag ${cls}" title="${escapeHtml(tip)}">${hit}/${total}</span>
+          ${sharedText ? `<span class="tag ${sharedCls}" title="${escapeHtml(sharedTip)}">${sharedText}</span>` : ""}
+        </span>`
       : "";
     return `<div class="ac-path-item">
       <button type="button" class="ac-path-val rules-path-btn" data-action="view-rules"
@@ -5812,7 +5839,7 @@ function renderSettings() {
   if ($("shared-rules-text")) {
     const box = $("shared-rules-text");
     box.addEventListener("input", () => { box.dataset.dirty = "1"; });
-    loadSharedRules();
+    loadSharedRules().then(() => auditSharedRules());
   }
   applyTheme(currentThemeMode(), false);
   el.querySelectorAll("[data-scale-btn]").forEach((b) => {
@@ -8516,11 +8543,11 @@ async function auditSharedRules() {
   let payload = null;
   try { payload = JSON.parse(stripAnsi((res && res.stdout) || "{}")); } catch (e) { payload = null; }
   const host = $("shared-rules-status");
-  if (!host) return;
   if (!payload || !payload.ok) {
-    host.innerHTML = `<div class="empty">检查失败：${escapeHtml(cliErrDetail(res))}</div>`;
+    if (host) host.innerHTML = `<div class="empty">检查失败：${escapeHtml(cliErrDetail(res))}</div>`;
     return;
   }
+  SHARED_AUDIT = payload;
   const sum = payload.summary || {};
   // v0.40.2：这一段的职责收敛成「这个 Agent 参不参与检查 / 要不要同步进去」。
   // 具体是哪条路径缺、内容差在哪，放进 title（悬停可见），不再逐条铺满卡片——
@@ -10540,7 +10567,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.40.2", build: 170, build_number: 170, semver_ok: true, full: "v0.40.2 (build 170)" },
+  app: { name: "Skill MCP Studio", version: "0.40.3", build: 171, build_number: 171, semver_ok: true, full: "v0.40.3 (build 171)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

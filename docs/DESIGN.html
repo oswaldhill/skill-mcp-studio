@@ -1598,6 +1598,24 @@
         <li>后端也拒绝写未参与的 Agent（<code>apply_client</code> 返回「已关闭共享约束同步」）——界面只是入口，规则在数据层。</li>
         <li><strong>路径明细收进 title</strong>：这一段的职责是「谁参与、要不要同步」，不是逐条列 13 个 Agent 缺哪个文件。</li>
       </ul>
+      <p><strong>共享块状态回显到「约束」列</strong>（v0.40.3）：「没法从约束对应的框中展示出，
+        到底有没有增加进我要求的这部分约束」。此前「约束」列只回答「路径存不存在」。</p>
+      <table>
+        <thead><tr><th>共享块状态</th><th>徽标</th><th>类别</th></tr></thead>
+        <tbody>
+          <tr><td><code>current</code></td><td><code>共享已含</code></td><td><code>tag ok</code></td></tr>
+          <tr><td><code>stale</code></td><td><code>共享过期</code></td><td><code>tag warn</code></td></tr>
+          <tr><td><code>absent</code> / <code>missing</code></td><td><code>无共享</code></td><td><code>tag</code>（中性）</td></tr>
+          <tr><td>该 Agent 开关关闭</td><td>不显示</td><td>——</td></tr>
+        </tbody>
+      </table>
+      <ul>
+        <li>卡片：<code>_agentRulesSummary()</code> 读 <code>SHARED_AUDIT</code>，徽标落在 <code>.ac-path-badges</code>。</li>
+        <li>主表列表：<code>renderHomeListView()</code> 的 <code>rulesCell</code> 追加 <code>sharedSpan</code>。</li>
+        <li>数据来自 <code>--shared-rules-audit</code>，<code>loadManagement()</code> 之后自动跑一次，因此<strong>不必先打开设置页</strong>也能看到。</li>
+        <li><strong>断言纪律</strong>：最初写的断言是「文件里出现过 <code>共享已含</code>」——被自己的注释满足了，
+          把映射表换成空串测试照样绿。后来改为抽出两个渲染函数体、断言其中的渲染分支，反向验证才真正报红。</li>
+      </ul>
     </section>
 
     <section id="s2-3d1">

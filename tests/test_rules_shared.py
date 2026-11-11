@@ -194,6 +194,46 @@ class WiringTest(unittest.TestCase):
         self.assertIn("function applySharedRules(client)", gui, "GUI 缺强制写入")
         self.assertIn('data-action="shared-rules-apply"', gui)
 
+    def test_shared_state_surfaces_in_rules_cells(self):
+        """共享块状态必须出现在**约束对应的格子**里（v0.40.3 用户要求）。
+
+        用户：「在外面正式功能的上方，没法从约束对应的框中展示出，到底有没有
+        增加进我要求的这部分约束」。卡片与主表的「约束」列此前只看路径是否存在，
+        不看共享块在不在。
+        """
+
+        root = Path(__file__).resolve().parents[1]
+        gui = (root / "gui/dashboard.html").read_text(encoding="utf-8")
+        self.assertIn("SHARED_AUDIT", gui, "需要缓存共享审计结果供卡片使用")
+
+        # 断言的是**渲染分支**，不是「文件里出现过这几个字」——
+        # 后者会被自己的注释满足（第一次写这条断言时就是这么自欺的：把映射表
+        # 换成空串，测试照样绿）。这里抽出两个渲染函数，逐段校验。
+        def _fn(name):
+            start = gui.index(f"function {name}(")
+            depth = 0
+            for i in range(start, len(gui)):
+                if gui[i] == "{":
+                    depth += 1
+                elif gui[i] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        return gui[start:i + 1]
+            raise AssertionError(f"{name} 未闭合")
+
+        card = _fn("_agentRulesSummary")
+        self.assertRegex(card, r'current:\s*"共享已含"', "卡片摘要必须按共享状态输出「共享已含」")
+        self.assertRegex(card, r'stale:\s*"共享过期"', "卡片摘要必须输出「共享过期」")
+        self.assertIn("SHARED_AUDIT", card, "卡片摘要必须读共享审计结果")
+
+        lst = _fn("renderHomeListView")
+        # 只校验**渲染进单元格的那一步**：整行文本里出现 `>${sharedSpan}<`
+        # 才算「显示出来了」。只查变量名会被「定义了但没渲染」骗过去
+        # （第一次写这条断言时就踩了：把变量改名，测试照样绿）。
+        self.assertRegex(lst, r'\$\{sharedSpan\}', "主表列表必须把共享状态渲染进单元格")
+        self.assertRegex(lst, r'state === "current"\s*\?\s*"共享已含"', "列表列必须区分「共享已含」")
+        self.assertRegex(lst, r'stale"\s*\?\s*"共享过期"', "列表列必须区分「共享过期」")
+
     def test_card_follows_settings_card_language(self):
         """共享约束卡片必须复用设置页既有的 row / k / v 语言（v0.40.1 重设计）。
 
