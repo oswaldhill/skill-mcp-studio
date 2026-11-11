@@ -7,6 +7,47 @@
 
 ## [Unreleased]
 
+## [v0.42.0] - 2026-11-11
+
+当前发布版本（build 179）。
+
+**全部弹框统一到同一套度量，边界写进规范。**
+
+用户：「请检查一下所有的当前项目，所有的弹框都应该是同样的规范」。
+
+### 审计结果
+
+全仓 29 处 `mountModal`，容器分三类（骨架本来就该不同）：
+
+| 家族 | 容器类 | 标题 | 主体 | 底栏 | 使用数 |
+|---|---|---|---|---|---|
+| 表单 | `.modal.modal-form` | `.form-title` | `.form-body` | `.form-actions` | 11 |
+| 确认 / 通知 | `.modal.cfm-card` | `.cfm-title` | `.cfm-msg` | `.actions` | 13 |
+| 详情 | `.modal.ad-modal` | `.ad-name` | `.ad-body` | `.ad-foot` | 3 |
+
+四类已共用 `.modal` 容器样式、`.modal-backdrop`（z-index 50）与 `closeModal`
+关闭路径。**漂移的是数字**，共三处：
+
+| 项 | 改前 | 改后 |
+|---|---|---|
+| 详情弹框标题 | `1.35rem` / 700 | `--fs-md` / 600（与表单同档） |
+| 确认弹框按钮内边 | `--sp-8a`（22px） | `--sp-8`（20px，与表单同） |
+| 详情弹框主体顶部内边 | `--sp-2`（6px） | `--sp-6`（14px，与表单同） |
+
+**允许保持不同**（家族特性，不是漂移）：标题对齐（通知居中 / 表单左对齐）、
+底栏对齐（通知居中 / 表单右对齐）、图标徽标（仅通知与确认有）。
+
+### 测试
+
+- 新增 `ModalFamilyConsistencyTest`（3 项）：标题刻度统一、按钮度量统一、主体内边对齐。
+- **反向验证 3 条**：标题改回 1.35rem/700、按钮内边改回 22px、主体内边改回 6px，
+  各自让断言失败。
+- 全量 **1733 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
+### 文档
+
+`docs/DESIGN.md` 新增 §2.5b-4「弹框家族的一致性边界」；`DESIGN.html` 同步。
+
 ## [v0.41.0] - 2026-11-11
 
 当前发布版本（build 178）。
@@ -4100,7 +4141,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.41.0...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.42.0...HEAD
+[v0.42.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.42.0
 [v0.41.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.41.0
 [v0.40.9]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.9
 [v0.40.8]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.8

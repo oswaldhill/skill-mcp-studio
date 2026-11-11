@@ -773,9 +773,11 @@
   .git-commit-modal .form-field { margin-top: var(--sp-4); }
   .prog-detail .git-res-hint { font-size: var(--fs-xs); color: var(--muted); padding-left: calc(var(--sp-2) + var(--gap-2)); margin-bottom: var(--sp-1); }
   .cfm-card .actions { justify-content: center; gap: var(--gap-5); margin-top: 0; }
+  /* 按钮度量统一（v0.42.0）：.cfm-card 原用 --sp-8a(22px) 横向内边，.modal-form 用
+     --sp-8(20px)，同一应用里两种弹框的按钮宽度差 4px。统一取 --sp-8。 */
   .cfm-card .actions button {
-    min-height: 32px; padding: var(--sp-3) var(--sp-8a); border-radius: var(--r-control); font-size: var(--fs-sm); font-weight: 500;
-    transition: all .15s var(--ease);
+    min-height: 32px; padding: var(--sp-3) var(--sp-8); border-radius: var(--r-control); font-size: var(--fs-sm); font-weight: 500;
+    transition: all .15s var(--ease); cursor: pointer;
   }
   .cfm-btn-cancel {
     background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
@@ -953,9 +955,12 @@
     background: var(--accent-bg); border: 1px solid var(--accent-border);
     border-radius: var(--r-pill); padding: var(--sp-0b) var(--sp-3b);
   }
-  .ad-name { font-family: var(--display); font-size: 1.35rem; font-weight: 700; letter-spacing: -.02em; color: var(--text); line-height: 1.15; }
+  /* 标题刻度统一（v0.42.0）：.ad-name 原为 1.35rem/700，与 .form-title（--fs-md/600）
+     相差两档，同一应用里两种弹框标题大小不一致。改为与 .form-title 同值。 */
+  .ad-name { font-family: var(--display); font-size: var(--fs-md); font-weight: 600; letter-spacing: -.01em; color: var(--text); line-height: 1.25; }
   .ad-chips { display: flex; flex-wrap: wrap; gap: var(--gap-2); margin-top: var(--sp-4); }
-  .ad-body { padding: var(--sp-2) var(--sp-9a) var(--sp-8); max-height: calc(92vh - 150px); overflow-y: auto; }
+  /* 主体内边统一（v0.42.0）：与 .modal-form .form-body 的上下节奏对齐 */
+  .ad-body { padding: var(--sp-6) var(--sp-9a) var(--sp-8); max-height: calc(92vh - 150px); overflow-y: auto; }
   .ad-section { padding-top: var(--sp-7); margin-top: var(--sp-0b); }
   .ad-section + .ad-section { border-top: 1px solid var(--line); margin-top: var(--sp-6); }
   .ad-sec-label {
@@ -10653,7 +10658,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.41.0", build: 178, build_number: 178, semver_ok: true, full: "v0.41.0 (build 178)" },
+  app: { name: "Skill MCP Studio", version: "0.42.0", build: 179, build_number: 179, semver_ok: true, full: "v0.42.0 (build 179)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

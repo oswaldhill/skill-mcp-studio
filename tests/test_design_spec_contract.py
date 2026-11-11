@@ -1303,6 +1303,50 @@ class NoToastTest(unittest.TestCase):
         self.assertIn("modal cfm-card", body, "通知必须是 .cfm-card 弹框家族")
 
 
+class ModalFamilyConsistencyTest(unittest.TestCase):
+    """四类弹框共用同一套度量（v0.42.0 用户要求「所有弹框同样规范」）。
+
+    容器的**骨架**本来就不同（表单 / 确认 / 通知 / 详情各司其职），但标题刻度、
+    按钮度量、主体内边这些「可共享的数字」必须是同一套——否则同一应用里两种
+    弹框看起来像两个产品。
+    """
+
+    def test_title_scale_is_uniform(self):
+        css = _css()
+        # 表单弹框标题
+        form = re.search(r"\.modal-form \.form-title\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(form)
+        self.assertIn("font-size: var(--fs-md)", form.group(1))
+        self.assertIn("font-weight: 600", form.group(1))
+        # 详情弹框标题必须同档（此前 1.35rem/700，与表单差两档）
+        ad = re.search(r"\.ad-name\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(ad, "缺少 .ad-name 规则")
+        self.assertIn("font-size: var(--fs-md)", ad.group(1),
+                      "详情弹框标题必须与表单弹框标题同字号")
+        self.assertIn("font-weight: 600", ad.group(1),
+                      "详情弹框标题必须与表单弹框标题同字重")
+
+    def test_actions_button_metrics_are_uniform(self):
+        css = _css()
+        form = re.search(r"\.modal-form \.form-actions button\s*\{([^}]*)\}", css)
+        cfm = re.search(r"\.cfm-card \.actions button\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(form)
+        self.assertIsNotNone(cfm)
+        for prop in ("min-height: 32px", "padding: var(--sp-3) var(--sp-8)",
+                     "border-radius: var(--r-control)", "font-size: var(--fs-sm)"):
+            self.assertIn(prop, form.group(1), f"表单弹框按钮缺 {prop}")
+            self.assertIn(prop, cfm.group(1), f"确认/通知弹框按钮缺 {prop}")
+
+    def test_body_padding_aligns(self):
+        css = _css()
+        body = re.search(r"\.modal-form \.form-body\s*\{([^}]*)\}", css)
+        ad = re.search(r"\.ad-body\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(body)
+        self.assertIsNotNone(ad)
+        self.assertIn("var(--sp-6)", body.group(1))
+        self.assertIn("var(--sp-6)", ad.group(1), "详情弹框主体顶部内边必须与表单弹框一致")
+
+
 class NoticeLayoutTest(unittest.TestCase):
     """通知弹框的排版与交互统一（v0.41.0 用户要求「信息太乱」）。
 

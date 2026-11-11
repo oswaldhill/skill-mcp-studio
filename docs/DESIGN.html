@@ -1638,6 +1638,34 @@ sharedRow.state === "current"      → ok
       </ul>
     </section>
 
+    <section id="s2-5b4">
+      <h3 id="s2-5b4">2.5b-4 弹框家族的一致性边界（v0.42.0）<a class="anchor" href="#s2-5b4" aria-label="锚点">#</a></h3>
+      <p><strong>结论：骨架允许分为三类，度量必须统一。</strong>弹框用途不同，内部结构本来就该不同；
+        但标题刻度、按钮度量、主体内边这些可共享的数字必须是同一套。</p>
+      <table>
+        <thead><tr><th>家族</th><th>容器类</th><th>标题</th><th>主体</th><th>底栏</th><th>用在哪</th></tr></thead>
+        <tbody>
+          <tr><td>表单</td><td><code>.modal.modal-form</code></td><td><code>.form-title</code></td><td><code>.form-body</code></td><td><code>.form-actions</code></td><td>编辑、设置</td></tr>
+          <tr><td>确认 / 通知</td><td><code>.modal.cfm-card</code></td><td><code>.cfm-title</code></td><td><code>.cfm-msg</code></td><td><code>.actions</code></td><td>确认、结果通知、进度</td></tr>
+          <tr><td>详情</td><td><code>.modal.ad-modal</code></td><td><code>.ad-name</code></td><td><code>.ad-body</code></td><td><code>.ad-foot</code></td><td>客户端详情、配置备份</td></tr>
+        </tbody>
+      </table>
+      <p>四类共用：<code>.modal</code> 容器（圆角 <code>--r-card</code>、边框 <code>--line</code>、阴影
+        <code>--shadow-sheet</code>、<code>max-height: 92vh</code>）、<code>.modal-backdrop</code>（z-index 50）、
+        关闭路径（Esc / 点遮罩 / 按钮，统一走 <code>closeModal</code>）。</p>
+      <h4>统一的三组数字（门禁校验）</h4>
+      <table>
+        <thead><tr><th>项</th><th>规定值</th><th>为什么</th></tr></thead>
+        <tbody>
+          <tr><td>标题字号 / 字重</td><td><code>--fs-md</code> / 600</td><td>详情弹框原为 <code>1.35rem</code>/700，与表单弹框差两档</td></tr>
+          <tr><td>底栏按钮</td><td><code>min-height: 32px</code>、<code>padding: var(--sp-3) var(--sp-8)</code>、<code>--r-control</code>、<code>--fs-sm</code></td><td>确认弹框原用 <code>--sp-8a</code>（22px），差 4px</td></tr>
+          <tr><td>主体顶部内边</td><td><code>var(--sp-6)</code></td><td>详情弹框原为 <code>--sp-2</code>，标题与正文贴得太近</td></tr>
+        </tbody>
+      </table>
+      <p><strong>允许保持不同</strong>（家族特性，不是漂移）：标题对齐方式（通知居中 / 表单左对齐）、
+        底栏对齐（通知居中 / 表单右对齐）、图标徽标（仅通知与确认有）。</p>
+    </section>
+
     <section id="s2-5b3">
       <h3 id="s2-5b3">2.5b-3 通知弹框的排版与交互（v0.41.0）<a class="anchor" href="#s2-5b3" aria-label="锚点">#</a></h3>
       <p>用户截图「已完成 / 共享约束已保存（403 B）。写进各 Agent 请运行 --shared-rules-apply」，
