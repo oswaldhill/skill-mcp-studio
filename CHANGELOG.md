@@ -7,6 +7,44 @@
 
 ## [Unreleased]
 
+## [v0.45.2] - 2026-11-11
+
+当前发布版本（build 191）。
+
+**约束列去掉文字徽标：状态只由 N/M 的颜色表达。**
+
+用户：「不需要额外的『已写入』『未写入』的框，只需要前面的数字中的颜色就可以展示了。
+多文字完全是多此一举」。
+
+### 改动
+
+同一状态被表达了两次：`N/M` 标签的颜色 + 一枚文字徽标。颜色已经能一眼读出，
+文字徽标纯属重复，还把约束列撑宽。
+
+| 项 | 改前 | 改后 |
+|---|---|---|
+| 约束列 | `1/1` + 「已写入」徽标 | **只有 `1/1`** |
+| 状态表达 | 颜色 + 文字 | **只有颜色** |
+| 细节（差在哪、下一步） | 徽标 title | **并进 `N/M` 的 title** |
+| 设置页卡片 | `N/M` + 文字徽标 | **只有 `N/M`** |
+
+颜色语义不变：绿 = 已含 ／ 黄 = 未含 ／ 中性 = 没有约束文件。
+
+悬停 `N/M` 仍能看到具体差异，例如「~/.codex/AGENTS.md｜文件里没有共享块；点「⋯」→ 写入共享约束」。
+
+### 测试
+
+- 新增 `SharedStateIsColorOnlyTest`（3 项）：主表不得再渲染文字徽标、卡片同理、
+  状态文案只能进 title。
+- **反向验证 1 条**：把徽标加回去立即失败。
+- 断言写失败一次才有效：只查 `<span class="tag ${` 全仓范围太宽（别处合法使用），
+  收窄到约束单元格后才有意义。
+- 全量 **1772 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
+### 文档
+
+`docs/DESIGN.md` §2.3c-2c 补「同一状态只表达一次」小节；`DESIGN.html` 同步。
+
 ## [v0.45.1] - 2026-11-11
 
 当前发布版本（build 190）。
@@ -4724,7 +4762,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.45.1...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.45.2...HEAD
+[v0.45.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.45.2
 [v0.45.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.45.1
 [v0.45.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.45.0
 [v0.44.4]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.44.4

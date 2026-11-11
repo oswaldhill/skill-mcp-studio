@@ -1536,30 +1536,47 @@ class ConfirmDialogSemanticsTest(unittest.TestCase):
         self.assertNotIn("**", block, "确认正文不得含 Markdown 星号")
 
 
-class SharedBadgeLabelTest(unittest.TestCase):
-    """共享约束徽标文案必须说明「文件里的状态」（v0.45.1）。
+class SharedStateIsColorOnlyTest(unittest.TestCase):
+    """约束列的状态只由 N/M 的颜色表达，不得再加文字徽标（v0.45.2）。
 
-    用户问「这个无共享是什么意思？」——absent/missing 曾兜底成「无共享」，
-    与「设置里没填内容」混淆，而两者处置完全不同。
+    用户：「不需要额外的『已写入』『未写入』的框，只需要前面的数字中的颜色就可以
+    展示了。多文字完全是多此一举」。
     """
 
-    def test_absent_and_missing_have_distinct_labels(self):
+    def test_no_text_badge_in_rules_cell(self):
         src = _src()
-        self.assertIn("absent:", src)
-        self.assertIn("未写入", src, "absent 应显示「未写入」")
-        # 断言到**具体映射值**，而不是只查有没有 `|| "无共享"` 这个兜底写法：
-        # 后者可以被任何一行无关代码满足，反向验证写不出会失败的用例（实测踩到）。
-        self.assertIn('absent: ["warn", "未写入"', src, "absent 映射必须直接写「未写入」")
-        self.assertIn('missing: ["warn", "未写入"', src, "missing 映射必须直接写「未写入」")
-        self.assertNotIn('"无共享"', src, "界面文案中不得再出现「无共享」")
+        start = src.index("function renderHomeListView(")
+        end = src.index("\nfunction ", start + 30)
+        body = src[start:end]
+        self.assertNotIn("${sharedSpan}", body, "约束单元格不得再渲染文字徽标")
+        self.assertIn("fullTip", body, "共享状态并进数字标签的 title")
 
-    def test_each_state_has_hint(self):
+    def test_no_state_labels_as_badges(self):
+        """约束单元格里不得把状态文案渲染成可见徽标（只能进 title）。"""
         src = _src()
-        start = src.index("const SHARED_MARK = {")
-        block = src[start: start + 900]
-        for state in ("current", "covered", "stale", "absent", "missing"):
-            self.assertIn(state + ":", block, f"SHARED_MARK 缺 {state}")
-        self.assertIn("写入共享约束", block, "提示必须告诉用户下一步怎么做")
+        start = src.index("function renderHomeListView(")
+        end = src.index("\nfunction ", start + 30)
+        cell = src[start:end]
+        # 状态文案只能出现在 SHARED_HINT 映射（title 用）里
+        self.assertIn("SHARED_HINT", cell, "状态应转成提示文案")
+        # 三重检查，任一命中即失败：
+        #  ① 变量名不得再出现（sharedSpan / sharedMark 是删掉的那套）
+        #  ② 约束单元格里不得有任何「状态文案」出现在元素内容位置
+        #  ③ 状态文案只能出现在 SHARED_HINT 映射里
+        self.assertNotIn("sharedSpan", cell, "sharedSpan 应已删除")
+        self.assertNotIn("sharedMark", cell, "sharedMark 应已删除")
+        for label in ("已写入", "未写入", "待更新", "共享已含", "共享过期", "无共享"):
+            # 允许出现在提示文案里（"共享约束已写入" 这类），但不得是独立标签内容
+            self.assertNotIn(f'>{label}</span>', cell, f"不得把「{label}」渲染成独立标签")
+            self.assertNotIn(f'${{{label}}}', cell)
+
+    def test_card_badge_is_count_only(self):
+        src = _src()
+        start = src.index("function _agentRulesSummary(")
+        end = src.index("\nfunction ", start + 30)
+        body = src[start:end]
+        self.assertNotIn("${sharedText}", body, "设置页卡片也不得渲染文字徽标")
+        self.assertIn("fullTip", body)
 
 
 class NoticeLayoutTest(unittest.TestCase):

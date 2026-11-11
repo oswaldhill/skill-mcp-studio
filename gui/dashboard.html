@@ -3668,23 +3668,24 @@ const skillsCell = `<button type="button" class="al-ico ${skillsCls}" data-popki
         .find((r) => r.name === a.name);
       const hasShared = typeof SHARED_RULES !== "undefined"
         && !!(SHARED_RULES && (SHARED_RULES.content || "").trim());
-      // 共享块状态徽标（v0.45.1）：文案必须说「文件里的状态」，不是「有没有内容」。
-      // 此前 absent/missing 都兜底成「无共享」，用户看不出是「设置里没填」还是
-      // 「文件里还没写进去」——两者处置完全不同（后者点「⋯」→ 写入共享约束即可）。
-      const SHARED_MARK = {
-        current: ["ok", "已写入", "共享约束已写入这个文件"],
-        covered: ["ok", "已写入", "文件里已有同义内容（语义一致，无需再写）"],
-        stale: ["warn", "待更新", "共享内容改过了，这个文件还是旧版；点「⋯」→ 写入共享约束"],
-        absent: ["warn", "未写入", "文件里没有共享块；点「⋯」→ 写入共享约束"],
-        missing: ["warn", "未写入", "文件还不存在；先让该客户端生成规则文件"],
+      // 共享块状态**只用数字标签的颜色**表达（v0.45.2）。
+      //
+      // 用户：「不需要额外的『已写入』『未写入』的框，只需要前面的数字中的颜色就可以
+      // 展示了。多文字完全是多此一举」——此前同一个状态被表达了两次：N/M 的颜色
+      // + 一枚文字徽标。颜色已经能一眼读出（绿=已含 / 黄=未含 / 中性=没文件），
+      // 文字徽标纯属重复，还把约束列撑宽。
+      // 具体差在哪仍可读到：并进数字标签的 title（悬停可见）。
+      const SHARED_HINT = {
+        current: "共享约束已写入",
+        covered: "文件里已有同义内容（语义一致）",
+        stale: "共享内容改过，这个文件还是旧版；点「⋯」→ 写入共享约束",
+        absent: "文件里没有共享块；点「⋯」→ 写入共享约束",
+        missing: "约束文件还不存在；先让该客户端生成规则文件",
       };
-      const mark = (sharedL && sharedL.enabled !== false && hasShared) ? SHARED_MARK[sharedL.state] : null;
-      const sharedMark = mark ? mark[1] : "";
-      const sharedMarkCls = mark ? mark[0] : "";
-      const sharedSpan = mark
-        ? `<span class="tag ${sharedMarkCls}" title="${escapeHtml(mark[2])}">${sharedMark}</span>`
-        : "";
-      rulesCell = `<button type="button" class="tag tag-btn ${ruleCls}"${ruleAttrs} title="${escapeHtml(tip)}" aria-label="约束文件 ${ruleText}，点击查看">${ruleText}</button>${sharedSpan}`;
+      const sharedHint = (sharedL && sharedL.enabled !== false && hasShared)
+        ? (SHARED_HINT[sharedL.state] || "") : "";
+      const fullTip = sharedHint ? `${tip}｜${sharedHint}` : tip;
+      rulesCell = `<button type="button" class="tag tag-btn ${ruleCls}"${ruleAttrs} title="${escapeHtml(fullTip)}" aria-label="约束文件 ${ruleText}，点击查看">${ruleText}</button>`;
     }
     // 整行可点（v0.39.7）：行本身成为「看详情」的主入口，不再要求瞄准右上角按钮。
     // 行内按钮（计数徽标 / 约束 / MCP）自己 stopPropagation，互不抢事件。
@@ -5047,16 +5048,20 @@ function _agentRulesSummary(t) {
     .find((r) => r.name === t.name);
   const sharedOn = shared ? shared.enabled !== false : true;
   const sharedState = shared && sharedOn ? shared.state : "";
-  // 与主表「约束」列同一套文案（v0.45.1）：absent/missing 都是「未写入」，不再是「无共享」
-  const sharedText = { current: "已写入", covered: "已写入", stale: "待更新", absent: "未写入", missing: "未写入" }[sharedState] || "";
-  const sharedCls = { current: "ok", covered: "ok", stale: "warn", absent: "", missing: "" }[sharedState] || "";
-  const sharedTip = sharedState === "current"
-    ? "已包含当前共享约束"
-    : sharedState ? "尚未包含当前共享约束（可在设置页同步进去）" : "";
+  // 共享块状态只用 N/M 的颜色表达（v0.45.2，与主表一致）。
+  // 此前同一状态被表达两次：颜色 + 一枚文字徽标，用户明确说「多文字完全是多此一举」。
+  // 细节并进 title：悬停 N/M 就能看到差在哪里、下一步做什么。
+  const sharedTip = {
+    current: "已包含当前共享约束",
+    covered: "文件里已有同义内容（语义一致）",
+    stale: "共享内容改过，这里还是旧版；可用「写入共享约束」更新",
+    absent: "文件里没有共享块；可用「写入共享约束」写入",
+    missing: "约束文件还不存在",
+  }[sharedState] || "";
+  const fullTip = sharedTip ? `${tip}｜${sharedTip}` : tip;
   const badge = idx === 0
       ? `<span class="ac-path-badges">
-          <span class="tag ${cls}" title="${escapeHtml(tip)}">${hit}/${total}</span>
-          ${sharedText ? `<span class="tag ${sharedCls}" title="${escapeHtml(sharedTip)}">${sharedText}</span>` : ""}
+          <span class="tag ${cls}" title="${escapeHtml(fullTip)}">${hit}/${total}</span>
         </span>`
       : "";
     return `<div class="ac-path-item">
@@ -10858,7 +10863,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.45.1", build: 190, build_number: 190, semver_ok: true, full: "v0.45.1 (build 190)" },
+  app: { name: "Skill MCP Studio", version: "0.45.2", build: 191, build_number: 191, semver_ok: true, full: "v0.45.2 (build 191)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

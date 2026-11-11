@@ -371,18 +371,19 @@ class WiringTest(unittest.TestCase):
 
         card = _fn("_agentRulesSummary")
         # 文案改为 SHARED_MARK 映射后（v0.45.1），断言「渲染分支」而非字面词。
-        self.assertRegex(card, r'current:\s*"已写入"', "卡片摘要必须把 current 渲染成「已写入」")
-        self.assertRegex(card, r'absent:\s*"未写入"', "卡片摘要必须把 absent 渲染成「未写入」")
-        self.assertRegex(card, r'stale:\s*"待更新"', "卡片摘要必须把 stale 渲染成「待更新」")
+        # v0.45.2：卡片也不再用文字徽标，状态并进 N/M 的 title。
+        self.assertIn("sharedTip", card, "卡片摘要必须把状态并进提示文案")
+        self.assertIn("已包含当前共享约束", card, "current 的提示文案缺失")
         self.assertIn("SHARED_AUDIT", card, "卡片摘要必须读共享审计结果")
 
         lst = _fn("renderHomeListView")
         # 只校验**渲染进单元格的那一步**：整行文本里出现 `>${sharedSpan}<`
         # 才算「显示出来了」。只查变量名会被「定义了但没渲染」骗过去
         # （第一次写这条断言时就踩了：把变量改名，测试照样绿）。
-        self.assertRegex(lst, r'\$\{sharedSpan\}', "主表列表必须把共享状态渲染进单元格")
-        self.assertIn("已写入", lst, "列表列必须区分「已写入」")
-        self.assertIn("待更新", lst, "列表列必须区分「待更新」")
+        # v0.45.2：状态不再用文字徽标，改为并进数字标签的 title。
+        self.assertIn("SHARED_HINT", lst, "主表必须把共享状态并进数字标签的提示")
+        self.assertIn("共享约束已写入", lst, "current 的提示文案缺失")
+        self.assertIn("写入共享约束", lst, "未达标时必须告诉用户下一步怎么做")
         self.assertIn('"covered"', lst, "语义一致（covered）也必须算已含（v0.43.0）")
 
     def test_shared_card_is_content_only_in_settings(self):
@@ -429,5 +430,5 @@ class WiringTest(unittest.TestCase):
         card = gui[gui.index("function _agentRulesSummary("):]
         card = card[: card.index("\nfunction ")]
         self.assertIn("SHARED_AUDIT", card, "卡片摘要必须读共享状态")
-        self.assertIn("已写入", card, "卡片摘要必须输出「已写入」")
+        self.assertIn("已包含当前共享约束", card, "卡片摘要必须把共享状态并进提示")
         self.assertIn("covered", card, "语义一致（covered）也必须算已含（v0.43.0）")

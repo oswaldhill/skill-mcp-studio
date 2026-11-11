@@ -1561,6 +1561,9 @@
       <p><strong>共享约束徽标文案</strong>：<code>absent</code>/<code>missing</code> 曾兜底成「无共享」造成误解，
         现按状态给 <code>已写入 / 待更新 / 未写入</code> 并配 title 说明下一步。设置里没填内容时
         <strong>根本不显示</strong>该徽标。</p>
+      <p><strong>同一状态只表达一次：N/M 的颜色就是全部</strong>（v0.45.2）。此前共享状态被表达两次
+        （标签颜色 + 文字徽标），用户：「多文字完全是多此一举」。现在约束列只有 <code>N/M</code>，
+        状态只由颜色承载，细节并进 <code>title</code>；设置页卡片同步。<strong>设计原则：同一个状态不要用两种载体表达。</strong>
       <p><strong>操作列只保留「⋯」</strong>（v0.45.0）：详情并入菜单第一项 + 整行可点；
         kebab <strong>默认始终可见</strong>（唯一入口不能藏），hover 加深。</p>
       <p><strong>操作列：<code>.al-op-cell</code> 显式类 + 中心对齐</strong>（v0.44.0）：
