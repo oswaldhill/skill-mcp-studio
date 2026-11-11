@@ -7,6 +7,41 @@
 
 ## [Unreleased]
 
+## [v0.40.6] - 2026-11-11
+
+当前发布版本（build 174）。
+
+**找回共享约束的内容输入框——v0.40.5 删过头了。**
+
+用户：「你配置约束文字的内容的功能和输入框这些怎么不见了？」
+
+### 上一版删错了
+
+v0.40.5 说「整体删除」时，把**配置约束内容的输入框**也一起删了。用户真正要删的是
+那张「逐 Agent 开关 + 逐行写入」面板——不是「在哪儿写内容」。
+
+| 保留 | 删除 |
+|---|---|
+| 约束内容 textarea（`#shared-rules-text`） | 逐 Agent 参与开关（`.switch`） |
+| 保存内容 / 同步到全部 / 检查各 Agent | 逐行「写入」按钮 |
+| 只读状态一览（每 Agent 一行，仅标签） | —— |
+
+卡片仍在**概览页**「快捷操作」下方，复用 `.settings-card` 的 `.rows/.row` 语言。
+逐 Agent 参与开关仍在 CLI：`--shared-rules-toggle CLIENT on|off`。
+
+### 测试
+
+- `test_no_shared_card_anywhere` 作废，替换为
+  `test_shared_card_keeps_content_editor`：输入框 / 保存 / 同步三个标识符必须在，
+  逐 Agent 开关与逐行写入必须**不在**。
+- **反向验证 2 条**：删掉输入框、重新加回逐 Agent 开关，各自让断言失败。
+- 概览测试重新补上卡片装配（`_fn("sharedRulesCard")` + `SHARED_AUDIT` 桩）。
+- 全量 **1724 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
+### 文档
+
+`docs/DESIGN.md` §2.3c-2c 改正（保留 / 删除两栏对照）；`DESIGN.html` 同步。
+
 ## [v0.40.5] - 2026-11-11
 
 当前发布版本（build 173）。
@@ -3890,7 +3925,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.40.5...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.40.6...HEAD
+[v0.40.6]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.6
 [v0.40.5]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.5
 [v0.40.4]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.4
 [v0.40.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.3

@@ -3096,8 +3096,50 @@ function renderOverview() {
     '<button class="btn-soft" data-action="merge">修复链接</button>' +
     '<button class="btn-soft" data-action="endpoint-check">全量检查</button>' +
     '<button class="btn-soft" data-goto="settings">管理 MCP 端点</button>' +
-    "</div>";
+    "</div>" +
+    sharedRulesCard();
+  bindSharedRulesBox();
+  if ($("shared-rules-status") && !SHARED_AUDIT) auditSharedRules();
 }
+
+// 共享约束卡片（v0.40.6 找回）：v0.40.5 把「配置内容」的输入框一起删了，那是过头了——
+// 用户要删的是那张「逐 Agent 开关 + 逐行写入」的面板，不是写内容的地方。
+// 现在只保留两个真正的动作：写内容、把内容同步进去。
+// 逐 Agent 的参与开关与逐行写入不再出现在界面上（走 CLI）。
+function sharedRulesCard() {
+  return `<div class="settings-card" id="shared-rules-card" style="margin-top:var(--sp-6)">
+    <h4>共享约束</h4>
+    <div class="rows">
+      <div class="row row-block">
+        <span class="k">约束内容</span>
+        <span class="v"><textarea id="shared-rules-text" rows="5" spellcheck="false"
+          aria-label="共享约束内容"
+          placeholder="例如：- 所有回答使用简体中文&#10;- 提交前必须跑全量测试"></textarea></span>
+      </div>
+      <div class="row">
+        <span class="k">同步</span>
+        <span class="v" id="shared-rules-summary">尚未检查</span>
+        <span class="shared-actions">
+          <button class="ghost" data-action="shared-rules-audit">检查各 Agent</button>
+          <button class="btn-soft" data-action="shared-rules-apply">同步到全部</button>
+          <button class="primary" data-action="shared-rules-save">保存内容</button>
+        </span>
+      </div>
+    </div>
+    <div class="note" style="margin-top:var(--sp-4)">只替换标记块（shared-rules:begin / end），文件里你自己的规则不会被修改；每个 Agent 写前自动备份。各 Agent 的参与开关见 <code>--shared-rules-toggle</code>。</div>
+    <div id="shared-rules-status" style="margin-top:var(--sp-4)"></div>
+  </div>`;
+}
+
+// 概览渲染后初始化输入框（首次渲染才拉内容）
+function bindSharedRulesBox() {
+  const box = $("shared-rules-text");
+  if (!box || box.dataset.bound) return;
+  box.dataset.bound = "1";
+  box.addEventListener("input", () => { box.dataset.dirty = "1"; });
+  loadSharedRules();
+}
+
 
 
 
@@ -8539,23 +8581,14 @@ async function auditSharedRules() {
   // v0.40.2：这一段的职责收敛成「这个 Agent 参不参与检查 / 要不要同步进去」。
   // 具体是哪条路径缺、内容差在哪，放进 title（悬停可见），不再逐条铺满卡片——
   // 13 个 Agent × 每个两行按钮，会把设置页撑成一张待办清单。
+  // 只读一览：每个 Agent 现在处于哪一态。逐 Agent 开关与逐行写入已按用户要求移除
+  // （v0.40.5），要看某一条的具体路径就悬停状态标签。
   const rows = (payload.rows || []).map((row) => {
     const [cls, label] = _sharedStateLabel(row.state);
-    const on = row.enabled !== false;
     const tip = (row.paths || []).map((x) => `${x.path}：${x.reason || x.state}`).join("；");
-    const canFix = on && (row.state === "stale" || row.state === "absent" || row.state === "missing");
-    const btn = canFix
-      ? `<button class="btn-soft sm" data-action="shared-rules-apply" data-client="${escapeHtml(row.name)}">${row.state === "missing" ? "新建并写入" : "写入"}</button>`
-      : "";
-    return `<div class="row${on ? "" : " is-off"}">
+    return `<div class="row">
       <span class="k">${escapeHtml(row.name)}</span>
-      <span class="v">${on ? `<span class="tag ${cls}" title="${escapeHtml(tip)}">${label}</span>` : '<span class="tag">已关闭</span>'}</span>
-      <button type="button" class="switch" role="switch" aria-checked="${on ? "true" : "false"}"
-        data-action="shared-rules-toggle" data-client="${escapeHtml(row.name)}" data-on="${on ? "1" : "0"}"
-        aria-label="切换 ${escapeHtml(row.name)} 是否参与共享约束同步" title="关掉的 Agent 不参与检查，也不会被同步">
-        <span class="sw-track"></span><span class="sw-knob"></span>
-      </button>
-      ${btn}
+      <span class="v"><span class="tag ${cls}" title="${escapeHtml(tip)}">${label}</span></span>
     </div>`;
   }).join("");
   const summaryEl = $("shared-rules-summary");
@@ -10554,7 +10587,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.40.5", build: 173, build_number: 173, semver_ok: true, full: "v0.40.5 (build 173)" },
+  app: { name: "Skill MCP Studio", version: "0.40.6", build: 174, build_number: 174, semver_ok: true, full: "v0.40.6 (build 174)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

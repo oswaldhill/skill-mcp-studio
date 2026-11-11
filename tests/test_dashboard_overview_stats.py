@@ -75,12 +75,18 @@ def _render_overview():
     js = "\n".join(
         [
             "const SNAP = " + json.dumps(SNAP) + ";",
+            "let SHARED_AUDIT = null;",
+            "let SHARED_RULES = null;",
             esc,
             _fn("_agentsForPanel"),
             _fn("statCard"),
+            _fn("sharedRulesCard"),          # renderOverview 会调用它
             _fn("renderOverview"),
             "const holder = { _v: '', set innerHTML(v) { this._v = v; }, get innerHTML() { return this._v; } };",
             "const $ = (id) => (id === 'overview-body' ? holder : { textContent: '', innerHTML: '' });",
+            # 依赖真实 DOM，node 里只需存在
+            "function bindSharedRulesBox() {}",
+            "function auditSharedRules() { return Promise.resolve(); }",
             "renderOverview();",
             "process.stdout.write(holder._v);",
         ]

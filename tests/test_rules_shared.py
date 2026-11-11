@@ -188,8 +188,8 @@ class WiringTest(unittest.TestCase):
         self.assertIn("--shared-rules-toggle", scan, "CLI 缺逐 Agent 开关")
         self.assertIn("--shared-rules-toggle", rs_, "Rust 白名单缺逐 Agent 开关")
         gui = (root / "gui/dashboard.html").read_text(encoding="utf-8")
-        self.assertIn('data-action="shared-rules-toggle"', gui, "GUI 缺逐 Agent 开关")
-        self.assertIn('role="switch"', gui, "开关必须用既有 .switch 控件")
+        self.assertNotIn('data-action="shared-rules-toggle"', gui,
+                         "逐 Agent 开关不应再出现在界面（v0.40.5 用户要求）")
         self.assertIn("function auditSharedRules()", gui, "GUI 缺检查同步状态")
         self.assertIn("function applySharedRules(client)", gui, "GUI 缺强制写入")
         self.assertIn('data-action="shared-rules-apply"', gui)
@@ -234,18 +234,23 @@ class WiringTest(unittest.TestCase):
         self.assertRegex(lst, r'state === "current"\s*\?\s*"共享已含"', "列表列必须区分「共享已含」")
         self.assertRegex(lst, r'stale"\s*\?\s*"共享过期"', "列表列必须区分「共享过期」")
 
-    def test_no_shared_card_anywhere(self):
-        """共享约束卡片整体删除（v0.40.5 用户要求）。
+    def test_shared_card_keeps_content_editor(self):
+        """「配置约束内容」的输入框必须在（v0.40.6 用户反馈找回）。
 
-        用户：「这个完全是不需要的，不需要放在概览里完全删除；只需要在 IDE 和
-        Agent 的那个 tab 里，在约束的绿色框中，通过不同的颜色来展示出是否有约束
-        文件，以及约束文件中是否有设置的内容」。
+        v0.40.5 删过头了：用户要删的是「逐 Agent 开关 + 逐行写入」面板，
+        不是写内容的地方。
         """
         root = Path(__file__).resolve().parents[1]
         gui = (root / "gui/dashboard.html").read_text(encoding="utf-8")
-        for dead in ("sharedRulesCard", "bindSharedRulesBox", 'id="shared-rules-card"',
-                     'id="shared-rules-status"', 'id="shared-rules-text"'):
-            self.assertNotIn(dead, gui, f"共享约束卡片残留：{dead}")
+        self.assertIn("function sharedRulesCard()", gui)
+        self.assertIn('id="shared-rules-text"', gui, "必须有内容输入框")
+        self.assertIn('data-action="shared-rules-save"', gui, "必须有保存内容按钮")
+        self.assertIn('data-action="shared-rules-apply"', gui, "必须有同步按钮")
+        # 仍不允许出现逐 Agent 开关与逐行写入
+        self.assertNotIn('data-action="shared-rules-toggle"', gui,
+                         "逐 Agent 开关已按用户要求移除")
+        self.assertNotIn('data-client="${escapeHtml(row.name)}"', gui,
+                         "逐行写入按钮已按用户要求移除")
 
     def test_rules_cell_uses_three_color_states(self):
         """约束列按「有无文件 × 有无共享内容」上色（v0.40.5）。
