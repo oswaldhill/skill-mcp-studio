@@ -7,6 +7,63 @@
 
 ## [Unreleased]
 
+## [v0.43.3] - 2026-11-11
+
+当前发布版本（build 183）。
+
+**找到真正的根因：`.al-type` 类挂到了 `<td>` 上，把单元格改成 `inline-block`。**
+
+用户第三次反馈「并没有，请你直接截图或者用视觉进行查看，目前仍然是异常的，甚至
+现在操作按钮和详情按钮发生了干涉和冲突」。
+
+### 根因（这次是量出来的）
+
+在浏览器里逐列量矩形，发现第 2 列：表头右缘 **486.32**，单元格右缘 **483.55**，
+而第 3 列两者都是 542.97。按「第 2 列内部塌了」去查 CSSOM，命中规则是：
+
+```
+.agent-list-table .al-name, .agent-list-table .al-type => inline-block
+```
+
+`.al-type` 这个装饰类**同时挂在 `<td>` 和内部 `<span>` 上**。`display: inline-block`
+命中单元格后，`table-layout: fixed` 的计算宽度对该单元格失效，实际塌到 **72.98px**
+（设定 240px）——后面整列全部错位。
+
+**为什么前两轮没找到**：我只量表头，而表头一直是对的（表头没有 `.al-type` 类）。
+只有把「表头右缘」和「同一列单元格右缘」分别量、再对照，才看得见。
+
+### 修复
+
+| 项 | 改前 | 改后 |
+|---|---|---|
+| 类型单元格 | `<td class="al-type">` | `<td class="al-type-cell"><span class="al-type">` |
+| 单元格 display | 被装饰类改成 inline-block | `display: table-cell` 显式钉死 |
+| kebab 覆盖层 | `right: calc(sp-4 + 68px)` 绝对定位 | **删除**，详情与更多并排 |
+| 操作列 | 120px + 覆盖层 | 116px + 居中并排（详情右缘与 kebab 左缘不相交） |
+
+### 实测结果
+
+```
+修复前：第 2 列 表头 486.32 / 单元格 483.55  ← 差 2.77px，其余列都对
+修复后：全部 10 列 th 与 td 右缘完全一致（allAligned: true）
+       操作列表头中心 1010.3 = 按钮组中心 1010.3
+       详情右缘 1026 < kebab 左缘 1032（不重叠）
+```
+
+### 测试
+
+- 新增 `CellDisplayGuardTest`（3 项）：类型单元格不得挂装饰类、单元格 display 钉死、
+  不得有装饰类与 `td` 同名。
+- 更新 `OperationColumnAxisTest`：覆盖层方案作废，改为「并排 + 居中」。
+- **反向验证 4 条**：类型单元格改回 `.al-type`、去掉 `display: table-cell`、
+  类型列改回 `auto`、操作列改回裁切，各自失败。
+- 全量 **1747 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
+### 文档
+
+`docs/DESIGN.md` §2.3d-2 补「单元格 display 必须钉死为 table-cell」与
+「装饰类不得与 td 同名」两条护栏，并把覆盖层方案标记为**已废弃**；`DESIGN.html` 同步。
+
 ## [v0.43.2] - 2026-11-11
 
 当前发布版本（build 182）。
@@ -4297,7 +4354,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.43.2...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.43.3...HEAD
+[v0.43.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.43.3
 [v0.43.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.43.2
 [v0.43.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.43.1
 [v0.43.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.43.0

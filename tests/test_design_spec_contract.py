@@ -1303,6 +1303,35 @@ class NoToastTest(unittest.TestCase):
         self.assertIn("modal cfm-card", body, "通知必须是 .cfm-card 弹框家族")
 
 
+class CellDisplayGuardTest(unittest.TestCase):
+    """单元格不得被装饰类改成非 table-cell（v0.43.4）。
+
+    实测根因：`<td class="al-type">` 与内部 `<span class="al-type">` 共用同一个类，
+    而 `.agent-list-table .al-type { display: inline-block }` 命中单元格后，该列宽度
+    从 240px 塌到 **72.98px**，整表竖线全部错位——用户连报三轮「线断了 / 没对齐」。
+    表头一直正常，所以只量表头量不出这个问题。
+    """
+
+    def test_type_cell_does_not_carry_decorative_class(self):
+        src = _src()
+        self.assertIn('<td class="al-type-cell"><span class="al-type">', src,
+                      "类型单元格必须用 .al-type-cell，装饰类只挂在内部 span 上")
+        self.assertNotIn('<td class="al-type">', src, "单元格不得直接挂 .al-type")
+
+    def test_cells_pinned_to_table_cell(self):
+        css = _css()
+        m = re.search(r"\.agent-list-table th, \.agent-list-table td\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(m)
+        self.assertIn("display: table-cell", m.group(1),
+                      "单元格 display 必须显式钉死为 table-cell")
+
+    def test_no_decorative_class_targets_cells(self):
+        """装饰类只应出现在树内层，不得与 td 元素同名。"""
+        src = _src()
+        for bad in ('<td class="al-name"', '<td class="al-type"', '<td class="tag"'):
+            self.assertNotIn(bad, src, f"单元格不得挂装饰类：{bad}")
+
+
 class ListVerticalRulesTest(unittest.TestCase):
     """主表必须有贯通整列的竖线（v0.43.2）。
 
@@ -1353,29 +1382,32 @@ class OperationColumnAxisTest(unittest.TestCase):
 
     def test_ops_cell_overflow_visible(self):
         css = _css()
-        m = re.search(r"\.agent-list-table td:nth-child\(10\)\s*\{([^}]*)\}", css)
-        self.assertIsNotNone(m)
-        self.assertIn("overflow: visible", m.group(1),
+        self.assertIn("td:nth-child(10) { overflow: visible; }", css,
                       "操作列不得裁切，否则 hover 光晕被削成直角与竖线粘连")
-        self.assertIn("position: relative", m.group(1), "kebab 绝对定位需要相对基准")
 
-    def test_kebab_is_hover_overlay(self):
+    def test_kebab_is_inline_not_overlay(self):
+        """次要操作必须与详情并排，**不得**绝对定位覆盖（v0.43.3）。
+
+        上一版 kebab 用 `right: calc(sp-4 + 68px)` 浮在单元格右上角，详情按钮一改
+        宽度就压到按钮上（用户：「操作按钮和详情按钮发生了干涉和冲突」）。
+        """
         css = _css()
-        self.assertIn(".kebab-row", css, "次要操作应为 hover 覆盖层")
-        m = re.search(r"\.agent-list-table tbody tr \.kebab-row\s*\{([^}]*)\}", css)
-        self.assertIsNotNone(m)
-        self.assertIn("position: absolute", m.group(1))
-        self.assertIn("opacity: 0", m.group(1), "默认隐藏，避免影响轴线")
+        self.assertNotIn(".kebab-row", css, "覆盖层方案已废弃")
         src = _src()
-        self.assertIn('class="kebab kebab-row"', src, "行内 kebab 必须带 kebab-row 类")
-
-    def test_type_column_absorbs_remainder(self):
-        """必须留一列 width:auto，否则 fixed 布局会按比例放大所有列。"""
-        css = _css()
-        m = re.search(r"\.agent-list-table th:nth-child\(2\),\s*\.agent-list-table td:nth-child\(2\)\s*\{([^}]*)\}", css)
+        self.assertNotIn('class="kebab kebab-row"', src, "行内 kebab 不得再带覆盖层类")
+        m = re.search(r"\.al-ops \{[^}]*\}", css)
         self.assertIsNotNone(m)
-        self.assertIn("width: auto", m.group(1),
-                      "必须有一列吸收剩余宽度，否则 px 列宽变成比例值")
+        self.assertIn("justify-content: center", m.group(0))
+
+    def test_type_column_has_explicit_width(self):
+        """类型列必须显式定宽（v0.43.4）。
+
+        `width: auto` 在 `table-layout: fixed` 下**按内容算宽**、不吸收剩余——
+        实测该列塌到 150px，后面整列错位。
+        """
+        css = _css()
+        self.assertIn("td:nth-child(2)  { width: 240px; }", css,
+                      "类型列必须显式 px 定宽，不能用 auto")
 
 
 class ModalFamilyConsistencyTest(unittest.TestCase):

@@ -1534,6 +1534,11 @@
           <tr><td>进详情</td><td>只能点右上角「详情」按钮</td><td><strong>整行可点</strong>（<code>tr[data-row-open]</code>，含键盘 Enter/Space）；按钮降级为提示</td></tr>
         </tbody>
       </table>
+      <p><strong>单元格 display 必须钉死为 <code>table-cell</code></strong>（v0.43.4）：实测 <code>.al-type</code>
+        同时挂在 <code>&lt;td&gt;</code> 与内部 <code>&lt;span&gt;</code> 上，
+        <code>.al-type { display: inline-block }</code> 命中单元格后该列宽度从 240px 塌到 <strong>72.98px</strong>，
+        整表竖线全部错位。护栏：① 显式 <code>display: table-cell</code>；② 装饰类只挂单元格内部元素，
+        不得与 <code>td</code> 同名（类型单元格用 <code>.al-type-cell</code> 包一层）。</p>
       <p><strong>列间竖线必须贯通</strong>（v0.43.2）：主表原先没有列分隔线，全靠宽度对齐「看起来」像分隔；
         表头与表体之间也没有连续竖线。做法：<code>border-collapse: separate</code> + <code>border-spacing: 0</code>，
         每个单元格用 <code>:not(:last-child)::after</code> 画 <code>absolute; top:0; bottom:0; width:1px</code> 的竖线
@@ -1545,8 +1550,7 @@
         浏览器会<strong>按比例放大每一列</strong>，px 变成比例而非定值（实测合计 958 / 容器 1061 →
         名称 220→243.6、操作 128→141.8）。必须留一列 <code>width: auto</code> 吸收剩余。</p>
       <p><strong>操作列的轴对齐</strong>（v0.43.1）：表头文字与按钮必须落在同一条竖线上。操作列只放「详情」，
-        次要操作 kebab 用 <code>.kebab-row</code> 绝对定位到单元格右上角、hover / <code>:focus-within</code>
-        才出现（<code>right: calc(var(--sp-4) + 68px)</code>）。另外操作列 <code>td</code> 的
+        详情与更多<strong>并排</strong>，<code>.al-ops</code> 居中、表头居中，两者中心同轴（覆盖层方案因会压住按钮而废弃）。另外操作列 <code>td</code> 的
         <code>overflow</code> 从 <code>hidden</code> 改 <code>visible</code>——否则按钮的 3px hover 光晕被削成直角，
         与相邻列的竖线粘在一起。</p>
       <p><strong>为什么文本列要定宽</strong>（反转一条旧判据）：原判据是「文本列不设 px 宽、留弹性吸收剩余」，

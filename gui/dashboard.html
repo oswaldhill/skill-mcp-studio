@@ -455,17 +455,13 @@
   .agent-card .ac-fixbar .ac-fix.danger { border-color: var(--err-border); background: var(--err-bg); color: var(--err); }
   .agent-card .ac-fixbar .ac-fix.danger:hover { background: var(--err); border-color: var(--err); color: var(--on-accent); }
   /* 主页列表视图：详情链接 */
-  /* 操作列（v0.43.1）：只放「详情」，其右缘与表头文字右缘同一条线。
-     次要操作 kebab 绝对定位到单元格右上角、hover / 聚焦时才出现（详见 .kebab-row）。 */
-  .al-ops { display: flex; justify-content: flex-end; align-items: center; gap: var(--gap-2); white-space: nowrap; min-width: 0; position: relative; }
-  .agent-list-table tbody tr .kebab-row {
-    position: absolute; top: 50%; right: calc(var(--sp-4) + 68px); transform: translateY(-50%) translateX(4px);
-    opacity: 0; pointer-events: none; transition: opacity .12s var(--ease), transform .12s var(--ease);
-  }
-  .agent-list-table tbody tr:hover .kebab-row,
-  .agent-list-table tbody tr:focus-within .kebab-row { opacity: 1; pointer-events: auto; transform: translateY(-50%) translateX(0); }
+  /* 操作列（v0.43.3）：详情 + 更多并排，**不做绝对定位覆盖**。
+     上一版把 kebab 用 `right: calc(sp-4 + 68px)` 浮在单元格右上角，详情按钮一改宽度
+     就压到按钮上（用户截图「操作按钮和详情按钮发生了干涉和冲突」）。并排排布没有
+     这个隐患：宽度由内容决定，溢出由列宽吸收。 */
+  .al-ops { display: flex; justify-content: center; align-items: center; gap: var(--gap-2); white-space: nowrap; min-width: 0; }
   .al-detail {
-    display: inline-flex; align-items: center; gap: var(--gap-1); height: 26px; flex: none;
+    display: inline-flex; align-items: center; gap: var(--gap-1); height: 26px; flex: 0 0 auto;
     padding: 0 var(--sp-4); border: 1px solid var(--line); border-radius: var(--r-control);
     background: var(--panel); color: var(--accent); box-shadow: none;
     font-size: var(--fs-xs); font-weight: 500; font-family: inherit; cursor: pointer;
@@ -474,7 +470,9 @@
   .al-detail:hover { background: var(--accent-bg); border-color: var(--accent-border); }
   .al-detail:active { transform: scale(.96); }
   .al-detail svg { width: 14px; height: 14px; }
-  .al-ops .kebab { margin-left: 0; flex: none; }
+  .al-ops .kebab { margin-left: 0; flex: 0 0 auto; width: 24px; height: 24px; display: inline-flex;
+    align-items: center; justify-content: center; border-radius: var(--r-control); color: var(--faint); }
+  .al-ops .kebab:hover { background: var(--panel-2); color: var(--muted); }
   .agent-list-table td .dot { margin-right: var(--sp-2); vertical-align: -1px; }
 
   /* ============ table ============ */
@@ -1201,7 +1199,10 @@
      贯通整列的竖线。原来只有横线，靠列宽对齐"看起来"像分隔。
      现在每个单元格用 ::after 画一条 1px 竖线，从表头顶一直连到最后一行。 */
   .agent-list-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: var(--fs-sm); table-layout: fixed; }
-  .agent-list-table th, .agent-list-table td { position: relative; }
+  /* v0.43.3：单元格 display 必须显式钉死为 table-cell。
+     实测本页有别的规则把 td 设成了 inline-block，表格单元格脱队后列宽与竖线全错
+     （表头 241→489，对应单元格却是 241→391）。表头一直正常，所以只看表头量不出来。 */
+  .agent-list-table th, .agent-list-table td { display: table-cell; position: relative; }
   .agent-list-table th:not(:last-child)::after,
   .agent-list-table td:not(:last-child)::after {
     content: ""; position: absolute; top: 0; bottom: 0; right: -0.5px; width: 1px;
@@ -1217,7 +1218,7 @@
   .agent-list-table td { padding: var(--sp-3a) var(--sp-4); border-bottom: 1px solid var(--line); vertical-align: middle; overflow: hidden; }
   /* 操作列不做裁切（v0.43.1）：单元格里的按钮组带 3px 光晕，overflow:hidden 会把光晕
      削成直角、与相邻列的竖线粘在一起（用户截图「这里的线没有对齐、连在一起」）。 */
-  .agent-list-table td:nth-child(10) { overflow: visible; position: relative; }
+  .agent-list-table td:nth-child(10) { overflow: visible; }
   /* 带 data-help 的表头：**自绘**的说明气泡。
      为什么不用原生 `title`（2026-10-14 用户反馈「提示…没有显示出来」）：
      实测本应用（Tauri / macOS WKWebView）里 `cursor: help` 会生效（变成问号），
@@ -1288,7 +1289,7 @@
      现在按「最长名称 + 最长类型」给够余量后定宽，省下的 ~370px 变成表格外缘留白
      （用户明确要求保留两列，不合并、不删列）。 */
   .agent-list-table th:nth-child(1),  .agent-list-table td:nth-child(1)  { width: 220px; }  /* 名称：最长 "DeepSeek Harness" */
-  .agent-list-table th:nth-child(2),  .agent-list-table td:nth-child(2)  { width: auto; min-width: 150px; }  /* 类型：吸收剩余宽度 */
+  .agent-list-table th:nth-child(2),  .agent-list-table td:nth-child(2)  { width: 240px; }  /* 类型（v0.43.3：fixed 下 auto 会按内容算宽、不吸收剩余） */
   .agent-list-table th:nth-child(3),  .agent-list-table td:nth-child(3)  { width: 56px; }   /* 安装：一枚 20px 徽标 */
   .agent-list-table th:nth-child(4),  .agent-list-table td:nth-child(4)  { width: 48px; }   /* APP：一枚计数徽标 */
   .agent-list-table th:nth-child(5),  .agent-list-table td:nth-child(5)  { width: 48px; }   /* CLI：同上 */
@@ -1296,13 +1297,18 @@
   .agent-list-table th:nth-child(7),  .agent-list-table td:nth-child(7)  { width: 82px; }   /* 技能目录：一枚链接徽标 */
   .agent-list-table th:nth-child(8),  .agent-list-table td:nth-child(8)  { width: 78px; }   /* 约束：N/M 或「无约定」 */
   .agent-list-table th:nth-child(9),  .agent-list-table td:nth-child(9)  { width: 78px; }   /* MCP：N/M 或「不支持」 */
-  .agent-list-table th:nth-child(10), .agent-list-table td:nth-child(10) { width: 128px; }  /* 操作（v0.43.0 由 104 加宽：内容需 ~120px，此前溢出被裁） */
+  .agent-list-table th:nth-child(10), .agent-list-table td:nth-child(10) { width: 116px; }  /* 操作（v0.43.0 由 104 加宽：内容需 ~120px，此前溢出被裁） */
   /* v0.43.1：上面 10 列合计 958px，容器通常更宽 —— table-layout:fixed 会把剩余宽度
      **按比例摊到所有列**，于是「定宽」变成比例值（实测名称 220→243.6、操作 128→141.8），
      列与列的分隔线看起来松松垮垮。把「类型」列改成吸收剩余的那一列（其余保持真定宽），
      既让紧列钉死，又不会右侧留一大块空。 */
   /* fixed 布局下超长内容不会自动换行，必须显式裁切（overflow: hidden 已合并进上方 td 主规则）。
      名称/类型两个文本列给省略号，保证长客户端名不撑破定宽。 */
+  /* v0.43.4：`.al-type` 曾被挂到 <td> 上，`display:inline-block` 把单元格变成行内块，
+     该列宽度从 240px 塌到 72.98px，整表竖线错位。单元格改用 `.al-type-cell`，
+     行内块只作用于内部 <span>。 */
+  /* 单元格容器：只用来标识「这是类型列」，不参与装饰（v0.43.4） */
+  .agent-list-table .al-type-cell { vertical-align: middle; }
   .agent-list-table .al-name,
   .agent-list-table .al-type { display: inline-block; max-width: 100%; overflow: hidden;
     text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
@@ -3635,7 +3641,7 @@ const skillsCell = `<button type="button" class="al-ico ${skillsCls}" data-popki
     return `<tr data-row-open="${escapeHtml(a.name)}" tabindex="0" role="button"
         aria-label="${escapeHtml(a.name)} 详情">
       <td><span class="dot ${dot}" aria-hidden="true"></span> <span class="sr-only">${escapeHtml(statusText)}</span> <span class="al-name">${escapeHtml(a.name)}</span></td>
-      <td><span class="al-type">${escapeHtml(a.type || "其他")}</span></td>
+      <td class="al-type-cell"><span class="al-type">${escapeHtml(a.type || "其他")}</span></td>
       <td>${statusCell}</td>
       <td>${cell("app", a.app_paths, a.name)}</td>
       <td>${cell("cli", a.cli_paths, a.name)}</td>
@@ -3643,7 +3649,7 @@ const skillsCell = `<button type="button" class="al-ico ${skillsCls}" data-popki
       <td>${skillsCell}</td>
       <td>${rulesCell}</td>
       <td>${mcpCell}</td>
-      <td class="al-ops"><button type="button" class="al-detail" data-open="${escapeHtml(a.name)}" title="查看详情" aria-label="查看 ${escapeHtml(a.name)} 详情">${ICONS.info}<span>详情</span></button><button class="kebab kebab-row" type="button" data-name="${escapeHtml(a.name)}" aria-label="更多操作" aria-haspopup="menu">${ICONS.kebab}</button></td>
+      <td class="al-ops"><button type="button" class="al-detail" data-open="${escapeHtml(a.name)}" title="查看详情" aria-label="查看 ${escapeHtml(a.name)} 详情">${ICONS.info}<span>详情</span></button><button class="kebab" type="button" data-name="${escapeHtml(a.name)}" aria-label="更多操作" aria-haspopup="menu">${ICONS.kebab}</button></td>
     </tr>`;
   }).join("");
 
@@ -10697,7 +10703,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.43.2", build: 182, build_number: 182, semver_ok: true, full: "v0.43.2 (build 182)" },
+  app: { name: "Skill MCP Studio", version: "0.43.3", build: 183, build_number: 183, semver_ok: true, full: "v0.43.3 (build 183)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",
