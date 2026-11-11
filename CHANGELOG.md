@@ -7,6 +7,53 @@
 
 ## [Unreleased]
 
+## [v0.44.4] - 2026-11-11
+
+当前发布版本（build 188）。
+
+**修「操作失败：null is not an object」——删了节点却没删写入代码。**
+
+### 事故链
+
+1. v0.40.7 把共享约束卡片精简为「输入框 + 保存」，`#shared-rules-status` 节点随之删除；
+2. 但 `auditSharedRules()` 最后一行仍是无条件写入：
+
+   ```js
+   host.innerHTML = `...`;   // host 为 null → TypeError
+   ```
+
+3. 以前该函数只在用户点「检查同步状态」时执行，而卡片精简后**那个按钮也删了** →
+   这条路径再没被走到，问题一直潜伏；
+4. v0.44.3 把审计改成**启动即跑**，隐患立刻显形，被 `unhandledrejection` 兜底
+   渲染成「操作失败」弹框。
+
+### 修复
+
+```js
+if (host) {
+  host.innerHTML = ...;
+}
+```
+
+状态区已不存在，审计的真正消费方是主表「约束」列的颜色；状态区只是可选可视化。
+
+### 全仓排查
+
+扫了 JS 里所有 `$("id").innerHTML / textContent / className` 写法，与 HTML 静态 id +
+模板动态 id 比对：**幽灵节点写入 0 处**（本处是唯一的条件写入漏判）。
+
+### 测试
+
+- 新增 `test_ghost_node_writes_are_guarded`：JS 里写的 id 必须真实存在。
+- 新增 `test_audit_host_write_is_guarded`：`auditSharedRules` 写状态区必须判空。
+- **反向验证 1 条**：去掉判空立即失败。
+- 全量 **1756 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
+### 文档
+
+`docs/DESIGN.md` §2.3c-2c 补「删节点必须连写入代码一起删」三条规则，其中一条是
+**「把函数从手动触发改成启动触发，等于启用了它所有隐含前提」**；`DESIGN.html` 同步。
+
 ## [v0.44.3] - 2026-11-11
 
 当前发布版本（build 187）。
@@ -4572,7 +4619,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.44.3...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.44.4...HEAD
+[v0.44.4]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.44.4
 [v0.44.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.44.3
 [v0.44.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.44.2
 [v0.44.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.44.1

@@ -7,6 +7,7 @@ Agent 是否都拥有它；如果没有，可以强制更新进去」。
 import os
 import sys
 import tempfile
+import re
 import unittest
 from pathlib import Path
 
@@ -210,6 +211,40 @@ class AgentMenuRulesEntryTest(unittest.TestCase):
         body = self.gui[start: start + 2000]
         self.assertIn("auditSharedRules()", body,
                       "loadManagement 成功后必须拉一次共享约束审计")
+
+    def test_ghost_node_writes_are_guarded(self):
+        """JS 里写的每个 #id 都必须在 HTML 静态或动态注入中存在（v0.44.4）。
+
+        事故：v0.40.7 删掉了 `#shared-rules-status` 节点，但 `auditSharedRules()`
+        最后一行仍无条件 `host.innerHTML = ...`。以前只在用户点按钮时跑，没暴露；
+        v0.44.3 改成启动即跑后立刻抛 TypeError，被全局兜底渲染成「操作失败」弹框。
+
+        门禁：任何 `$("x")` / `host` 式的条件写入必须在**存在性判断内**。
+        这里用更稳的可机检方式：静态 HTML 与动态模板里都不存在的 id，不得出现在
+        `$(...).innerHTML/className` 这类无条件写法里。
+        """
+        root = Path(__file__).resolve().parents[1]
+        src = (root / "gui/dashboard.html").read_text(encoding="utf-8")
+        html_part = src[: src.index("<script>")]
+        js = src[src.index("<script>"): src.index("</script>")]
+        static_ids = set(re.findall(r'id="([a-z0-9-]+)"', html_part))
+        dynamic_ids = set(re.findall(r"id=[`\"']([a-z0-9-]+)[`\"']", js))
+        known = static_ids | dynamic_ids
+        ghosts = []
+        for line in js.splitlines():
+            m = re.search(r'\$\("([a-z0-9-]+)"\)\.(innerHTML|textContent|className)', line)
+            if m and m.group(1) not in known:
+                ghosts.append(m.group(1))
+        self.assertEqual(ghosts, [], f"无条件写入不存在的节点：{ghosts}")
+
+    def test_audit_host_write_is_guarded(self):
+        """auditSharedRules 写状态区必须判空。"""
+        start = self.gui.index("async function auditSharedRules()")
+        rest = self.gui[start:]
+        nxt = rest.find("\nasync function ", 10)
+        body = rest[: nxt if nxt > 0 else 4000]
+        self.assertIn("if (host) {", body, "host 可能为 null，写入必须判空")
+        self.assertNotRegex(body, r"\n  host\.innerHTML = ", "不得无条件写 host.innerHTML")
 
     def test_missing_audit_means_needs_fix(self):
         """审计缺失时，菜单判定必须与约束格同口径（视为未达标）。

@@ -1613,6 +1613,11 @@
           <tr><td><strong>写入共享约束</strong></td><td>已安装、<strong>至少一个约束文件存在</strong>、共享内容非空、该 Agent 未达标</td><td><code>--shared-rules-apply NAME</code></td></tr>
         </tbody>
       </table>
+      <p><strong>删节点必须连写入代码一起删</strong>（v0.44.4 第二次事故）：v0.40.7 精简卡片时删掉了
+        <code>#shared-rules-status</code>，但 <code>auditSharedRules()</code> 仍无条件写 <code>host.innerHTML</code>；
+        v0.44.3 改为启动即跑后立刻抛 TypeError，被全局兜底渲染成「操作失败」弹框。
+        规则：<strong>写 DOM 前判空</strong>；门禁 <code>test_ghost_node_writes_are_guarded</code> 守住；
+        <strong>把函数从「手动触发」改成「启动触发」等于启用了它所有隐含前提</strong>，必须先跑一遍。</p>
       <p><strong>数据就绪是菜单的前提</strong>（v0.44.3 真实事故）：<code>SHARED_AUDIT</code> 曾只由「检查同步状态」
         按钮填充，而「写入共享约束」的判定依赖它 → 菜单里永远没有这一项。修法：① <code>loadManagement()</code>
         成功后与 <code>loadRules()</code> 同批拉 <code>auditSharedRules()</code>；② 审计缺失时 <code>needFixRulesFor</code>

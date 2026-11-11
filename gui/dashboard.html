@@ -8730,7 +8730,13 @@ async function auditSharedRules() {
     const onCount = (payload.rows || []).filter((r) => r.enabled !== false).length;
     summaryEl.textContent = `${onCount}/${sum.clients || 0} 个 Agent 参与 · 已同步 ${sum.current || 0} · 过期 ${sum.stale || 0} · 未包含 ${sum.absent || 0} · 缺文件 ${sum.missing || 0}`;
   }
-  host.innerHTML = `<div class="rows">${rows || '<div class="row"><span class="v note">没有声明约束文件的客户端</span></div>'}</div>`;
+  // 状态区已随 v0.40.7 的卡片精简一并删除，这里必须**判空**：
+  // 审计现在启动时也会跑（v0.44.3），无节点时直接写 innerHTML 会抛 TypeError，
+  // 被全局兜底渲染成「操作失败」弹框（用户截图）。审计的真正消费方是
+  // 主表「约束」列的颜色，状态区只是可选的可视化。
+  if (host) {
+    host.innerHTML = `<div class="rows">${rows || '<div class="row"><span class="v note">没有声明约束文件的客户端</span></div>'}</div>`;
+  }
 }
 
 async function toggleSharedRules(client, on) {
@@ -10815,7 +10821,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.44.3", build: 187, build_number: 187, semver_ok: true, full: "v0.44.3 (build 187)" },
+  app: { name: "Skill MCP Studio", version: "0.44.4", build: 188, build_number: 188, semver_ok: true, full: "v0.44.4 (build 188)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",
