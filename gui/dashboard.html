@@ -10218,6 +10218,31 @@ function needFixSkillsFor(a) {
   return (a.skills_dir_found && total > 0) ? linked !== total : true;
 }
 
+// 「约束」列待处理判定（v0.44.1，用户：「前面黄色的约束我怎么进行修复？」）。
+//
+// 黄色 = 有约束文件，但里面没有当前的共享约束内容。此前菜单里只有「修复 Skills / 修复
+// MCP」，约束这一项只能靠命令行，菜单里找不到入口。
+//
+// 判定与列表单元格同源，避免「格子是黄的但菜单说不用修」这种自相矛盾：
+//   - 该客户端没有官方约定的约束文件（格子是「·」）→ 不修（没地方可写）
+//   - 所有约束文件都不存在（格子 0/M，中性色）→ 不修（应由用户先创建文件）
+//   - 至少一个文件存在，且共享内容非空、该 Agent 未达标 → 需要修复
+function needFixRulesFor(a) {
+  if (!(a && a.installed)) return false;
+  const row = ((typeof RULES_DATA !== "undefined" && RULES_DATA && RULES_DATA.rows) || [])
+    .find((r) => r.name === a.name);
+  const paths = (row && row.paths) || [];
+  if (!paths.length) return false;
+  if (!paths.some((x) => x.exists)) return false;
+  const hasContent = typeof SHARED_RULES !== "undefined"
+    && !!(SHARED_RULES && (SHARED_RULES.content || "").trim());
+  if (!hasContent) return false;
+  const shared = ((typeof SHARED_AUDIT !== "undefined" && SHARED_AUDIT && SHARED_AUDIT.rows) || [])
+    .find((r) => r.name === a.name);
+  if (!shared || shared.enabled === false) return false;
+  return !(shared.state === "current" || shared.state === "covered");
+}
+
 function needFixMcpFor(a) {
   const fixable = !!(a && a.installed && a.fix_supported);
   if (!fixable) return false;
@@ -10342,10 +10367,12 @@ function toggleAgentMenu(btnEl, name) {
   const isConfigOnly = !!(a && a.install_state === "config_only");
   const needSkills = needFixSkillsFor(a);
   const needMcp = needFixMcpFor(a);
-  const fixItems = (needSkills || needMcp)
+  const needRules = needFixRulesFor(a);
+  const fixItems = (needSkills || needMcp || needRules)
     ? `<div class="pm-sep"></div>
        ${needSkills ? `<button class="pm-item" data-pm="fix-skills" data-name="${escapeHtml(name)}">${ICONS.check}<span>修复 Skills</span></button>` : ""}
-       ${needMcp ? `<button class="pm-item" data-pm="fix-mcp" data-name="${escapeHtml(name)}">${ICONS.check}<span>修复 MCP</span></button>` : ""}`
+       ${needMcp ? `<button class="pm-item" data-pm="fix-mcp" data-name="${escapeHtml(name)}">${ICONS.check}<span>修复 MCP</span></button>` : ""}
+       ${needRules ? `<button class="pm-item" data-pm="fix-rules" data-name="${escapeHtml(name)}">${ICONS.check}<span>写入共享约束</span></button>` : ""}`
     : "";
   const cleanupItem = isConfigOnly
     ? `<div class="pm-sep"></div>
@@ -10366,6 +10393,7 @@ function runAgentMenu(pm, name) {
   else if (pm === "rescan") doRescan();
   else if (pm === "fix-skills") fixSkillsFor(name);
   else if (pm === "fix-mcp") fixMcpFor(name);
+  else if (pm === "fix-rules") fixRulesFor(name);
   else if (pm === "cleanup-config") cleanupConfigFor(name);
   else if (pm === "remove") confirmRemoveClient(name);
 }
@@ -10390,6 +10418,60 @@ async function fixSkillsFor(name) {
     if (res.code === 0) return { ok: true, message: `${name} 的 Skills 链接已修复` };
     return { ok: false, message: "Skills 修复失败", detail: cliFailLines(res) || cliErrDetail(res) };
   }, () => refreshBlocks(["agents", "skills"]));
+}
+
+// 把一个 Agent 的共享约束写进它的约束文件（v0.44.1）。
+//
+// 用户：「前面黄色的约束我怎么进行修复？」——此前只有命令行 `--shared-rules-apply`，
+// 菜单里没有入口。找到最优解不是让用户去开终端：菜单里直接给「写入共享约束」。
+//
+// 与 Skills / MCP 修复同一套交互：先确认（说明会改哪个文件、会先备份），
+// 再走 runTaskModal 显示真实步骤，最后用 modalNotice 报结果。
+async function fixRulesFor(name) {
+  const row = ((typeof RULES_DATA !== "undefined" && RULES_DATA && RULES_DATA.rows) || [])
+    .find((r) => r.name === name);
+  const paths = ((row && row.paths) || []).filter((x) => x.exists).map((x) => x.path);
+  if (!paths.length) {
+    modalNotice("warn", "无可写入的约束文件",
+      `${name} 还没有约束文件。请先让该客户端生成它的规则文件（通常打开一次该客户端即可），或用「详情」里的约束路径手工创建。`);
+    return;
+  }
+  const hasContent = typeof SHARED_RULES !== "undefined"
+    && !!(SHARED_RULES && (SHARED_RULES.content || "").trim());
+  if (!hasContent) {
+    modalNotice("warn", "共享约束内容为空",
+      "请先在「设置 → IDE / Agent → 共享约束」填写约束内容并保存，再来写入各客户端。");
+    return;
+  }
+  const ok = await confirmModal(
+    `写入共享约束到 ${name}`,
+    `将把共享约束写入以下文件的 shared-rules 标记块，并替换文件里**意思相同**的旧条目：\n\n`
+      + paths.map((x) => `· ${x}`).join("\n")
+      + "\n\n写前自动备份，你自己的其它规则不动。继续？",
+    false,
+  );
+  if (!ok) return;
+  await runTaskModal(`写入 ${name} 的共享约束`, async () => {
+    const res = await runCli(["--shared-rules-apply", name]);
+    if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
+    let payload = {};
+    try { payload = JSON.parse(stripAnsi(res.stdout || "{}")); } catch (e) { payload = {}; }
+    const rowOut = ((payload && payload.rows) || []).find((r) => r.name === name) || (payload && payload.rows && payload.rows[0]) || {};
+    const state = rowOut.state || "";
+    const good = res.code === 0 && (state === "current" || state === "covered" || payload.ok === true);
+    if (good) {
+      return { ok: true, message: `${name} 的共享约束已写入（${state || "ok"}）` };
+    }
+    const reason = rowOut.reason || payload.reason || cliFailLines(res) || cliErrDetail(res) || "未知原因";
+    return { ok: false, message: `${name} 的共享约束未写入`, detail: reason };
+  }, async () => {
+    // 写完必须重拉「约束」数据与共享审计，否则格子颜色不会变 —— 那正是用户要的反馈。
+    // 注意：refreshBlocks 没有 rules 这一档；约束数据走 loadRules()，
+    // 它内部会重渲染主表（renderAgents）与设置页表格。
+    await loadRules();
+    await loadSharedRules();
+    await auditSharedRules();
+  });
 }
 
 async function fixMcpFor(name) {
@@ -10717,7 +10799,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.44.0", build: 184, build_number: 184, semver_ok: true, full: "v0.44.0 (build 184)" },
+  app: { name: "Skill MCP Studio", version: "0.44.1", build: 185, build_number: 185, semver_ok: true, full: "v0.44.1 (build 185)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

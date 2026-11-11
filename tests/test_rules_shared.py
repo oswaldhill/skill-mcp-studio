@@ -177,6 +177,44 @@ class ClientToggleTest(unittest.TestCase):
         self.assertEqual(rs.load_settings(), {"T": False})
 
 
+class AgentMenuRulesEntryTest(unittest.TestCase):
+    """「⋯」菜单里必须有写入共享约束的入口（v0.44.1 用户要求）。
+
+    用户截图：菜单里只有「查看详情 / 重新扫描 / 移出管理」，问「操作里面没有修复的
+    按钮，然后前面黄色的约束我怎么进行修复？」。约束此前只能靠命令行。
+    """
+
+    def setUp(self):
+        self.gui = (Path(__file__).resolve().parents[1] / "gui/dashboard.html").read_text(encoding="utf-8")
+
+    def test_menu_has_fix_rules_item(self):
+        self.assertIn('data-pm="fix-rules"', self.gui, "菜单缺「写入共享约束」项")
+        self.assertIn("写入共享约束", self.gui, "菜单文案缺失")
+
+    def test_menu_item_conditional_on_need(self):
+        """只在「有约束文件、内容非空、且未达标」时出现，避免菜单自相矛盾。"""
+        self.assertIn("function needFixRulesFor(a)", self.gui)
+        start = self.gui.index("function needFixRulesFor(a)")
+        body = self.gui[start: start + 1400]
+        self.assertIn("RULES_DATA", body, "必须复用列表列的同一份约束数据")
+        self.assertIn("current", body)
+        self.assertIn("covered", body)
+
+    def test_dispatch_and_writer_exist(self):
+        self.assertIn('pm === "fix-rules"', self.gui, "菜单动作未分发")
+        self.assertIn("async function fixRulesFor(name)", self.gui, "缺写入实现")
+        start = self.gui.index("async function fixRulesFor(name)")
+        # 截到函数结尾：只往前找下一个顶层 `async function` 之前的部分
+        rest = self.gui[start:]
+        nxt = rest.find("\nasync function ", 10)
+        body = rest[: nxt if nxt > 0 else 4000]
+        self.assertIn('"--shared-rules-apply"', body, "必须调用共享约束写入命令")
+        # 精确到「独立一行调用 loadRules()」：只查 `loadRules(` 会被
+        # `loadSharedRules()` 里的同名子串满足，反向验证写不出会失败的用例（实测踩到）。
+        self.assertRegex(body, r"\n\s+await loadRules\(\);",
+                         "写完必须重拉约束数据，否则格子颜色不变")
+
+
 class SemanticMatchTest(unittest.TestCase):
     """「意思一样即算达标」+「把文件里类似内容替换掉」（v0.43.0 用户要求）。
 

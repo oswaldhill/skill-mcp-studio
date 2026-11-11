@@ -7,6 +7,48 @@
 
 ## [Unreleased]
 
+## [v0.44.1] - 2026-11-11
+
+当前发布版本（build 185）。
+
+**「⋯」菜单新增「写入共享约束」，黄色约束格可以直接在界面里修。**
+
+用户截图：菜单里只有「查看详情 / 重新扫描 / 移出管理」，问「操作里面没有修复的
+按钮，然后前面黄色的约束我怎么进行修复？」。
+
+### 问题
+
+约束此前只能靠命令行 `--shared-rules-apply`。Skills 和 MCP 都有菜单入口，
+唯独约束没有——用户看到黄色格子，点开菜单找不到任何相关动作。
+
+### 改动
+
+| 项 | 说明 |
+|---|---|
+| 新增菜单项 | 「写入共享约束」——该行约束格是黄色时出现在「⋯」菜单里 |
+| 出现条件 | 已安装、**至少一个约束文件存在**、共享内容非空、该 Agent 未达标（`current`/`covered` 之外） |
+| 执行 | `--shared-rules-apply NAME`（写前备份 → 原子写 → 回读校验） |
+| 交互 | 先确认（列出会被改的文件、说明会替换同义旧条目、写前备份）→ 进度弹框 → 结果弹框 |
+| 刷新 | 写完 `loadRules()` → `loadSharedRules()` → `auditSharedRules()`，格子立即变绿 |
+
+**判定与约束格同源**（都读 `RULES_DATA` / `SHARED_RULES` / `SHARED_AUDIT`），不会出现
+「格子是黄的但菜单说不用修」。没有约束文件的客户端不提供该项——没有可写位置，
+应先让客户端生成规则文件。
+
+### 测试
+
+- 新增 `AgentMenuRulesEntryTest`（3 项）：菜单项存在、条件判定复用同一份数据、
+  分发与写入实现存在且写完会重拉。
+- **反向验证 2 条**：删掉菜单项、去掉写完的重拉，各自失败。
+- 断言写失败一次才有效：`loadRules(` 被子串 `loadSharedRules()` 满足，
+  改为精确匹配独立一行调用后才有意义。
+- 全量 **1753 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
+### 文档
+
+`docs/DESIGN.md` §2.3c-2c 补「约束列怎么变绿（v0.44.1 起可在界面里点）」的三项菜单
+对照表与判定说明；`DESIGN.html` 同步。
+
 ## [v0.44.0] - 2026-11-11
 
 当前发布版本（build 184）。
@@ -4415,7 +4457,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.44.0...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.44.1...HEAD
+[v0.44.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.44.1
 [v0.44.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.44.0
 [v0.43.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.43.3
 [v0.43.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.43.2

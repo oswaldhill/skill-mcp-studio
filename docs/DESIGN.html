@@ -1603,6 +1603,19 @@
 （用户配置的内容）
 &lt;!-- shared-rules:end --&gt;</code></pre>
       <p>用标记而不是整体覆盖：约束文件里还有用户自己的规则，整体覆盖会把它们冲掉；标记让写入幂等，块外内容逐字节不动。</p>
+      <h4>约束列怎么变绿（v0.44.1 起可在界面里点）</h4>
+      <p><strong>入口在「⋯」菜单</strong>：该行的约束格是黄色时，菜单里多出一项「写入共享约束」。</p>
+      <table>
+        <thead><tr><th>菜单项</th><th>出现条件</th><th>行为</th></tr></thead>
+        <tbody>
+          <tr><td>修复 Skills</td><td>已安装、支持修复、技能未链接齐</td><td><code>--fix-skills --client NAME</code></td></tr>
+          <tr><td>修复 MCP</td><td>已安装、有 MCP 配置、端点未配齐</td><td><code>--fix-mcp --client NAME</code></td></tr>
+          <tr><td><strong>写入共享约束</strong></td><td>已安装、<strong>至少一个约束文件存在</strong>、共享内容非空、该 Agent 未达标</td><td><code>--shared-rules-apply NAME</code></td></tr>
+        </tbody>
+      </table>
+      <p>判定与约束格同源（都读 <code>RULES_DATA</code> / <code>SHARED_RULES</code> / <code>SHARED_AUDIT</code>），
+        不会出现「格子是黄的但菜单说不用修」。<strong>没有约束文件的客户端不提供该项</strong>。
+        写完依次 <code>loadRules()</code> → <code>loadSharedRules()</code> → <code>auditSharedRules()</code>，格子颜色立即刷新。</p>
       <h4>约束列怎么变绿（v0.43.0）</h4>
       <table>
         <thead><tr><th>用户要求</th><th>实现</th></tr></thead>
