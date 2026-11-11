@@ -7,6 +7,63 @@
 
 ## [Unreleased]
 
+## [v0.44.3] - 2026-11-11
+
+当前发布版本（build 187）。
+
+**找到真因：`SHARED_AUDIT` 启动时从不加载，判定恒为 false。**
+
+用户第二次反馈「目前还是没有」。
+
+### 真因
+
+`SHARED_AUDIT` 只由「检查同步状态」按钮填充（`auditSharedRules()` 只在点击时调用）。
+而 `needFixRulesFor` 里写着：
+
+```js
+if (!shared || shared.enabled === false) return false;   // shared 恒为 null
+```
+
+于是**菜单里永远没有「写入共享约束」**——不是时序抖动，是启动后就没有数据。
+
+更隐蔽的是**两处口径不一致**：
+
+| 位置 | 缺审计数据时的结论 |
+|---|---|
+| 约束格 | 走「有共享内容但未达标」→ **黄色** |
+| 「⋯」菜单 | `return false` → **当作已达标，不给修复项** |
+
+格子说「有问题」，菜单说「没问题」。两边单独看都「符合代码」，所以前一轮排查
+（只验证判定函数本身）全部通过——因为我喂了正确的 `SHARED_AUDIT` 进去。
+
+### 修复
+
+| 项 | 做法 |
+|---|---|
+| 启动即加载 | `loadManagement()` 成功后 `loadSharedRules().then(() => auditSharedRules())`，与 `loadRules()` 同批 |
+| 缺数据同口径 | 审计缺失时 `needFixRulesFor` 返回 `true`，与约束格的黄色分支一致 |
+
+### 验证（用真实 CLI 数据）
+
+| Agent | 审计未加载 | 审计已加载 |
+|---|---|---|
+| DeepSeek Harness | **true** | **true** |
+| Codex | **true** | **true** |
+| WorkBuddy | **true** | **true** |
+| VS Code | false（文件不存在） | false |
+| ima.copilot | false（无约定） | false |
+
+### 测试
+
+- 新增 `test_audit_loaded_at_boot`、`test_missing_audit_means_needs_fix`。
+- **反向验证 2 条**：去掉启动加载、把缺数据改回 `false`，各自失败。
+- 全量 **1756 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
+### 文档
+
+`docs/DESIGN.md` §2.3c-2c 补「数据就绪是菜单的前提」与设计原则「两处 UI 读同一份
+状态时，缺数据时的默认值必须一致」；`DESIGN.html` 同步。
+
 ## [v0.44.2] - 2026-11-11
 
 当前发布版本（build 186）。
@@ -4515,7 +4572,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.44.2...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.44.3...HEAD
+[v0.44.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.44.3
 [v0.44.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.44.2
 [v0.44.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.44.1
 [v0.44.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.44.0

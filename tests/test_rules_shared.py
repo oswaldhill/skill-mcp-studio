@@ -200,6 +200,30 @@ class AgentMenuRulesEntryTest(unittest.TestCase):
         self.assertIn("current", body)
         self.assertIn("covered", body)
 
+    def test_audit_loaded_at_boot(self):
+        """启动时必须加载共享约束审计（v0.44.3 根因）。
+
+        `SHARED_AUDIT` 此前只由「检查同步状态」按钮填充，而「写入共享约束」的判定
+        依赖它 → 菜单里永远没有这一项。用户连报两次「菜单和你描述的不一致」。
+        """
+        start = self.gui.index("async function loadManagement()")
+        body = self.gui[start: start + 2000]
+        self.assertIn("auditSharedRules()", body,
+                      "loadManagement 成功后必须拉一次共享约束审计")
+
+    def test_missing_audit_means_needs_fix(self):
+        """审计缺失时，菜单判定必须与约束格同口径（视为未达标）。
+
+        此前 `if (!shared) return false;` —— 格子在这种情况下是**黄色**（走「有内容
+        但未达标」分支），菜单却说不用修，两处自相矛盾。
+        """
+        start = self.gui.index("function needFixRulesFor(a)")
+        rest = self.gui[start:]
+        nxt = rest.find("\nfunction ", 10)
+        body = rest[: nxt if nxt > 0 else 2000]
+        self.assertIn("if (!shared) return true;", body,
+                      "缺审计数据时必须返回 true（与黄色格子一致）")
+
     def test_menu_logs_decision_basis(self):
         """菜单打开时必须把判定依据打到控制台（v0.44.2）。
 

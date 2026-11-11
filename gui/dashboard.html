@@ -6278,6 +6278,10 @@ async function loadManagement() {
       // 约束数据同样不在主快照里：初始化时拉一次，主表「约束」列与设置页
       // Agent 卡片的「约束」行都靠它。不 await —— 次要信息，失败只影响那一行。
       loadRules();
+      // 共享约束的审计结果也必须在启动时加载（v0.44.3）。
+      // 此前只有手动点「检查同步状态」才会有 SHARED_AUDIT，而「⋯」菜单的
+      // 「写入共享约束」判定依赖它 —— 结果菜单里永远没有这一项。
+      loadSharedRules().then(() => auditSharedRules());
       return true;
     }
     // mgmt === null 时 runCli 已透出具体错误（CLI 未装/安全边界/连接失败），此处不再覆盖。
@@ -10239,7 +10243,11 @@ function needFixRulesFor(a) {
   if (!hasContent) return false;
   const shared = ((typeof SHARED_AUDIT !== "undefined" && SHARED_AUDIT && SHARED_AUDIT.rows) || [])
     .find((r) => r.name === a.name);
-  if (!shared || shared.enabled === false) return false;
+  // 审计数据缺失时**与约束格同口径**：格子在这种情况下显示黄色（视为未达标），
+  // 菜单也必须给出修复入口。此前这里 `return false`，导致格子黄、菜单却没有项的
+  // 自相矛盾（v0.44.3 实测：SHARED_AUDIT 启动时从未加载）。
+  if (!shared) return true;
+  if (shared.enabled === false) return false;
   return !(shared.state === "current" || shared.state === "covered");
 }
 
@@ -10807,7 +10815,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.44.2", build: 186, build_number: 186, semver_ok: true, full: "v0.44.2 (build 186)" },
+  app: { name: "Skill MCP Studio", version: "0.44.3", build: 187, build_number: 187, semver_ok: true, full: "v0.44.3 (build 187)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",
