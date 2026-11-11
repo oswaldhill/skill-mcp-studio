@@ -234,23 +234,26 @@ class WiringTest(unittest.TestCase):
         self.assertRegex(lst, r'state === "current"\s*\?\s*"共享已含"', "列表列必须区分「共享已含」")
         self.assertRegex(lst, r'stale"\s*\?\s*"共享过期"', "列表列必须区分「共享过期」")
 
-    def test_shared_card_keeps_content_editor(self):
-        """「配置约束内容」的输入框必须在（v0.40.6 用户反馈找回）。
+    def test_shared_card_is_content_only_in_settings(self):
+        """共享约束只保留「内容输入框」，位置在设置页 IDE / Agent tab（v0.40.7 定稿）。
 
-        v0.40.5 删过头了：用户要删的是「逐 Agent 开关 + 逐行写入」面板，
-        不是写内容的地方。
+        用户最终定案：红框里的（标题 + 约束内容输入框）保留，其余删除，并挪回
+        设置页 IDE / Agent tab。
         """
         root = Path(__file__).resolve().parents[1]
         gui = (root / "gui/dashboard.html").read_text(encoding="utf-8")
         self.assertIn("function sharedRulesCard()", gui)
         self.assertIn('id="shared-rules-text"', gui, "必须有内容输入框")
-        self.assertIn('data-action="shared-rules-save"', gui, "必须有保存内容按钮")
-        self.assertIn('data-action="shared-rules-apply"', gui, "必须有同步按钮")
-        # 仍不允许出现逐 Agent 开关与逐行写入
-        self.assertNotIn('data-action="shared-rules-toggle"', gui,
-                         "逐 Agent 开关已按用户要求移除")
-        self.assertNotIn('data-client="${escapeHtml(row.name)}"', gui,
-                         "逐行写入按钮已按用户要求移除")
+        # 同步行 / 状态一览 / 逐 Agent 开关都不再出现在卡片里
+        self.assertNotIn('id="shared-rules-status"', gui, "状态一览已删除")
+        self.assertNotIn('id="shared-rules-summary"', gui, "同步行已删除")
+        self.assertNotIn('data-action="shared-rules-toggle"', gui, "逐 Agent 开关已删除")
+        # 位置：设置页 agents tab，且不再出现在概览
+        self.assertIn('data-panel="agents">${sharedRulesCard()}', gui,
+                      "卡片必须挂在设置页 IDE / Agent tab")
+        ov = gui[gui.index("function renderOverview()"):]
+        ov = ov[: ov.index("\nfunction ")]
+        self.assertNotIn("sharedRulesCard()", ov, "概览页不应再渲染该卡片")
 
     def test_rules_cell_uses_three_color_states(self):
         """约束列按「有无文件 × 有无共享内容」上色（v0.40.5）。

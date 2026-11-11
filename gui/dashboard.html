@@ -3096,18 +3096,21 @@ function renderOverview() {
     '<button class="btn-soft" data-action="merge">修复链接</button>' +
     '<button class="btn-soft" data-action="endpoint-check">全量检查</button>' +
     '<button class="btn-soft" data-goto="settings">管理 MCP 端点</button>' +
-    "</div>" +
-    sharedRulesCard();
-  bindSharedRulesBox();
-  if ($("shared-rules-status") && !SHARED_AUDIT) auditSharedRules();
+    "</div>";
 }
 
-// 共享约束卡片（v0.40.6 找回）：v0.40.5 把「配置内容」的输入框一起删了，那是过头了——
-// 用户要删的是那张「逐 Agent 开关 + 逐行写入」的面板，不是写内容的地方。
-// 现在只保留两个真正的动作：写内容、把内容同步进去。
-// 逐 Agent 的参与开关与逐行写入不再出现在界面上（走 CLI）。
+// 共享约束（v0.40.7 定稿）：**只剩一个内容输入框**。
+//
+// 演进记录（每次都是用户纠正后的收敛方向）：
+//   v0.40.0 全套面板（输入 + 逐 Agent 开关 + 逐行写入 + 状态表）
+//   v0.40.5 整体删除 —— 删过头，输入框也没了
+//   v0.40.6 找回输入框，但同步行 / 状态一览仍在
+//   v0.40.7 只留红框里的部分：标题 + 约束内容输入框，归位到**设置页 IDE / Agent tab**
+//
+// 同步怎么做：内容保存后用 `--shared-rules-apply` 一步写完（不定制界面），
+// 各 Agent 是否已包含共享内容，看 IDE / Agent 页「约束」列的颜色（绿 = 已含）。
 function sharedRulesCard() {
-  return `<div class="settings-card" id="shared-rules-card" style="margin-top:var(--sp-6)">
+  return `<div class="settings-card" id="shared-rules-card">
     <h4>共享约束</h4>
     <div class="rows">
       <div class="row row-block">
@@ -3116,18 +3119,11 @@ function sharedRulesCard() {
           aria-label="共享约束内容"
           placeholder="例如：- 所有回答使用简体中文&#10;- 提交前必须跑全量测试"></textarea></span>
       </div>
-      <div class="row">
-        <span class="k">同步</span>
-        <span class="v" id="shared-rules-summary">尚未检查</span>
-        <span class="shared-actions">
-          <button class="ghost" data-action="shared-rules-audit">检查各 Agent</button>
-          <button class="btn-soft" data-action="shared-rules-apply">同步到全部</button>
-          <button class="primary" data-action="shared-rules-save">保存内容</button>
-        </span>
-      </div>
     </div>
-    <div class="note" style="margin-top:var(--sp-4)">只替换标记块（shared-rules:begin / end），文件里你自己的规则不会被修改；每个 Agent 写前自动备份。各 Agent 的参与开关见 <code>--shared-rules-toggle</code>。</div>
-    <div id="shared-rules-status" style="margin-top:var(--sp-4)"></div>
+    <div class="card-link">
+      <div class="grow note">保存后会写进每个 Agent 的约束文件（只替换 shared-rules 标记块，你自己的规则不动；写前自动备份）。</div>
+      <button class="btn-soft" data-action="shared-rules-apply">保存并同步</button>
+    </div>
   </div>`;
 }
 
@@ -5864,12 +5860,20 @@ function renderSettings() {
   el.innerHTML =
     `<div class="settings-tab-panel" data-panel="appearance">${appearanceCard}${patrolCard}${configPortCard}${_aboutCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="general">${gitSourcesCard}${usageCard}${marketSourcesCard}${backupCard}${githubTokenCard}${webdavCard}</div>` +
-    `<div class="settings-tab-panel hidden" data-panel="agents">${agentsCard}</div>` +
+    `<div class="settings-tab-panel hidden" data-panel="agents">${sharedRulesCard()}${agentsCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="mcp">${mcpCard}</div>`;
 
   el.querySelectorAll("[data-theme-btn]").forEach((b) => {
     b.addEventListener("click", () => applyTheme(b.dataset.themeBtn, true));
   });
+  if ($("shared-rules-text")) {
+    const box = $("shared-rules-text");
+    if (!box.dataset.bound) {
+      box.dataset.bound = "1";
+      box.addEventListener("input", () => { box.dataset.dirty = "1"; });
+    }
+    loadSharedRules();
+  }
   applyTheme(currentThemeMode(), false);
   el.querySelectorAll("[data-scale-btn]").forEach((b) => {
     b.addEventListener("click", () => applyScale(parseFloat(b.dataset.scaleBtn), true));
@@ -8553,8 +8557,12 @@ async function saveSharedRules() {
     return;
   }
   if (box) box.dataset.dirty = "";
-  showBanner("ok", text ? `共享约束已保存（${payload.bytes} B），正在检查同步状态` : "共享约束已清空（同步功能停用）");
-  await auditSharedRules();
+  if (!text) {
+    showBanner("ok", "共享约束已清空（同步功能停用）");
+    return;
+  }
+  // 「保存并同步」：保存后立刻写进各 Agent，不再要求用户点第二次
+  await applySharedRules("");
 }
 
 function _sharedStateLabel(state) {
@@ -10587,7 +10595,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.40.6", build: 174, build_number: 174, semver_ok: true, full: "v0.40.6 (build 174)" },
+  app: { name: "Skill MCP Studio", version: "0.40.7", build: 175, build_number: 175, semver_ok: true, full: "v0.40.7 (build 175)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

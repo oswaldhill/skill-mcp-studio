@@ -7,6 +7,63 @@
 
 ## [Unreleased]
 
+## [v0.40.7] - 2026-11-11
+
+当前发布版本（build 175）。
+
+**共享约束定稿：只留「约束内容」输入框，归位设置页 IDE / Agent tab。**
+
+用户：「红色框部分保留，其他的删除，然后将保留的部分放到设置的 IDE/agent 的 tab 部分」。
+
+### 最终形态
+
+```
+┌ 共享约束 ──────────────────────────────────────────────┐
+│ 约束内容   [ textarea（等宽 --mono / --fs-xs，max-width 44rem）] │
+│           保存后会写进每个 Agent 的约束文件…  [保存并同步]        │
+└────────────────────────────────────────────────────────┘
+```
+
+| 保留 | 删除 |
+|---|---|
+| 「约束内容」输入框 | 同步行（摘要 + 三个按钮） |
+| 一个「保存并同步」按钮 | 每个 Agent 的状态一览 |
+
+**位置**：设置页 → IDE / Agent tab 顶部（在「IDE / Agent 默认路径」之上），从概览页搬回。
+
+### 「这个 Agent 有没有共享内容」看哪里
+
+看同一个 tab 下面 Agent 列表的**「约束」列颜色**——绿 = 已含，黄 = 有文件但缺共享内容，
+中性 = 没有约束文件。不需要第二套状态表达。
+
+### 一个按钮两件事
+
+「保存并同步」：先 `--shared-rules-set` 存内容，再 `--shared-rules-apply` 写进各 Agent
+（沿用备份 → 原子写 → 回读校验）。清空内容再保存 = 停用该功能。
+
+### 五次方向修正的记录
+
+| 版本 | 形态 | 用户反馈 |
+|---|---|---|
+| v0.40.0 | 全套面板 | 「有点丑」 |
+| v0.40.4 | 同上，搬到概览页 | 「不要放在设置里」 |
+| v0.40.5 | 整体删除 | 「删过头，输入框也没了」 |
+| v0.40.6 | 找回输入框 + 同步行 + 状态一览 | 「红框保留，其他删，放到设置」 |
+| **v0.40.7** | **只有输入框 + 保存并同步** | 定稿 |
+
+### 测试
+
+- `test_shared_card_keeps_content_editor` → `test_shared_card_is_content_only_in_settings`：
+  输入框必须在；状态一览 / 同步行 / 逐 Agent 开关必须**不在**；卡片必须在
+  `data-panel="agents"` 里且**不在** `renderOverview()` 里。
+- **反向验证 2 条**：删掉输入框、把卡片挪回概览，各自让断言失败。
+- 概览测试撤回卡片装配。
+- 全量 **1724 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
+### 文档
+
+`docs/DESIGN.md` §2.3c-2c 定稿（含五次修正的对照表）；`docs/DESIGN.html` 同步。
+
 ## [v0.40.6] - 2026-11-11
 
 当前发布版本（build 174）。
@@ -3925,7 +3982,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.40.6...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.40.7...HEAD
+[v0.40.7]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.7
 [v0.40.6]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.6
 [v0.40.5]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.5
 [v0.40.4]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.4
