@@ -1303,6 +1303,48 @@ class NoToastTest(unittest.TestCase):
         self.assertIn("modal cfm-card", body, "通知必须是 .cfm-card 弹框家族")
 
 
+class OperationColumnAxisTest(unittest.TestCase):
+    """操作列：表头与按钮必须同轴，且分隔线不被光晕糊住（v0.43.1）。
+
+    用户截图两处：「这里的线没有对齐，连在一起」「标题栏中操作和下面的按钮没有居中对齐」。
+    根因有两层：
+      1. 表头 `text-align` 被 `.agent-list-table th` 主规则覆盖，仍是左对齐；
+      2. 按钮组是 [详情][kebab]，以整组右缘对齐时详情按钮中心偏左 31px。
+    """
+
+    def test_th_alignment_beats_main_rule(self):
+        css = _css()
+        m = re.search(r"\.agent-list-table thead th:nth-child\(10\)\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(m, "操作列表头必须用 thead 层级提高特异性（否则被 th 主规则覆盖）")
+        self.assertIn("text-align: right", m.group(1))
+
+    def test_ops_cell_overflow_visible(self):
+        css = _css()
+        m = re.search(r"\.agent-list-table td:nth-child\(10\)\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(m)
+        self.assertIn("overflow: visible", m.group(1),
+                      "操作列不得裁切，否则 hover 光晕被削成直角与竖线粘连")
+        self.assertIn("position: relative", m.group(1), "kebab 绝对定位需要相对基准")
+
+    def test_kebab_is_hover_overlay(self):
+        css = _css()
+        self.assertIn(".kebab-row", css, "次要操作应为 hover 覆盖层")
+        m = re.search(r"\.agent-list-table tbody tr \.kebab-row\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(m)
+        self.assertIn("position: absolute", m.group(1))
+        self.assertIn("opacity: 0", m.group(1), "默认隐藏，避免影响轴线")
+        src = _src()
+        self.assertIn('class="kebab kebab-row"', src, "行内 kebab 必须带 kebab-row 类")
+
+    def test_type_column_absorbs_remainder(self):
+        """必须留一列 width:auto，否则 fixed 布局会按比例放大所有列。"""
+        css = _css()
+        m = re.search(r"\.agent-list-table th:nth-child\(2\),\s*\.agent-list-table td:nth-child\(2\)\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(m)
+        self.assertIn("width: auto", m.group(1),
+                      "必须有一列吸收剩余宽度，否则 px 列宽变成比例值")
+
+
 class ModalFamilyConsistencyTest(unittest.TestCase):
     """四类弹框共用同一套度量（v0.42.0 用户要求「所有弹框同样规范」）。
 

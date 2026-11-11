@@ -7,6 +7,52 @@
 
 ## [Unreleased]
 
+## [v0.43.1] - 2026-11-11
+
+当前发布版本（build 181）。
+
+**操作列真正对齐（三层根因）。**
+
+用户：「还是有错位，这里的线没有对齐，连在一起，然后标题栏中操作和下面的按钮没有居中对齐」。
+
+### 三层根因
+
+| 层 | 根因 | 修复 |
+|---|---|---|
+| 1 | 表头 `text-align: right` 被 `.agent-list-table th { text-align: left }` 覆盖（同特异性、后者在文件更下方） | 提到 `thead th:nth-child(10)` 层级 |
+| 2 | 按钮组是 `[详情][kebab]`，以整组右缘对齐时详情按钮中心偏左 **31px** | kebab 改为 `.kebab-row` 绝对定位到右上角、hover 才出现；详情成为轴线唯一基准 |
+| 3 | `td` 的 `overflow: hidden` 把按钮 3px hover 光晕削成直角，与相邻列竖线粘连 | 操作列 `overflow: visible` + `position: relative` |
+
+### 顺带修掉的隐藏问题
+
+`table-layout: fixed` 下，所有列 `width` 合计小于表格宽时浏览器会**按比例放大每一列**——
+用户写的 px 变成比例值。实测 10 列合计 958px、容器 1061px → 名称 220 被放到 243.6、
+操作 128 被放到 141.8，所以「定宽」一直没真正钉死。
+
+修复：**类型列改成 `width: auto`** 吸收剩余，其余列才是真定宽（实测列宽现在
+220 / 253 / 56 / 48 / 48 / 70 / 82 / 78 / 78 / 128，与设定一致）。
+
+### 验证
+
+在浏览器里量真实矩形：
+
+| 指标 | 改前 | 改后 |
+|---|---|---|
+| 表头文字右缘 − 详情按钮右缘 | **31px** | **0px** |
+| 行与行之间的列分隔线 | 一致 | 一致（`rowDrift: []`） |
+
+### 测试
+
+- 新增 `OperationColumnAxisTest`（4 项）：表头特异性、操作列不裁切 + 相对定位、
+  kebab 为 hover 覆盖层、类型列吸收剩余。
+- **反向验证 3 条**：取消 kebab 覆盖层、操作列改回裁切、类型列改回定宽，各自失败。
+- 全量 **1741 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
+### 文档
+
+`docs/DESIGN.md` §2.3d-2 补「操作列的轴对齐」与「fixed 布局按比例放大」两条；
+`DESIGN.html` 同步。
+
 ## [v0.43.0] - 2026-11-11
 
 当前发布版本（build 180）。
@@ -4201,7 +4247,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.43.0...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.43.1...HEAD
+[v0.43.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.43.1
 [v0.43.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.43.0
 [v0.42.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.42.0
 [v0.41.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.41.0

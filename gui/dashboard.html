@@ -455,7 +455,15 @@
   .agent-card .ac-fixbar .ac-fix.danger { border-color: var(--err-border); background: var(--err-bg); color: var(--err); }
   .agent-card .ac-fixbar .ac-fix.danger:hover { background: var(--err); border-color: var(--err); color: var(--on-accent); }
   /* 主页列表视图：详情链接 */
-  .al-ops { display: flex; justify-content: flex-end; align-items: center; gap: var(--gap-2); white-space: nowrap; min-width: 0; }
+  /* 操作列（v0.43.1）：只放「详情」，其右缘与表头文字右缘同一条线。
+     次要操作 kebab 绝对定位到单元格右上角、hover / 聚焦时才出现（详见 .kebab-row）。 */
+  .al-ops { display: flex; justify-content: flex-end; align-items: center; gap: var(--gap-2); white-space: nowrap; min-width: 0; position: relative; }
+  .agent-list-table tbody tr .kebab-row {
+    position: absolute; top: 50%; right: calc(var(--sp-4) + 68px); transform: translateY(-50%) translateX(4px);
+    opacity: 0; pointer-events: none; transition: opacity .12s var(--ease), transform .12s var(--ease);
+  }
+  .agent-list-table tbody tr:hover .kebab-row,
+  .agent-list-table tbody tr:focus-within .kebab-row { opacity: 1; pointer-events: auto; transform: translateY(-50%) translateX(0); }
   .al-detail {
     display: inline-flex; align-items: center; gap: var(--gap-1); height: 26px; flex: none;
     padding: 0 var(--sp-4); border: 1px solid var(--line); border-radius: var(--r-control);
@@ -1195,6 +1203,9 @@
   }
   /* overflow: hidden —— fixed 布局下超长内容不会自动换行，必须显式裁切兜底（2026-10-14）。 */
   .agent-list-table td { padding: var(--sp-3a) var(--sp-4); border-bottom: 1px solid var(--line); vertical-align: middle; overflow: hidden; }
+  /* 操作列不做裁切（v0.43.1）：单元格里的按钮组带 3px 光晕，overflow:hidden 会把光晕
+     削成直角、与相邻列的竖线粘在一起（用户截图「这里的线没有对齐、连在一起」）。 */
+  .agent-list-table td:nth-child(10) { overflow: visible; position: relative; }
   /* 带 data-help 的表头：**自绘**的说明气泡。
      为什么不用原生 `title`（2026-10-14 用户反馈「提示…没有显示出来」）：
      实测本应用（Tauri / macOS WKWebView）里 `cursor: help` 会生效（变成问号），
@@ -1232,8 +1243,13 @@
      用户反馈「安装 技能目录等内容，没有和上面的标题栏居中对齐」：
      这些列的单元格是单枚徽标/短标签，左对齐时徽标贴着单元格左缘，
      而列头文字+问号图标整体更宽，视觉上徽标"偏左"。居中后两者轴线一致。 */
-  /* 操作列表头右对齐（v0.43.0）：按钮组靠右，表头左对齐会与内容错开一整列宽 */
-  .agent-list-table th:nth-child(10) { text-align: right; }
+  /* 操作列对齐（v0.43.1）：表头文字与按钮**同轴右对齐**——此前表头右对齐到内容盒
+     右缘、按钮右对齐到单元格内边，两者差一个 padding（用户截图「没有居中对齐」）。
+     现在两边都以单元格内容盒的右缘为准，轴线一致。 */
+  /* 特异性要压过 `.agent-list-table th { text-align: left }`（同为 0,1,1，后者定义在前，
+     但 `th` 主规则在文件更下方 → 实测覆盖了本规则）。提到 thead 层级确保生效。 */
+  .agent-list-table thead th:nth-child(10) { text-align: right; padding-right: var(--sp-4); }
+  .agent-list-table td:nth-child(10) { padding-right: var(--sp-4); }
   .agent-list-table th:nth-child(3),
   .agent-list-table th:nth-child(7),
   .agent-list-table th:nth-child(8),
@@ -1257,7 +1273,7 @@
      现在按「最长名称 + 最长类型」给够余量后定宽，省下的 ~370px 变成表格外缘留白
      （用户明确要求保留两列，不合并、不删列）。 */
   .agent-list-table th:nth-child(1),  .agent-list-table td:nth-child(1)  { width: 220px; }  /* 名称：最长 "DeepSeek Harness" */
-  .agent-list-table th:nth-child(2),  .agent-list-table td:nth-child(2)  { width: 150px; }  /* 类型：最长 "AI Coding Assistant" */
+  .agent-list-table th:nth-child(2),  .agent-list-table td:nth-child(2)  { width: auto; min-width: 150px; }  /* 类型：吸收剩余宽度 */
   .agent-list-table th:nth-child(3),  .agent-list-table td:nth-child(3)  { width: 56px; }   /* 安装：一枚 20px 徽标 */
   .agent-list-table th:nth-child(4),  .agent-list-table td:nth-child(4)  { width: 48px; }   /* APP：一枚计数徽标 */
   .agent-list-table th:nth-child(5),  .agent-list-table td:nth-child(5)  { width: 48px; }   /* CLI：同上 */
@@ -1266,6 +1282,10 @@
   .agent-list-table th:nth-child(8),  .agent-list-table td:nth-child(8)  { width: 78px; }   /* 约束：N/M 或「无约定」 */
   .agent-list-table th:nth-child(9),  .agent-list-table td:nth-child(9)  { width: 78px; }   /* MCP：N/M 或「不支持」 */
   .agent-list-table th:nth-child(10), .agent-list-table td:nth-child(10) { width: 128px; }  /* 操作（v0.43.0 由 104 加宽：内容需 ~120px，此前溢出被裁） */
+  /* v0.43.1：上面 10 列合计 958px，容器通常更宽 —— table-layout:fixed 会把剩余宽度
+     **按比例摊到所有列**，于是「定宽」变成比例值（实测名称 220→243.6、操作 128→141.8），
+     列与列的分隔线看起来松松垮垮。把「类型」列改成吸收剩余的那一列（其余保持真定宽），
+     既让紧列钉死，又不会右侧留一大块空。 */
   /* fixed 布局下超长内容不会自动换行，必须显式裁切（overflow: hidden 已合并进上方 td 主规则）。
      名称/类型两个文本列给省略号，保证长客户端名不撑破定宽。 */
   .agent-list-table .al-name,
@@ -3608,7 +3628,7 @@ const skillsCell = `<button type="button" class="al-ico ${skillsCls}" data-popki
       <td>${skillsCell}</td>
       <td>${rulesCell}</td>
       <td>${mcpCell}</td>
-      <td class="al-ops"><button type="button" class="al-detail" data-open="${escapeHtml(a.name)}" title="查看详情" aria-label="查看 ${escapeHtml(a.name)} 详情">${ICONS.info}<span>详情</span></button><button class="kebab" type="button" data-name="${escapeHtml(a.name)}" aria-label="更多操作" aria-haspopup="menu">${ICONS.kebab}</button></td>
+      <td class="al-ops"><button type="button" class="al-detail" data-open="${escapeHtml(a.name)}" title="查看详情" aria-label="查看 ${escapeHtml(a.name)} 详情">${ICONS.info}<span>详情</span></button><button class="kebab kebab-row" type="button" data-name="${escapeHtml(a.name)}" aria-label="更多操作" aria-haspopup="menu">${ICONS.kebab}</button></td>
     </tr>`;
   }).join("");
 
@@ -10662,7 +10682,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.43.0", build: 180, build_number: 180, semver_ok: true, full: "v0.43.0 (build 180)" },
+  app: { name: "Skill MCP Studio", version: "0.43.1", build: 181, build_number: 181, semver_ok: true, full: "v0.43.1 (build 181)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

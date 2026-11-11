@@ -1534,6 +1534,14 @@
           <tr><td>进详情</td><td>只能点右上角「详情」按钮</td><td><strong>整行可点</strong>（<code>tr[data-row-open]</code>，含键盘 Enter/Space）；按钮降级为提示</td></tr>
         </tbody>
       </table>
+      <p><strong><code>table-layout: fixed</code> 的隐藏行为</strong>（v0.43.1）：所有列宽度合计小于表格宽时，
+        浏览器会<strong>按比例放大每一列</strong>，px 变成比例而非定值（实测合计 958 / 容器 1061 →
+        名称 220→243.6、操作 128→141.8）。必须留一列 <code>width: auto</code> 吸收剩余。</p>
+      <p><strong>操作列的轴对齐</strong>（v0.43.1）：表头文字与按钮必须落在同一条竖线上。操作列只放「详情」，
+        次要操作 kebab 用 <code>.kebab-row</code> 绝对定位到单元格右上角、hover / <code>:focus-within</code>
+        才出现（<code>right: calc(var(--sp-4) + 68px)</code>）。另外操作列 <code>td</code> 的
+        <code>overflow</code> 从 <code>hidden</code> 改 <code>visible</code>——否则按钮的 3px hover 光晕被削成直角，
+        与相邻列的竖线粘在一起。</p>
       <p><strong>为什么文本列要定宽</strong>（反转一条旧判据）：原判据是「文本列不设 px 宽、留弹性吸收剩余」，
         初衷是防紧列被平分；但实测弹性列的代价更大——两列吃 54% 宽度却只放 96px 内容。
         正确的不变量是「文本列有明确上限」（&le; 300px）。</p>
