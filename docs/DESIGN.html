@@ -1570,6 +1570,28 @@
 （用户配置的内容）
 &lt;!-- shared-rules:end --&gt;</code></pre>
       <p>用标记而不是整体覆盖：约束文件里还有用户自己的规则，整体覆盖会把它们冲掉；标记让写入幂等，块外内容逐字节不动。</p>
+      <h4>约束列怎么变绿（v0.43.0）</h4>
+      <table>
+        <thead><tr><th>用户要求</th><th>实现</th></tr></thead>
+        <tbody>
+          <tr><td>(a) 把设置里的内容写进每个 Agent 并生效</td><td><code>--shared-rules-apply [CLIENT...]</code>；写前备份、原子写、回读校验</td></tr>
+          <tr><td>(b) 检查不要求一模一样，意思一样即可</td><td><code>_similar()</code> 字符级 Dice，阈值 <code>0.45</code>；<strong>语义覆盖也算达标</strong></td></tr>
+          <tr><td>(c) 把原文件里类似内容替换掉</td><td>写入前 <code>_strip_similar()</code> 删除相似度 ≥ 阈值<strong>且只占一行</strong>的旧条目</td></tr>
+        </tbody>
+      </table>
+      <table>
+        <thead><tr><th>状态</th><th>条件</th><th>列的颜色</th></tr></thead>
+        <tbody>
+          <tr><td><code>current</code></td><td>标记块与配置完全一致</td><td>绿</td></tr>
+          <tr><td><code>covered</code></td><td><strong>没有标记块</strong>但内容已以其他措辞存在</td><td>绿（语义一致）</td></tr>
+          <tr><td><code>stale</code></td><td>有块但内容已变</td><td>黄</td></tr>
+          <tr><td><code>absent</code> / <code>missing</code></td><td>没有块且缺内容 / 文件不存在</td><td>黄</td></tr>
+        </tbody>
+      </table>
+      <p><strong><code>covered</code> 只对「没有标记块」生效</strong>：块存在且内容不同就等于用户改过配置，必须报
+        <code>stale</code>（实测踩到：「完全无关的一条」与「完全不相干的一条」相似度 0.67，被判成已覆盖）。</p>
+      <p><strong>用字符级 Dice 而非 token Jaccard</strong>：中文 2-gram 稀疏，「必须用中文回答」vs「所有回答都必须使用中文」
+        Jaccard 仅 0.33，字符级重叠过半。实测标定：同义 0.52~0.79，不同主题 &lt; 0.30。</p>
       <h4>「约束」列的三态颜色</h4>
       <table>
         <thead><tr><th>状态</th><th>颜色</th><th>含义</th></tr></thead>

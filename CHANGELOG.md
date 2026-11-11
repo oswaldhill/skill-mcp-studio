@@ -7,6 +7,66 @@
 
 ## [Unreleased]
 
+## [v0.43.0] - 2026-11-11
+
+当前发布版本（build 180）。
+
+**操作列错位修复 + 约束列「语义一致即变绿」与旧条目替换。**
+
+### 一、操作列错位
+
+| 问题 | 原因 | 修复 |
+|---|---|---|
+| 详情/更多按钮被裁 | 列宽 104px，内容需 ~120px（按钮 66 + kebab 28 + gap + 单元格内边） | 加宽到 **128px**，`.al-ops` 加 `min-width: 0` 兜底 |
+| 「操作」表头与内容错位 | 表头未设对齐（默认左对齐），按钮组靠右 | 表头 **右对齐** |
+
+### 二、约束列怎么变绿（三条要求）
+
+| 要求 | 实现 |
+|---|---|
+| (a) 写进每个 Agent 并生效 | `--shared-rules-apply [CLIENT...]`，写前备份 → 原子写 → 回读校验 |
+| (b) 意思一样即可，不必一模一样 | `_similar()`：**字符级 Dice 系数**，阈值 0.45；语义覆盖算达标 |
+| (c) 把原文件里类似的内容替换掉 | 写入前 `_strip_similar()` 删除相似度 ≥ 阈值**且只占一行**的旧条目 |
+
+实测效果（用临时文件验证）：
+
+```
+写入前：  # 我的规则
+          - 所有回答都必须使用中文      ← 与共享内容同义
+          - 不要删文件
+
+写入后：  # 我的规则
+          - 不要删文件                 ← 无关条目保留
+          <!-- shared-rules:begin v1 -->
+          - 所有回答包括思考过程，都必须使用中文   ← 同义旧条目已被替换
+          <!-- shared-rules:end -->
+```
+
+### 三、为什么用字符级 Dice
+
+中文 2-gram 稀疏：「必须用中文回答」vs「所有回答都必须使用中文」的 Jaccard 只有
+**0.33**，但字符级重叠过半。实测标定：同义改写 0.52~0.79，不同主题 < 0.30，
+阈值取 0.45。
+
+### 四、一个必须加的护栏
+
+`covered`（语义已覆盖）**只在没有标记块时生效**。块存在且内容不同 = 用户改过配置，
+必须报 `stale` 让用户去同步——否则改完内容界面永远显示「已含」。
+这个坑是测试抓出来的：「完全无关的一条」与「完全不相干的一条」相似度 0.67，
+第一次实现把 stale 场景判成了 covered。
+
+### 测试
+
+- 新增 `SemanticMatchTest`（4 项）：同义改写判 covered、无关主题判 absent、
+  写入时替换旧条目（断言「中文」只出现 1 次且无关条目保留）、阈值在实测区间内。
+- **反向验证 2 条**：阈值调到 0.99、关掉旧条目替换，各自让断言失败。
+- 全量 **1737 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
+### 文档
+
+`docs/DESIGN.md` §2.3c-2c 补「约束列怎么变绿」（状态机 + 相似度选型 + 替换边界）；
+`DESIGN.html` 同步。
+
 ## [v0.42.0] - 2026-11-11
 
 当前发布版本（build 179）。
@@ -4141,7 +4201,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.42.0...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.43.0...HEAD
+[v0.43.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.43.0
 [v0.42.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.42.0
 [v0.41.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.41.0
 [v0.40.9]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.9

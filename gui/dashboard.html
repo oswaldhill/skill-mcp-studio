@@ -455,7 +455,7 @@
   .agent-card .ac-fixbar .ac-fix.danger { border-color: var(--err-border); background: var(--err-bg); color: var(--err); }
   .agent-card .ac-fixbar .ac-fix.danger:hover { background: var(--err); border-color: var(--err); color: var(--on-accent); }
   /* 主页列表视图：详情链接 */
-  .al-ops { display: flex; justify-content: flex-end; align-items: center; gap: var(--gap-2); white-space: nowrap; }
+  .al-ops { display: flex; justify-content: flex-end; align-items: center; gap: var(--gap-2); white-space: nowrap; min-width: 0; }
   .al-detail {
     display: inline-flex; align-items: center; gap: var(--gap-1); height: 26px; flex: none;
     padding: 0 var(--sp-4); border: 1px solid var(--line); border-radius: var(--r-control);
@@ -1232,6 +1232,8 @@
      用户反馈「安装 技能目录等内容，没有和上面的标题栏居中对齐」：
      这些列的单元格是单枚徽标/短标签，左对齐时徽标贴着单元格左缘，
      而列头文字+问号图标整体更宽，视觉上徽标"偏左"。居中后两者轴线一致。 */
+  /* 操作列表头右对齐（v0.43.0）：按钮组靠右，表头左对齐会与内容错开一整列宽 */
+  .agent-list-table th:nth-child(10) { text-align: right; }
   .agent-list-table th:nth-child(3),
   .agent-list-table th:nth-child(7),
   .agent-list-table th:nth-child(8),
@@ -1263,7 +1265,7 @@
   .agent-list-table th:nth-child(7),  .agent-list-table td:nth-child(7)  { width: 82px; }   /* 技能目录：一枚链接徽标 */
   .agent-list-table th:nth-child(8),  .agent-list-table td:nth-child(8)  { width: 78px; }   /* 约束：N/M 或「无约定」 */
   .agent-list-table th:nth-child(9),  .agent-list-table td:nth-child(9)  { width: 78px; }   /* MCP：N/M 或「不支持」 */
-  .agent-list-table th:nth-child(10), .agent-list-table td:nth-child(10) { width: 104px; }  /* 操作：详情按钮 + 更多菜单 */
+  .agent-list-table th:nth-child(10), .agent-list-table td:nth-child(10) { width: 128px; }  /* 操作（v0.43.0 由 104 加宽：内容需 ~120px，此前溢出被裁） */
   /* fixed 布局下超长内容不会自动换行，必须显式裁切（overflow: hidden 已合并进上方 td 主规则）。
      名称/类型两个文本列给省略号，保证长客户端名不撑破定宽。 */
   .agent-list-table .al-name,
@@ -3561,9 +3563,11 @@ const skillsCell = `<button type="button" class="al-ico ${skillsCls}" data-popki
       const hasSharedContent = typeof SHARED_RULES !== "undefined"
         && !!(SHARED_RULES && (SHARED_RULES.content || "").trim());
       let ruleCls;
+      const sharedOk = sharedRow && sharedRow.enabled !== false
+        && (sharedRow.state === "current" || sharedRow.state === "covered");   // v0.43.0：语义一致也算达标
       if (hit === 0) {
         ruleCls = "";
-      } else if (sharedRow && sharedRow.enabled !== false && sharedRow.state === "current") {
+      } else if (sharedOk) {
         ruleCls = "ok";
       } else if (!hasSharedContent) {
         ruleCls = "ok";
@@ -3582,10 +3586,9 @@ const skillsCell = `<button type="button" class="al-ico ${skillsCls}" data-popki
       const hasShared = typeof SHARED_RULES !== "undefined"
         && !!(SHARED_RULES && (SHARED_RULES.content || "").trim());
       const sharedMark = (sharedL && sharedL.enabled !== false && hasShared)
-        ? (sharedL.state === "current" ? "共享已含"
-           : (sharedL.state === "stale" ? "共享过期" : "无共享"))
+        ? ({ current: "共享已含", covered: "共享已含", stale: "共享过期" })[sharedL.state] || "无共享"
         : "";
-      const sharedMarkCls = sharedL && sharedL.state === "current" ? "ok"
+      const sharedMarkCls = sharedL && (sharedL.state === "current" || sharedL.state === "covered") ? "ok"
         : (sharedL && sharedL.state === "stale" ? "warn" : "");
       const sharedSpan = sharedMark
         ? `<span class="tag ${sharedMarkCls}" title="共享约束：${sharedMark}">${sharedMark}</span>`
@@ -4953,8 +4956,8 @@ function _agentRulesSummary(t) {
     .find((r) => r.name === t.name);
   const sharedOn = shared ? shared.enabled !== false : true;
   const sharedState = shared && sharedOn ? shared.state : "";
-  const sharedText = { current: "共享已含", stale: "共享过期", absent: "无共享", missing: "无共享" }[sharedState] || "";
-  const sharedCls = { current: "ok", stale: "warn", absent: "", missing: "" }[sharedState] || "";
+  const sharedText = { current: "共享已含", covered: "共享已含", stale: "共享过期", absent: "无共享", missing: "无共享" }[sharedState] || "";
+  const sharedCls = { current: "ok", covered: "ok", stale: "warn", absent: "", missing: "" }[sharedState] || "";
   const sharedTip = sharedState === "current"
     ? "已包含当前共享约束"
     : sharedState ? "尚未包含当前共享约束（可在设置页同步进去）" : "";
@@ -8631,6 +8634,7 @@ async function saveSharedRules() {
 function _sharedStateLabel(state) {
   return {
     current: ["ok", "已同步"],
+    covered: ["ok", "语义已一致"],
     stale: ["warn", "内容过期"],
     absent: ["", "未包含"],
     missing: ["", "文件不存在"],
@@ -10658,7 +10662,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.42.0", build: 179, build_number: 179, semver_ok: true, full: "v0.42.0 (build 179)" },
+  app: { name: "Skill MCP Studio", version: "0.43.0", build: 180, build_number: 180, semver_ok: true, full: "v0.43.0 (build 180)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

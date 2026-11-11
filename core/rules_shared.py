@@ -140,7 +140,12 @@ def extract(text: str) -> Optional[str]:
 
 
 def _path_state(raw: str, content: str) -> Dict[str, Any]:
-    """单个约束路径对共享块的状态：missing / absent / stale / current / dir。"""
+    """单个约束路径的状态：missing / dir / current / covered / stale。
+
+    ``covered``（v0.43.0）：文件里**没有共享块**，但每条约束都已以别的措辞存在。
+    用户要求「这里的检查不是说内容必须一模一样，而是表达的意思一样即可」——
+    所以「语义已覆盖」算达标，只是还没被收进标记块。
+    """
     p = Path(os.path.expanduser(raw))
     base = {"path": raw, "resolved": str(p)}
     if p.is_dir():
@@ -149,10 +154,16 @@ def _path_state(raw: str, content: str) -> Dict[str, Any]:
     if text is None:
         return dict(base, state="missing", reason="文件不存在")
     current = extract(text)
-    if current is None:
-        return dict(base, state="absent", reason="文件里没有共享块")
-    if current == (content or "").rstrip("\n"):
+    if current is not None and current == (content or "").rstrip("\n"):
         return dict(base, state="current", reason="已是最新")
+    # 「语义已覆盖」只在**没有（或只覆盖了一部分）标记块**时兜底判定。
+    # 块存在且内容不同，说明用户改过共享内容：此时必须报 stale，
+    # 否则改内容后界面会一直显示「已含」，用户不知道该同步（实测踩到：
+    # 「完全无关」与「完全不相干」相似度 0.67 而被判成已覆盖）。
+    if current is None and _covered(text.splitlines(), content):
+        return dict(base, state="covered", reason="内容已以其他措辞存在（语义一致）")
+    if current is None:
+        return dict(base, state="absent", reason="文件里没有共享块，且缺少部分约束")
     return dict(base, state="stale", reason="共享块内容与当前配置不一致")
 
 
@@ -162,7 +173,7 @@ def audit(content: Optional[str] = None,
     body = read_content() if content is None else content
     flags = load_settings()
     rows: List[Dict[str, Any]] = []
-    counts = {"current": 0, "stale": 0, "absent": 0, "missing": 0, "dir": 0, "clients": 0}
+    counts = {"current": 0, "covered": 0, "stale": 0, "absent": 0, "missing": 0, "dir": 0, "clients": 0}
     for tool in (registry or MAINSTREAM_TOOLS):
         paths = tool.get("rules_paths") or []
         if not paths:
@@ -170,7 +181,7 @@ def audit(content: Optional[str] = None,
         states = [_path_state(raw, body) for raw in paths]
         # 一个客户端的整体状态取「最需要处理」的那个：
         # missing > absent > stale > dir > current
-        order = ["missing", "absent", "stale", "dir", "current"]
+        order = ["missing", "absent", "stale", "dir", "covered", "current"]
         worst = min(states, key=lambda s: order.index(s["state"]))["state"]
         for s in states:
             counts[s["state"]] = counts.get(s["state"], 0) + 1
@@ -195,8 +206,112 @@ def audit(content: Optional[str] = None,
     }
 
 
-def apply(text: str, block: str) -> str:
-    """把共享块替换 / 插入到 ``text`` 里（纯函数，便于单测）。"""
+# ---------------- 语义等价与近似条目替换（v0.43.0） ----------------
+
+#: 判定「意思一样」时忽略的标点与格式符号。
+_NOISE = " \t\u3000，。、；：！？,.;:!?（）()【】[]「」“”\"'`#*-—_·\n\r"
+
+
+def _norm(text: str) -> str:
+    """把一行压成可比较的骨架：去标点、去空白、小写。"""
+    return "".join(ch.lower() for ch in (text or "") if ch not in _NOISE)
+
+
+def _tokens(text: str) -> List[str]:
+    """中文按 2-gram、英文按词切分，用于估算相似度。"""
+    norm = "".join(ch for ch in (text or "") if ch not in _NOISE)
+    out: List[str] = []
+    cjk = [ch for ch in norm if "\u4e00" <= ch <= "\u9fff"]
+    out.extend("".join(cjk[i:i + 2]) for i in range(max(0, len(cjk) - 1)))
+    import re as _re
+    out.extend(w.lower() for w in _re.findall(r"[A-Za-z0-9_\-]{2,}", norm))
+    return out
+
+
+def _lcs(a: str, b: str) -> int:
+    """最长公共子序列长度（字符级）。"""
+    if not a or not b:
+        return 0
+    prev = [0] * (len(b) + 1)
+    for ca in a:
+        cur = [0]
+        for j, cb in enumerate(b, 1):
+            cur.append(prev[j - 1] + 1 if ca == cb else max(prev[j], cur[j - 1]))
+        prev = cur
+    return prev[-1]
+
+
+def _similar(a: str, b: str) -> float:
+    """行级相似度 0..1：字符级 Dice 系数。
+
+    不用 Jaccard-on-token：中文里「必须用中文回答」与「所有回答都必须使用中文」的
+    2-gram 交集很少（Jaccard 仅 0.33），但字符级重叠过半 —— 后者才符合「意思一样」
+    的直觉。实测标定：同义改写 0.53~0.75，不同主题 < 0.25。
+    """
+    na, nb = _norm(a), _norm(b)
+    if not na or not nb:
+        return 0.0
+    if na == nb:
+        return 1.0
+    return 2.0 * _lcs(na, nb) / (len(na) + len(nb))
+
+
+#: 判定「同一层意思」的相似度阈值。
+#: 0.45 覆盖同义改写（「必须用中文回答」vs「所有回答都必须使用中文」= 0.53），
+#: 又不会把不同主题（0.06~0.25）误判成重复。
+SIMILARITY_THRESHOLD = 0.45
+
+
+def content_lines(content: str) -> List[str]:
+    """共享内容的「条目」：去空行、去纯标点行、去 Markdown 列表前缀。"""
+    out: List[str] = []
+    for raw in (content or "").splitlines():
+        line = raw.strip().lstrip("-*+ ").strip()
+        if _norm(line):
+            out.append(line)
+    return out
+
+
+def _covered(lines: List[str], content: str, threshold: float = SIMILARITY_THRESHOLD) -> bool:
+    """文件里的行是否已覆盖共享内容的每一条（允许措辞不同、顺序不同）。"""
+    wanted = content_lines(content)
+    if not wanted:
+        return True
+    have = [_norm(ln) for ln in lines]
+    for w in wanted:
+        if not any(_similar(w, h) >= threshold for h in have):
+            return False
+    return True
+
+
+def _strip_similar(lines: List[str], content: str,
+                   threshold: float = SIMILARITY_THRESHOLD) -> List[str]:
+    """删掉文件里与共享内容「意思相同」的旧条目，避免同一句出现两遍。
+
+    只处理**单行条目**：多行段落里的某一行被删会破坏结构，宁可留着。
+    """
+    wanted = content_lines(content)
+    kept: List[str] = []
+    for ln in lines:
+        bare = ln.strip().lstrip("-*+ ").strip()
+        if bare and any(_similar(bare, w) >= threshold for w in wanted):
+            continue
+        kept.append(ln)
+    return kept
+
+
+def apply(text: str, block: str, content: str = "") -> str:
+    """把共享块替换 / 插入到 ``text`` 里（纯函数，便于单测）。
+
+    ``content`` 给定时，先删掉文件里与它**意思相同**的独立条目（用户要求
+    「把原来文件中类似的内容给替换掉」），再插入/替换标记块——否则同一句会在
+    文件里出现两遍：一遍在块里、一遍在块外。
+    """
+    if content:
+        lines = text.splitlines()
+        kept = _strip_similar(lines, content)
+        if len(kept) != len(lines):
+            text = "\n".join(kept).rstrip("\n") + "\n"
     start = text.find(BEGIN)
     if start >= 0:
         end = text.find(END, start + len(BEGIN))
@@ -242,7 +357,7 @@ def apply_client(client: str, content: Optional[str] = None,
             continue
         p = Path(os.path.expanduser(raw))
         existing = _read_text(p) or ""
-        merged = apply(existing, block)
+        merged = apply(existing, block, body)
         res = write_rules(tool.get("name"), merged, index=idx, registry=registry)
         results.append(dict(state, ok=bool(res.get("ok")), changed=bool(res.get("ok")),
                             backup=res.get("backup", ""), reason=res.get("reason", "")))

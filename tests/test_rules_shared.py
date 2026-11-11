@@ -117,13 +117,15 @@ class ApplyClientTest(unittest.TestCase):
         self.assertFalse(rs.apply_client("Nope", "x", registry=self.registry)["ok"])
 
     def test_audit_reports_states(self):
-        self.file.write_text("# mine\n", encoding="utf-8")
+        # absent：文件存在但没有块，且内容确实缺失
+        self.file.write_text("# mine\n- 完全无关的一条\n", encoding="utf-8")
         r = rs.audit("# shared\n", registry=self.registry)
         self.assertEqual(r["rows"][0]["state"], "absent")
         rs.apply_client("T", "# shared\n", registry=self.registry)
         r = rs.audit("# shared\n", registry=self.registry)
         self.assertEqual(r["rows"][0]["state"], "current")
-        r = rs.audit("# changed\n", registry=self.registry)
+        # 内容不同但语义无关 → stale（块在，但内容已不是当前配置）
+        r = rs.audit("# 完全不相干的一条\n", registry=self.registry)
         self.assertEqual(r["rows"][0]["state"], "stale")
 
 
@@ -173,6 +175,43 @@ class ClientToggleTest(unittest.TestCase):
     def test_settings_file_persists(self):
         rs.set_client_enabled("T", False)
         self.assertEqual(rs.load_settings(), {"T": False})
+
+
+class SemanticMatchTest(unittest.TestCase):
+    """「意思一样即算达标」+「把文件里类似内容替换掉」（v0.43.0 用户要求）。
+
+    用户：(b) 检查不是内容一模一样，而是表达的意思一样即可；
+          (c) 不但要写进去，还要把原来文件中类似的内容给替换掉。
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.file = Path(self.tmp) / "AGENTS.md"
+        self.registry = [{"name": "T", "type": "AI Agent", "rules_paths": [str(self.file)]}]
+
+    def test_paraphrase_counts_as_covered(self):
+        self.file.write_text("# mine\n- 所有回答都必须使用中文\n", encoding="utf-8")
+        state = rs._path_state(str(self.file), "- 所有回答包括思考过程，都必须使用中文\n")
+        self.assertEqual(state["state"], "covered", "同义改写应判为已覆盖")
+
+    def test_unrelated_is_not_covered(self):
+        self.file.write_text("# mine\n- 提交前必须跑全量测试\n", encoding="utf-8")
+        state = rs._path_state(str(self.file), "- 所有回答都必须使用中文\n")
+        self.assertEqual(state["state"], "absent", "不同主题不得判为已覆盖")
+
+    def test_similar_line_is_replaced(self):
+        """写入时把文件里意思相同的旧条目删掉，避免同一句出现两遍。"""
+        self.file.write_text(
+            "# 我的规则\n\n- 所有回答都必须使用中文\n- 不要删文件\n", encoding="utf-8")
+        rs.apply_client("T", "- 所有回答包括思考过程，都必须使用中文\n", registry=self.registry)
+        text = self.file.read_text(encoding="utf-8")
+        self.assertEqual(text.count("中文"), 1, "旧条目应被替换掉，不能出现两遍")
+        self.assertIn("不要删文件", text, "无关条目必须保留")
+        self.assertIn(rs.BEGIN, text, "仍要写入标记块")
+
+    def test_threshold_documented(self):
+        self.assertTrue(0.3 <= rs.SIMILARITY_THRESHOLD <= 0.6,
+                        "阈值必须在实测区间内（同义 0.52~0.79 / 无关 < 0.3）")
 
 
 class WiringTest(unittest.TestCase):
@@ -230,8 +269,9 @@ class WiringTest(unittest.TestCase):
         # 才算「显示出来了」。只查变量名会被「定义了但没渲染」骗过去
         # （第一次写这条断言时就踩了：把变量改名，测试照样绿）。
         self.assertRegex(lst, r'\$\{sharedSpan\}', "主表列表必须把共享状态渲染进单元格")
-        self.assertRegex(lst, r'state === "current"\s*\?\s*"共享已含"', "列表列必须区分「共享已含」")
-        self.assertRegex(lst, r'stale"\s*\?\s*"共享过期"', "列表列必须区分「共享过期」")
+        self.assertIn("共享已含", lst, "列表列必须区分「共享已含」")
+        self.assertIn("共享过期", lst, "列表列必须区分「共享过期」")
+        self.assertIn('"covered"', lst, "语义一致（covered）也必须算已含（v0.43.0）")
 
     def test_shared_card_is_content_only_in_settings(self):
         """共享约束只保留「内容输入框」，位置在设置页 IDE / Agent tab（v0.40.7 定稿）。
@@ -277,4 +317,5 @@ class WiringTest(unittest.TestCase):
         card = gui[gui.index("function _agentRulesSummary("):]
         card = card[: card.index("\nfunction ")]
         self.assertIn("SHARED_AUDIT", card, "卡片摘要必须读共享状态")
-        self.assertRegex(card, r'current:\s*"共享已含"', "卡片摘要必须输出「共享已含」")
+        self.assertIn("共享已含", card, "卡片摘要必须输出「共享已含」")
+        self.assertIn("covered", card, "语义一致（covered）也必须算已含（v0.43.0）")
