@@ -1541,6 +1541,11 @@
 
     <section id="s2-3c2c">
       <h3 id="s2-3c2c">2.3c-2c 共享约束（v0.40.0）<a class="anchor" href="#s2-3c2c" aria-label="锚点">#</a></h3>
+      <p><strong>位置：概览页业务区，不在设置里</strong>（v0.40.4）。用户：「这部分不要放在设置里，也不需要」。
+        它是一条<strong>业务流水线</strong>（编辑内容 → 检查各 Agent → 同步进去），不是配置一次就不动的全局项；
+        按 §5.3 通用 / 业务分离原则，业务动作放对应管理页。现渲染在概览页「快捷操作」下方、
+        「全量检查」上方；卡片结构不变，由 <code>sharedRulesCard()</code> 产出、<code>renderOverview()</code> 调用。
+        设置页 IDE / Agent tab 只保留「IDE / Agent 默认路径」。</p>
       <p><strong>一段内容同步进所有 Agent 的约束文件</strong>，并能检查哪些没同步、一键强制写入。</p>
       <p><strong>数据模型</strong>：内容存 <code>data/shared_rules.md</code>，写进各文件时用一对标记包住：</p>
       <pre><code>&lt;!-- shared-rules:begin v1 --&gt;

@@ -7,6 +7,50 @@
 
 ## [Unreleased]
 
+## [v0.40.4] - 2026-11-11
+
+当前发布版本（build 172）。
+
+**共享约束从设置页搬到概览页。**
+
+用户：「你还是理解错了，这部分不要放在设置里，也不需要」。
+
+### 为什么该搬
+
+共享约束是一条**业务流水线**（编辑内容 → 检查各 Agent → 同步进去），不是
+「配置一次就不动的全局项」。项目自己的纪律（PRD §5.3「通用 / 业务分离原则」）：
+通用配置收敛进设置页，业务动作放对应管理页。共享约束属于后者，放设置里是分类错了。
+
+### 改动
+
+| 项 | 改前 | 改后 |
+|---|---|---|
+| 位置 | 设置 → IDE / Agent tab 顶部 | **概览页**「快捷操作」下方、「全量检查」上方 |
+| 产出方式 | `renderSettings()` 里内联 | 独立 `sharedRulesCard()`，由 `renderOverview()` 调用 |
+| 设置页 agents tab | 两张卡片 | 只剩「IDE / Agent 默认路径」 |
+
+卡片结构本身不变（仍复用 `.settings-card` 的 `.rows/.row` 语言），只是换了个家。
+
+### 连带修的两处
+
+1. **`tests/test_dashboard_overview_stats.py` 的 node 渲染护栏**：它抽取 `renderOverview`
+   到 node 里执行，新增依赖后报 `ReferenceError: sharedRulesCard`。补了
+   `_fn("sharedRulesCard")`、`SHARED_AUDIT` 全局桩，以及 `bindSharedRulesBox` /
+   `auditSharedRules` 的空桩——**这类护栏的价值就在于此**，它不允许渲染函数悄悄
+   引用了没一起带过去的东西。
+2. 概览渲染后自动 `auditSharedRules()`（首次），避免用户还得手动点一次才看到状态。
+
+### 测试
+
+- 新增断言：设置页不得再挂 `${sharedCard}`；卡片由 `sharedRulesCard()` 产出且被
+  `renderOverview()` 调用。
+- **反向验证**：从 `renderOverview()` 里去掉 `sharedRulesCard()` 调用，断言失败。
+- 全量 **1725 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
+### 文档
+
+`docs/DESIGN.md` §2.3c-2c 开头补「位置：概览页业务区，不在设置里」；`DESIGN.html` 同步。
+
 ## [v0.40.3] - 2026-11-11
 
 当前发布版本（build 171）。
@@ -3793,7 +3837,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.40.3...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.40.4...HEAD
+[v0.40.4]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.4
 [v0.40.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.3
 [v0.40.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.2
 [v0.40.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.40.1

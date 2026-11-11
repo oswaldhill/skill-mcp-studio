@@ -249,10 +249,29 @@ class WiringTest(unittest.TestCase):
         for token in ('class="rows"', 'class="row row-block"', '<span class="k">约束内容</span>',
                       '<span class="k">同步状态</span>', 'class="shared-actions"'):
             self.assertIn(token, card, f"卡片缺少 {token}（应复用 settings-card 的行语言）")
+
+    def test_card_lives_on_overview_not_settings(self):
+        """共享约束卡片属于业务区（概览），不属于设置（v0.40.4 用户要求）。
+
+        用户：「这部分不要放在设置里，也不需要」。它是一条业务流水线
+        （编辑内容 → 检查各 Agent → 同步进去），不是一次性配置项。
+        """
+        root = Path(__file__).resolve().parents[1]
+        gui = (root / "gui/dashboard.html").read_text(encoding="utf-8")
+        # 1) 设置页的 agents 面板不得再挂它
+        self.assertNotIn("${sharedCard}", gui, "设置页不应再挂共享约束卡片")
+        self.assertNotIn("data-panel=\"agents\">${sharedCard}", gui)
+        # 2) 卡片现在由独立函数产出，且被概览渲染函数调用
+        self.assertIn("function sharedRulesCard()", gui)
+        fn_start = gui.index("function sharedRulesCard()")
+        fn_block = gui[fn_start: fn_start + 2400]
+        self.assertIn('button class="primary"', fn_block, "卡片内仍须用既有 .primary 按钮")
+        self.assertIn('button class="ghost"', fn_block)
+        self.assertIn('button class="btn-soft"', fn_block)
+        ov = gui[gui.index("function renderOverview()"):]
+        ov = ov[: ov.index("\nfunction ")]
+        self.assertIn("sharedRulesCard()", ov, "概览页必须渲染共享约束卡片")
         # 按钮只用既有三档，不允许新造按钮类
-        self.assertIn('button class="primary"', card)
-        self.assertIn('button class="ghost"', card)
-        self.assertIn('button class="btn-soft"', card)
 
     def test_textarea_style_is_card_scoped(self):
         root = Path(__file__).resolve().parents[1]
