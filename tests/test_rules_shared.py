@@ -400,20 +400,18 @@ class MultiFileRoutingTest(unittest.TestCase):
         self.assertNotIn(rs.BEGIN, text, "旧块必须被清掉")
         self.assertIn("# user", text, "文件其它内容必须保留")
 
-    def test_workbuddy_registered_roles(self):
-        """只有 SOUL.md 接收共享约束（v0.46.1 用户定案）。
+    def test_workbuddy_has_single_constraint_file(self):
+        """WorkBuddy 只登记 SOUL.md 一个约束文件（v0.46.2 用户定案）。
 
-        用户：「这里比较重要的还是应该只是 SOUL.md 对吧，不需要修改 USER.md」。
-        USER.md 是 WorkBuddy 自己的用户档案，由它从交互中维护；共享约束是跨 13 个
-        Agent 的通用规则，写进档案只会让「我是谁」在两个地方各写一遍。
+        用户：「那这里就应该只把 soul.md 作为约束文件，这里应该只有一个吧？」
+
+        USER.md 是 WorkBuddy 自己的用户档案，不是「约束文件」。登记成约束文件会让
+        界面显示 2/2（用户以为有两个要维护），还会把它拉进审计与写入流程。
         """
         tool = rs.find_tool("WorkBuddy")
-        self.assertEqual(tool.get("rules_roles"), [["behavior"], []],
-                         "SOUL.md 接收行为准则，USER.md 不接收")
-        # 路径仍登记（界面展示 + 健康检查），只是不接收内容
-        self.assertEqual(tool.get("rules_paths"),
-                         ["~/.workbuddy/SOUL.md", "~/.workbuddy/USER.md"])
-
+        self.assertEqual(tool.get("rules_paths"), ["~/.workbuddy/SOUL.md"],
+                         "只登记 SOUL.md 一个约束文件")
+        self.assertFalse(tool.get("rules_roles"), "单文件不需要职责分流，不应再声明角色")
 
 class SemanticMatchTest(unittest.TestCase):
     """「意思一样即算达标」+「把文件里类似内容替换掉」（v0.43.0 用户要求）。

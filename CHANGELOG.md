@@ -7,6 +7,50 @@
 
 ## [Unreleased]
 
+## [v0.46.2] - 2026-11-12
+
+当前发布版本（build 195）。
+
+**WorkBuddy 只登记一个约束文件：SOUL.md。**
+
+用户：「那这里就应该只把 soul.md 作为约束文件，这里应该只有一个吧？」——对。
+
+### 改动
+
+| 项 | 改前 | 改后 |
+|---|---|---|
+| `rules_paths` | `[SOUL.md, USER.md]` | **`[SOUL.md]`** |
+| `rules_roles` | `[["behavior"], []]` | **无**（单文件不需要分流） |
+| 界面显示 | `2/2` | **`1/1`** |
+
+`USER.md` 是 WorkBuddy **自己从交互中维护的用户档案**（姓名 / 角色 / 技术栈 / 沟通偏好），
+不是「约束文件」。把它登记成约束文件，等于把它拉进审计与写入流程，也让界面显示 2/2，
+用户以为有两个要维护，而实际我们从没写过它。
+
+> 判断标准：**它规定 Agent 怎么做事**（SOUL.md）还是**记录 Agent 认识的我**（USER.md）。
+> 前者才算约束文件。
+
+`rules_roles` 分流机制保留（将来若出现真正的多约束文件客户端仍可用），只是 WorkBuddy
+不再需要。
+
+### 验证
+
+```
+--list-rules  → WorkBuddy paths: ['~/.workbuddy/SOUL.md']
+--shared-rules-apply --dry-run → ~/.workbuddy/SOUL.md => absent
+```
+
+### 测试
+
+- `test_workbuddy_has_single_constraint_file`：只登记 SOUL.md、不再声明角色。
+- 清理了两处重复的测试定义（同名函数导致 ruff F811）。
+- 全量 **1781 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
+### 文档
+
+`docs/DESIGN.md` §2.3c-2c 补「WorkBuddy 只登记一个约束文件」对照表与判断标准；
+`DESIGN.html` 同步。
+
 ## [v0.46.1] - 2026-11-12
 
 当前发布版本（build 194）。
@@ -4941,7 +4985,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.46.1...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.46.2...HEAD
+[v0.46.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.46.2
 [v0.46.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.46.1
 [v0.46.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.46.0
 [v0.45.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.45.3

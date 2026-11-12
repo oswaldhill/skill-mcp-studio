@@ -18,7 +18,7 @@ from typing import Any, Dict, List
 #   Cline             ~/Documents/Cline/Rules                      官方 Rules 文档「Global Rules Directory」
 #   Windsurf          ~/.codeium/windsurf/memories/global_rules.md  官方 Cascade memories
 #   TRAE              ~/.trae/rules                                 官方 Rules（目录形态）
-#   WorkBuddy         ~/.workbuddy/SOUL.md + USER.md               本机实测的人格/用户规则体系
+#   WorkBuddy         ~/.workbuddy/SOUL.md                         人格/行为准则（USER.md 是用户档案，不算约束文件）
 #   DeepSeek Harness  ~/.dsh/AGENTS.md                             本机实测
 #
 # 不登记 Cursor：它的用户级规则存在 Cursor 设置里（不落盘），`~/.cursor/rules`
@@ -505,18 +505,17 @@ MAINSTREAM_TOOLS: List[Dict[str, Any]] = [
         config_paths=["~/.workbuddy/mcp.json"],
         skills_path="~/.workbuddy/skills",
         mcp_config_path="~/.workbuddy/mcp.json",
-        rules_paths=["~/.workbuddy/SOUL.md", "~/.workbuddy/USER.md"],
-        # 只有 SOUL.md 接收共享约束（v0.46.1）。
+        # 只登记 SOUL.md 一个约束文件（v0.46.2）。
         #
-        # 用户：「这里比较重要的还是应该只是 SOUL.md 对吧，不需要修改 USER.md」。
+        # 用户：「那这里就应该只把 soul.md 作为约束文件，这里应该只有一个吧？」
         #
-        # 理由：USER.md 是 **WorkBuddy 自己的用户档案**（姓名 / 角色 / 技术栈 / 沟通偏好），
-        # 由它自身从交互中维护；而共享约束是**跨 13 个 Agent** 的通用规则。把档案类内容
-        # 也同步进去，只会让同一份「我是谁」在 WorkBuddy 里写两遍、两边格式还可能打架。
+        # 此前登记了两个：SOUL.md + USER.md。但 USER.md 是 WorkBuddy 自己从交互中
+        # 维护的用户档案（姓名 / 角色 / 技术栈 / 沟通偏好），不是「约束文件」。
+        # 登记成约束文件会让界面显示 2/2（用户以为有两个要维护），还会把它拉进
+        # 审计与写入流程，而实际上我们从没写过它。
         #
-        # 空角色 = 该文件不接收共享约束（写入时跳过；已有旧块会被清掉）。
-        # 路径仍然登记，用于界面展示与健康检查。
-        rules_roles=[["behavior"], []],
+        # 现在：只登记 SOUL.md，不再有多路径，也不再需要 rules_roles。
+        rules_paths=["~/.workbuddy/SOUL.md"],
         aliases=["workbuddy"],
         by_os={
             "windows": {

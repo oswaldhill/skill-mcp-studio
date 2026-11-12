@@ -1639,6 +1639,11 @@
         按钮填充，而「写入共享约束」的判定依赖它 → 菜单里永远没有这一项。修法：① <code>loadManagement()</code>
         成功后与 <code>loadRules()</code> 同批拉 <code>auditSharedRules()</code>；② 审计缺失时 <code>needFixRulesFor</code>
         返回 <code>true</code>，与约束格的黄色分支一致。<strong>设计原则：两处 UI 读同一份状态时，缺数据时的默认值必须一致。</strong></p>
+      <p><strong>WorkBuddy 只登记一个约束文件</strong>（v0.46.2）：用户问「应该只有一个吧？」——对。
+        此前登记 <code>SOUL.md</code> + <code>USER.md</code> 两个，界面显示 <strong>2/2</strong>，用户以为有两个要维护；
+        但 <code>USER.md</code> 是 WorkBuddy 自己维护的用户档案，不是约束文件。现在 <code>rules_paths</code>
+        只有 <code>SOUL.md</code>，显示 <strong>1/1</strong>。判断标准：<strong>它规定 Agent 怎么做事（SOUL.md），
+        而不是记录 Agent 认识的我（USER.md）</strong>。</p>
       <p><strong>多个约束文件按职责分流</strong>（v0.46.0）：全仓只有 WorkBuddy 有两个用户级约束文件，
         且职责完全不同——<code>SOUL.md</code> 是人格/行为准则（怎么做事），<code>USER.md</code> 是用户档案
         （我是谁）。此前同一份内容同时写进两个文件。现在注册表用 <code>rules_roles</code> 声明每个文件的职责，
