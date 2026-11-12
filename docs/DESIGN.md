@@ -1051,6 +1051,21 @@ HTML 里写死的 `0` 上 —— 其余三项启动即有数字，唯独它显�
 按钮右缘），但两者盒子宽度不同，**视觉中心相差 19px**，用户两轮都读成「没有居中
 对齐」。改为 `text-align: center` + `.al-ops { justify-content: center }`。
 
+**Skills 表补竖线 + flex 下的截断位置（v0.47.2）**
+
+用户：「Skill 错位了，和之前 Agent 的问题一样，线没有连续，断开了」。
+
+两处独立缺陷：
+
+| 缺陷 | 原因 | 修法 |
+|---|---|---|
+| 线断开 | `.skill-table` 只画横线，**从未画过列分隔线** | 与 Agent 表同一方案：`separate` + 每格 `::after` |
+| 内容压到下一列 | 把 `.st-usage` 改成 `display:flex` 后，`text-overflow` **写在容器上不生效** | 截断落到子元素：`min-width:0 + overflow:hidden + text-overflow:ellipsis` |
+
+> **flex 容器的截断规则**：`text-overflow` 只对**块级容器的直接文本**生效。
+> 一旦容器是 flex / grid，文字必须包一层子元素，把三个属性写在那一层，
+> 且 `min-width: 0` 是前提（flex item 默认 `min-width: auto` 不会收缩）。
+
 **行高一致性：同一列不得混用 inline-flex 与 inline（v0.47.1）**
 
 用户：「两个 top 中，不同样式、不同情况下行高不一样，很不好看」。

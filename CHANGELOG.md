@@ -7,6 +7,45 @@
 
 ## [Unreleased]
 
+## [v0.46.4] - 2026-11-12
+
+当前发布版本（build 197）。
+
+**Skills 表补竖线 + 修 flex 容器里截断失效导致的溢出。**
+
+用户：「Skill 错位了，和之前 Agent 的问题一样，线没有连续，断开了」。
+
+### 两处独立缺陷
+
+| 缺陷 | 原因 | 修法 |
+|---|---|---|
+| 线断开 | `.skill-table` 只画横线，**从未画过列分隔线** | 与 Agent 表同方案：`separate` + 每格 `::after` |
+| 内容压到下一列 | 把 `.st-usage` 改成 `display:flex` 后，`text-overflow` **写在容器上不生效** | 截断落到子元素：`min-width:0 + overflow:hidden + text-overflow:ellipsis` |
+
+第二处是上一版（v0.46.3 修行高）改出来的——为统一行高把单元格改成 flex，
+但没检查这个改动对截断的影响。
+
+### 实测（真实 7 条数据）
+
+```
+行高：33.5 ×6 + 32.5（全中文行，子像素取整）
+bleedsIntoNext：全部 false
+竖线：五列全部贯通
+```
+
+### 测试
+
+- 新增 `SkillTableVerticalRulesTest`（3 项）：竖线伪元素、collapse 已禁用、
+  截断必须落在 flex item 上。
+- **反向验证 2 条**：去掉竖线伪元素、去掉子元素截断属性，各自失败。
+- 全量 **1788 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
+### 文档
+
+`docs/DESIGN.md` 补「Skills 表补竖线 + flex 下的截断位置」，并写明通用规则：
+`text-overflow` 只对块级容器的直接文本生效，flex/grid 容器必须包一层子元素。
+`DESIGN.html` 同步。
+
 ## [v0.46.3] - 2026-11-12
 
 当前发布版本（build 196）。
@@ -5040,7 +5079,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.46.3...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.46.4...HEAD
+[v0.46.4]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.46.4
 [v0.46.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.46.3
 [v0.46.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.46.2
 [v0.46.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.46.1

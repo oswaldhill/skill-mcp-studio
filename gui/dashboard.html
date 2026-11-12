@@ -1833,7 +1833,18 @@
   .view-btn svg { width: 14px; height: 14px; }
   .view-btn.active { background: var(--panel); color: var(--text); box-shadow: var(--shadow-card); }
   /* Skills 列表：与 Agent 列表同源的真表格布局（复用 .table-scroll 边框圆角容器） */
-  .skill-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: var(--fs-sm); background: var(--panel); }
+  /* 竖线贯通（v0.47.0）：与 .agent-list-table 同一方案。
+     此前 .skill-table 只有横线、没有列分隔线，用户读成「线断开了」。
+     做法：separate + border-spacing:0，每个单元格用 ::after 画 1px 竖线。 */
+  .skill-table { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; font-size: var(--fs-sm); background: var(--panel); }
+  .skill-table th, .skill-table td { position: relative; }
+  .skill-table th:not(:last-child)::after,
+  .skill-table td:not(:last-child)::after {
+    content: ""; position: absolute; top: 0; bottom: 0; right: -0.5px; width: 1px;
+    background: var(--line); pointer-events: none;
+  }
+  .skill-table thead th { background: var(--bg-elev); }
+  .skill-table tbody tr:last-child td { border-bottom: none; }
   .skill-table th {
     text-align: left; font-size: var(--fs-2xs); text-transform: uppercase; letter-spacing: .06em;
     color: var(--faint); font-weight: 600; padding: var(--sp-3a) var(--sp-5); border-bottom: 1px solid var(--line-strong); white-space: nowrap;
@@ -1940,10 +1951,12 @@
      行盒高度取较高者 —— 有官网的行被图标撑高，与无官网的行差 2-3px。
      现在两者都是 flex item，行高只由单元格 padding 决定。 */
   .skill-table .st-usage {
-    color: var(--muted); font-size: var(--fs-xs); overflow: hidden; min-width: 0;
+    color: var(--muted); font-size: var(--fs-xs);
     display: flex; align-items: center; gap: var(--gap-4);
-    line-height: 1.5; white-space: nowrap;
+    line-height: 1.5; white-space: nowrap; overflow: hidden;
   }
+  /* flex 容器自身不截断文字；截断必须落在 flex item 上（min-width:0 是前提）。
+     此前把 text-overflow 写在容器上，长描述直接压进了下一列。 */
   .skill-table .st-usage .st-usage-text {
     flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
@@ -10932,7 +10945,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.46.3", build: 196, build_number: 196, semver_ok: true, full: "v0.46.3 (build 196)" },
+  app: { name: "Skill MCP Studio", version: "0.46.4", build: 197, build_number: 197, semver_ok: true, full: "v0.46.4 (build 197)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

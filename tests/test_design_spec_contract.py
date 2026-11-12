@@ -1697,6 +1697,42 @@ class RowBaselineAlignmentTest(unittest.TestCase):
                       "能力摘要行（SKILLS / MCP）与路径行同构，同样必须基线对齐")
 
 
+class SkillTableVerticalRulesTest(unittest.TestCase):
+    """Skills 表也必须有贯通整列的竖线（v0.47.0）。
+
+    用户：「Skill 错位了，和之前 Agent 的问题一样，线没有连续，断开了」。
+
+    `.skill-table` 从来只画横线，没有列分隔线 —— 与当初 .agent-list-table 同一个缺口。
+    """
+
+    def test_skill_table_draws_vertical_rule(self):
+        css = _css()
+        self.assertRegex(css, r"\.skill-table th:not\(:last-child\)::after",
+                         "Skills 表单元格必须用 ::after 画竖线")
+        m = re.search(r"\.skill-table td:not\(:last-child\)::after\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(m, "缺少 td 竖线规则")
+        for prop in ("position: absolute", "top: 0", "bottom: 0", "width: 1px"):
+            self.assertIn(prop, m.group(1), f"竖线规则缺 {prop}")
+
+    def test_skill_table_collapse_disabled(self):
+        css = _css()
+        m = re.search(r"\n  \.skill-table \{([^}]*)\}", css)
+        self.assertIsNotNone(m)
+        self.assertIn("border-collapse: separate", m.group(1),
+                      "collapse 下伪元素会被合边裁掉")
+
+    def test_usage_text_truncates_on_flex_item(self):
+        """flex 容器的 text-overflow 不生效，截断必须落在子元素上（v0.47.0）。
+
+        实事故：把 .st-usage 改成 display:flex 后，长描述直接压进了下一列。
+        """
+        css = _css()
+        m = re.search(r"\.skill-table \.st-usage \.st-usage-text \{([^}]*)\}", css)
+        self.assertIsNotNone(m, "缺 .st-usage-text 规则")
+        for prop in ("min-width: 0", "overflow: hidden", "text-overflow: ellipsis"):
+            self.assertIn(prop, m.group(1), f"flex item 缺 {prop}，长文本会溢出到下一列")
+
+
 class RowHeightConsistencyTest(unittest.TestCase):
     """同一单元格里不得混用 inline-flex 与 inline（v0.47.1）。
 
