@@ -1743,13 +1743,22 @@ class RowHeightConsistencyTest(unittest.TestCase):
     有官网，恰好那 3 行比别的行高 2-3px。
     """
 
-    def test_usage_cell_is_flex_container(self):
+    def test_usage_cell_stays_table_cell(self):
+        """用途列的 td 必须保持 table-cell（v0.47.3 实测踩到）。
+
+        把 td 直接设成 display:flex 会让它脱离表格布局，高度塌到内容高
+        （31px vs 同行 35px），底边框上移 4.1px —— 用户看到的「横向线被断开」。
+        """
         css = _css()
-        m = re.search(r"\.skill-table \.st-usage \{([^}]*)\}", css)
+        m = re.search(r"\n  \.skill-table \.st-usage \{([^}]*)\}", css)
         self.assertIsNotNone(m, "缺少 .st-usage 规则")
-        self.assertIn("display: flex", m.group(1),
-                      "用途列含 inline-flex 按钮 + inline 文本，必须用 flex 容器统一行高")
-        self.assertIn("align-items: center", m.group(1))
+        self.assertNotIn("display: flex", m.group(1),
+                         "td 不能是 flex，否则脱离表格布局、底边框与同行错位")
+        # flex 必须在内层容器上
+        inner = re.search(r"\.skill-table \.st-usage-in \{([^}]*)\}", css)
+        self.assertIsNotNone(inner, "缺少内层 .st-usage-in 容器")
+        self.assertIn("display: flex", inner.group(1), "内层必须是 flex 容器")
+        self.assertIn("align-items: center", inner.group(1))
 
     def test_home_link_does_not_affect_row_height(self):
         """官网按钮必须是 flex item（flex: none），不能靠垂直对齐技巧。"""

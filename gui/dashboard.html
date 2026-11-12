@@ -1950,13 +1950,16 @@
      此前单元格里同时放 `inline-flex` 的官网按钮与 `inline` 的纯文本描述，
      行盒高度取较高者 —— 有官网的行被图标撑高，与无官网的行差 2-3px。
      现在两者都是 flex item，行高只由单元格 padding 决定。 */
-  .skill-table .st-usage {
-    color: var(--muted); font-size: var(--fs-xs);
+  /* 用途列（v0.47.3）：**td 必须保持 table-cell**。
+     把 td 直接设成 display:flex 会让它脱离表格布局，高度塌到内容高，
+     底边框因此比同行其它列高 4px —— 用户看到的「横向的线错位」。
+     flex 放在内层 .st-usage-in 上，td 仍是普通单元格，边框与行高由表格决定。 */
+  .skill-table .st-usage { color: var(--muted); font-size: var(--fs-xs); white-space: nowrap; }
+  .skill-table .st-usage-in {
     display: flex; align-items: center; gap: var(--gap-4);
-    line-height: 1.5; white-space: nowrap; overflow: hidden;
+    line-height: 1.5; white-space: nowrap; overflow: hidden; max-width: 100%;
   }
-  /* flex 容器自身不截断文字；截断必须落在 flex item 上（min-width:0 是前提）。
-     此前把 text-overflow 写在容器上，长描述直接压进了下一列。 */
+  /* 截断必须落在 flex item 上（min-width:0 是前提），容器上不生效。 */
   .skill-table .st-usage .st-usage-text {
     flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
@@ -4253,7 +4256,7 @@ function renderSkillList() {
         <td class="st-name"><div class="st-name-cell">${nameCell}</div></td>
         <td class="st-cat"><span class="sk-cat">${escapeHtml(r.cat)}</span></td>
         <td class="st-sync">${syncCell(upd, m)}</td>
-        <td class="st-usage" title="${escapeHtml((meta[s] && meta[s].description) || "")}">${usageCell(s, r)}</td>
+        <td class="st-usage" title="${escapeHtml((meta[s] && meta[s].description) || "")}"><div class="st-usage-in">${usageCell(s, r)}</div></td>
         <td class="st-status"><span class="st-count ${r.countCls}" title="${r.enabled} / ${r.total} 个客户端已启用">${r.enabled}/${r.total} 启用</span></td>
         <td class="st-ops">${skillKebab(s)}</td>
       </tr>${nestRow}`;
@@ -10945,7 +10948,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.46.4", build: 197, build_number: 197, semver_ok: true, full: "v0.46.4 (build 197)" },
+  app: { name: "Skill MCP Studio", version: "0.46.5", build: 198, build_number: 198, semver_ok: true, full: "v0.46.5 (build 198)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

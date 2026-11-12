@@ -1546,6 +1546,10 @@
         不用 <code>border-right</code> 是因为 <code>collapse</code> 会合边、伪元素被裁。</p>
       <p><strong>操作列表头与按钮中心对齐</strong>（v0.43.2）：v0.43.1 用右对齐，但两者盒子宽度不同，
         <strong>视觉中心相差 19px</strong>。改为 <code>text-align: center</code> + <code>.al-ops { justify-content: center }</code>。</p>
+      <p><strong><code>td</code> 不得改成 <code>display: flex</code></strong>（v0.47.3）：<code>td</code> 一旦是 flex 就不再是
+        <code>table-cell</code>，高度塌到内容高（31px vs 同行 35px），底边框上移 4.1px —— 横线在那一列断开。
+        修法：flex 放内层 <code>.st-usage-in</code>，<code>td</code> 保持 <code>table-cell</code>。
+        <strong>规则</strong>：需要 flex/grid 时永远加一层内层容器，单元格盒模型交给表格布局。</p>
       <p><strong>Skills 表补竖线 + flex 下的截断位置</strong>（v0.47.2）：两处独立缺陷——① <code>.skill-table</code>
         只画横线、从未画过列分隔线（与当初 Agent 表同一缺口）；② 把 <code>.st-usage</code> 改成 <code>display:flex</code> 后
         <code>text-overflow</code> 写在容器上不生效，长描述压进了下一列。

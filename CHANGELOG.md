@@ -7,6 +7,52 @@
 
 ## [Unreleased]
 
+## [v0.46.5] - 2026-11-12
+
+当前发布版本（build 198）。
+
+**修横向行线在「用途」列断开。**
+
+用户：「我指的是横向线被断开了」。
+
+### 真因：`td` 被改成 `display: flex`
+
+```
+row 0: cellBottoms = [380.38, 380.38, 380.38, 376.28, 380.38, 380.38]
+                                            ↑ 用途列，比其他列高 4.1px
+```
+
+`td` 一旦 `display: flex` 就不再是 `table-cell`，高度塌到内容高（31px），
+同行其它格仍是 35px，**底边框上移 4.1px** —— 横线在那一列断开。
+
+### 修复
+
+| 错的 | 对的 |
+|---|---|
+| `.skill-table .st-usage { display: flex }` | `.skill-table .st-usage-in { display: flex }`（内层 div） |
+| `<td class="st-usage">…</td>` | `<td class="st-usage"><div class="st-usage-in">…</div></td>` |
+
+### 实测
+
+修复后 5 行 × 6 格底边全部一致：
+
+```
+row0: 381.57 ×6   row1: 416.66 ×6   row2: 451.76 ×6
+row3: 486.85 ×6   row4: 521.95 ×6   连续：true
+```
+
+### 测试
+
+- `test_usage_cell_is_flex_container` 改写为 `test_usage_cell_stays_table_cell`：
+  断言 `.st-usage` 上**不得**有 `display: flex`，且 `.st-usage-in` 必须是 flex 容器。
+- **反向验证 1 条**：把 td 改回 flex 立即失败。
+- 全量 **1788 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
+### 文档
+
+`docs/DESIGN.md` 补「`td` 不得改成 `display: flex`」与通用规则：
+需要 flex/grid 时永远加一层内层容器，`td` 保持 `table-cell`。`DESIGN.html` 同步。
+
 ## [v0.46.4] - 2026-11-12
 
 当前发布版本（build 197）。
@@ -5079,7 +5125,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.46.4...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.46.5...HEAD
+[v0.46.5]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.46.5
 [v0.46.4]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.46.4
 [v0.46.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.46.3
 [v0.46.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.46.2

@@ -1051,6 +1051,29 @@ HTML 里写死的 `0` 上 —— 其余三项启动即有数字，唯独它显�
 按钮右缘），但两者盒子宽度不同，**视觉中心相差 19px**，用户两轮都读成「没有居中
 对齐」。改为 `text-align: center` + `.al-ops { justify-content: center }`。
 
+**`td` 不得改成 `display: flex`（v0.47.3，两次返工的真因）**
+
+用户：「横向线被断开了」——反复看竖向边界都是 0 偏差，真正的偏差在**行线**：
+
+```
+row 0: cellBottoms = [380.38, 380.38, 380.38, 376.28, 380.38, 380.38]
+                                            ↑ 用途列，比其他列高 4.1px
+```
+
+`td` 一旦 `display: flex`，就不再是 `table-cell`：高度塌到内容高（31px），
+同行其它格仍是 35px，底边框上移 4.1px —— 横线在那一列断开。
+
+| 错的 | 对的 |
+|---|---|
+| `.skill-table .st-usage { display: flex }` | `.skill-table .st-usage-in { display: flex }` ← 内层 div |
+
+> **规则**：需要 flex/grid 排版时，**永远加一层内层容器**，`td` 必须保持
+> `display: table-cell`。表格单元格的盒模型（边框、行高、垂直对齐）由表格布局决定，
+> 改成 flex 会让它脱离表格参与行高计算。
+>
+> 门禁：`test_usage_cell_stays_table_cell` 断言 `.st-usage` 上不得有 `display: flex`，
+> 且 `.st-usage-in` 必须是 flex 容器。
+
 **Skills 表补竖线 + flex 下的截断位置（v0.47.2）**
 
 用户：「Skill 错位了，和之前 Agent 的问题一样，线没有连续，断开了」。
