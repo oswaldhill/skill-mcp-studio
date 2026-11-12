@@ -1697,6 +1697,34 @@ class RowBaselineAlignmentTest(unittest.TestCase):
                       "能力摘要行（SKILLS / MCP）与路径行同构，同样必须基线对齐")
 
 
+class GitCommandJsonOutputTest(unittest.TestCase):
+    """批量 Git 命令必须支持 --format json（v0.47.4）。
+
+    用户：「为什么有提交，但是点击了提交却显示无可提交的内容？」
+
+    `--commit-git-sources` 只写了 `if not as_json:` 的文本分支，带 `--format json` 时
+    stdout 是空串 → GUI 的 JSON.parse 得到 {} → dirty 恒为空 → 明明有 7 个未提交改动
+    却弹「没有改动可提交」。而侧边栏计数走 `--check-git-sources`（有 JSON），所以
+    两处结论互相矛盾。
+    """
+
+    def test_commit_branch_emits_json(self):
+        src = (Path(__file__).resolve().parents[1] / "scan.py").read_text(encoding="utf-8")
+        start = src.index('if getattr(args, "commit_git_sources", False):')
+        end = src.index('if getattr(args, "push_git_sources", False):')
+        block = src[start:end]
+        self.assertIn("if as_json:", block, "commit 分支必须输出 JSON")
+        self.assertIn('"kind": "git-commit"', block, "JSON 需带 kind 标识")
+        self.assertIn('"results": results', block, "GUI 依赖 results 数组")
+
+    def test_gui_commit_uses_json(self):
+        """GUI 侧也必须带 --format json 才能拿到结构化结果。"""
+        src = _src()
+        start = src.index("async function openCommitGitSourceModal()")
+        block = src[start: start + 900]
+        self.assertIn('"--format", "json"', block, "打开提交弹框必须请求 JSON")
+
+
 class SkillTableVerticalRulesTest(unittest.TestCase):
     """Skills 表也必须有贯通整列的竖线（v0.47.0）。
 

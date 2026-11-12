@@ -7,6 +7,78 @@
 
 ## [Unreleased]
 
+## [v0.46.6] - 2026-11-12
+
+当前发布版本（build 199）。
+
+**修「有未提交改动，点提交却说没有改动可提交」。**
+
+### 真因：commit 分支缺 JSON 输出
+
+```python
+# push 分支（正确）
+if as_json:
+    print(json.dumps({"kind": "git-push", ...}))
+else:
+    print(...)
+
+# commit 分支（缺 if as_json）
+if not as_json:          ← 只有文本分支
+    print(...)
+return 0                 ← JSON 模式什么都不打印
+```
+
+带 `--format json` 时 stdout 是**空字符串**：
+
+```bash
+$ python3 scan.py --commit-git-sources --dry-run --format json
+[没有任何输出]
+[exit=0]
+```
+
+GUI 的 `JSON.parse("" || "{}")` 得到 `{}` → `results` 不存在 → `dirty` 恒为空 →
+弹出「没有改动可提交」。
+
+**而侧边栏显示「有未提交改动 7」**，因为那个计数走 `--check-git-sources`（有 JSON），
+两处结论互相矛盾。
+
+### 修复
+
+commit 分支补上与 push 一致的结构：
+
+```python
+if as_json:
+    print(json.dumps({"kind": "git-commit", "dry_run": dry,
+                      "summary": summary, "results": results}, ensure_ascii=False, indent=2))
+else:
+    print(...)   # 原文本输出
+```
+
+### 验证
+
+```json
+{
+  "kind": "git-commit",
+  "summary": {"total": 1, "ok": 1, "failed": 0},
+  "results": [{"id": "skills", "status": "dry-run", "message": "将提交 7 个文件",
+               "counts": {"modified": 1, "deleted": 6}, "files": [...]}]
+}
+```
+
+模拟 GUI 解析：`results 条数 1`、`dirty 条数 1`、footer「共 7 个文件将被提交」。
+
+### 顺带排查
+
+扫了 `scan.py` 里所有 `if not as_json` 分支，另外 3 处都走 `emit()` 或已有
+`if as_json`，只有 commit 这一处漏了。
+
+### 测试
+
+- 新增 `GitCommandJsonOutputTest`（2 项）：commit 分支必须输出带 kind/results 的 JSON、
+  GUI 打开弹框必须请求 `--format json`。
+- **反向验证 1 条**：去掉 `if as_json` 立即失败。
+- 全量 **1790 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
 ## [v0.46.5] - 2026-11-12
 
 当前发布版本（build 198）。
@@ -5125,7 +5197,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.46.5...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.46.6...HEAD
+[v0.46.6]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.46.6
 [v0.46.5]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.46.5
 [v0.46.4]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.46.4
 [v0.46.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.46.3

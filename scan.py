@@ -415,8 +415,18 @@ def _run_git_source_commands(args, config=None, config_path=None) -> int:  # noq
     if getattr(args, "commit_git_sources", False):
         message = getattr(args, "git_commit_message", None) or ""
         results, summary = ops.run_on_all("commit", dry_run=dry, message=message)
-        # 单源时把文件清单带上，让用户在终端也能看到「提交了什么」
-        if not as_json:
+        # JSON 模式必须输出结构化结果（v0.47.4 修复）。
+        # 此前只写了 `if not as_json:` 的文本分支，带 --format json 时 stdout 是空串，
+        # GUI 的 JSON.parse 得到 {} → dirty 恒为空 → 明明有 7 个未提交改动却弹
+        # 「没有改动可提交」。与 push 分支保持一致的结构。
+        if as_json:
+            print(json.dumps({
+                "kind": "git-commit",
+                "dry_run": dry,
+                "summary": summary,
+                "results": results,
+            }, ensure_ascii=False, indent=2))
+        else:
             print(f"\n  Git 技能源提交{'（预演）' if dry else ''}：")
             for r in results:
                 print(f"    [{r['status']}] {r['id']}: {r['message']}")
