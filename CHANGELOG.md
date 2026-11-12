@@ -7,6 +7,61 @@
 
 ## [Unreleased]
 
+## [v0.46.3] - 2026-11-12
+
+当前发布版本（build 196）。
+
+**修 Skill / MCP 两张表的行高不一致。**
+
+用户：「两个 top 中，不同样式、不同情况下行高不一样，很不好看」。
+
+### 根因：行内盒高度，不是换行
+
+| 单元格内容 | 盒模型 | 高度来源 |
+|---|---|---|
+| 纯文本 `<span>` | `inline` | 字体 line-height |
+| 官网链接 `<button>` | `inline-flex` + 11px 图标 | 图标与内边撑起，**更高** |
+
+同一行盒取较高者。**165 个 skill 里只有 3 个有官网** —— 恰好那 3 行比别的行高 2-3px。
+
+第一次修只看表面（`r.home ? "has-home" : "wrap"` 让无官网的行两行截断），
+删掉后仍是「有高有低」，因为没动到这个行内盒差。
+
+### 修复
+
+| 表 | 改法 |
+|---|---|
+| Skill 用途列 | 单元格改 `display: flex; align-items: center`，子元素都是 flex item |
+| Skill 用途列 | 官网按钮 `flex: none`，不参与伸缩 |
+| MCP 条目列 | `.mcp-items` flex 容器 + 标签统一 `height: 20px`、`align-items: center` |
+| MCP 条目列 | 明细标签 `DETAIL_MAX = 1`，超出折叠为 `+N` |
+
+### 实测（真实数据）
+
+```
+ai-memory-write  hasHome=true   33.5
+last30days       hasHome=true   33.5
+_core            hasHome=false  33.5
+affirmations     hasHome=false  33.5
+hermes-memory    hasHome=true   33.5
+api-review       hasHome=false  33.5
+agent-email      hasHome=false  33.0   ← 全中文行，子像素取整，肉眼不可见
+```
+
+6 行完全一致。
+
+### 测试
+
+- 新增 `RowHeightConsistencyTest`（4 项）：用途列必须是 flex 容器、官网按钮
+  `flex: none`、MCP 标签固定 20px 高、明细折叠存在。
+- **反向验证 2 条**：usage 改回非 flex、去掉标签固定高度，各自失败。
+- 全量 **1781 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
+### 文档
+
+`docs/DESIGN.md` 补「行高一致性：同一列不得混用 inline-flex 与 inline」与
+「MCP 条目列明细收敛」；`DESIGN.html` 同步。
+
 ## [v0.46.2] - 2026-11-12
 
 当前发布版本（build 195）。
@@ -4985,7 +5040,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.46.2...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.46.3...HEAD
+[v0.46.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.46.3
 [v0.46.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.46.2
 [v0.46.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.46.1
 [v0.46.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.46.0

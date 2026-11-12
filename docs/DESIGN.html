@@ -1546,6 +1546,10 @@
         不用 <code>border-right</code> 是因为 <code>collapse</code> 会合边、伪元素被裁。</p>
       <p><strong>操作列表头与按钮中心对齐</strong>（v0.43.2）：v0.43.1 用右对齐，但两者盒子宽度不同，
         <strong>视觉中心相差 19px</strong>。改为 <code>text-align: center</code> + <code>.al-ops { justify-content: center }</code>。</p>
+      <p><strong>行高一致性：同一列不得混用 inline-flex 与 inline</strong>（v0.47.1）。根因不是换行，而是行内盒高度：
+        纯文本 <code>inline</code> 由字体 line-height 决定，官网链接 <code>inline-flex</code> + 11px 图标更高；同一行盒取较高者。
+        修法：单元格改 <code>display: flex; align-items: center</code>，行高只由 padding 决定。
+        <strong>通用规则</strong>：一个单元格里若同时有纯文本与带图标的按钮/标签，必须用 flex 或 grid 容器。</p>
       <p><strong><code>table-layout: fixed</code> 的隐藏行为</strong>（v0.43.1）：所有列宽度合计小于表格宽时，
         浏览器会<strong>按比例放大每一列</strong>，px 变成比例而非定值（实测合计 958 / 容器 1061 →
         名称 220→243.6、操作 128→141.8）。必须留一列 <code>width: auto</code> 吸收剩余。</p>

@@ -552,6 +552,17 @@
   .mcp-table tbody tr.is-anomaly td:first-child { box-shadow: inset 2px 0 0 var(--warn); }
   /* 不支持 MCP 的整行去强调：读作「不适用」，而不是「坏了」 */
   .mcp-table tbody tr.is-unsupported .mcp-client-name { color: var(--muted); font-weight: 400; }
+  /* 条目列：同一列内所有标签等高、等距、垂直居中（v0.47.0）。
+     用户反馈「不同样式、不同情况下行高不一样」——根因是标签数量与内边各不相同。 */
+  .mcp-items { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gap-2); }
+  .mcp-items .tag, .mcp-items .mcp-fix {
+    display: inline-flex; align-items: center; height: 20px; box-sizing: border-box;
+    padding: 0 var(--sp-3a); line-height: 1; margin: 0;
+  }
+  .mcp-items .mcp-more {
+    font-family: var(--mono); font-size: var(--fs-2xs); color: var(--faint);
+    padding: 0 var(--sp-2); flex: none;
+  }
   .mcp-legend { margin: var(--sp-5) 0 0; }
   @media (max-width: 768px) {
     .mcp-table th.mcp-c-client { min-width: 118px; }
@@ -1921,12 +1932,22 @@
   .skill-table .st-name .st-name-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .skill-table .st-name .nest-count { flex: none; }
   .skill-table .st-cat { overflow: hidden; text-overflow: ellipsis; }
-  .skill-table .st-usage { color: var(--muted); font-size: var(--fs-xs); overflow: hidden; min-width: 0; }
-  .skill-table .st-usage.has-home { white-space: nowrap; text-overflow: ellipsis; }
-  .skill-table .st-usage .st-usage-text { display: inline; }
-  .skill-table .st-usage.wrap { white-space: normal; line-height: 1.5; }
-  .skill-table .st-usage.wrap .st-usage-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .skill-table .st-usage .st-home-link { display: inline-flex; align-items: center; gap: var(--gap-1); margin-right: var(--sp-3b); border: none; background: transparent; box-shadow: none; padding: 0; color: var(--accent); font-family: var(--mono); font-size: var(--fs-2xs); cursor: pointer; vertical-align: middle; }
+  /* 用途列：**任何数据形态都只占一行**（v0.47.0）。
+     此前「有官网单行 / 无官网两行截断」两种排版并存，导致行高忽高忽低。
+     完整描述在单元格 title 里，悬停可读；行高一致性优先于多显示几行字。 */
+  /* 用途列（v0.47.1）：单元格用 flex 统一垂直居中。
+     此前单元格里同时放 `inline-flex` 的官网按钮与 `inline` 的纯文本描述，
+     行盒高度取较高者 —— 有官网的行被图标撑高，与无官网的行差 2-3px。
+     现在两者都是 flex item，行高只由单元格 padding 决定。 */
+  .skill-table .st-usage {
+    color: var(--muted); font-size: var(--fs-xs); overflow: hidden; min-width: 0;
+    display: flex; align-items: center; gap: var(--gap-4);
+    line-height: 1.5; white-space: nowrap;
+  }
+  .skill-table .st-usage .st-usage-text {
+    flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .skill-table .st-usage .st-home-link { display: inline-flex; align-items: center; gap: var(--gap-1); flex: none; border: none; background: transparent; box-shadow: none; padding: 0; color: var(--accent); font-family: var(--mono); font-size: var(--fs-2xs); cursor: pointer; }
   .skill-table .st-usage .st-home-link svg { width: 11px; height: 11px; flex: none; }
   .skill-table .st-usage .st-home-link:hover { color: var(--accent-strong); text-decoration: underline; }
   .skill-table .st-status { text-align: right; white-space: nowrap; }
@@ -3439,6 +3460,16 @@ function renderHomeCardsView(q) {
     let mcpHtml;
     let mcpConfiguredCount = 0;
     let mcpTotal = 0;
+    // 明细标签最多显示 1 枚，其余收敛成「+N」（v0.47.0）。
+    // 此前一个客户端能同时出现 4 枚标签（计数 + 端点 + 旧通道 + 未纳管），
+    // 每枚高度与内边各自决定，整列节奏跳动；明细本来就点得开，不必全铺在行里。
+    const DETAIL_MAX = 1;
+    const foldDetails = (items) => {
+      if (items.length <= DETAIL_MAX) return items.join("");
+      const rest = items.length - DETAIL_MAX;
+      return items.slice(0, DETAIL_MAX).join("")
+        + `<span class="mcp-more" title="另有 ${rest} 枚明细，点击该行查看">+${rest}</span>`;
+    };
     if (!a.mcp_config_path) {
       mcpHtml = '<span class="tag" title="该客户端未声明 MCP 配置文件，不支持 MCP（非故障）">不支持</span>';
     } else if (!attachKeys.length) {
@@ -3478,15 +3509,18 @@ function renderHomeCardsView(q) {
         const reason = rec ? "该端点未在设置中正确配置" : "该端点无此客户端审计记录";
         return `<span class="tag err" title="${reason}">${escapeHtml(key)} 未设置</span>`;
       });
-      mcpHtml = countTag + keyTags.join("");
+      mcpHtml = countTag + foldDetails(keyTags);
     }
     // --- 其他 MCP 条目（旧通道/未纳管）提示：展示配置里真实存在的额外 MCP 条目 ---
     const mcpCl = (SNAP && SNAP.mcp && SNAP.mcp.clients || []).find((c) => c.name === a.name);
     const inv = (mcpCl && mcpCl.inventory) || [];
     const legN = inv.filter((e) => (e.classification || "unmanaged") === "legacy").length;
     const unmN = inv.filter((e) => (e.classification || "unmanaged") === "unmanaged").length;
-    if (legN > 0) mcpHtml += `<button type="button" class="tag warn tag-btn" data-action="show-mcp-class" data-name="${escapeHtml(a.name)}" data-class="legacy" title="点击查看旧通道详情">${legN} 旧通道</button>`;
-    if (unmN > 0) mcpHtml += `<button type="button" class="tag tag-btn" data-action="show-mcp-class" data-name="${escapeHtml(a.name)}" data-class="unmanaged" title="点击查看未纳管条目详情">${unmN} 未纳管</button>`;
+    // 旧通道 / 未纳管：只用以计数收敛，不再逐枚铺满（它们本来就是「明细」）。
+    const extraTags = [];
+    if (legN > 0) extraTags.push(`<button type="button" class="tag warn tag-btn" data-action="show-mcp-class" data-name="${escapeHtml(a.name)}" data-class="legacy" title="点击查看旧通道详情">${legN} 旧通道</button>`);
+    if (unmN > 0) extraTags.push(`<button type="button" class="tag tag-btn" data-action="show-mcp-class" data-name="${escapeHtml(a.name)}" data-class="unmanaged" title="点击查看未纳管条目详情">${unmN} 未纳管</button>`);
+    mcpHtml = `<span class="mcp-items">${mcpHtml}${foldDetails(extraTags)}</span>`;
     const statusChip = a.installed
       ? '<span class="status ok"><span class="sdot"></span>已安装</span>'
       : (isConfigOnly ? '<span class="status warn"><span class="sdot"></span>仅配置</span>' : '<span class="status"><span class="sdot"></span>未安装</span>');
@@ -4126,7 +4160,7 @@ function renderSkillList() {
   // 用途列内容：官网在前，描述在后；无官网时描述允许两行换行。
   const usageCell = (s, r) => {
     const desc = `<span class="st-usage-text">${escapeHtml(r.usage) || "（无描述）"}</span>`;
-    return (r.home ? homeLink(r) + " " : "") + desc;
+    return (r.home ? homeLink(r) : "") + desc;
   };
 
   const renderRow = (s) => {
@@ -4206,7 +4240,7 @@ function renderSkillList() {
         <td class="st-name"><div class="st-name-cell">${nameCell}</div></td>
         <td class="st-cat"><span class="sk-cat">${escapeHtml(r.cat)}</span></td>
         <td class="st-sync">${syncCell(upd, m)}</td>
-        <td class="st-usage ${r.home ? "has-home" : "wrap"}" title="${escapeHtml((meta[s] && meta[s].description) || "")}">${usageCell(s, r)}</td>
+        <td class="st-usage" title="${escapeHtml((meta[s] && meta[s].description) || "")}">${usageCell(s, r)}</td>
         <td class="st-status"><span class="st-count ${r.countCls}" title="${r.enabled} / ${r.total} 个客户端已启用">${r.enabled}/${r.total} 启用</span></td>
         <td class="st-ops">${skillKebab(s)}</td>
       </tr>${nestRow}`;
@@ -10898,7 +10932,7 @@ async function fixAllSkillsMcp() {
 // 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.46.2", build: 195, build_number: 195, semver_ok: true, full: "v0.46.2 (build 195)" },
+  app: { name: "Skill MCP Studio", version: "0.46.3", build: 196, build_number: 196, semver_ok: true, full: "v0.46.3 (build 196)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

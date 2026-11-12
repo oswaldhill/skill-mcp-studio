@@ -1697,6 +1697,47 @@ class RowBaselineAlignmentTest(unittest.TestCase):
                       "能力摘要行（SKILLS / MCP）与路径行同构，同样必须基线对齐")
 
 
+class RowHeightConsistencyTest(unittest.TestCase):
+    """同一单元格里不得混用 inline-flex 与 inline（v0.47.1）。
+
+    用户：「两个 top 中，不同样式、不同情况下行高不一样，很不好看」。
+
+    根因是行内盒高度：纯文本 `inline` 由字体 line-height 决定，官网链接
+    `inline-flex` + 11px 图标更高；同一行盒取较高者 —— 165 个 skill 里只有 3 个
+    有官网，恰好那 3 行比别的行高 2-3px。
+    """
+
+    def test_usage_cell_is_flex_container(self):
+        css = _css()
+        m = re.search(r"\.skill-table \.st-usage \{([^}]*)\}", css)
+        self.assertIsNotNone(m, "缺少 .st-usage 规则")
+        self.assertIn("display: flex", m.group(1),
+                      "用途列含 inline-flex 按钮 + inline 文本，必须用 flex 容器统一行高")
+        self.assertIn("align-items: center", m.group(1))
+
+    def test_home_link_does_not_affect_row_height(self):
+        """官网按钮必须是 flex item（flex: none），不能靠垂直对齐技巧。"""
+        css = _css()
+        m = re.search(r"\.skill-table \.st-usage \.st-home-link \{([^}]*)\}", css)
+        self.assertIsNotNone(m)
+        self.assertIn("flex: none", m.group(1), "官网按钮不得参与伸缩，避免撑高行")
+
+    def test_mcp_items_have_uniform_height(self):
+        """MCP 条目列的标签必须等高（同一列混排多种标签）。"""
+        css = _css()
+        self.assertIn(".mcp-items {", css, "缺 MCP 标签容器")
+        m = re.search(r"\.mcp-items \.tag, \.mcp-items \.mcp-fix \{([^}]*)\}", css)
+        self.assertIsNotNone(m, "缺 MCP 标签统一规格")
+        self.assertIn("height: 20px", m.group(1), "标签必须固定高度")
+        self.assertIn("align-items: center", m.group(1))
+
+    def test_mcp_details_are_folded(self):
+        """明细标签超过 1 枚要折叠成 +N，避免标签数量决定行高。"""
+        src = _src()
+        self.assertIn("DETAIL_MAX", src, "缺明细折叠阈值")
+        self.assertIn("foldDetails", src, "缺折叠函数")
+
+
 class NoHorizontalScrollTest(unittest.TestCase):
     """主表必须跟着外框压缩，不出现横向滚动条（v0.45.0 用户要求）。
 
