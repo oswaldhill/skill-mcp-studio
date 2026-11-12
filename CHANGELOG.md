@@ -7,6 +7,57 @@
 
 ## [Unreleased]
 
+## [v0.46.1] - 2026-11-12
+
+当前发布版本（build 194）。
+
+**只有 SOUL.md 接收共享约束，USER.md 不再修改。**
+
+用户：「这里比较重要的还是应该只是 SOUL.md 对吧，不需要修改 USER.md」。
+
+### 为什么
+
+`USER.md` 是 WorkBuddy **自己**从交互中维护的用户档案（姓名、角色、技术栈、沟通偏好），
+而共享约束是**跨 13 个 Agent** 的通用规则。把档案类内容也同步进去，只会让「我是谁」
+在两个地方各写一遍、格式还可能打架。跨 Agent 的约束本就不该进某个 Agent 的私有档案。
+
+### 改动
+
+| 文件 | 角色 | 是否接收 |
+|---|---|---|
+| `~/.workbuddy/SOUL.md` | `["behavior"]` | **是** |
+| `~/.workbuddy/USER.md` | `[]` | **否** |
+
+路径仍登记（界面展示 + 健康检查），只是不接收内容；文件里若有旧的共享块会被清掉。
+
+### 顺带修掉一个真 bug
+
+「该文件不接收」的判断此前排在 `_path_state` **之后**，而不接收时传给它的 body 是空串，
+`_covered([], "")` 恒为 `True`（「没有要检查的条目 = 全都覆盖了」）→ 状态被判成
+**`covered`（「已经写好了」）**，于是既不清旧块、也不报 `skip`。dry-run 里给出的结论
+完全是误导。
+
+修法：先判「不接收」→ 清旧块或报 `skip` → 再对接收的文件算状态。
+
+### 实测（dry-run）
+
+```
+~/.workbuddy/SOUL.md  => absent | 文件里没有共享块，且缺少部分约束
+~/.workbuddy/USER.md  => skip   | 该文件职责不接收共享约束
+```
+
+### 测试
+
+- 更新 `test_workbuddy_registered_roles`：SOUL 接收、USER 不接收、两条路径仍登记。
+- 新增 `test_empty_role_path_is_skipped_not_covered`、`test_non_receiving_file_gets_old_block_cleared`。
+- **反向验证 1 条**：撤掉「skip 前置」立即失败。
+- 全量 **1781 项通过、2 项既有跳过**；`ci_parity.sh` 全部门禁通过。
+
+### 文档
+
+`docs/DESIGN.md` §2.3c-2c 更新职责表（三列，标明谁接收），并补「一个必须注意的顺序问题」；
+`DESIGN.html` 同步。
+
 ## [v0.46.0] - 2026-11-11
 
 当前发布版本（build 193）。
@@ -4890,7 +4941,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.46.0...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.46.1...HEAD
+[v0.46.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.46.1
 [v0.46.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.46.0
 [v0.45.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.45.3
 [v0.45.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.45.2

@@ -361,10 +361,58 @@ class MultiFileRoutingTest(unittest.TestCase):
         for a in reals:
             self.assertTrue(len(a["lines"]) > 0, "无角色声明时应写全部内容")
 
+    def test_empty_role_path_is_skipped_not_covered(self):
+        """「该文件不接收」必须判成 skip，不能判成 covered（v0.46.1 实测踩到）。
+
+        body 为空串时 `_covered([], "")` 恒为 True → 状态判成 covered（「已经写好了」），
+        于是既不清旧块也不报 skip，dry-run 里看到的完全是误导性结论。
+        修法：把「不接收」的判断**排在 _path_state 之前**。
+        """
+        tmp = tempfile.mkdtemp()
+        soul = Path(tmp) / "SOUL.md"
+        user = Path(tmp) / "USER.md"
+        soul.write_text("# soul\n", encoding="utf-8")
+        user.write_text("# user profile\n", encoding="utf-8")
+        reg = [{
+            "name": "T", "type": "AI Agent",
+            "rules_paths": [str(soul), str(user)],
+            "rules_roles": [["behavior"], []],
+        }]
+        res = rs.apply_client("T", "所有回答都必须使用中文\n", registry=reg, dry_run=True)
+        by_path = {r["path"]: r for r in res["results"]}
+        self.assertEqual(by_path[str(user)]["state"], "skip",
+                         "不接收的文件必须报 skip，而不是 covered")
+
+    def test_non_receiving_file_gets_old_block_cleared(self):
+        """不接收的文件里若有旧块，必须清掉，避免残留过期规则。"""
+        tmp = tempfile.mkdtemp()
+        soul = Path(tmp) / "SOUL.md"
+        user = Path(tmp) / "USER.md"
+        soul.write_text("# soul\n", encoding="utf-8")
+        user.write_text("# user\n\n" + rs.block_for("旧规则\n"), encoding="utf-8")
+        reg = [{
+            "name": "T", "type": "AI Agent",
+            "rules_paths": [str(soul), str(user)],
+            "rules_roles": [["behavior"], []],
+        }]
+        rs.apply_client("T", "所有回答都必须使用中文\n", registry=reg)
+        text = user.read_text(encoding="utf-8")
+        self.assertNotIn(rs.BEGIN, text, "旧块必须被清掉")
+        self.assertIn("# user", text, "文件其它内容必须保留")
+
     def test_workbuddy_registered_roles(self):
+        """只有 SOUL.md 接收共享约束（v0.46.1 用户定案）。
+
+        用户：「这里比较重要的还是应该只是 SOUL.md 对吧，不需要修改 USER.md」。
+        USER.md 是 WorkBuddy 自己的用户档案，由它从交互中维护；共享约束是跨 13 个
+        Agent 的通用规则，写进档案只会让「我是谁」在两个地方各写一遍。
+        """
         tool = rs.find_tool("WorkBuddy")
-        self.assertEqual(tool.get("rules_roles"), [["behavior"], ["profile", "preference"]],
-                         "WorkBuddy 必须在注册表里声明两文件职责")
+        self.assertEqual(tool.get("rules_roles"), [["behavior"], []],
+                         "SOUL.md 接收行为准则，USER.md 不接收")
+        # 路径仍登记（界面展示 + 健康检查），只是不接收内容
+        self.assertEqual(tool.get("rules_paths"),
+                         ["~/.workbuddy/SOUL.md", "~/.workbuddy/USER.md"])
 
 
 class SemanticMatchTest(unittest.TestCase):

@@ -1645,6 +1645,11 @@
         内容逐条分类（<code>profile</code> / <code>preference</code> / <code>behavior</code>）后**每类只写一个文件**，
         未命中的类别不写。<strong>没有 <code>rules_roles</code> 的客户端保持旧行为</strong>（全部写入），
         不为一个特例改变所有客户端语义。确认弹框会列出每个文件收什么。</p>
+      <p><strong>只有 SOUL.md 接收</strong>（v0.46.1 用户定案：「比较重要的还是应该只是 SOUL.md，不需要修改 USER.md」）。
+        <code>USER.md</code> 是 WorkBuddy 自己从交互中维护的用户档案，而共享约束是跨 13 个 Agent 的通用规则；
+        把档案类内容同步进去只会让「我是谁」写两遍。路径仍登记（展示 + 健康检查），但不接收内容。
+        <strong>实现顺序</strong>：「不接收」的判断必须排在 <code>_path_state</code> 之前——否则空 body 会让
+        <code>_covered([], "")</code> 恒为 True，状态被判成 <code>covered</code>（「已经写好了」），既不清旧块也不报 skip。
       <p><strong>CLI 结果结构必须对得上</strong>（v0.45.3）：<code>--shared-rules-apply</code> 返回
         <code>{ok, applied:[{client, ok, changed, results}]}</code>，而 GUI 读了 <code>--shared-rules-audit</code> 的
         <code>rows</code> → 结构取空 → <strong>成功被渲染成失败</strong>。调用方必须按命令名对着各自 schema 解析，

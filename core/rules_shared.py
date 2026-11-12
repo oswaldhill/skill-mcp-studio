@@ -347,13 +347,35 @@ def apply_client(client: str, content: Optional[str] = None,
     results: List[Dict[str, Any]] = []
     for idx, raw in enumerate(paths):
         # 按文件职责筛选内容（v0.46.0）：没声明角色就沿用旧行为（全部写入）。
-        body_for_path = lines_for_roles(body, roles_for(tool, idx)) if routed else body
+        roles_here = roles_for(tool, idx) if routed else None
+        body_for_path = lines_for_roles(body, roles_here or []) if routed else body
         block = block_for(body_for_path) if (body_for_path or "").strip() else ""
+        # **先判「这个文件不接收」，再算状态**（v0.46.1）。
+        # 顺序反了会踩坑：body 为空时 _covered([], "") 恒为 True，状态被判成
+        # covered（「已经写好了」），于是既不清旧块、也不报 skip —— 用户 dry-run 里
+        # 看到的是 "covered" 而不是 "skip"，完全误导。
+        if routed and not roles_here:
+            p_skip = Path(os.path.expanduser(raw))
+            existing_skip = _read_text(p_skip) if p_skip.is_file() else None
+            if existing_skip and extract(existing_skip) is not None:
+                cleared = re.sub(re.escape(BEGIN) + r"[\s\S]*?" + re.escape(END) + r"\n?",
+                                 "", existing_skip).rstrip("\n") + "\n"
+                if dry_run:
+                    results.append({"path": raw, "state": "cleared", "ok": True, "changed": True,
+                                    "reason": "该文件职责不接收共享约束，将移除旧块", "dry_run": True})
+                else:
+                    res = write_rules(tool.get("name"), cleared, index=idx, registry=registry)
+                    results.append({"path": raw, "state": "cleared", "reason": "该文件职责不接收共享约束，已移除旧块",
+                                    "ok": bool(res.get("ok")), "changed": bool(res.get("ok"))})
+            else:
+                results.append({"path": raw, "state": "skip", "reason": "该文件职责不接收共享约束",
+                                "ok": True, "changed": False})
+            continue
         state = _path_state(raw, body_for_path)
         if state["state"] in ("dir",):
             results.append(dict(state, ok=False, skipped=True))
             continue
-        if routed and roles_for(tool, idx) and not block:
+        if routed and roles_here and not block:
             # 这个文件不接收任何内容 → 若它里面有旧块，清掉，避免残留过期规则。
             p_clear = Path(os.path.expanduser(raw))
             existing_clear = _read_text(p_clear) if p_clear.is_file() else None

@@ -506,10 +506,17 @@ MAINSTREAM_TOOLS: List[Dict[str, Any]] = [
         skills_path="~/.workbuddy/skills",
         mcp_config_path="~/.workbuddy/mcp.json",
         rules_paths=["~/.workbuddy/SOUL.md", "~/.workbuddy/USER.md"],
-        # 两个文件的职责完全不同（v0.46.0）：SOUL 是人格/行为准则，USER 是用户档案。
-        # 声明角色后，共享内容按类别分流——「怎么做事」进 SOUL，「我是谁」进 USER，
-        # 不再把同一块同时塞进两个文件。
-        rules_roles=[["behavior"], ["profile", "preference"]],
+        # 只有 SOUL.md 接收共享约束（v0.46.1）。
+        #
+        # 用户：「这里比较重要的还是应该只是 SOUL.md 对吧，不需要修改 USER.md」。
+        #
+        # 理由：USER.md 是 **WorkBuddy 自己的用户档案**（姓名 / 角色 / 技术栈 / 沟通偏好），
+        # 由它自身从交互中维护；而共享约束是**跨 13 个 Agent** 的通用规则。把档案类内容
+        # 也同步进去，只会让同一份「我是谁」在 WorkBuddy 里写两遍、两边格式还可能打架。
+        #
+        # 空角色 = 该文件不接收共享约束（写入时跳过；已有旧块会被清掉）。
+        # 路径仍然登记，用于界面展示与健康检查。
+        rules_roles=[["behavior"], []],
         aliases=["workbuddy"],
         by_os={
             "windows": {
