@@ -106,10 +106,12 @@ class ManagementSnapshotTest(unittest.TestCase):
     def test_data7_unsupported_client_is_not_a_missing_anomaly(self):
         """DATA-7：「不支持 MCP」必须与「缺失」区分。
 
-        注册表未声明 mcp_config_path 的客户端（实况如 ima.copilot，已安装但
-        没有 MCP 配置文件）根本没有 MCP 能力，不适用「期望挂载」。此前仍按默认
-        「全部端点」给它套上期望，于是被判成「声明要挂却没挂」的异常——把能力
-        缺失误报成故障。此用例锁定：supports_mcp=False 且 missing 为空。
+        没有 mcp_config_path 的客户端不适用「期望挂载」——此前仍按默认
+        「全部端点」给它套上期望，于是被判成「声明要挂却没挂」的异常，
+        把能力缺失误报成故障。此用例锁定：
+          * 未声明 MCP 能力且无配置文件 -> supports_mcp=False，missing 为空；
+          * 显式声明 mcp_support=true 但无配置文件 -> 支持 MCP、但只能手动
+            接入（ima.copilot 的实况，2026-11-12 用户指正后拆分两维度）。
         """
         from unittest.mock import patch
 
@@ -125,7 +127,13 @@ class ManagementSnapshotTest(unittest.TestCase):
             "mcp_tools": [
                 {"name": "Cursor", "config_path": "~/.cursor/mcp.json",
                  "skills_paths": ["~/.cursor/skills"]},
+                # 无能力声明、无配置文件：真正的「不支持」
+                {"name": "NoMcpClient", "config_path": "",
+                 "skills_paths": ["~/.nomcp/skills"]},
+                # 有能力、但配置只能在应用内录入：ima.copilot 的实况形态
                 {"name": "ima.copilot", "config_path": "",
+                 "mcp_support": True,
+                 "mcp_manual_hint": "设置 → MCP 连接",
                  "skills_paths": ["~/.ima/skills"]},
             ],
             "tools": [],
@@ -135,14 +143,25 @@ class ManagementSnapshotTest(unittest.TestCase):
             snap = build_management_snapshot(config, config_path="", live_probe=False, auto_discover=False)
         by_name = {c["name"]: c for c in snap["mcp"]["clients"]}
 
-        unsupported = by_name["ima.copilot"]
-        self.assertFalse(unsupported["supports_mcp"], "无 mcp_config_path 即不支持 MCP")
+        unsupported = by_name["NoMcpClient"]
+        self.assertFalse(unsupported["supports_mcp"], "既无能力声明也无配置路径 -> 不支持")
         self.assertEqual(unsupported["mcp_attach"], [], "不支持 MCP 时期望应为空")
         self.assertEqual(unsupported["missing_attach"], [], "能力缺失不得报成「缺失」异常")
+
+        # 能力与「可自动配置」分离：ima.copilot 支持 MCP，但不能被一键修复。
+        manual = by_name["ima.copilot"]
+        self.assertTrue(manual["supports_mcp"], "显式 mcp_support=true 必须判为支持 MCP")
+        self.assertFalse(manual["auto_configurable"], "无 config_path 即无法自动写入")
+        self.assertTrue(manual["manual_only"], "支持但需手动接入")
+        self.assertEqual(manual["manual_hint"], "设置 → MCP 连接")
+        self.assertEqual(manual["mcp_attach"], [], "无配置文件时不存在「期望挂载」")
+        self.assertEqual(manual["missing_attach"], [], "手动接入不得报成「缺失」异常")
 
         # 对照组：有 MCP 能力的客户端仍按默认「全部端点」期望，缺挂才算异常
         supported = by_name["Cursor"]
         self.assertTrue(supported["supports_mcp"])
+        self.assertTrue(supported["auto_configurable"])
+        self.assertFalse(supported["manual_only"])
         self.assertEqual(supported["mcp_attach"], ["a"])
         self.assertEqual(supported["missing_attach"], ["a"], "声明要挂却没挂仍须判为缺失")
 

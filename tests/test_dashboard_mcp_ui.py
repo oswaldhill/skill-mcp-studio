@@ -85,6 +85,8 @@ def _render(mcp: dict, endpoints: list) -> str:
             'const holder = { _v: "", set innerHTML(v) { this._v = v; }, get innerHTML() { return this._v; } };',
             'const $ = (id) => (id === "mcp-clients" ? holder : null);',
             _fn("_supportsMcp"),
+            _fn("_autoConfigurable"),
+            _fn("_manualOnly"),
             _render_fn(),
             "renderMcpClients(SNAP.mcp, SNAP.endpoints);",
             "process.stdout.write(holder._v);",
@@ -100,7 +102,16 @@ def _render(mcp: dict, endpoints: list) -> str:
 
 
 def _client(name, expected, observed, missing, undeclared,
-            explicit=False, inventory=None, supports=True, drift=None):
+            explicit=False, inventory=None, supports=True, drift=None,
+            configurable=None, manual_hint=""):
+    """构造一条 mcp.clients 载荷。
+
+    ``supports`` 是 MCP 能力，``configurable`` 是「是否有可写配置文件」——
+    两者独立（2026-11-12 拆分）。缺省时按旧快照口径：有 config_path 才支持，
+    且支持即可配置。
+    """
+    if configurable is None:
+        configurable = supports
     return {
         "name": name,
         "mcp_attach": expected,
@@ -109,7 +120,9 @@ def _client(name, expected, observed, missing, undeclared,
         "undeclared_attach": undeclared,
         "has_explicit_attach": explicit,
         "supports_mcp": supports,
-        "config_path": "~/.demo/mcp.json" if supports else "",
+        "auto_configurable": configurable,
+        "manual_hint": manual_hint,
+        "config_path": "~/.demo/mcp.json" if configurable else "",
         "inventory": inventory or [],
         "drift": drift or {"suspected": False, "lost": [], "backup_count": 0,
                            "last_backup": "", "last_backup_at": ""},
@@ -138,12 +151,22 @@ MCP_OK = {
         _client("缺配置", ["ep1", "ep2"], [], ["ep1", "ep2"], []),
     ]
 }
-# 实况形态：ima.copilot 已安装但没有 MCP 配置文件 -> supports_mcp=False、期望与缺失均为空
+# 实况形态：客户端没有 MCP 能力（无能力声明、无配置文件）-> supports_mcp=False、期望与缺失均为空
 MCP_UNSUPPORTED = {
     "clients": [
         _client("正常", ["ep1", "ep2"], ["ep1", "ep2"], [], [],
                 inventory=[{"key": "s1", "classification": "attached", "endpoint_key": "ep1"}]),
-        _client("ima.copilot", [], [], [], [], supports=False),
+        _client("无能力客户端", [], [], [], [], supports=False),
+    ]
+}
+
+# ima.copilot 实况（2026-11-12 用户指正）：**支持 MCP**，但 MCP 只在应用内的
+# 「MCP 连接 / MCP 广场」录入，没有可被本工具写入的配置文件。它既不是「不支持」，
+# 也不是「缺失」，必须单独呈现为「需手动接入」。
+MCP_MANUAL_ONLY = {
+    "clients": [
+        _client("ima.copilot", [], [], [], [], supports=True, configurable=False,
+                manual_hint="设置 → MCP 连接 → MCP 广场"),
     ]
 }
 ENDPOINTS = [
@@ -248,8 +271,26 @@ class RenderTest(unittest.TestCase):
         self.assertNotIn("is-anomaly", rows[2][0], "不支持不是异常，不得用异常标记")
         self.assertEqual(
             rows[2][1],
-            ["ima.copilot 不支持 MCP", "不适用", "不适用", "无"],
+            ["无能力客户端 不支持 MCP", "不适用", "不适用", "无"],
         )
+
+    def test_manual_only_row_is_not_reported_as_unsupported(self):
+        """ima.copilot 实况：支持 MCP 但没有可写配置文件。
+
+        此前它被整行渲染成「不支持 MCP」——把产品能力说成了缺陷（用户实测指出
+        ima 有「MCP 连接」入口）。现在须读作「需手动接入」，且不得被判为异常。
+        """
+        rows = _rows(_render(MCP_MANUAL_ONLY, ENDPOINTS))
+        self.assertNotIn("不支持 MCP", rows[1][1], "有能力但不可自动配置，不得说成不支持")
+        self.assertNotIn("is-unsupported", rows[1][0], "不得套用「不支持」整行样式")
+        self.assertNotIn("is-anomaly", rows[1][0], "手动接入不是异常")
+        self.assertIn("需手动接入", rows[1][1][0], "能力标签须读作「需手动接入」")
+        self.assertEqual(rows[1][1][1:3], ["手动", "手动"], "端点列给「手动」而非「不适用」")
+
+    def test_manual_only_counted_separately(self):
+        legend = _legend(_render(MCP_MANUAL_ONLY, ENDPOINTS))
+        self.assertIn("1 个需手动接入", legend)
+        self.assertNotIn("个不支持 MCP", legend, "手动接入不得计入「不支持」")
 
     def test_unsupported_counted_separately_from_missing(self):
         mcp = {"clients": MCP_UNSUPPORTED["clients"] + [_client("真缺失", ["ep1"], [], ["ep1"], [])]}

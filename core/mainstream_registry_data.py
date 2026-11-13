@@ -136,12 +136,27 @@ MAINSTREAM_TOOLS: List[Dict[str, Any]] = [
         "VS Code", type_="AI IDE",
         app_bundles=["/Applications/Visual Studio Code.app"],
         commands=["code"],
-        config_paths=["~/.vscode/mcp.json", "~/.config/Code/User/mcp.json"],
+        # macOS 的用户级 MCP 配置在 Application Support 下（VS Code 官方文档的
+        # 「User」作用域落盘位置）。此前这里错填 Linux 的 ~/.vscode/mcp.json，
+        # 而 by_os 又没有 darwin 分支，于是 macOS 拿到的是 Linux 路径：
+        # 修复把条目写进 VS Code 从不读取的文件，下次探测又读回同一文件，
+        # 于是永远「已经是配置好的」——写入与校验互相印证一个错路径，
+        # 表象就是「提示成功但客户端一直不更新」（2026-11-12 实测定位）。
+        config_paths=["~/Library/Application Support/Code/User/mcp.json",
+                      "~/.vscode/mcp.json"],
         skills_path="~/.vscode/skills",
-        mcp_config_path="~/.vscode/mcp.json",
+        mcp_config_path="~/Library/Application Support/Code/User/mcp.json",
         rules_paths=["~/.copilot/copilot-instructions.md"],
         aliases=["vscode", "visual-studio-code"],
         by_os={
+            "darwin": {
+                "app_bundles": ["/Applications/Visual Studio Code.app"],
+                "commands": ["code"],
+                "config_paths": ["~/Library/Application Support/Code/User/mcp.json",
+                                 "~/.vscode/mcp.json"],
+                "skills_path": "~/.vscode/skills",
+                "mcp_config_path": "~/Library/Application Support/Code/User/mcp.json",
+            },
             "windows": {
                 "app_bundles": ["%LOCALAPPDATA%\\Programs\\Microsoft VS Code\\Code.exe", "C:\\Program Files\\Microsoft VS Code\\Code.exe"],
                 "commands": ["code"],

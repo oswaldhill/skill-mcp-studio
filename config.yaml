@@ -252,6 +252,16 @@ tools:
   skills_paths:
   - ~/.copilot/skills
   type: AI Assistant
+  # ima.copilot 支持 MCP，但**没有可写配置文件**：它的 MCP 服务器通过应用内
+  # 「设置 → MCP 连接 → MCP 广场」录入（URL 直连或 OAuth），配置存在应用自己的
+  # 存储里，本工具无法代写。因此这里显式声明能力，而不声明 config_path——
+  # 前者决定界面说「支持」，后者只决定能不能「一键修复」。
+  #
+  # 此前因为缺少这条声明，界面把「无法自动配置」误显示成「不支持 MCP」，
+  # 而 management_snapshot 的注释还把这个错误结论当成了事实（2026-11-12 修正）。
+  mcp_support: true
+  # ~/.copilot/config.json 是启动标记（firstLaunchAt），不是 MCP 配置，勿当配置路径用。
+  mcp_manual_hint: 设置 → MCP 连接 → MCP 广场 → 手动添加服务器
 # 非 IDE/Agent：供应商切换器 + 本地代理（com.ccswitch.desktop），给 Claude Code /
 # Codex / Gemini / OpenCode 切换配置，自身不做推理、不跑 agent 循环，也不消费 MCP
 # （它是把 MCP「注入」到别的客户端）。它同时带技能管理功能，故 ~/.cc-switch/skills

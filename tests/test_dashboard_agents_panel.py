@@ -81,6 +81,10 @@ def _render_list_view(agents):
             "  querySelectorAll: () => [] };",
             "const $ = (id) => (id === 'agent-home-body' ? holder : { textContent: '', innerHTML: '' });",
             _fn("_agentsForPanel"),
+            # 列表的 MCP 单元格按「能力 / 可否自动配置」两个维度渲染文案
+            _fn("_supportsMcp"),
+            _fn("_autoConfigurable"),
+            _fn("_manualOnly"),
             _fn("renderHomeListView"),
             "renderHomeListView('');",
             "process.stdout.write(holder._v);",

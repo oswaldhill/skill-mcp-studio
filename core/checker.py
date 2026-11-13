@@ -289,8 +289,14 @@ TOOL_INSTALL_SIGNS = {
     "cherrystudio": {"cli": [], "apps": ["Cherry Studio.app"]},
     "cline":        {"cli": ["cline"], "apps": ["Cline.app"]},
     "continue":     {"cli": ["continue"], "apps": ["Continue.app"]},
+    # GitHub Copilot 与腾讯 ima.copilot 是两个独立产品，只是都含 "copilot" 字样。
+    # 此前把 ima.copilot.app 并进这一行，会让「登记为 copilot 的工具」在本机装了
+    # ima 时被误判为已安装，也让两个产品在命名空间上纠缠。各自一行（2026-11-12）。
     "copilot":      {"cli": ["copilot", "github-copilot"],
-                     "apps": ["GitHub Copilot.app", "Copilot.app", "ima.copilot.app"]},
+                     "apps": ["GitHub Copilot.app", "Copilot.app"]},
+    # ima.copilot 归一化只去掉空格与连字符（句点保留），故键为 "ima.copilot"。
+    # lstrip(".") 只作用于前导点，不影响这里。
+    "ima.copilot":  {"cli": [], "apps": ["ima.copilot.app"]},
     "gemini":       {"cli": ["gemini"], "apps": ["Gemini.app"]},
     "ghcpappmod":   {"cli": ["ghcp-appmod", "ghcp"], "apps": ["Ghcp Appmod.app"]},
     "kiro":         {"cli": ["kiro"], "apps": ["Kiro.app"]},

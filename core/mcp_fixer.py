@@ -293,6 +293,14 @@ def fix_mcp_tool(
         if existed:
             with open(path, "r", encoding="utf-8") as handle:
                 original = handle.read()
+            # 「文件存在」不等于「文件里有配置」：客户端首次启动时往往会先创建
+            # 一个 0 字节的 mcp.json（VS Code 实况：~/Library/Application Support/
+            # Code/User/mcp.json 一直是 0 字节）。此前把空内容直接交给 JSON
+            # 解析器，报 "Expecting value: line 1 column 1"，于是修复永远失败、
+            # 而界面上只看到一条 error——用户感知就是「点了修复，一直不生效」。
+            # 空文件等价于「没有配置」，按初始骨架处理。
+            if not original.strip():
+                original = initial
         else:
             original = initial
     except OSError:

@@ -177,6 +177,12 @@ def _agent_entry(tool: Dict[str, Any], config: Dict[str, Any], scan_result: Dict
         "config_paths": install["config_paths"],
         # 客户端 MCP 配置文件路径（与 install 证据的 config_paths 区分）
         "mcp_config_path": tool.get("config_path", ""),
+        # MCP 能力与「可否自动配置」是两个维度（同 mcp_clients，2026-11-12）：
+        # 卡片 / 列表据此区分「不支持」与「支持但需手动接入」，否则两者都会
+        # 因为 mcp_config_path 为空而显示成「不支持」。
+        "supports_mcp": _supports_mcp(tool),
+        "auto_configurable": bool(tool.get("config_path")),
+        "mcp_manual_hint": tool.get("mcp_manual_hint", "") if not tool.get("config_path") else "",
         "aliases": tool.get("aliases", []) or [],
         "mcp_attach": resolved_attach,
         "has_explicit_attach": has_explicit,
@@ -196,6 +202,23 @@ def effective_tools(config: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 def _effective_tools(config: Dict[str, Any]) -> List[Dict[str, Any]]:
     return _tool_registry_effective_tools(config)
+
+
+def _supports_mcp(tool: Dict[str, Any]) -> bool:
+    """客户端产品是否具备 MCP 能力。
+
+    与「本工具能否自动写入其配置」是两件事，必须分开判断：
+
+    * ``mcp_support`` 显式声明优先——注册表可以直接写 ``mcp_support: true``
+      表示「产品支持 MCP，但配置只能在该应用的 GUI 里录入，没有可写文件」
+      （如 ima.copilot 的「MCP 连接」入口）。
+    * 未声明时回退到旧推断：有 ``config_path`` 即认为支持。这保持了所有
+      已声明配置文件客户端的既有行为不变。
+    """
+    declared = tool.get("mcp_support")
+    if isinstance(declared, bool):
+        return declared
+    return bool(tool.get("config_path"))
 
 
 def _mcp_inventory_payload(entries: List[Any], tool: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -430,20 +453,36 @@ def build_management_snapshot(
         # 稳定排序保持同类目下的原始顺序。
         _cls_rank = {"attached": 0, "legacy": 1, "unmanaged": 2}
         entries = sorted(entries, key=lambda e: _cls_rank.get(e.classification, 2))
-        # DATA-7: 区分「不支持 MCP」与「缺失」。注册表未声明 mcp_config_path 的
-        # 客户端（如 ima.copilot）根本没有 MCP 能力，不适用「期望挂载」这一概念。
-        # 此前仍按默认「全部端点」给它套上期望，于是被判成「声明要挂却没挂」的
-        # 异常——把能力缺失误报成故障。不支持时期望置空，缺失自然为空。
-        supports_mcp = bool(tool.get("config_path"))
-        expected_attach = resolve_client_attach(tool, config) if supports_mcp else []
+        # DATA-7 / 2026-11-12 修正：这里原先用 ``bool(config_path)`` 一票判定
+        # 「是否具备 MCP 能力」，把**能力**与**可自动配置性**混为一谈，于是
+        # ima.copilot 这种「支持 MCP、但 MCP 走应用内 GUI 录入、没有可写配置文件」
+        # 的客户端被断言成「根本没有 MCP 能力」——注释里甚至把它当事实写死了。
+        # 用户实测指出 ima 有「MCP 连接」入口并可接入 MCP 服务器。
+        #
+        # 现在拆成两个独立维度：
+        #   * ``supports_mcp``       产品是否具备 MCP 能力（注册表可用
+        #                            ``mcp_support`` 显式声明；未声明时按是否
+        #                            有配置文件推断，保持旧行为）；
+        #   * ``auto_configurable``  本工具能否自动写入配置（有 config_path 才行）。
+        # 「有 MCP 能力但无法自动配置」既不是故障，也不该说成「不支持」。
+        supports_mcp = _supports_mcp(tool)
+        auto_configurable = bool(tool.get("config_path"))
+        expected_attach = resolve_client_attach(tool, config) if auto_configurable else []
         consistency = attachment_consistency(entries, expected_attach)
         mcp_clients.append({
             "name": tool.get("name", "Unknown"),
             "mcp_attach": expected_attach,
             # 显式声明 vs 默认「全部端点」——UI 据此标注来源
             "has_explicit_attach": bool(tool.get("mcp_attach")),
-            # 该客户端是否具备 MCP 能力（未声明 mcp_config_path 即不支持）
+            # 客户端是否具备 MCP 能力（显式声明优先，否则按有无配置文件推断）
             "supports_mcp": supports_mcp,
+            # 本工具能否自动写入该客户端的 MCP 配置（需要 config_path）
+            "auto_configurable": auto_configurable,
+            # 能力有、但只能由用户在客户端内手动接入（GUI 录入 / URL 直连）
+            "manual_only": supports_mcp and not auto_configurable,
+            # 手动接入的入口提示（注册表 mcp_manual_hint），供 UI 在提示里直接告诉
+            # 用户去哪里添加，而不是只丢一个「不支持」让人自己去猜。
+            "manual_hint": tool.get("mcp_manual_hint", "") if not auto_configurable else "",
             # 期望 / 实际 / 缺失(异常) / 未声明
             "observed_attach": consistency["observed"],
             "missing_attach": consistency["missing"],
