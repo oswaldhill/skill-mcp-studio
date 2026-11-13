@@ -3699,6 +3699,8 @@ const skillsCell = `<button type="button" class="al-ico ${skillsCls}" data-popki
     } else {
       const hit = rulesPaths.filter((x) => x.exists).length;
       const total = rulesPaths.length;
+      // 至少有一个可新建的路径（文件缺失但可写）→ 可修复。
+      const pathsCreatable = rulesPaths.some((x) => x.creatable || (!x.exists && x.kind !== "dir"));
       const tip = rulesPaths.map((x) => `${x.path}${x.exists ? "" : "（未配置）"}`).join("；");
       // 颜色语义（v0.40.5 用户要求）：
       //   无色（中性）= 没有约束文件
@@ -3712,12 +3714,18 @@ const skillsCell = `<button type="button" class="al-ico ${skillsCls}" data-popki
       let ruleCls;
       const sharedOk = sharedRow && sharedRow.enabled !== false
         && (sharedRow.state === "current" || sharedRow.state === "covered");   // v0.43.0：语义一致也算达标
-      if (hit === 0) {
+      // v0.46.7：有共享内容可写、却一个文件都没有（如 DSH 的 ~/.dsh/AGENTS.md），
+      // 也是「待修复」——它和「文件在但没写」一样，都能用「写入共享约束」修好。
+      // 此前 hit===0 一律中性，用户看不出这个 Agent 还没拿到共享约束。
+      if (sharedOk) {
+        ruleCls = "ok";
+      } else if (!hasSharedContent || !(sharedRow && sharedRow.enabled !== false)) {
+        // 共享内容为空 / 该 Agent 已关闭同步：退回旧口径，有文件即算就绪。
+        ruleCls = hit > 0 ? "ok" : "";
+      } else if (hit === 0 && pathsCreatable) {
+        ruleCls = "warn";
+      } else if (hit === 0) {
         ruleCls = "";
-      } else if (sharedOk) {
-        ruleCls = "ok";
-      } else if (!hasSharedContent) {
-        ruleCls = "ok";
       } else {
         ruleCls = "warn";
       }
@@ -3744,7 +3752,7 @@ const skillsCell = `<button type="button" class="al-ico ${skillsCls}" data-popki
         covered: "文件里已有同义内容（语义一致）",
         stale: "共享内容改过，这个文件还是旧版；点「⋯」→ 写入共享约束",
         absent: "文件里没有共享块；点「⋯」→ 写入共享约束",
-        missing: "约束文件还不存在；先让该客户端生成规则文件",
+        missing: "约束文件还不存在；点「⋯」→ 写入共享约束 会新建该文件并写入",
       };
       const sharedHint = (sharedL && sharedL.enabled !== false && hasShared)
         ? (SHARED_HINT[sharedL.state] || "") : "";
@@ -8150,16 +8158,14 @@ function renderEndpointStatus() {
     }, () => loadSkillBackupStats());
   }
 
-  async function loadRules() {
-    const res = await runCli(["--list-rules", "--format", "json"]);
-    let data = null;
-    try { data = JSON.parse(stripAnsi((res && res.stdout) || "{}")); } catch (e) { data = null; }
+  // v0.46.7：拆成「取数」与「落地」两步，供 refreshRulesData 并行复用一个快照。
+  function applyRulesPayload(data, res) {
     if (!data) {
       // 读取失败：主表与设置页都保持「无约定」渲染，错误只记在状态里，
       // 不在页面上弹第二次（两处消费方各自已有空态）。
       RULES_ERROR = cliErrDetail(res) || "读取失败";
       if (typeof renderAgents === "function") renderAgents();
-      return;
+      return false;
     }
     RULES_ERROR = "";
     RULES_DATA = data;
@@ -8168,6 +8174,14 @@ function renderEndpointStatus() {
     if ($("settings-agents-table") && typeof renderAgentsTable === "function") {
       renderAgentsTable(_agentsPage || 0);
     }
+    return true;
+  }
+
+  async function loadRules() {
+    const res = await runCli(["--list-rules", "--format", "json"]);
+    let data = null;
+    try { data = JSON.parse(stripAnsi((res && res.stdout) || "{}")); } catch (e) { data = null; }
+    applyRulesPayload(data, res);
   }
 
 
@@ -8836,7 +8850,7 @@ function _sharedStateLabel(state) {
     covered: ["ok", "语义已一致"],
     stale: ["warn", "内容过期"],
     absent: ["", "未包含"],
-    missing: ["", "文件不存在"],
+    missing: ["warn", "文件不存在（可写入）"],
     dir: ["", "目录跳过"],
   }[state] || ["", state || "未知"];
 }
@@ -8845,10 +8859,15 @@ async function auditSharedRules() {
   const res = await runCli(["--shared-rules-audit", "--format", "json"]);
   let payload = null;
   try { payload = JSON.parse(stripAnsi((res && res.stdout) || "{}")); } catch (e) { payload = null; }
+  return renderSharedAudit(payload, res);
+}
+
+// v0.46.7：审计快照的落地与渲染单独拆出来，便于 refreshRulesData 并行取数后一次渲染。
+function renderSharedAudit(payload, res) {
   const host = $("shared-rules-status");
   if (!payload || !payload.ok) {
     if (host) host.innerHTML = `<div class="empty">检查失败：${escapeHtml(cliErrDetail(res))}</div>`;
-    return;
+    return false;
   }
   SHARED_AUDIT = payload;
   const sum = payload.summary || {};
@@ -8877,6 +8896,7 @@ async function auditSharedRules() {
   if (host) {
     host.innerHTML = `<div class="rows">${rows || '<div class="row"><span class="v note">没有声明约束文件的客户端</span></div>'}</div>`;
   }
+  return true;
 }
 
 async function toggleSharedRules(client, on) {
@@ -10383,7 +10403,16 @@ function needFixRulesFor(a) {
     .find((r) => r.name === a.name);
   const paths = (row && row.paths) || [];
   if (!paths.length) return false;
-  if (!paths.some((x) => x.exists)) return false;
+  // v0.46.7：缺少约束文件**也要给修复入口**。
+  //
+  // 用户：「这不是我现在写入的问题……如果没有的话，也需要有这个操作按钮」。
+  // 此前是 `if (!paths.some(x => x.exists)) return false`：DSH 的
+  // ~/.dsh/AGENTS.md 不存在时，菜单里根本没有「写入共享约束」，而 CLI 侧
+  // --shared-rules-apply 本来就会新建文件与父目录（write_rules）。
+  // 缺文件是可修复状态，不是「无可写入」。
+  // 但**不能**凭它就去调用 --fix-rules：没声明 rules_paths 的客户端会报错，
+  // 所以只看「至少有一个非目录目标」。
+  if (!paths.some((x) => x.creatable || x.kind !== "dir")) return false;
   const hasContent = typeof SHARED_RULES !== "undefined"
     && !!(SHARED_RULES && (SHARED_RULES.content || "").trim());
   if (!hasContent) return false;
@@ -10589,14 +10618,18 @@ async function fixSkillsFor(name) {
 //
 // 与 Skills / MCP 修复同一套交互：先确认（说明会改哪个文件、会先备份），
 // 再走 runTaskModal 显示真实步骤，最后用 modalNotice 报结果。
-async function fixRulesFor(name) {
+async function fixRulesFor(name, opts) {
+  const silent = !!(opts && opts.silent);   // 一键修复复用它时不再逐个弹确认框
   const row = ((typeof RULES_DATA !== "undefined" && RULES_DATA && RULES_DATA.rows) || [])
     .find((r) => r.name === name);
-  const paths = ((row && row.paths) || []).filter((x) => x.exists).map((x) => x.path);
+  // v0.46.7：缺失的约束文件同样可写 —— write_rules 会新建文件与父目录。
+  const writable = ((row && row.paths) || []).filter((x) => x.creatable || x.kind !== "dir");
+  const paths = writable.map((x) => x.path);
   if (!paths.length) {
+    if (silent) return { ok: false, message: `${name} 没有可写入的约束文件`, detail: "仅声明了规则目录，不支持整体写入" };
     modalNotice("warn", "无可写入的约束文件",
-      `${name} 还没有约束文件。请先让该客户端生成它的规则文件（通常打开一次该客户端即可），或用「详情」里的约束路径手工创建。`);
-    return;
+      `${name} 只声明了规则目录（不是单个文件），不支持整体写入共享块。请用「详情」里的路径进入目录，逐文件编辑。`);
+    return { ok: false };
   }
   const hasContent = typeof SHARED_RULES !== "undefined"
     && !!(SHARED_RULES && (SHARED_RULES.content || "").trim());
@@ -10610,23 +10643,27 @@ async function fixRulesFor(name) {
   const toolMeta = ((SNAP && SNAP.mainstream_tools) || []).find((t) => t.name === name) || {};
   const roles = toolMeta.rules_roles || [];
   const roleName = { behavior: "行为准则", profile: "用户档案", preference: "偏好" };
+  const isNew = (x) => !!x.creatable;
   const plan = (roles.length && roles.some((r) => r && r.length))
-    ? paths.map((p, i) => {
+    ? writable.map((x, i) => {
         const r = roles[i] || [];
+        const tag = isNew(x) ? "，将新建" : "";
         return r.length
-          ? `· ${p}（${r.map((x) => roleName[x] || x).join(" / ")}）`
-          : `· ${p}（不接收共享约束，将跳过）`;
+          ? `· ${x.path}（${r.map((k) => roleName[k] || k).join(" / ")}${tag}）`
+          : `· ${x.path}（不接收共享约束，将跳过）`;
       }).join("\n")
-    : paths.map((p) => `· ${p}`).join("\n");
-  const ok = await confirmModal(
-    `写入共享约束到 ${name}`,
-    `将把共享约束写入以下文件的 shared-rules 标记块，并替换文件里「意思相同」的旧条目：\n\n`
-      + plan
-      + "\n\n写前自动备份，你自己的其它规则不动。继续？",
-    false,
-  );
-  if (!ok) return;
-  await runTaskModal(`写入 ${name} 的共享约束`, async () => {
+    : writable.map((x) => `· ${x.path}${isNew(x) ? "（文件不存在，将新建）" : ""}`).join("\n");
+  if (!silent) {
+    const ok = await confirmModal(
+      `写入共享约束到 ${name}`,
+      `将把共享约束写入以下文件的 shared-rules 标记块，并替换文件里「意思相同」的旧条目：\n\n`
+        + plan
+        + "\n\n写前自动备份，你自己的其它规则不动。继续？",
+      false,
+    );
+    if (!ok) return { ok: false, cancelled: true };
+  }
+  const run = async (step) => {
     const res = await runCli(["--shared-rules-apply", name, "--format", "json"]);
     if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
     let payload = {};
@@ -10661,14 +10698,35 @@ async function fixRulesFor(name) {
       detail: [entry.reason, ...lines, ...failed.map((x) => x.reason)].filter(Boolean).join("\n")
         || cliFailLines(res) || cliErrDetail(res) || "未知原因",
     };
-  }, async () => {
-    // 写完必须重拉「约束」数据与共享审计，否则格子颜色不会变 —— 那正是用户要的反馈。
-    // 注意：refreshBlocks 没有 rules 这一档；约束数据走 loadRules()，
-    // 它内部会重渲染主表（renderAgents）与设置页表格。
-    await loadRules();
-    await loadSharedRules();
-    await auditSharedRules();
-  });
+  };
+  if (silent) return run();
+  await runTaskModal(`写入 ${name} 的共享约束`, run, () => refreshRulesData(`写入 ${name} 的共享约束`));
+}
+
+// 约束相关数据的统一刷新（v0.46.7）：先并行拉「约束文件清单」与「共享审计」，
+// 再一次性重渲染 —— 此前是 loadRules → loadSharedRules → auditSharedRules 串行
+// await 三次 CLI 调用，弹框关掉后还要再等两轮进程启动，用户反馈「刷新太慢」。
+async function refreshRulesData(label) {
+  const [rules, shared, audit] = await Promise.all([
+    runCli(["--list-rules", "--format", "json"]),
+    runCli(["--shared-rules-get", "--format", "json"]),
+    runCli(["--shared-rules-audit", "--format", "json"]),
+  ]);
+  const parse = (r) => {
+    try { return JSON.parse(stripAnsi((r && r.stdout) || "{}")); } catch (e) { return null; }
+  };
+  if (rules && rules.code === 0) { applyRulesPayload(parse(rules), rules); }
+  const keepDirty = !!($("shared-rules-text") && $("shared-rules-text").dataset.dirty);
+  const sp = parse(shared);
+  if (shared && shared.code === 0 && sp && sp.ok) {
+    SHARED_RULES = sp;
+    const box = $("shared-rules-text");
+    if (box && !keepDirty) box.value = sp.content || "";
+  }
+  renderSharedAudit(parse(audit));
+  if (typeof renderAgents === "function") renderAgents();
+  if (typeof renderSettings === "function") renderSettings();
+  console.info("[refresh]", label || "rules", { ok: true });
 }
 
 async function fixMcpFor(name) {
@@ -10948,9 +11006,14 @@ async function cleanupConfigFor(name) {
 }
 
 async function fixAllSkillsMcp() {
-  console.info("[ops] fix-all skills+mcp");
-  const ok = await confirmModal("一键修复所有", "将对所有已安装客户端的 Skills 链接与 MCP 配置执行修复（带备份，未安装/无需修复的自动跳过）。继续？", false);
+  console.info("[ops] fix-all skills+mcp+rules");
+  const ok = await confirmModal("一键修复所有", "将对所有已安装客户端的 Skills 链接、MCP 配置与共享约束执行修复（带备份，未安装/无需修复的自动跳过；约束文件不存在时会新建）。继续？", false);
   if (!ok) return;
+  // 约束维度的数据只由 refreshRulesData 维护，这里仍需先保证它已被加载过；
+  // 没加载过时 needFixRulesFor 会返回 true（与黄色格子同口径），进而在下面逐个
+  // 调用 fixRulesFor —— 这是**误判成本很低**的行为：--shared-rules-apply 幂等，
+  // 已是最新时 changed=0 并回报「已是最新」。
+  //
   // 逐条真实进度（2026-11-06）：每个「客户端 × 维度」跑一次 CLI，跑完才报一行。
   //
   // 为什么不沿用「--fix-skills / --fix-mcp 各跑一次」：那样整个过程只有两个
@@ -10962,7 +11025,7 @@ async function fixAllSkillsMcp() {
     modalNotice("info", "提示", "没有已安装的客户端需要修复。");
     return;
   }
-  await runTaskModal("一键修复所有 Skills 与 MCP", async (step) => {
+  await runTaskModal("一键修复所有 Skills / MCP / 约束", async (step) => {
     const errs = [];
     let done = 0;
     for (const a of clients) {
@@ -10983,12 +11046,26 @@ async function fixAllSkillsMcp() {
         if (good) done++;
         else errs.push(`${name} MCP：${(r && (cliFailLines(r) || cliErrDetail(r))) || "run_cli 无返回"}`);
       }
+      // 约束维度（v0.46.7）：此前「一键修复」完全不含共享约束，用户按了之后
+      // 约束列还是黄的。只有**确实需要写**的客户端才调用 CLI，避免每个客户端
+      // 都白跑一次进程（那正是刷新慢的来源之一）。
+      const needRules = needFixRulesFor(a);
+      if (needRules) {
+        const rr = await fixRulesFor(name, { silent: true });
+        const good = !!(rr && rr.ok);
+        step(`${name} · 约束 ${good ? "已写入" : (rr && rr.message) || "失败"}`, good);
+        if (good) done++;
+        else errs.push(`${name} 约束：${(rr && (rr.detail || rr.message)) || "未返回结果"}`);
+      }
     }
     if (errs.length) {
       return { ok: false, message: `已完成 ${done} 项，${errs.length} 项未完成`, detail: errs.join("\n") };
     }
     return { ok: true, message: `已完成 ${done} 项修复` };
-  }, () => refreshBlocks(["agents", "skills", "mcp"]));
+  }, () => Promise.all([
+    refreshBlocks(["agents", "skills", "mcp"]),
+    refreshRulesData("一键修复"),
+  ]));
 }
 
 // ---------------- sample (browser preview) ----------------

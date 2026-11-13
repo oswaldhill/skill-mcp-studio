@@ -64,7 +64,12 @@ def _stat_path(raw: str) -> Dict[str, Any]:
     info: Dict[str, Any] = {
         "path": raw, "resolved": str(p), "exists": p.exists(),
         "kind": "", "size": 0, "lines": 0, "files": 0, "mtime": "",
+        # v0.46.7：缺失文件可被「修复」创建（write_rules 会新建文件与父目录）。
+        # 界面据此决定是否给出「新建并写入」入口；目录类目标不可整体写入。
+        "creatable": False,
     }
+    if not p.exists():
+        info["creatable"] = True
     try:
         if p.is_dir():
             info["kind"] = "dir"

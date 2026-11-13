@@ -279,7 +279,7 @@ class AgentMenuRulesEntryTest(unittest.TestCase):
         GUI 却去读 `payload.rows`（那是 `--shared-rules-audit` 的结构）→ rowOut 恒为 {}
         → state 为空 → 明明写成功却报「未写入」（用户截图：写入报错了）。
         """
-        start = self.gui.index("async function fixRulesFor(name)")
+        start = self.gui.index("async function fixRulesFor(name")
         rest = self.gui[start:]
         nxt = rest.find("\nasync function ", 10)
         body = rest[: nxt if nxt > 0 else 4000]
@@ -289,17 +289,46 @@ class AgentMenuRulesEntryTest(unittest.TestCase):
 
     def test_dispatch_and_writer_exist(self):
         self.assertIn('pm === "fix-rules"', self.gui, "菜单动作未分发")
-        self.assertIn("async function fixRulesFor(name)", self.gui, "缺写入实现")
-        start = self.gui.index("async function fixRulesFor(name)")
+        self.assertIn("async function fixRulesFor(name", self.gui, "缺写入实现")
+        start = self.gui.index("async function fixRulesFor(name")
         # 截到函数结尾：只往前找下一个顶层 `async function` 之前的部分
         rest = self.gui[start:]
         nxt = rest.find("\nasync function ", 10)
         body = rest[: nxt if nxt > 0 else 4000]
         self.assertIn('"--shared-rules-apply"', body, "必须调用共享约束写入命令")
-        # 精确到「独立一行调用 loadRules()」：只查 `loadRules(` 会被
-        # `loadSharedRules()` 里的同名子串满足，反向验证写不出会失败的用例（实测踩到）。
-        self.assertRegex(body, r"\n\s+await loadRules\(\);",
-                         "写完必须重拉约束数据，否则格子颜色不变")
+        # v0.46.7：写完的刷新收敛到 refreshRulesData（并行拉三份数据后一次重渲染）。
+        # 此前是串行 await loadRules → loadSharedRules → auditSharedRules，关掉弹框还要
+        # 再等两轮进程启动。断言「刷新走统一入口」而不是「必须调 loadRules()」。
+        self.assertIn("refreshRulesData(", body,
+                      "写完必须重拉约束数据与共享审计，否则格子颜色不变")
+        self.assertRegex(self.gui, r"async function refreshRulesData\(",
+                         "缺少约束数据的统一刷新实现")
+
+    def test_missing_rules_file_is_fixable(self):
+        """缺约束文件时也必须给出写入入口（v0.46.7 用户反馈）。
+
+        用户：「如果没有的话，也需要有这个操作按钮」。DSH 的 ~/.dsh/AGENTS.md
+        不存在，此前 `if (!paths.some(x => x.exists)) return false` 让菜单里根本没有
+        「写入共享约束」，而 CLI 侧 write_rules 本来就会新建文件。
+        """
+        start = self.gui.index("function needFixRulesFor(a)")
+        rest = self.gui[start:]
+        nxt = rest.find("\nfunction ", 10)
+        body = rest[: nxt if nxt > 0 else 3000]
+        self.assertNotIn(".some((x) => x.exists)", body,
+                         "不得再用「要有已存在的文件」来否掉修复入口")
+        self.assertIn("creatable", body, "应按「可新建」判定可写")
+
+    def test_fix_all_includes_rules(self):
+        """一键修复必须覆盖共享约束维度。"""
+        start = self.gui.index("async function fixAllSkillsMcp(")
+        rest = self.gui[start:]
+        nxt = rest.find("\n// ----------------", 10)
+        body = rest[: nxt if nxt > 0 else 6000]
+        self.assertIn("needFixRulesFor(a)", body, "一键修复未包含约束维度")
+        self.assertIn("fixRulesFor(name, { silent: true })", body,
+                      "一键修复应静默复用单客户端写入，避免逐个弹确认框")
+        self.assertIn("refreshRulesData(", body, "一键修复后要刷新约束数据")
 
 
 class MultiFileRoutingTest(unittest.TestCase):

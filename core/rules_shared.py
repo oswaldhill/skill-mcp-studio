@@ -153,7 +153,13 @@ def _path_state(raw: str, content: str) -> Dict[str, Any]:
         return dict(base, state="dir", reason="规则目录，不参与共享块同步")
     text = _read_text(p) if p.is_file() else None
     if text is None:
-        return dict(base, state="missing", reason="文件不存在")
+        # v0.46.7：缺文件**不是**「无可写入」。write_rules 本来就会新建文件与父目录，
+        # 所以这是一个**可修复**状态，界面必须给出「新建并写入」的入口。
+        # 此前菜单按 `paths.some(exists)` 判定，缺文件时直接不生成修复项 ——
+        # 用户反馈「DeepSeek Harness 没有写入约束的功能」即由此而来。
+        return dict(base, state="missing",
+                    reason="约束文件还不存在；修复时会新建并写入共享块",
+                    creatable=True)
     current = extract(text)
     if current is not None and current == (content or "").rstrip("\n"):
         return dict(base, state="current", reason="已是最新")
@@ -393,14 +399,19 @@ def apply_client(client: str, content: Optional[str] = None,
             results.append(dict(state, ok=True, changed=False))
             continue
         if dry_run:
-            results.append(dict(state, ok=True, changed=True, dry_run=True))
+            results.append(dict(state, ok=True, changed=True, dry_run=True,
+                                reason=("将新建该文件并写入共享块" if state["state"] == "missing"
+                                        else state.get("reason", ""))))
             continue
         p = Path(os.path.expanduser(raw))
         existing = _read_text(p) or ""
         merged = apply(existing, block, body_for_path)
         res = write_rules(tool.get("name"), merged, index=idx, registry=registry)
         results.append(dict(state, ok=bool(res.get("ok")), changed=bool(res.get("ok")),
-                            backup=res.get("backup", ""), reason=res.get("reason", "")))
+                            created=state["state"] == "missing",
+                            backup=res.get("backup", ""),
+                            reason=res.get("reason", "") or (
+                                "已新建文件并写入共享块" if state["state"] == "missing" else "")))
 
     changed = sum(1 for r in results if r.get("changed"))
     failed = [r for r in results if not r.get("ok")]
