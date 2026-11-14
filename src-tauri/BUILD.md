@@ -269,6 +269,10 @@ workspace-write 沙箱下 `rm`/`ditto` 报 `Operation not permitted`，需完全
 > （`Identifier=com.deepseek.harness.local`、`Signature=adhoc`、
 > `TeamIdentifier=not set`），macOS TCC 记录按 **cdhash** 绑定；新 bundle 的
 > cdhash 已变 ⇒ 屏幕录制 / 辅助功能授权失效。**同类触发源与处置见 §3.3。**
+>
+> 🔄 **2026-11-14 更正**：上述「DSH 为 ad-hoc」**已不成立**——当前 DSH 是正式
+> **Developer ID 签名**（`NAN929V4UM`），身份稳定。替换本 `.app` 本身不会因此
+> 影响 DSH 的 TCC 授权。详见 §3.3 开头的实测更正。
 
 **启动后自检**（`AXUIElement` 读无障碍树，比截图可靠）：
 
@@ -280,7 +284,48 @@ AXButton     'IDE / Agent 6'            ← 8dc646e 后空壳 CLI 不再计为�
 
 ### 3.3 TCC 授权失效：**DSH 本体更新**才是更常见的触发源
 
-2026-09-21 实测：GUI 实证验证中途，屏幕录制与辅助功能**同时**失效，且反复
+> 🔄 **2026-11-14 实测更正（先读这段）**：本节以下内容基于「DSH 为 ad-hoc 签名」这一
+> 前提，**该前提已不成立**。实测当前 `/Applications/DeepSeek Harness.app` 是
+> **正式 Developer ID 签名**，身份稳定、不再随重建漂移：
+>
+> ```
+> Authority=Developer ID Application: Hangzhou DeepSeek Artificial Intelligence Co., Ltd (NAN929V4UM)
+> Authority=Developer ID Certification Authority / Apple Root CA
+> TeamIdentifier=NAN929V4UM          ← 有 TeamIdentifier（ad-hoc 没有）
+> Identifier=com.deepseek.dsh        ← 已非 com.deepseek.harness.local
+> ```
+>
+> 因此「每次更新 cdhash 变 ⇒ TCC 必然失效」在本机**不再成立**。若仍遇到 AX 失败，
+> 请先按下面的**新判据**定位，不要直接套用 ad-hoc 时代的结论。
+
+**2026-11-14 实测：AX 失败的真实形态是「部分失败」，不是权限全失**
+
+| 操作 | 结果 |
+|---|---|
+| `osascript -e 'tell app "System Events" to get name of every process'` | ✅ 成功（返回 156 个进程名） |
+| `osascript -e 'tell app "System Events" to tell process "Finder" to get name of window 1'` | ❌ `-1719 不允许辅助访问` |
+| `osascript -e 'tell app "System Events" to tell process "skill-mcp-studio" to get name of every window'` | ❌ `-1728` |
+| `screencapture -x /tmp/p.png` | ✅ 成功（屏幕录制**已授权**） |
+
+结论：**屏幕录制正常，缺的是「辅助功能」**；且失败对一个与本项目无关的进程（Finder）
+同样发生 ⇒ 是 `osascript` 这个客户端自身没被授权，与 skill-mcp-studio 无关。
+这是 TCC 的**客户端级**授权，脚本无法绕过（TCC.db 受 SIP 保护），只能由人在
+「系统设置 → 隐私与安全性 → 辅助功能」里勾选运行 osascript 的终端程序。
+
+> `python3 -c "import ApplicationServices"` 报 `ModuleNotFoundError` 是**没装 pyobjc**，
+> 属依赖缺失，**不能据此判断「AX 未授权」**。旧文本把它当第一条判据，会误导排查方向。
+
+**AX 不可用时的验收替代（推荐，已固化为脚本）**
+
+```bash
+scripts/verify_gui_render.sh [--size 1400x900] [--out 目录]
+```
+
+用仓库自带的 `tools/shot_dialog.swift`（WKWebView 离屏渲染）截图 + 测「元素是否真正可见」，
+**不需要任何 TCC 授权**，判据比 AX 更严格（DOM 存在 ≠ 屏幕上可见，见 `tools/README.md`）。
+本机 AX 受限时，请以此脚本的结果作为 GUI 验收依据。
+
+2026-09-21 实测（历史，前提为 ad-hoc 签名）：GUI 实证验证中途，屏幕录制与辅助功能**同时**失效，且反复
 「重新授权 + 重启」三轮均无效。结论记此以免重复排查。
 
 **判据（关键：拿无关系统进程做对照）**
