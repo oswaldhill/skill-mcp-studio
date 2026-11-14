@@ -415,7 +415,7 @@ class HardNumbersContractTest(unittest.TestCase):
     # (selector, property, spec_value)。这些取自 DESIGN.md §2.9 表，
     # 改代码必须同步改规范 —— 二者由本表交叉锁定。
     CONTRACT = [
-        (".modal", "width", "var(--modal-w, min(560px, 92vw))"),
+        (".modal", "width", "var(--modal-w, min(560px, 94vw))"),
         (".cfm-card", "--modal-w", "min(400px, 94vw)"),
         (".sheet", "width", "min(560px, 94vw)"),
         (".modal-backdrop", "z-index", "50"),
@@ -436,6 +436,9 @@ class HardNumbersContractTest(unittest.TestCase):
         (".chg-btn", "min-height", "32px"),
         (".insight-dialog", "width", "min(1040px, 100%)"),
         (".ad-modal", "--modal-w", "min(880px, 94vw)"),
+        (".modal-md", "--modal-w", "min(640px, 94vw)"),
+        (".modal-lg", "--modal-w", "min(920px, 94vw)"),
+        (".ad-foot button", "min-height", "32px"),
         (".agent-card .ac-path-row", "grid-template-columns", "58px minmax(0, 1fr)"),
     ]
 
@@ -1159,16 +1162,12 @@ class RowStatusCellUniformityTest(unittest.TestCase):
         这三列的单元格是单枚徽标/短标签，左对齐时贴着单元格左缘，与更宽的列头
         （文字+问号图标）轴线不一致；居中后实测偏差 0.0px。
         """
+        # v0.47.5：从「逐列 nth-child 居中」升级为**整表居中**（更强的保证），
+        # 因此这里断言整表规则而不是逐列规则。
         css = _css()
-        for col in (3, 7, 8, 9):
-            with self.subTest(col=col):
-                self.assertIn(f".agent-list-table th:nth-child({col})", css,
-                              f"第 {col} 列 th 未纳入居中规则")
-                self.assertIn(f".agent-list-table td:nth-child({col})", css,
-                              f"第 {col} 列 td 未纳入居中规则")
-        m = re.search(r"\.agent-list-table th:nth-child\(3\)[^{]*\{([^}]*)\}", css, re.S)
-        self.assertIsNotNone(m, "未找到居中规则体")
-        self.assertIn("text-align: center", m.group(1), "居中规则应声明 text-align: center")
+        norm = re.sub(r"\s+", " ", css)
+        self.assertIn(".agent-list-table th, .agent-list-table td { text-align: center; }",
+                      norm, "Agent 表应整表居中（该表没有长段落列）")
 
 
 class TrayPanelDimsTest(unittest.TestCase):
@@ -1362,12 +1361,11 @@ class ListVerticalRulesTest(unittest.TestCase):
 
     def test_cells_draw_vertical_rule(self):
         css = _css()
-        self.assertRegex(css, r"\.agent-list-table th:not\(:last-child\)::after",
-                         "单元格必须用 ::after 画竖线")
-        m = re.search(r"\.agent-list-table td:not\(:last-child\)::after\s*\{([^}]*)\}", css)
-        self.assertIsNotNone(m, "缺少 td 竖线规则")
-        for prop in ("position: absolute", "top: 0", "bottom: 0", "width: 1px"):
-            self.assertIn(prop, m.group(1), f"竖线规则缺 {prop}")
+        # v0.47.12：改用 background-image，规避 overflow:hidden 裁切伪元素
+        self.assertRegex(css, r"\.agent-list-table th:not\(:last-child\)",
+                         "单元格必须有竖线选择器")
+        self.assertIn("linear-gradient(to right, transparent calc(100% - 1px), var(--line-strong) 0)",
+                      css, "竖线必须用 background-image 画")
 
     def test_collapse_disabled(self):
         """`border-collapse: collapse` 下伪元素会被合边裁掉，必须改 separate。"""
@@ -1641,6 +1639,361 @@ class ModalSkeletonTest(unittest.TestCase):
                       "mountModal 必须调用重排，否则每个弹框都要自己包一层")
 
 
+class ModalFamilyConsistencyTest(unittest.TestCase):
+    """弹框家族度量一致性（v0.46.8，用户要求「检查所有弹框是否统一」）。
+
+    ## 背景：骨架统一，度量有六处漂移
+
+    29 处弹框调用逐个比对后实测到的问题，逐条锁在下面：
+
+    1. ``.form-actions`` 被声明两次，后一条带上外边距，覆盖前一条的零值 ——
+       表单弹框主体到底栏 **19px**，详情弹框 **0**，同一应用两种节奏。
+    2. 两处弹框用内联 ``style="width:min(...)"`` 直接压 ``.modal`` 的 width，
+       绕过 ``--modal-w`` 变量体系，并把 640/920 字面值散进模板。
+    3. 29 处弹框里只有 5 处手写 ``role="dialog"`` / ``aria-modal``，
+       其余 24 处读屏器不会播报成对话框。
+    4. ``.modal`` 默认与 ``.upg-modal`` 用 92vw，其余 94vw —— 窄屏留白不一致。
+    5. ``.ad-head`` 顶部内边 24px，``.form-head`` 28px。
+    6. 规范写了「点遮罩关闭」，代码从未实现。
+
+    ## 为什么补这一组而不是只改代码
+
+    原有 201 条门禁全绿却一条都没拦住上面任何一处 —— 说明它们只覆盖了
+    「骨架存在」而不覆盖「度量一致」。这一组按 §2.5b-4 的边界逐条落成断言。
+    """
+
+    def test_form_actions_has_no_top_margin(self):
+        """三段式底栏必须紧贴主体：同一选择器只许声明一次，且不得有上外边距。"""
+        css = _css()
+        rules = re.findall(r"\.modal-form \.form-actions\s*\{([^}]*)\}", css)
+        self.assertTrue(rules, "缺少 .modal-form .form-actions 规则")
+        self.assertEqual(
+            len(rules), 1,
+            "同一选择器只能声明一次 —— 重复声明会静默覆盖，"
+            "上一版就是这样让底栏多出 20px 空白带",
+        )
+        self.assertNotIn("margin-top", rules[0],
+                         "底栏不得有上外边距（间距由它自己的 padding 提供）")
+
+    def test_modal_width_never_inline(self):
+        """弹框宽度只走 --modal-w 变量，模板里不得出现内联 width 覆盖。"""
+        src = _src()
+        offenders = re.findall(r'class="modal[^".]*"\s+style="[^"]*width', src)
+        self.assertEqual(
+            offenders, [],
+            "弹框宽度不得用内联 style 覆盖（应新增 --modal-w 档位类并登记 §2.9）",
+        )
+
+    def test_all_modal_widths_use_94vw(self):
+        """视口系数统一 94vw：92vw 会让窄屏下同类弹框左右留白不一致。"""
+        css = _css()
+        decls = re.findall(r"--modal-w:\s*min\(([^)]*)\)", css)
+        self.assertTrue(decls, "没有找到任何 --modal-w 声明")
+        bad = [d for d in decls if "94vw" not in d]
+        self.assertEqual(bad, [], "--modal-w 必须统一 94vw")
+
+    def test_dialogs_get_a11y_attrs(self):
+        """无障碍语义由 mountModal 统一补齐，新增弹框不必记得手写。"""
+        src = _src()
+        self.assertIn("function _ensureDialogA11y", src, "缺少弹框无障碍补齐函数")
+        self.assertIn("_ensureDialogA11y(modal);", src, "mountModal 必须调用无障碍补齐")
+        for attr in (
+            'setAttribute("role", "dialog")',
+            'setAttribute("aria-modal", "true")',
+            'setAttribute("aria-label"',
+        ):
+            self.assertIn(attr, src, f"补齐逻辑缺 {attr}")
+
+    def test_backdrop_click_closes(self):
+        """规范承诺的三条关闭路径之一：点遮罩（此前从未实现）。"""
+        src = _src()
+        self.assertIn("function _bindBackdropClose", src, "缺少遮罩点击关闭")
+        self.assertIn("_bindBackdropClose(modal);", src, "mountModal 必须绑定遮罩关闭")
+
+    def test_head_top_padding_aligned(self):
+        """.ad-head 与 .form-head 的顶部内边必须同档（差 4px 就是两个家族）。"""
+        css = _css()
+        form = re.search(r"\.modal-form \.form-head\s*\{([^}]*)\}", css)
+        ad = re.search(r"\.ad-head\s*\{([^}]*)\}", css)
+        self.assertIsNotNone(form, "未找到 .form-head 规则")
+        self.assertIsNotNone(ad, "未找到 .ad-head 规则")
+        fp = re.search(r"padding:\s*([^;]+);", form.group(1)).group(1).split()
+        ap = re.search(r"padding:\s*([^;]+);", ad.group(1)).group(1).split()
+        self.assertEqual(fp[0], ap[0], "两个家族头部顶部内边必须同档")
+
+    def test_no_dead_modal_h3_rule(self):
+        """``.modal h3`` 是死样式：标题都走 .form-title / .cfm-title / .ad-name。"""
+        self.assertNotIn(
+            ".modal h3 {", _css(),
+            "死样式应删除，否则后来者会以为还有弹框用 h3 当标题",
+        )
+
+    def test_foot_buttons_meet_touch_target(self):
+        """详情弹框底栏按钮也必须有显式 32px 触达目标。"""
+        self.assertIn(
+            ".ad-foot button { min-height: 32px; }", _css(),
+            ".ad-foot 按钮缺显式 32px（此前 .btn-soft 未声明、实测 34px 但不同族）",
+        )
+
+    # ── 层次感（v0.46.9 用户要求「需要一点设计感，现在没有层次感」） ──
+    #
+    # 此前卡片、头部、底栏、按钮全用同一个 --panel 平面，只靠 1px 线分隔，
+    # 阴影只有外投影、没有内高光，浮层像贴纸。下面三条锁住「三档表面 + 两道高光」。
+
+    def test_modal_has_inner_highlight(self):
+        """卡片必须有一道上缘内高光，否则纯外投影的白卡片在浅底上像贴纸。"""
+        css = _css()
+        rule = re.search(r"\n  \.modal \{([^}]*)\}", css)
+        self.assertIsNotNone(rule, "未找到 .modal 规则")
+        self.assertIn("inset 0 1px 0 var(--modal-hi)", rule.group(1),
+                      ".modal 缺上缘内高光（应为 box-shadow 里的 inset 那一层）")
+
+    def test_footers_sink_one_level(self):
+        """底栏必须用 --modal-foot-bg 下沉一档，不得与主体同为 --panel。"""
+        css = _css()
+        for sel in (r"\.modal-form \.form-actions", r"\.ad-foot"):
+            rule = re.search(sel + r" \{([^}]*)\}", css)
+            self.assertIsNotNone(rule, f"未找到 {sel} 规则")
+            self.assertIn("background: var(--modal-foot-bg)", rule.group(1),
+                          f"{sel} 底栏未下沉（应 background: var(--modal-foot-bg)）")
+
+    def test_notice_icon_has_halo(self):
+        """通知图标必须有 4px 语义光晕，否则只是纯色块。"""
+        css = _css()
+        ok = re.search(r"\.notice-card\.notice-ok \.cfm-icon \{([^}]*)\}", css)
+        self.assertIsNotNone(ok, "未找到 notice-ok 图标规则")
+        self.assertIn("0 0 0 4px var(--ok-bg)", ok.group(1),
+                      "图标缺语义光晕（应为 0 0 0 4px <语义>-bg）")
+
+    # ── 头部结构（v0.46.10 用户要求「头有点轻，就一个大图标很不协调」） ──
+    #
+    # 此前图标 40px 居中孤悬、标题垂直堆叠。改为「图标 + 标题同行」的横向头部条，
+    # 由 .cfm-card 的 grid 重排实现（不改 DOM，6 个调用方的模板一行都不用动）。
+
+    def test_cfm_head_is_horizontal(self):
+        """图标与标题必须在同一行：.cfm-card 用 grid，图标/标题占第 1 行两列。"""
+        css = _css()
+        card = re.search(r"\n  \.cfm-card \{([^}]*)\}", css)
+        self.assertIsNotNone(card, "未找到 .cfm-card 规则")
+        self.assertIn("display: grid", card.group(1), ".cfm-card 必须用 grid 重排头部")
+        self.assertIn("grid-template-columns: auto minmax(0, 1fr)", card.group(1),
+                      "头部应为「图标列 + 标题列」两列布局")
+        self.assertIn("grid-column: 1; grid-row: 1", css,
+                      "图标未钉在第 1 行第 1 列")
+        self.assertIn("grid-column: 2; grid-row: 1", css,
+                      "标题未钉在第 1 行第 2 列")
+
+    def test_cfm_icon_is_32_not_40(self):
+        """图标 32px：与 16px 标题构成 2:1，40px 在同行布局里会压过标题。"""
+        css = _css()
+        icon = re.search(r"\n  \.cfm-icon \{([^}]*)\}", css)
+        self.assertIsNotNone(icon, "未找到 .cfm-icon 规则")
+        self.assertIn("width: 32px", icon.group(1), "图标宽度应为 32px")
+        self.assertNotIn("margin: 0 auto", icon.group(1),
+                         "同行布局下不得再用居中 margin")
+
+    def test_all_modal_families_have_kind_stripe(self):
+        """顶部 3px 语义色带：**四类弹框统一都有**（v0.46.11）。
+
+        上一版只有确认/通知有，表单和详情没有 —— 用户评审「有的上面有色条，
+        有的没有」。现在它是 `.modal` 的固定组成部分，颜色只表达语义不表达家族。
+        """
+        css = _css()
+        stripe = re.search(r"\n  \.modal::before \{([^}]*)\}", css)
+        self.assertIsNotNone(stripe, "缺少 .modal::before 色带（应挂在容器上，四类共用）")
+        self.assertIn("height: 3px", stripe.group(1), "色带高度应为 3px")
+        # 四类家族各自有语义色
+        for sel in (".modal.ad-modal::before", ".modal.cfm-card.cfm-danger::before",
+                    ".modal.notice-card.notice-ok::before", ".modal.notice-card.notice-err::before"):
+            self.assertIn(sel, css, f"{sel} 缺色带着色规则")
+
+    def test_cfm_actions_align_right(self):
+        """确认/通知底栏右对齐，与表单、详情家族一致（此前居中）。"""
+        css = _css()
+        acts = re.search(r"\.cfm-card \.actions \{([^}]*)\}", css)
+        self.assertIsNotNone(acts, "未找到 .cfm-card .actions 规则")
+        self.assertIn("justify-content: flex-end", acts.group(1),
+                      "底栏应右对齐（居中会让单出口按钮悬在中间）")
+
+
+class PageLevelConsistencyTest(unittest.TestCase):
+    """页面层一致性（v0.47.0 全量评审的 11 项修复）。
+
+    弹框层此前已收干净，这一组守的是**页面层**：开关形态、统计卡网格、
+    页头按钮层级、空态句式、骨架屏覆盖、图例去重。
+    """
+
+    def test_patrol_toggle_is_switch_not_segbtn(self):
+        """设置页布尔开关只能用 `.switch`（与共享约束同步同族）。"""
+        src = _src()
+        self.assertNotIn("data-patrol-toggle", src,
+                         "后台巡检不得再用「开启/关闭」两个 seg-btn")
+        self.assertIn("data-patrol-switch", src, "后台巡检应改用 .switch")
+        self.assertIn('class="switch" role="switch"', src, "缺 .switch 结构")
+
+    def test_stat_grid_is_fixed_three_columns(self):
+        """概览统计卡固定 3 列，避免 auto-fill 排出 5+1。"""
+        css = _css()
+        rule = re.search(r"\n  \.stat-grid \{([^}]*)\}", css)
+        self.assertIsNotNone(rule, "未找到 .stat-grid 规则")
+        self.assertIn("repeat(3, minmax(0, 1fr))", rule.group(1),
+                      "统计卡必须固定 3 列（auto-fill 在 1200px 下会排成 5+1）")
+
+    def test_skills_page_head_has_single_primary(self):
+        """Skills 页头 6 个动作必须有且只有一个 primary。"""
+        src = _src()
+        start = src.index('data-action="open-insight"')
+        head = src[max(0, start - 300): start + 900]
+        self.assertIn('class="primary" data-action="skill-check-updates"', head,
+                      "「检查更新」应为唯一主操作")
+        self.assertIn('class="ghost" data-action="open-insight"', head,
+                      "查看类动作应降为 ghost")
+
+    def test_empty_state_copy_has_no_weikong(self):
+        """空态不得用「X 为空」句式（统一为「无 X」）。"""
+        src = _src()
+        for bad in ("端点库为空", "市场源为空"):
+            self.assertNotIn(bad, src, f"空态文案应改为「无…」句式：{bad}")
+
+    def test_skeleton_covers_four_data_pages(self):
+        """骨架屏必须覆盖四个数据页容器，不只 agents-list。"""
+        src = _src()
+        start = src.index("function showSkeleton()")
+        rest = src[start:]
+        nxt = rest.find("\nasync function ", 10)
+        body = rest[: nxt if nxt > 0 else 1200]
+        for cid in ("agents-list", "skills-list", "mcp-clients", "dsh-body"):
+            self.assertIn(f'"{cid}"', body, f"骨架屏未覆盖 {cid}")
+
+    def test_skills_page_has_no_dot_legend(self):
+        """技能页不得再有色点图例（与筛选 chip 信息重复）。"""
+        src = _src()
+        start = src.index('id="skill-legend"')
+        seg = src[max(0, start - 200): start + 400]
+        self.assertNotIn("legend-swatch", seg,
+                         "技能页图例已改为纯文字说明，不得再渲染色点")
+        self.assertIn("skill-legend-note", seg, "技能页应使用 .skill-legend-note")
+
+    def test_upg_modal_inherits_task_card_width(self):
+        """升级弹框不再单独声明宽度，继承 .task-card（宽度档位收敛）。"""
+        css = _css()
+        self.assertNotIn(".upg-modal { --modal-w:", css,
+                         ".upg-modal 应继承 .task-card 的宽度，不再单独声明")
+
+
+class TableColumnAlignmentTest(unittest.TestCase):
+    """表格列对齐（v0.47.5 用户定案：只有「居中」与「长文本左」两种）。
+
+    v0.47.4 曾按「文本左 / 数字右 / 图标中」分三档，用户评审「有的左有的右有的居中，
+    很乱」。现在收敛：表头与短内容一律居中，只有长段落列左对齐。
+    """
+
+    def test_skill_table_defaults_to_center(self):
+        """技能表所有单元格默认居中，表头同向。"""
+        css = _css()
+        rule = re.search(r"\.skill-table th, \.skill-table td \{([^}]*)\}", css)
+        self.assertIsNotNone(rule, "未找到技能表基础规则")
+        self.assertIn("text-align: center", rule.group(1),
+                      "技能表应默认居中（v0.47.5）")
+
+    def test_skill_table_usage_is_left(self):
+        """只有「用途」（长段落）左对齐。"""
+        css = _css()
+        rule = re.search(
+            r"\.skill-table th\.st-usage, \.skill-table td\.st-usage \{([^}]*)\}", css)
+        self.assertIsNotNone(rule, "未找到用途列对齐规则")
+        self.assertIn("text-align: left", rule.group(1),
+                      "用途列是长段落，必须左对齐")
+
+    def test_agent_table_centers_everything(self):
+        """Agent 表没有长段落列，整表居中。"""
+        css = _css()
+        # 多行选择器，直接匹配归一化后的片段
+        norm = re.sub(r"\s+", " ", css)
+        self.assertIn(".agent-list-table th, .agent-list-table td { text-align: center; }",
+                      norm, "Agent 表应整表居中（该表没有长段落列）")
+
+    def test_nest_row_colspan_matches_column_count(self):
+        """嵌套子技能行的 colspan 必须等于表格列数（6）。
+
+        v0.47.5 实测 bug：写成 7 而技能表只有 6 列，展开后右侧多出一列空白
+        （用户截图「展开之后右边显示异常」）。
+        """
+        src = _src()
+        self.assertIn('<td colspan="6"><div class="nest-list">', src,
+                      "嵌套行 colspan 必须与技能表列数一致（6）")
+        self.assertNotIn('<td colspan="7"><div class="nest-list">', src,
+                         "colspan=7 会撑出多余列，导致展开后右侧空白")
+
+    def test_table_side_padding_is_symmetric(self):
+        """表格左右留白必须对称（v0.47.6 用户反馈「左边空太多、右边太少」）。
+
+        左侧的 36px 来自名称列的展开箭头占位（`.nest-toggle` + gap），
+        右侧原本只有 12px 的常规单元格 padding —— 视觉上一侧空、一侧挤。
+        操作列补 `padding-right: var(--sp-9e)` 后实测 36 / 38px。
+        """
+        css = _css()
+        norm = re.sub(r"\s+", " ", css)
+        self.assertIn(".skill-table .st-ops { text-align: center; white-space: nowrap; "
+                      "padding-right: var(--sp-9e); }", norm,
+                      "操作列右侧留白应与左侧箭头占位同档（--sp-9e）")
+        self.assertIn(".skill-table th.st-ops { width: 6%; padding-right: var(--sp-9e); }",
+                      norm, "表头也要同样留白，且列宽加宽以容纳")
+
+    def test_all_data_tables_have_column_rules(self):
+        """三套数据表都必须有列分隔竖线（v0.47.7）。
+
+        用户评审：「有的列之间有分隔线，有的没有」。此前只有技能表与 Agent 表
+        有 `:not(:last-child)::after` 竖线，MCP 表没有。
+        """
+        css = _css()
+        for tbl in (".skill-table", ".agent-list-table", ".mcp-table"):
+            self.assertIn(f"{tbl} th:not(:last-child)", css, f"{tbl} 缺竖线选择器")
+            self.assertIn(f"{tbl} td:not(:last-child)", css, f"{tbl} 缺竖线选择器")
+        self.assertIn("linear-gradient(to right, transparent calc(100% - 1px), var(--line-strong) 0)",
+                      css, "竖线必须用 background-image 画（::after 会被 overflow:hidden 裁掉）")
+
+    def test_data_tables_share_row_height(self):
+        """三套数据表的单元格上下内边必须同档（v0.47.7）。
+
+        此前 Agent 表 7px、技能表 6px、MCP 表 9px —— 用户看到「有的行宽有的行窄」。
+        """
+        css = _css()
+        for tbl in (".skill-table", ".agent-list-table", ".mcp-table"):
+            m = re.search(r"\n  " + re.escape(tbl) + r" td \{([^}]*)\}", css)
+            self.assertIsNotNone(m, f"未找到 {tbl} td 规则")
+            body = m.group(1)
+            self.assertIn("height: var(--sp-9c)", body,
+                          f"{tbl} 的行高应由 height 固定（v0.47.11）")
+            self.assertIn("padding: 0 var(--sp-5)", body,
+                          f"{tbl} 垂直 padding 必须归零，否则内部 flex 容器会把行撑高")
+
+    def test_mcp_table_row_padding_is_explicit(self):
+        """MCP 表的 td 必须显式写 8px 行内边，不能继承全局 9px（v0.47.9）。
+
+        实测：`.mcp-table td` 只写了 height，padding 继承全局 `var(--sp-3b)`(9px)，
+        于是「有胶囊的行」被撑到 42px、「无胶囊的行」正好 40px —— 同一张表两种行高。
+        """
+        css = _css()
+        m = re.search(r"\.mcp-table td \{([^}]*)\}", css)
+        self.assertIsNotNone(m, "未找到 .mcp-table td 规则")
+        self.assertIn("height: var(--sp-9c)", m.group(1),
+                      "MCP 表必须由 height 固定行高（v0.47.11）")
+        self.assertIn("padding: 0 var(--sp-5)", m.group(1),
+                      "垂直 padding 必须归零，否则胶囊行会比无胶囊行高")
+
+    def test_alignment_rule_is_documented(self):
+        """规范必须写明两档规则，且 HTML 版同步。"""
+        md = SPEC.read_text(encoding="utf-8")
+        self.assertIn("表格列对齐规则", md, "§2.3e-0 缺失")
+        seg = md[md.index("表格列对齐规则"):][:1200]
+        self.assertIn("居中", seg)
+        self.assertIn("左", seg)
+        self.assertIn("长段落", seg, "必须写明「长段落左对齐」这条判据")
+        html = SPEC_HTML.read_text(encoding="utf-8")
+        self.assertIn("s2-3e0", html, "HTML 版缺 §2.3e-0")
+
+
 class CardTitleAlignmentTest(unittest.TestCase):
     """卡片标题与内容行的对齐（v0.38.6 用户「标题和内容没完全对齐，往下偏」）。
 
@@ -1734,13 +2087,14 @@ class SkillTableVerticalRulesTest(unittest.TestCase):
     """
 
     def test_skill_table_draws_vertical_rule(self):
+        # v0.47.12：从 ::after 改为 background-image（td 的 overflow:hidden 会裁掉伪元素）
         css = _css()
-        self.assertRegex(css, r"\.skill-table th:not\(:last-child\)::after",
-                         "Skills 表单元格必须用 ::after 画竖线")
-        m = re.search(r"\.skill-table td:not\(:last-child\)::after\s*\{([^}]*)\}", css)
-        self.assertIsNotNone(m, "缺少 td 竖线规则")
-        for prop in ("position: absolute", "top: 0", "bottom: 0", "width: 1px"):
-            self.assertIn(prop, m.group(1), f"竖线规则缺 {prop}")
+        self.assertRegex(css, r"\.skill-table th:not\(:last-child\)",
+                         "Skills 表单元格必须有竖线选择器")
+        self.assertRegex(css, r"\.skill-table td:not\(:last-child\)",
+                         "Skills 表单元格必须有竖线选择器")
+        self.assertIn("linear-gradient(to right, transparent calc(100% - 1px), var(--line-strong) 0)",
+                      css, "竖线必须用 background-image 画（伪元素会被 overflow:hidden 裁掉）")
 
     def test_skill_table_collapse_disabled(self):
         css = _css()
@@ -2167,7 +2521,7 @@ class SkillVersionUiContractTest(unittest.TestCase):
         css = _css()
         self.assertIn(".upg-bar-fill { transition: none !important; }", css,
                       "reduced-motion 未覆盖升级进度条（用户开启减少动效后仍在动）")
-        self.assertIn("--modal-w: min(440px, 92vw)", css,
+        self.assertIn("--modal-w: min(440px, 94vw)", css,
                       "升级模态宽度应走 --modal-w 变量体系")
         # 表格密度统一：升级确认表与主技能表同档 sp-2
         self.assertIn(".upg-table td { font-size: var(--fs-sm); padding: var(--sp-2) var(--sp-2)", css,
@@ -2210,8 +2564,9 @@ class SkillVersionUiContractTest(unittest.TestCase):
         # 可升级筛选段
         self.assertIn('data-seg="updatable">可升级', src, "筛选段缺「可升级」")
         self.assertIn('seg === "updatable"', src, "筛选逻辑缺 updatable 分支")
-        # 升级确认文案：danger 视觉 + 「确认升级」文案（不得误用「确认删除」）
-        self.assertIn(">确认升级</button>", src, "升级确认按钮文案应为「确认升级」")
+        # 升级确认文案：danger 视觉 + 动词「升级」（不得误用「确认删除」，
+        # 也不带「确认」前缀 —— v0.46.11 统一为「主按钮 = 动词」）
+        self.assertIn(">升级</button>", src, "升级确认按钮文案应为「升级」")
         self.assertIn("confirmText || (danger", src, "confirmModal 应支持自定义确认文案")
         # 「最新」/「有更新」tag 都显示远端版本号或提交时间（用户需求）
         self.assertIn("remoteTime", src, "检查结果缺 remoteTime（远端提交时间）")
@@ -2258,7 +2613,7 @@ class SkillVersionUiContractTest(unittest.TestCase):
         # 弹框宽度治理（v0.31.0 收敛）：所有弹框走 --modal-w 变量，
         # 禁止再出现「用 !important 覆盖自身 width」的写法。
         css = _css()
-        self.assertIn("width: var(--modal-w, min(560px, 92vw))", css,
+        self.assertIn("width: var(--modal-w, min(560px, 94vw))", css,
                       ".modal 应通过 --modal-w 消费宽度")
         self.assertNotIn("--modal-w: min(440px, 92vw); min-width", css,
                          "升级模态不应再用 min-width 硬写（应改 --modal-w）")

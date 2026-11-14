@@ -287,6 +287,33 @@ class AgentMenuRulesEntryTest(unittest.TestCase):
         self.assertNotIn("payload.rows", body, "audit 的 rows 结构不能用来解析 apply 结果")
         self.assertIn('"--format", "json"', body, "必须带 --format json 才有结构化输出")
 
+    def test_menu_entry_not_gated_by_file_existence(self):
+        """约束文件不存在时菜单**仍然**要出现「写入共享约束」（v0.46.9）。
+
+        用户截图：「VS Code 约束列 0/1，点了修复没成功」。根因是两道闸门：
+        `needFixRulesFor` 在「所有文件都不存在」时 return false（菜单里没有这一项），
+        即使点到了，`fixRulesFor` 也会过滤掉不存在的路径后直接弹警告返回。
+        而 CLI 的 `apply_client` 对不存在的路径**会创建文件**（dry-run 实测
+        state=missing 但 ok=true, changed=true）—— GUI 的假设与 CLI 相反。
+        """
+        start = self.gui.index("function needFixRulesFor(a)")
+        rest = self.gui[start:]
+        nxt = rest.find("\nfunction ", 10)
+        body = rest[: nxt if nxt > 0 else 1600]
+        self.assertNotIn("if (!paths.some((x) => x.exists)) return false;", body,
+                         "不得因「文件都不存在」就隐藏菜单入口（写入会新建文件）")
+
+    def test_writer_does_not_skip_nonexistent_paths(self):
+        """写入实现不得把「尚不存在的文件」过滤掉后再判断为空（v0.46.9）。"""
+        start = self.gui.index("async function fixRulesFor(name)")
+        rest = self.gui[start:]
+        nxt = rest.find("\nasync function ", 10)
+        body = rest[: nxt if nxt > 0 else 4000]
+        self.assertNotIn("filter((x) => x.exists).map((x) => x.path)", body,
+                         "不得先过滤掉不存在的路径再判断「无可写入的约束文件」")
+        self.assertIn("toCreate", body,
+                      "必须区分「将新建」的文件并在确认框里说明")
+
     def test_dispatch_and_writer_exist(self):
         self.assertIn('pm === "fix-rules"', self.gui, "菜单动作未分发")
         self.assertIn("async function fixRulesFor(name", self.gui, "缺写入实现")

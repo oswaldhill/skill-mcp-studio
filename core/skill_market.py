@@ -603,16 +603,27 @@ def _local_skill_time(name: str, row: Dict[str, Any], skills_dir: Path) -> Optio
     if not path.is_dir():
         return row.get("updated_at") or row.get("installed_at")
 
+    # v0.47.2：取 git 提交时间与 SKILL.md mtime 的**较大者**，不再「git 有值就返回」。
+    #
+    # 原因（用户实测）：`npx skills upgrade` 只写文件、不 git commit，于是 git 时间
+    # 停在上一次提交（如 11-04），而远端已有 11-10 的提交 → 判 outdated；再点升级，
+    # npx 认为已是最新、文件不变 → 永远是「可升级」的死循环（与 2026-11-09 那次
+    # 同源，只是那次是 lock 不更新，这次是 git 不更新）。
+    # 文件被写过就说明内容可能是新的，取较大者才符合「本地内容时间」的语义。
+    candidates: list[str] = []
     if (Path(skills_dir) / ".git").exists():
         iso = _git_path_time(skills_dir, name)
         if iso:
-            return iso
-
+            candidates.append(iso)
     try:
         mtime = (path / "SKILL.md").stat().st_mtime
-        return datetime.fromtimestamp(mtime, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        candidates.append(
+            datetime.fromtimestamp(mtime, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
     except OSError:
         pass
+    if candidates:
+        # 同格式 UTC ISO 串可直接字典序比较
+        return max(candidates)
     return row.get("updated_at") or row.get("installed_at")
 
 
@@ -873,6 +884,22 @@ def _recount(rows: List[Dict[str, Any]]) -> Dict[str, int]:
 def _check_cache_path() -> "Path":
     # 缓存与 skill_versions.json 同目录（仓库 data/，gitignored）
     return Path(__file__).resolve().parents[1] / "data" / "market_check_cache.json"
+
+
+def invalidate_check_cache() -> bool:
+    """让「检查更新」缓存失效（v0.47.3）。
+
+    任何**改动技能库**的写操作都该在成功后调用：安装 / 升级 / 删除 / 合并 /
+    回滚 / 清理登记残留。缓存 TTL 1 小时，不失效的话用户操作完立刻点
+    「检查更新」，看到的还是操作前的快照 —— 连续两次实测踩到
+    （v0.47.1 清理残留、v0.47.2 升级），所以收成一个公共出口，
+    新增写操作时只需调用它，不要各自 unlink。
+    """
+    try:
+        _check_cache_path().unlink(missing_ok=True)
+        return True
+    except OSError:
+        return False
 
 
 def _load_check_cache() -> Optional[Dict[str, Any]]:

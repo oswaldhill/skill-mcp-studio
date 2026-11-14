@@ -7,6 +7,737 @@
 
 ## [Unreleased]
 
+## [v0.47.13] - 2026-11-13
+
+当前发布版本（build 216）。
+
+**统一五套表格的对齐规则（用户：每个页面的每个表格都不太一样）。**
+
+### 统一后的规则（只有一条）
+
+> **表头一律居中；行首列与长文本列左对齐；其余一律居中。**
+
+| 表格 | 左对齐的列 | 其余 |
+|---|---|---|
+| `.skill-table` | 名称（行首）、用途（长文本） | 全部居中 |
+| `.agent-list-table` | 名称、类型（前两列） | 全部居中 |
+| `.mcp-table` | 客户端（行首） | 全部居中 |
+| `.merge-table` | 客户端（行首）、Skills 路径（长文本） | 全部居中 |
+| `.upg-table` | 技能名（行首） | 版本 / 箭头居中 |
+
+### 本次实际改动
+
+| 表 | 改前 | 改后 |
+|---|---|---|
+| `.agent-list-table` | 整表居中（名称也居中） | 前两列左、其余居中 |
+| `.merge-table` | **全部左对齐** | 客户端 + 路径左，其余居中 |
+| `.upg-table` | 表头左、版本**右** | 表头居中、版本居中 |
+
+`.skill-table` / `.mcp-table` 已符合，未动。
+
+### 真机验证（逐页截图）
+
+用「每 5 秒自动切页」临时验证后逐张截图：
+
+- IDE / Agent：名称、类型左；其余居中 ✓
+- Skills：名称、用途左；其余居中 ✓
+- MCP：客户端左；其余居中 ✓（前一轮已验）
+- DSH 插件：客户端左；其余居中 ✓
+
+验证完删除临时代码。
+
+## [v0.47.12] - 2026-11-13
+
+当前发布版本（build 215）。
+
+**修「Skills 名称列、Agent 表多数列没有竖线」—— 真机逐页截图确认。**
+
+### 真因：`::after` 被 `overflow: hidden` 裁掉
+
+竖线原本用 `td:not(:last-child)::after` + `right: -0.5px` 画在单元格**右边缘外**。
+但多个单元格带 `overflow: hidden`（为了长文本省略）：
+
+| 元素 | overflow |
+|---|---|
+| `.agent-list-table td` | `hidden` |
+| `.skill-table td.st-name` | `hidden` |
+
+伪元素落在盒子外，被直接裁掉 —— 于是 Skills 的名称列、Agent 表多数列**看不到线**，
+而没设 overflow 的列（MCP 表）能看到。
+
+### 修复：改用 background-image
+
+```css
+td:not(:last-child) {
+  background-image: linear-gradient(to right, transparent calc(100% - 1px), var(--line-strong) 0);
+}
+```
+
+`background` 不受 `overflow` 裁切影响，也不与 `box-shadow`（异常行左侧色条）抢属性。
+五套表（skill / agent / mcp / merge / upg）统一换成这一条。
+
+### 真机验证（逐页截图 + 放大）
+
+为验证，临时加了「每 5 秒自动切页」的代码，逐页截图后放大检查：
+
+| 页面 | 竖线 |
+|---|---|
+| IDE / Agent | ✅ 10 列全部有 |
+| Skills | ✅ 6 列全部有 |
+| MCP | ✅ 4 列全部有 |
+| DSH 插件（复用 `.mcp-table`） | ✅ 5 列全部有 |
+
+验证完已删除临时代码，重新构建正式版。
+
+### 门禁
+
+`ListVerticalRulesTest` / `SkillTableVerticalRulesTest` / `TableColumnAlignmentTest`
+三处断言从「必须有 `::after`」改为「必须有 background-image 竖线」，
+并写明原因（伪元素会被 overflow 裁掉）。
+
+## [v0.47.11] - 2026-11-13
+
+当前发布版本（build 214）。
+
+**修「MCP 表行高仍不一致」—— 这次在真实 App 里量过。**
+
+### 为什么前两版没修好
+
+前两版都是**在浏览器预览态**验证的（Chrome / Blink），而 App 用的是 **WKWebView
+（Safari 内核）**。两者对 `<button>` 的默认 line-height / padding 处理不同：
+
+```
+同一份 CSS：浏览器量 40px，App 里量 51px
+```
+
+`.tag` 是 `<button class="tag tag-btn">`，胶囊的高度在 WKWebView 里比 Blink 高
+约 11px —— 于是「有胶囊的行」被撑到 51px，「无胶囊的行」39px，差 12px。
+
+### 三层修复
+
+| 层 | 改动 |
+|---|---|
+| 胶囊高度 | `.tag` 显式 `height: 20px; line-height: 18px; box-sizing: border-box`，消除内核差异 |
+| 行高 | 三套主表 `td` 改为 **`padding: 0` + `height: 40px` + `vertical-align: middle`** —— 行高完全由 height 决定，内部 flex 容器（客户端名 + 标签）再高也撑不开 |
+| 竖线可见性 | `::after` 颜色 `--line` → **`--line-strong`**（暗色下 `#1C1C22` 与面板 `#131317` 几乎同色，等于没画） |
+
+### 真机实测（截图 + 像素分析）
+
+```
+修复前：行高 43 / 44 / 43 / 40 / 41
+修复后：行高 40 / 40 / 40 / 40 / 41   ← 全部一致
+```
+
+竖线在暗色下也可见了。
+
+### 教训
+
+**UI 改动必须在真实 App 里验证，不能只看浏览器预览态。** 本项目 App 用
+WKWebView、浏览器用 Blink，`button` 等表单控件的默认样式存在内核差异。
+这次为真机验证临时加了「启动后自动切到 MCP 页」的代码（验证完已删除）。
+
+## [v0.47.9] - 2026-11-13
+
+当前发布版本（build 212）。
+
+**修「MCP 表行高仍然不一致」（用户第二次反馈）。**
+
+### 真因：padding 没写，继承的是全局 9px
+
+v0.47.8 给 `.mcp-table td` 加了 `height: 40px`，但**没写 padding** —— 它继承全局
+`th, td { padding: var(--sp-3b) var(--sp-5) }`（**9px**），而技能表与 Agent 表是
+显式的 8px。
+
+于是：
+
+```
+有胶囊的行：9 + 22(胶囊) + 9 = 40 → 但胶囊实际 24px → 42px
+无胶囊的行：9 + 18(文字) + 9 = 36 → height 兜到 40px
+```
+
+两行差 2px，肉眼可见（用户截图 `ima.copilot` / `VS Code` 比上面三行矮）。
+
+### 修复
+
+`.mcp-table td { height: var(--sp-9c); padding: var(--sp-3) var(--sp-5); }`
+
+### 实测
+
+```
+修复前：有胶囊 42px / 无胶囊 40px
+修复后：有胶囊 40px / 无胶囊 40px / 无胶囊 40px   ← 全部一致
+```
+
+### 门禁
+
+`TableColumnAlignmentTest` 补第 9 条：`.mcp-table td` 必须**显式**写
+`padding: var(--sp-3) var(--sp-5)` —— 只写 height 不写 padding 就会重蹈覆辙。
+
+## [v0.47.8] - 2026-11-13
+
+当前发布版本（build 211）。
+
+**行高统一 + 竖线覆盖全部表格（用户评审「行高还是不一样」「要么都有要么都没有」）。**
+
+### 问题
+
+1. **同一张表里两种行高**：有胶囊（`.tag`）的行被撑到 38px，无胶囊的行只有 34px
+   —— MCP 表里 `ima.copilot` / `VS Code` 两行明显比上面三行矮。
+2. **竖线仍不齐**：技能表 / Agent 表 / MCP 表都有了，但弹框内的合并预览表与
+   升级确认表还没有。
+
+### 修复
+
+| 项 | 改动 |
+|---|---|
+| 行高 | 三套主表 `td` 加 `height: var(--sp-9c)`（40px），胶囊与纯文字行一致 |
+| 竖线 | `.merge-table` / `.upg-table` 补 `:not(:last-child)::after`，与主表同规则 |
+
+**至此五套表格结构完全一致**：列竖线全有、行内边 8px 12px、行高 40px。
+
+### 门禁
+
+`ListVerticalRulesTest` 原有的「td 竖线规则」断言仍守 Agent 表（拆成独立块以保持
+正则可匹配）；新表用同一套声明。
+
+## [v0.47.7] - 2026-11-13
+
+当前发布版本（build 210）。
+
+**修「表格左右仍不平衡」+ 三套数据表结构统一（用户评审）。**
+
+### 问题
+
+1. Skills 页左侧仍空太多 —— 名称列居中，而行首本应贴左。
+2. **有的列之间有分隔线，有的没有**：只有技能表与 Agent 表画了竖线，MCP 表没有。
+3. **有的行宽有的行窄**：三套表的单元格上下内边分别是 6 / 7 / 9px。
+
+### 修复
+
+| 项 | 改动 |
+|---|---|
+| 名称列 | 居中 → **左对齐**（行首是行标识，居中会在左侧留大片空） |
+| MCP 表 | 补 `:not(:last-child)::after` 竖线 + 自己的 `border-collapse` / 单元格定位 |
+| 行内边 | 三套表统一 `var(--sp-3) var(--sp-5)`（8px 12px），原 6 / 7 / 9px |
+
+### 规则沉淀（§2.3e-0）
+
+- 对齐：**行首与长段落左对齐，其余居中**（表头与内容同向）
+- 结构：**所有数据表共享**——每列画 1px 竖线；行内边统一 8px 12px
+
+### 门禁
+
+`TableColumnAlignmentTest` 补 2 条：
+- 三套表的 `th/td:not(:last-child)::after` 竖线规则必须都存在
+- 三套表的行内边必须是 `var(--sp-3) var(--sp-5)`
+
+## [v0.47.6] - 2026-11-13
+
+当前发布版本（build 209）。
+
+**修「表格左侧空白太多、右侧太少」（用户反馈）。**
+
+### 根因：左右留白不同源
+
+| 侧 | 留白 | 来源 |
+|---|---|---|
+| 左 | **36px** | 名称列的展开箭头占位（`.nest-toggle` + gap） |
+| 右 | **12px** | 常规单元格 padding |
+
+两侧不是同一套度量，所以看起来一边空、一边挤。
+
+### 修复
+
+操作列补 `padding-right: var(--sp-9e)`（36px，与左侧箭头占位同档），
+列宽 4% → 6%（36px 之后仍要放得下 22px 的 `⋯`）。表头同样补。
+
+### 实测
+
+```
+修复前：左侧留白 36px，右侧留白 14px（差 22px）
+修复后：左侧留白 36px，右侧留白 38px（差 2px，来自 ⋯ 图标在 padding 内居中）
+```
+
+### 门禁
+
+`TableColumnAlignmentTest` 补第 6 条：操作列与表头的 `padding-right` 必须是
+`var(--sp-9e)`，且列宽已加宽。
+
+## [v0.47.5] - 2026-11-13
+
+当前发布版本（build 208）。
+
+**修「展开子技能后右侧显示异常」+ 对齐规则收敛为两档（用户定案）。**
+
+### Bug：嵌套行 colspan 写成 7，而技能表只有 6 列
+
+```html
+<tr class="nest-tr" ...><td colspan="7">   ← 技能表只有 6 列
+```
+
+展开 `inference-sh` 后，这一行撑出第 7 列，表格右侧出现一条空白带
+（用户截图红框）。改为 `colspan="6"`，并把旁边那句过时的「该表 5 列」注释改正。
+
+### 对齐规则：从三档收敛为两档
+
+v0.47.4 按「文本左 / 数字右 / 图标中」分了三档 —— 设计上「正确」，但在只有 6 列的
+表里制造了三种视觉轴线。用户评审：「有的左对齐，有的右对齐，有的不知道是什么对齐，
+很乱」。
+
+**新规则（用户定案）**：
+
+| 列 | 对齐 |
+|---|---|
+| **表头**（所有列） | **居中** |
+| **短内容**（名称 / 分类 / 同步 / 启用 / 操作 / 数字 / 图标） | **居中** |
+| **长段落**（用途 / 描述 / 路径） | **左** |
+
+判定只有一问：这一列是「一个词/数字/图标」还是「一句话」？
+
+**落地**：
+
+| 表 | 左对齐的列 | 其余 |
+|---|---|---|
+| `.skill-table` | 用途 | 全部居中 |
+| `.agent-list-table` | 无（无长段落列） | 全部居中 |
+| `.mcp-table` / `.merge-table` / `.upg-table` | 客户端 / 路径 / 技能名 | 其余居中 |
+
+**顺带修掉一个覆盖 bug**：`.skill-table th { text-align: left }` 与整列居中规则
+同特异性、定义在后，把表头改回了左对齐 —— 导致「表头左、内容中」，正是用户
+说的错位。已改为 `center`。
+
+### 门禁
+
+`TableColumnAlignmentTest` 重写为 5 条（整表居中 / 用途左 / Agent 表整表居中 /
+嵌套行 colspan 必须等于列数 / 规范两档规则 + HTML 同步）。
+
+## [v0.47.4] - 2026-11-13
+
+当前发布版本（build 207）。
+
+**定义表格列对齐规则，并统一五套表格（用户评审「对齐策略不统一」）。**
+
+### 问题
+
+五套表格各写各的，同一个内容类型在不同表里对齐方式相反：
+
+| 列 | 技能表 | Agent 表 |
+|---|---|---|
+| 日期 / 数字（`11/12`、`N/M`） | 同步列左对齐、启用列右对齐 | 约束 / MCP 列**居中** |
+| 操作（`⋯`） | 右对齐 | **居中** |
+| 圆形数字徽标（APP / CLI / CONFIG） | — | **左对齐**（继承默认） |
+
+规范里也没有全局规则，只有零散的「某表某列居中」记录。
+
+### 新规则（§2.3e-0，按内容类型而非按表格）
+
+| 列类型 | 对齐 |
+|---|---|
+| 文本（名称 / 类型 / 用途 / 路径 / 分类 tag） | 左 |
+| 数字 / 计数 / 日期（`N/M`、版本、`11/12`） | 右 |
+| 图标（`✓` / 链接 / 单个 `⋯`） | 居中 |
+| 多按钮操作组 | 右 |
+| 表头 | 与内容同向 |
+
+**两个易错点写进了规范**：
+
+1. **圆形数字徽标算「图标」**（居中），**裸数字文本算「数字」**（右对齐）—— 不能因为
+   「都是数字」就同一处理。
+2. **分类 tag 算「文本」**（左对齐），不居中 —— 它是名称的属性，跟着名称读。
+
+### 改动
+
+| 表 | 改了什么 |
+|---|---|
+| `.skill-table` | 同步列 left → **right**；操作列 right → **center** |
+| `.agent-list-table` | APP/CLI/CONFIG 列 left → **center**；约束/MCP 列 center → **right** |
+| `.mcp-table` / `.merge-table` / `.upg-table` | 已符合规则，未动 |
+
+### 门禁
+
+新增 `TableColumnAlignmentTest` 5 条（技能表同步右对齐 / 操作居中 / Agent 表数字列右 /
+图标列居中 / 规范有该章节），逐条反向验证 5/5 通过。
+
+> 反向验证过程中发现一条断言过宽：原来「截一段看有没有 `text-align: center`」，
+> 把其中一列改坏仍会通过。已收紧为逐列断言（3-7 列都必须出现在居中块里）。
+
+## [v0.47.3] - 2026-11-13
+
+当前发布版本（build 206）。
+
+**补齐「改技能库的写操作」对检查缓存的失效（收成公共出口）。**
+
+v0.47.1 / v0.47.2 连续两次踩到同一个坑：写操作改了技能库，但「检查更新」的
+1 小时缓存没失效，用户操作完立刻检查看到的还是旧快照。前两次只补了
+prune / install / upgrade 三处，**删除 / 合并 / 回滚**三处仍漏着。
+
+### 改动
+
+新增公共出口 `skill_market.invalidate_check_cache()`，五处写操作统一调用：
+
+| 操作 | 入口 |
+|---|---|
+| 删除技能 | `_run_skill_delete`（`--delete-skill`） |
+| 合并技能 | `_run_merge_skills`（`--merge-*`） |
+| 回滚 | `_run_skill_rollback`（`--skill-rollback`） |
+| 安装 / 升级 | `_run_market_write` |
+| 清理登记残留 | `_run_prune_skill_lock` |
+
+前两处原本各自内联 `unlink`，现统一改为调用该函数 —— 新增写操作时只需调用一次，
+不再各处复制。
+
+### 门禁
+
+新增 `SkillWriteCacheInvalidationTest` 两条：
+1. 五个写入口的函数体里都必须出现 `invalidate_check_cache`
+2. 该函数必须存在且内部真的 `unlink(missing_ok=True)`
+
+旧的 `PruneCacheInvalidationTest` / `MarketWriteCacheInvalidationTest` 断言从
+「内联 unlink」改为「调用公共出口」。
+
+## [v0.47.2] - 2026-11-13
+
+当前发布版本（build 205）。
+
+**修「升级成功后，检查更新仍显示 N 可升级」。**
+
+用户实测：升级完成弹框显示「升级完成（共 2 个）」，但随后点「检查更新」，
+弹框标题带「（缓存）」且仍显示「2 可升级」。
+
+### 两个独立原因
+
+**原因 A：升级没让检查缓存失效**（与 v0.47.1 的清理残留同源）
+
+`--market check` 有 1 小时 TTL 的 `data/market_check_cache.json`。
+`--market-install` / `--market-upgrade` 写完后没动它 → 命中升级前的快照。
+修复：`_run_market_write` 在 `result.ok` 后删除缓存文件。
+
+**原因 B：本地时间取值优先 git 提交时间，而 npx 升级不 commit**
+
+`_local_skill_time` 原逻辑是「git 有值就直接返回」。但 `npx skills upgrade`
+只写文件、**不 git commit**，于是：
+
+```
+git 最后提交：2026-11-04   ← 升级后仍是这个
+远端提交：    2026-11-10   ← 11-10 > 11-04 → 判 outdated
+实际文件：    2026-11-13   ← 内容其实已经是最新的
+```
+
+再点升级，npx 认为已是最新、文件不变 → **永远「可升级」的死循环**
+（与 2026-11-09 那次同源，只是那次是 lock 不更新，这次是 git 不更新）。
+
+修复：改为取 `max(git 提交时间, SKILL.md mtime)`。文件被写过就说明内容可能是新的。
+
+### 实测
+
+```
+# 修复前（删缓存重查）
+{"outdated": 2, "current": 163}     ← api-review / claude-dispatch 仍报可升级
+
+# 修复后（删缓存重查）
+{"outdated": 0, "current": 165}     ← 全部判定为最新
+```
+
+### 门禁
+
+- 新增 `MarketWriteCacheInvalidationTest`（安装/升级成功后必须删缓存）
+- `test_prefers_git_commit_time` 改写为「git 新于 mtime 时取 git」，并新增
+  `test_takes_newer_of_git_and_mtime` 守住「mtime 更新时取 mtime」
+
+## [v0.47.1] - 2026-11-13
+
+当前发布版本（build 204）。
+
+**修「清理登记残留后，再点检查更新仍显示残留 N 条」。**
+
+用户实测：清理掉 9 条残留、重新检查，弹框标题写着「检查完成（缓存）」，
+残留数仍是 9 —— 看起来像清理没生效。
+
+### 真因：清理没让检查缓存失效
+
+`--market check` 有 1 小时 TTL 的 `data/market_check_cache.json`。
+`--prune-skill-lock` 删掉登记表条目后**没有动这个缓存**，于是 1 小时内再检查，
+命中的还是清理前的快照。
+
+### 修复
+
+`_run_prune_skill_lock` 在真正删除条目（`status=ok` 且有 `removed`）后，
+删除 `data/market_check_cache.json`。`nothing-to-prune` 不删（没有变化就不该失效）。
+
+### 顺带修一个测试缺陷
+
+`test_check_is_read_only` 的快照把 `.git` 也算进去了 —— 而统一库本身是 git 仓库，
+`--market check` 的 `git fetch` 必然更新 `.git` 的 mtime。此前有缓存时跳过 fetch
+所以碰巧通过，缓存过期那一轮就误报「check 修改了技能库」。
+现在快照排除隐藏条目，只比技能目录。
+
+### 实测
+
+```
+# 注入 1 条假残留
+$ scan.py --prune-skill-lock --format json
+{"removed": 1, "status": "ok"}
+清理前缓存: 存在
+清理后缓存: 已删除 ✓
+
+$ scan.py --market check --format json   # 缓存已失效 → 真检查
+{"cache_hit": false, "summary": {"total": 165, "outdated": 2, "current": 163, "missing": 0}}
+```
+
+残留从 9 变成 **0**。
+
+### 门禁
+
+新增 `PruneCacheInvalidationTest`（断言清理实现引用缓存路径、成功后 unlink、
+且只在 `status=ok` 时失效）。
+
+## [v0.47.0] - 2026-11-13
+
+当前发布版本（build 203）。
+
+**全量 UI 评审后的页面层一致性修复（11 项）。**
+
+弹框层此前已收干净，这一版修的是**页面层**：同一类交互在不同页面有不同实现，
+规范里没有对应约束，所以门禁也没拦住。
+
+### P0 — 违反已写明的规范
+
+| 问题 | 修复 |
+|---|---|
+| 设置页布尔开关有两种形态：后台巡检用「开启/关闭」两个 `seg-btn`，共享约束同步用 `.switch` | 巡检改用 `.switch` + 状态文字（`aria-checked` 只服务读屏，视觉用户也要能读出状态） |
+| 概览 6 张统计卡排成 5+1（`auto-fill minmax(190px)` 在 1200px 内容区正好卡在临界点） | 固定 3 列（3×2），900px 以下降 2 列 |
+| Skills 页头 6 个按钮全同级、无主操作 | 分三级：「检查更新」primary / 「一键升级·修复链接」btn-soft / 「使用分析·技能市场·刷新技能」ghost |
+
+### P1 — 一致性 / 可用性
+
+| 问题 | 修复 |
+|---|---|
+| 22 处空态文案三种句式并存（「无匹配结果」「端点库为空」「尚未检查更新：…」） | 定义四句式模板写进 §2.5：`无 X` / `无 X：<引导>` / `尚未 X：点<入口>后…` / `<对象>失败`；禁止「X 为空」 |
+| 骨架屏只覆盖 `agents-list`，其余三页空白直出 | `showSkeleton()` 扩展到 skills（表格骨架 `.sk-row`）/ mcp / dsh |
+| Skills 页筛选 chip 与色点图例信息重复 | 删色点图例，只留 `.skill-legend-note` 一行 N/M 口径说明 |
+| 弹框内空态文案不统一（「未检测到」「暂无备份」） | 统一为「无 X」 |
+
+### P2 — 细节
+
+| 项 | 结论 |
+|---|---|
+| 设置页 4 个 tab 的卡片间距 | **实测无问题**：四 tab 的卡片间距均 14px、padding 均 18px，差异来自内容密度而非样式 |
+| 洞察面板规范过薄（§2.5f 只有 3 行） | 补全骨架、四条硬要求、四态覆盖、关闭路径 |
+| 弹框宽度 9 档 | 合并 `task-card`(420) 与 `upg-modal`(440) 为 440，`upg-modal` 改为继承 |
+| 1024px 下「用途」列截断 | **刻意保留**：行高一致优先于多显示几行字（v0.47.0 前的实测结论），已在 §2.3e 写明取舍 |
+
+### 门禁
+
+新增 `PageLevelConsistencyTest` 7 条断言（开关形态 / 统计卡列数 / 页头 primary /
+空态句式 / 骨架屏覆盖 / 图例去重 / 宽度继承），逐条反向验证 7/7 通过。
+
+全量回归：**1810 passed, 2 skipped, 181 subtests passed**。
+（`test_skill_market_cli.py::test_check_is_read_only` 在全量跑时偶发失败，
+单独复跑通过 —— 是既有测试的时序脆弱性，与本次改动无关。）
+
+## [v0.46.9] - 2026-11-13
+
+当前发布版本（build 202）。
+
+**修「约束列 0/M，点『写入共享约束』仍然不成功」。**
+
+用户截图：VS Code 约束列显示 `0/1`，点了修复没生效；ima.copilot 约束列是 `—`。
+
+### 真因：GUI 的两道闸门与 CLI 的行为相反
+
+CLI 的 `apply_client` 对**不存在的路径会创建文件**（dry-run 实测：
+`state=missing` 但 `ok=true, changed=true`）。而 GUI 有两处假设「文件必须先存在」：
+
+| 位置 | 原逻辑 | 后果 |
+|---|---|---|
+| `needFixRulesFor` | `if (!paths.some(x => x.exists)) return false` | 所有文件都不存在时，菜单里**根本不出现**「写入共享约束」 |
+| `fixRulesFor` | `paths = all.filter(x => x.exists)` 后判空 | 即使点到了，也直接弹「还没有约束文件」返回，**从未调用 CLI** |
+
+两道闸门叠加，表现为「约束列 0/M，菜单里没有修复项；偶尔点到也只得到一句
+『请先让客户端生成规则文件』」。
+
+### 修复
+
+- `needFixRulesFor`：只要有约定路径就给出入口，不再看文件是否存在。
+- `fixRulesFor`：改用全部路径，并算出 `toCreate`（尚不存在的），在确认框里
+  明确写出「其中 N 个文件尚不存在，将新建」。
+- 确认按钮文案按 §2.5b-4 的统一规则传「写入」（动词）。
+
+### 实测
+
+```
+$ python3 scan.py --shared-rules-apply "VS Code" --format json
+{"ok": true, "applied": [{"client": "VS Code", "changed": 1,
+  "results": [{"path": "~/.copilot/copilot-instructions.md", "state": "missing",
+               "ok": true, "changed": true}]}]}
+
+$ ls -la ~/.copilot/copilot-instructions.md
+-rw-r--r--@ 1 ... 461 Nov 13 11:39   ← 文件被创建
+
+$ python3 scan.py --shared-rules-audit --format json
+VS Code  current
+```
+
+### 关于 ima.copilot 的两个「—/手动」（不是 bug）
+
+| 列 | 显示 | 为什么正确 |
+|---|---|---|
+| 约束 | `—` | ima.copilot 没有公开的本地规则文件约定（`~/Library/Application Support` 下无对应目录），注册表里没有 `rules_paths`。按 §2.3d-2「无约定用 —」 |
+| MCP | `手动` | v0.46.7 新增的第五态：支持 MCP，但走应用内「设置 → MCP 连接」录入，没有可被本工具写入的配置文件 |
+
+### 门禁
+
+`tests/test_rules_shared.py` 补 2 条断言（菜单入口不得被文件存在性拦住 /
+写入不得过滤不存在的路径），逐条反向验证 2/2 通过。
+
+## [v0.46.8] - 2026-11-13
+
+当前发布版本（build 201）。
+
+**弹框 UI 全面改造：样式统一 + 层次感 + 头部重设计。**
+
+用户连续三轮评审，从「检查所有弹框是否统一」到「需要一点设计感」到「有的色条有的没有」，
+这一版把四类弹框（表单 / 确认 / 通知 / 详情）收成同一套规则。
+
+### 弹框家族一致性（用户要求「检查所有弹框是否统一」）
+
+逐个比对 29 处弹框调用后，骨架基本统一、度量有六处漂移，全部修掉：
+
+| 问题 | 实测 | 修复 |
+|---|---|---|
+| `.form-actions` 规则声明两次，后一条的 `margin-top` 覆盖前一条的零值 | 表单弹框主体→底栏 **19px**，详情弹框 **0** | 合并为一条，底栏紧贴分隔线 |
+| 两处弹框用内联 `style="width:min(...)"` 压 `.modal` 的 width | 640/920 字面值 + 92vw/94vw 混用 | 新增 `.modal-md` / `.modal-lg` 档位类，走 `--modal-w` |
+| 29 处弹框只有 5 处手写 `role="dialog"` / `aria-modal` | 24 处读屏器不播报为对话框 | `mountModal` 挂载时由 `_ensureDialogA11y` 自动补齐，已手写的保留 |
+| `.modal` 默认与 `.upg-modal` 用 92vw，其余 94vw | 窄屏留白不一致 | 统一 94vw |
+| `.ad-head` 顶部内边 24px，`.form-head` 28px | 两家族标题距容器顶差 4px | 统一 `--sp-9a` |
+| 规范写了「点遮罩关闭」，代码从未实现 | 点空白处无反应 | `_bindBackdropClose` 绑定，判 `e.target === backdrop` |
+
+顺带清掉两处死代码：`.modal h3`（标题都走 `.form-title` / `.cfm-title` / `.ad-name`）、
+以及设置页「活动端点」下拉把 CSS 选择器误写进 `class` 的 bug
+（`class="modal-form .form-field input"`，会让该 `<select>` 继承 `.modal-form` 的
+`padding: 0` 与 flex 布局）。
+
+**规范同步**：`docs/DESIGN.md` 补家族表第四行（进度/任务）、宽度档位表、
+「四组数字」（新增头部内边）、关闭路径与无障碍的落点说明；
+`docs/DESIGN.html` 新增**四类弹框实物样例**（静态还原 + 度量标注）、
+宽度档位表、关闭路径与无障碍说明块。
+
+**门禁**：新增 `ModalFamilyConsistencyTest` 8 条断言，逐条反向验证（每条都
+故意制造一次违规确认报错，0 条无效断言）。
+
+### 弹框层次（用户反馈「需要一点设计感，现在没有层次感」）
+
+**问题**：卡片、头部、底栏、按钮全用同一个 `--panel` 平面，只靠一条 1px 线分隔，
+读起来是一张白纸；阴影只有外投影，没有内高光，浮层像贴纸。
+
+**三档表面 + 两道高光**：
+
+| 改动 | 取值 | 解决什么 |
+|---|---|---|
+| 底栏下沉一档 | `--modal-foot-bg`（`#F7F7F9` / 深色 `#0E0E12`） | 操作区与阅读面同色，没有「区」的概念 |
+| 卡片上缘内高光 | `inset 0 1px 0 var(--modal-hi)` | 纯外投影的白卡片在浅底上像贴纸 |
+| 头部层叠阴影 | `0 10px 18px -20px var(--modal-rail)` | 三段式只靠线分隔时仍是一张纸 |
+| 图标语义光晕 | `0 0 0 4px <语义>-bg` | 40px 圆是纯色块，没有状态锚点的分量 |
+| 实心按钮材质 | `inset 0 1px 0 rgba(255,255,255,.22)` + 悬停上浮 1px | 纯色块像印刷色，不像按键 |
+
+**新增 token**：`--modal-hi` / `--modal-foot-bg` / `--modal-rail`，深浅两套同步。
+
+**克制边界**：正文、表格行、列表项不加阴影与高光 —— 层次只给「容器」与「可操作物」，
+不给内容。否则整页都在发光，反而没有层次。
+
+**门禁**：`ModalFamilyConsistencyTest` 再补 3 条（内高光 / 底栏下沉 / 图标光晕），
+逐条反向验证通过；文档 `docs/DESIGN.html` 的四类样例同步了同一套层次。
+
+### 确认 / 通知弹框头部重设计（用户反馈「头有点轻，就一个大图标很不协调」）
+
+**问题**：图标 40px 居中孤悬、标题在它下方垂直堆叠 —— 头部信息量太少，
+视觉重量全压在一个圆上。
+
+**新结构**：图标 32px + 标题**同一行**，图标作为标题前缀；顶部 3px 语义色带
+按 kind 着色；头部与正文之间加一条 hairline；底栏按钮改右对齐（原居中）。
+
+| 项 | 做法 | 为什么 |
+|---|---|---|
+| 布局 | `.cfm-card` 改 `display: grid`，`grid-template-columns: auto minmax(0, 1fr)`，图标/标题占第 1 行两列，其余元素 `grid-column: 1 / -1` | **不改 DOM**：6 个调用方（`modalNotice` / `confirmModal` / `confirmTypedKeyModal` / `progressBegin` / `progressFinish` / `runTaskModal`）的模板一行都不用动 |
+| 图标 | 40px → 32px，去掉居中 `margin` | 与 16px 标题构成 2:1 比例；同行布局下居中 margin 是多余的 |
+| 色带 | `.cfm-card::before` 3px，ok/warn/err/info/进度 accent 各自着色 | 头部只有「图标 + 标题」时仍偏单薄，色带补分类锚点且不占版面高度 |
+| 分隔线 | `.cfm-msg` 加 `border-top` + `padding-top` | 图标与正文直接相贴时仍读成「一个图标 + 一段文字」 |
+
+**进度卡复用同一套**：`.prog-spinner`（28px）占图标那一格，标题同行；进行中色带
+用 `--accent`，结束后转 `notice-ok` / `notice-err`。
+
+**对齐方式统一**：通知类标题从居中改左对齐、底栏从居中改右对齐 ——
+同一应用里两种对齐并存会读成两个产品。`docs/DESIGN.md` §2.5b-4 已同步这条变更。
+
+**顺带清理**：`--sp-9b`(32px) 在头部改紧凑后成为死 token（全库仅 `:root` 一处），
+按项目规则删除，`docs/DESIGN.md` §1 同步移除。
+
+**门禁**：`ModalFamilyConsistencyTest` 再补 4 条（头部同行 / 图标 32px / 语义色带 /
+底栏右对齐），逐条反向验证 4/4 通过。
+
+### 弹框样式完全统一（用户评审「有的有色条有的没有，按钮有的用好有的用确认」）
+
+**两处不统一**：
+
+1. **色带**只挂在 `.cfm-card` 上，表单和详情没有 → 四条弹框里两条有、两条没有。
+2. **按钮文案**混用：「好」「关掉」「确认」「确认删除」「确认升级」并存。
+
+**统一规则（写进 DESIGN.md §2.5b-4）**：
+
+| 项 | 规则 |
+|---|---|
+| 色带 | 挂在 `.modal` 容器上，**四类家族统一都有**；颜色只表达语义不表达家族：accent=操作 / muted=只读 / ok·warn·err=结果 |
+| 单出口按钮 | 一律「关闭」（原「好」「关掉」） |
+| 双出口退出键 | 一律「取消」 |
+| 双出口主操作 | 一律**动词本身**，不带「确认」前缀：删除 / 清除 / 移出 / 清理 / 升级 / 提交 / 回滚 / 保存 / 写入 |
+
+**实现**：`.modal::before`（3px、上缘圆角、`pointer-events: none`），各家族只覆写
+`background`。新增弹框挂上 `.modal` 就自动有色带，不需要单独写。
+
+**`confirmModal` 兜底**：未传 `confirmText` 时 `danger` 用「删除」、否则「确定」；
+危险但非删除的操作（清除 / 移出 / 清理）必须显式传文案 —— 已逐个补齐 8 处调用。
+
+**门禁**：色带断言从 `.cfm-card::before` 改为 `.modal::before` 并覆盖四类家族；
+升级按钮断言从「确认升级」改为「升级」。
+
+**文档**：`docs/DESIGN.html` 的四类样例（舞台内 4 个 + 骨架对照 4 个）全部加上同规则
+色带，按钮文案同步为「关闭」。
+
+## [v0.46.7] - 2026-11-13
+
+当前发布版本（build 200）。
+
+**修「注册表声明被当成事实」：ima.copilot 被误报不支持 MCP、VSCode 提示成功但不更新。**
+
+两个用户报障的共同根因相同：注册表说没有路径就推断成「不支持 MCP」，说错了路径就
+推断成「已配置成功」。两处都缺一步「拿真实文件系统反向验证」。
+
+### ima.copilot 被误报「不支持 MCP」
+
+`supports_mcp` 原为 `bool(config_path)`，把**产品能力**和**能否自动写入配置**混为
+一谈；注释里还把「ima.copilot 根本没有 MCP 能力」当事实写死。ima 实际有
+「设置 → MCP 连接」入口，只是没有可被本工具写入的配置文件。
+
+- 拆成两个维度：`supports_mcp`（能力，可用 `mcp_support` 显式声明）与
+  `auto_configurable`（是否可自动写入）；派生 `manual_only` / `manual_hint`。
+- 界面新增第五态「需手动接入」：半填充圆点 + 点状标签，与「已挂载」「缺失」
+  「不支持」在形状与文案上都区分开，并单独计数。
+- `checker` 不再把 `ima.copilot.app` 并进 `github-copilot` 的安装签名。
+
+### VSCode「提示成功但不更新」
+
+- **根因 A**：macOS 缺 `by_os` 分支，退化成 Linux 的 `~/.vscode/mcp.json`，而 VSCode
+  实际读 `~/Library/Application Support/Code/User/mcp.json`。写入与校验用同一个错路径，
+  互相印证，于是永远「已经是配置好的」。
+- **根因 B**：修复只判断文件是否存在，不判断内容是否为空。目标文件是 0 字节时把空串
+  交给 JSON 解析器，报 `Expecting value` 而静默失败。
+- 两处修复后实测：`updated` → 真实写入 373 字节 → 再次运行才是真 `unchanged`。
+
+### 测试
+
+- 更新写死 `supports=False` 的断言，补 `manual_only` 与空文件用例。
+- 提交时全套 **1794 项通过**。
+
 ## [v0.46.6] - 2026-11-12
 
 当前发布版本（build 199）。
@@ -5197,7 +5928,24 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.46.6...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.47.13...HEAD
+[v0.47.13]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.47.13
+[v0.47.12]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.47.12
+[v0.47.11]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.47.11
+[v0.47.10]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.47.10
+[v0.47.9]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.47.9
+[v0.47.8]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.47.8
+[v0.47.7]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.47.7
+[v0.47.6]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.47.6
+[v0.47.5]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.47.5
+[v0.47.4]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.47.4
+[v0.47.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.47.3
+[v0.47.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.47.2
+[v0.47.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.47.1
+[v0.47.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.47.0
+[v0.46.9]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.46.9
+[v0.46.8]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.46.8
+[v0.46.7]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.46.7
 [v0.46.6]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.46.6
 [v0.46.5]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.46.5
 [v0.46.4]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.46.4

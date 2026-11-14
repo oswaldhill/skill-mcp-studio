@@ -952,9 +952,13 @@ class LocalSkillTimeTest(unittest.TestCase):
         self.skills.mkdir()
 
     def test_prefers_git_commit_time(self):
+        """git 时间新于文件 mtime 时，取 git 时间（lock 永不参与，除非无文件）。"""
         skill = self.skills / "pw"
         skill.mkdir()
-        (skill / "SKILL.md").write_text("# x\n", encoding="utf-8")
+        f = skill / "SKILL.md"
+        f.write_text("# x\n", encoding="utf-8")
+        # 把 mtime 压到 git 时间之前（v0.47.2 起取 max(git, mtime)，本用例验证 git 更大时胜出）
+        os.utime(f, (1784000000, 1784000000))   # 2026-07-14
         (self.skills / ".git").mkdir()
         from skill_market import _local_skill_time
         with mock.patch("skill_market._git_path_time",
@@ -962,7 +966,27 @@ class LocalSkillTimeTest(unittest.TestCase):
             got = _local_skill_time(
                 "pw", {"updated_at": "2026-01-28T03:26:38.722Z"}, self.skills)
         self.assertEqual(got, "2026-07-17T12:49:56Z",
-                         "git 提交时间必须优先于 lock（lock 不随文件更新）")
+                         "git 提交时间应优先于更旧的 mtime，且 lock 不参与")
+
+    def test_takes_newer_of_git_and_mtime(self):
+        """文件被写过（mtime 更新）时必须取 mtime（v0.47.2）。
+
+        用户实测：`npx skills upgrade` 只写文件、不 git commit，git 时间停在上次
+        提交 → 判 outdated → 再升级 npx 认为已最新、文件不变 → 永远「可升级」。
+        """
+        skill = self.skills / "pw"
+        skill.mkdir()
+        f = skill / "SKILL.md"
+        f.write_text("# x\n", encoding="utf-8")
+        os.utime(f, (1794547947, 1794547947))   # 2026-11-13
+        (self.skills / ".git").mkdir()
+        from skill_market import _local_skill_time
+        with mock.patch("skill_market._git_path_time",
+                        return_value="2026-07-17T12:49:56Z"):
+            got = _local_skill_time(
+                "pw", {"updated_at": "2026-01-28T03:26:38.722Z"}, self.skills)
+        self.assertTrue(got > "2026-07-17T12:49:56Z",
+                        f"mtime 更新时应取 mtime，实际 {got}")
 
     def test_falls_back_to_mtime_without_git(self):
         skill = self.skills / "pw"

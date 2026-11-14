@@ -34,6 +34,8 @@
     --ok-border: rgba(5,150,105,.25);
     --warn-border: rgba(180,83,9,.25);
     --err-border: rgba(220,38,38,.25);
+    --modal-hi: rgba(255,255,255,.92);
+    --modal-foot-bg: #F7F7F9;
     --shadow-card: 0 1px 2px rgba(24,24,27,.04);
     --shadow-card-hover: 0 4px 12px rgba(24,24,27,.07);
     --shadow-modal: 0 24px 64px -16px rgba(24,24,27,.28);
@@ -80,6 +82,8 @@
     --ok-border: rgba(16,185,129,.25);
     --warn-border: rgba(251,191,36,.25);
     --err-border: rgba(248,113,113,.25);
+    --modal-hi: rgba(255,255,255,.06);
+    --modal-foot-bg: #0E0E12;
     --shadow-card: 0 1px 2px rgba(0,0,0,.3);
     --shadow-card-hover: 0 4px 14px rgba(0,0,0,.45);
     --shadow-modal: 0 24px 64px -16px rgba(0,0,0,.7);
@@ -319,6 +323,174 @@
   .spec-block > .spec-head b { color: var(--text); font-weight: 600; }
   .spec-body { padding: 16px; }
   .spec-note { font-size: var(--fs-xs); color: var(--faint); margin-top: 10px; }
+
+  /* 弹框家族实物样例（§2.5b-4）：静态还原四类骨架，标注关键度量。
+     用 div 模拟而不是真 <dialog>——真 dialog 会模态遮住整页文档。 */
+  .modal-demo-grid {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px; align-items: start;
+  }
+  @media (max-width: 900px) { .modal-demo-grid { grid-template-columns: 1fr; } }
+  .modal-demo { display: flex; flex-direction: column; gap: 8px; }
+  .modal-demo > .md-label {
+    font-family: var(--mono); font-size: var(--fs-2xs); font-weight: 600;
+    letter-spacing: .04em; color: var(--accent);
+  }
+  .md-frame {
+    position: relative;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--r-card);
+    /* 与产品一致：外投影负责浮起，上缘内高光负责厚度 */
+    box-shadow: var(--shadow-card), inset 0 1px 0 var(--modal-hi);
+    overflow: hidden; font-size: var(--fs-sm);
+  }
+  /* 顶部 3px 语义色带：四类弹框统一都有（与产品 .modal::before 同规则） */
+  .md-frame::before {
+    content: ""; position: absolute; inset: 0 0 auto; height: 3px;
+    border-radius: var(--r-card) var(--r-card) 0 0;
+    background: var(--accent); pointer-events: none;
+  }
+  .md-frame-detail::before { background: var(--muted); }
+  .md-head { padding: 18px 16px 10px; border-bottom: 1px solid var(--line); }
+  .md-title { font-size: var(--fs-md); font-weight: 600; color: var(--text); }
+  .md-sub { font-size: var(--fs-xs); color: var(--muted); margin-top: 2px; }
+  .md-body { padding: 10px 16px; display: flex; flex-direction: column; gap: 8px; }
+  .md-field { display: flex; flex-direction: column; gap: 3px; }
+  .md-flabel { font-size: var(--fs-xs); color: var(--muted); }
+  .md-input {
+    border: 1px solid var(--line); border-radius: var(--r-control);
+    padding: 5px 10px; font-family: var(--mono); font-size: var(--fs-xs);
+    color: var(--text); background: var(--panel);
+  }
+  .md-foot {
+    display: flex; justify-content: flex-end; gap: 10px;
+    padding: 9px 16px; border-top: 1px solid var(--line);
+    background: var(--modal-foot-bg);
+  }
+  .md-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-height: 32px; padding: 5px 16px; border-radius: var(--r-control);
+    border: 1px solid var(--line); background: var(--panel-2);
+    color: var(--text); font-size: var(--fs-sm); font-weight: 500;
+  }
+  .md-btn-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  .md-btn-danger { background: var(--err); border-color: var(--err); color: var(--on-accent); }
+  .md-measure {
+    font-family: var(--mono); font-size: var(--fs-2xs);
+    color: var(--faint); line-height: 1.6;
+  }
+  /* 确认 / 通知：居中骨架 + 圆形图标 */
+  .md-frame-center { text-align: center; padding: 22px 18px 16px; }
+  /* 确认 / 通知：图标 + 标题同行的横向头部（与产品 .cfm-card 的 grid 结构一致） */
+  .md-cfm { position: relative; padding: 0; text-align: left; }
+  .md-cfm::before {
+    content: ""; position: absolute; inset: 0 0 auto; height: 3px; background: var(--muted);
+  }
+  .md-cfm-ok::before { background: var(--ok); }
+  .md-cfm-err::before { background: var(--err); }
+  .md-cfm-head { display: flex; align-items: center; gap: 10px; padding: 18px 16px 12px; }
+  .md-cfm-head .md-icon { margin: 0; }
+  .md-msg.md-cfm-msg { padding: 12px 16px 0; border-top: 1px solid var(--line); margin-top: 0; }
+  .md-actions.md-cfm-actions { justify-content: flex-end; padding: 14px 16px 16px; margin-top: 0; }
+  .md-icon {
+    width: 40px; height: 40px; border-radius: 50%; margin: 0 auto 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: var(--fs-md); font-weight: 700; font-family: var(--mono);
+  }
+  .md-icon-ok { background: var(--ok-bg); color: var(--ok); border: 1px solid var(--ok-border);
+    box-shadow: 0 0 0 4px var(--ok-bg), inset 0 1px 0 var(--modal-hi); }
+  .md-icon-err { background: var(--err-bg); color: var(--err); border: 1px solid var(--err-border);
+    box-shadow: 0 0 0 4px var(--err-bg), inset 0 1px 0 var(--modal-hi); }
+  .md-msg { font-size: var(--fs-sm); color: var(--muted); line-height: 1.55; margin-top: 6px; }
+  .md-msg-left { text-align: left; }
+  .md-action {
+    display: flex; align-items: flex-start; gap: 6px; text-align: left;
+    margin-top: 10px; padding: 8px 10px; border-radius: var(--r-control);
+    background: var(--accent-bg); color: var(--text); font-size: var(--fs-sm);
+  }
+  .md-actions { display: flex; justify-content: center; gap: 16px; margin-top: 18px; }
+  /* 详情：左右分栏头部 + 固定底栏 */
+  .md-ad-head { padding: 20px 16px 14px; border-bottom: 1px solid var(--line); }
+  .md-type {
+    display: inline-block; font-family: var(--mono); font-size: var(--fs-2xs);
+    font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--accent); background: var(--accent-bg);
+    border: 1px solid var(--accent-border); border-radius: var(--r-pill);
+    padding: 2px 8px; margin-bottom: 8px;
+  }
+  .md-rows { display: flex; flex-direction: column; }
+  .md-row {
+    display: flex; gap: 10px; padding: 5px 0;
+    border-bottom: 1px dashed var(--line); font-size: var(--fs-sm);
+  }
+  .md-row:last-child { border-bottom: 0; }
+  .md-k { flex: 0 0 68px; color: var(--muted); font-size: var(--fs-xs); }
+  .md-v { color: var(--text); font-family: var(--mono); font-size: var(--fs-xs); }
+  .md-foot-split { justify-content: space-between; }
+
+  /* 完整弹框布局（§1b）：模拟真实视口 —— 页面内容被遮罩压暗，弹框居中 */
+  .stage-grid {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px; align-items: start;
+  }
+  @media (max-width: 980px) { .stage-grid { grid-template-columns: 1fr; } }
+  .stage {
+    position: relative; height: 400px; border-radius: var(--r-card);
+    overflow: hidden; border: 1px solid var(--line); background: var(--bg-elev);
+  }
+  .stage-page {
+    position: absolute; inset: 0; padding: 14px;
+    display: flex; flex-direction: column; gap: 9px;
+  }
+  .stage-page .sp-bar { height: 11px; border-radius: 4px; background: var(--line-strong); }
+  .stage-page .sp-bar.w60 { width: 60%; }
+  .stage-page .sp-bar.w40 { width: 40%; }
+  .stage-page .sp-card {
+    height: 54px; border-radius: var(--r-control);
+    background: var(--panel); border: 1px solid var(--line-strong);
+  }
+  /* 遮罩：与产品一致的 rgba(0,0,0,.32) + blur */
+  .stage-veil {
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,.32);
+    -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+    display: flex; align-items: center; justify-content: center;
+    padding: 14px;
+  }
+  .stage-modal {
+    width: min(100%, 380px); max-height: 100%;
+    display: flex; flex-direction: column;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--r-card);
+    box-shadow: 0 24px 64px -16px rgba(24,24,27,.38), inset 0 1px 0 var(--modal-hi);
+    overflow: hidden;
+  }
+  .stage-modal > .md-head,
+  .stage-modal > .md-ad-head,
+  .stage-modal > .md-foot { flex: 0 0 auto; }
+  .stage-modal > .md-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+  .stage-modal > .md-frame-center { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+  .stage-modal-sm { width: min(100%, 310px); }
+  .stage-modal-xs { width: min(100%, 268px); }
+  .stage-cell { display: flex; flex-direction: column; gap: 6px; }
+  .stage-label {
+    font-family: var(--mono); font-size: var(--fs-2xs);
+    color: var(--faint); letter-spacing: .04em;
+  }
+  /* 层级阶梯 */
+  .zstack { display: flex; flex-direction: column; gap: 6px; }
+  .zrow {
+    display: flex; align-items: center; gap: 10px;
+    font-family: var(--mono); font-size: var(--fs-xs);
+  }
+  .zrow .znum {
+    flex: 0 0 46px; text-align: right; color: var(--accent); font-weight: 600;
+  }
+  .zrow .zbar {
+    flex: 0 0 auto; height: 18px; border-radius: var(--r-hair);
+    background: var(--accent-bg); border: 1px solid var(--accent-border);
+  }
+  .zrow .zlabel { color: var(--muted); }
 
   /* 字号阶梯 */
   .fs-row {
@@ -781,6 +953,155 @@
         </div>
       </div>
 
+      <!-- 完整弹框布局 -->
+      <div class="spec-block" id="s1b-modal">
+        <div class="spec-head"><b>弹框（完整布局）</b><span>遮罩压暗页面 → 卡片居中 → 底栏固定</span></div>
+        <div class="spec-body">
+          <div class="stage-grid">
+
+            <!-- 表单：三段式，主体可滚 -->
+            <div class="stage-cell">
+              <div class="stage-label">表单 · backdrop z-index 50 · 卡片 380px · 三段式</div>
+              <div class="stage">
+                <div class="stage-page">
+                  <div class="sp-bar w40"></div>
+                  <div class="sp-card"></div>
+                  <div class="sp-bar"></div>
+                  <div class="sp-bar w60"></div>
+                  <div class="sp-card"></div>
+                  <div class="sp-bar w60"></div>
+                </div>
+                <div class="stage-veil">
+                  <div class="stage-modal md-frame">
+                    <div class="md-head">
+                      <div class="md-title">编辑客户端</div>
+                      <div class="md-sub">三段式：头固定 / 身滚动 / 尾固定</div>
+                    </div>
+                    <div class="md-body">
+                      <div class="md-field"><span class="md-flabel">名称</span><span class="md-input">WorkBuddy</span></div>
+                      <div class="md-field"><span class="md-flabel">类型</span><span class="md-input">IDE</span></div>
+                      <div class="md-field"><span class="md-flabel">配置路径</span><span class="md-input">~/workbuddy/mcp.json</span></div>
+                      <div class="md-field"><span class="md-flabel">Skills 目录</span><span class="md-input">~/.agents/skills</span></div>
+                    </div>
+                    <div class="md-foot">
+                      <span class="md-btn">取消</span>
+                      <span class="md-btn md-btn-primary">保存</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 确认：窄卡片，居中骨架 -->
+            <div class="stage-cell">
+              <div class="stage-label">确认 · width min(400px, 94vw) · 居中骨架</div>
+              <div class="stage">
+                <div class="stage-page">
+                  <div class="sp-bar w40"></div>
+                  <div class="sp-card"></div>
+                  <div class="sp-bar"></div>
+                  <div class="sp-bar w60"></div>
+                  <div class="sp-card"></div>
+                </div>
+                <div class="stage-veil">
+                  <div class="stage-modal stage-modal-xs md-cfm md-cfm-err">
+                    <div class="md-cfm-head">
+                      <div class="md-icon md-icon-err">!</div>
+                      <div class="md-title">删除端点</div>
+                    </div>
+                    <div class="md-msg md-cfm-msg">删除后不可恢复，确定继续吗？</div>
+                    <div class="md-actions md-cfm-actions">
+                      <span class="md-btn">取消</span>
+                      <span class="md-btn md-btn-danger">确认删除</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 通知：左对齐正文 + 下一步块 -->
+            <div class="stage-cell">
+              <div class="stage-label">通知 · notice-card · 正文左对齐 + 下一步块</div>
+              <div class="stage">
+                <div class="stage-page">
+                  <div class="sp-bar w40"></div>
+                  <div class="sp-card"></div>
+                  <div class="sp-bar"></div>
+                  <div class="sp-bar w60"></div>
+                </div>
+                <div class="stage-veil">
+                  <div class="stage-modal stage-modal-sm md-cfm md-cfm-ok">
+                    <div class="md-cfm-head">
+                      <div class="md-icon md-icon-ok">✓</div>
+                      <div class="md-title">已完成</div>
+                    </div>
+                    <div class="md-msg md-cfm-msg">共享约束已保存（403 B）。</div>
+                    <div class="md-action" style="margin: 10px 16px 0"><span>›</span><span>写进各 Agent 请运行 --shared-rules-apply</span></div>
+                    <div class="md-actions md-cfm-actions"><span class="md-btn">关闭</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 详情：宽卡片，头部 + 主体 + 分列底栏 -->
+            <div class="stage-cell">
+              <div class="stage-label">详情 · width min(880px, 94vw) · 左右分列底栏</div>
+              <div class="stage">
+                <div class="stage-page">
+                  <div class="sp-bar w40"></div>
+                  <div class="sp-card"></div>
+                  <div class="sp-bar"></div>
+                  <div class="sp-bar w60"></div>
+                  <div class="sp-card"></div>
+                </div>
+                <div class="stage-veil">
+                  <div class="stage-modal md-frame md-frame-detail">
+                    <div class="md-ad-head">
+                      <span class="md-type">IDE</span>
+                      <div class="md-title">WorkBuddy</div>
+                    </div>
+                    <div class="md-body">
+                      <div class="md-rows">
+                        <div class="md-row"><span class="md-k">类型</span><span class="md-v">IDE</span></div>
+                        <div class="md-row"><span class="md-k">配置路径</span><span class="md-v">~/workbuddy/mcp.json</span></div>
+                        <div class="md-row"><span class="md-k">Skills</span><span class="md-v">~/.agents/skills</span></div>
+                        <div class="md-row"><span class="md-k">MCP</span><span class="md-v">已挂载 2 个</span></div>
+                      </div>
+                    </div>
+                    <div class="md-foot md-foot-split">
+                      <span class="md-btn">关闭</span>
+                      <span class="md-btn">编辑</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <p class="spec-note">完整布局由三层构成：<code>.modal-backdrop</code>（<code>position: fixed; inset: 0</code>，
+            半透明 <code>rgba(0,0,0,.32)</code> + <code>backdrop-filter: blur(6px)</code>）→
+            居中容器（flex 居中，<code>padding</code> 保证窄屏留白）→
+            <code>.modal</code> 卡片（<code>max-height: 92vh</code>、圆角 <code>--r-card</code>、阴影 <code>--shadow-sheet</code>）。
+            表单与详情类卡片内部再分三段，<strong>只有主体滚动</strong>，标题与底栏始终可见。</p>
+        </div>
+      </div>
+
+      <!-- 层级阶梯 -->
+      <div class="spec-block" id="s1b-z">
+        <div class="spec-head"><b>弹层层级（z-index）</b><span>禁止随手指派，档位在此登记</span></div>
+        <div class="spec-body">
+          <div class="zstack">
+            <div class="zrow"><span class="znum">50</span><span class="zbar" style="width: 40px"></span><span class="zlabel">.modal-backdrop / .sheet-backdrop — 模态遮罩</span></div>
+            <div class="zrow"><span class="znum">51</span><span class="zbar" style="width: 52px"></span><span class="zlabel">.sheet — 右侧详情面板</span></div>
+            <div class="zrow"><span class="znum">60</span><span class="zbar" style="width: 64px"></span><span class="zlabel">.palette — ⌘K 命令面板 / .pop-menu</span></div>
+            <div class="zrow"><span class="znum">70</span><span class="zbar" style="width: 76px"></span><span class="zlabel">dialog.busy-backdrop — 长任务忙碌层</span></div>
+          </div>
+          <p class="spec-note">原生 <code>&lt;dialog&gt;</code> 走 <code>::backdrop</code>，不参与上述档位；
+            文档里的 <code>--backdrop</code> 是<strong>颜色 token</strong>，不是类名。</p>
+        </div>
+      </div>
+
       <blockquote>
         <p>本节的每个样例都可直接对照实现。若发现代码里的实际取值与样例不符，
            以 <code>gui/dashboard.html</code> 的 <code>:root</code> 为准，
@@ -1201,6 +1522,71 @@
     </section>
 
     <!-- ═══ 2.3e ═══ -->
+    <section id="s2-3e0">
+      <h3 id="s2-3e0">2.3e-0 表格列对齐规则（v0.47.5 用户定案）<a class="anchor" href="#s2-3e0" aria-label="锚点">#</a></h3>
+      <p><strong>只有两种对齐</strong>：表头与短内容居中，长段落左对齐。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>列</th><th>对齐</th><th>判定</th></tr></thead>
+          <tbody>
+            <tr><td>表头（所有列）</td><td><strong>居中</strong></td><td>无例外</td></tr>
+            <tr><td>短内容（名称 / 分类 / 同步 / 启用 / 操作 / 数字 / 图标 / 徽标）</td><td><strong>居中</strong></td><td>一个词、一个数字、一个图标</td></tr>
+            <tr><td>长段落（用途 / 描述 / 路径）</td><td><strong>左</strong></td><td>需要横向阅读的一句话</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><strong>判定只有一问</strong>：这一列是「一个词/数字/图标」还是「一句话」？前者居中，后者左对齐。
+        <strong>行首列（名称）也左对齐</strong>——它是行的标识，居中会在左侧留一大片空。</p>
+      <p><strong>一句话总结</strong>：表头一律居中；行首列与长文本列左对齐；其余一律居中。
+        五套表（skill / agent / mcp / merge / upg）都按这一条，没有第二套规则。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>所有数据表共享的结构规则</th><th>取值</th><th>为什么</th></tr></thead>
+          <tbody>
+            <tr><td>列分隔竖线</td><td>每列 <code>:not(:last-child)::after</code> 画 1px</td><td>此前只有技能表与 Agent 表有，MCP 表没有</td></tr>
+            <tr><td>行内边距</td><td><code>var(--sp-3) var(--sp-5)</code>（8px 12px）</td><td>此前 7 / 6 / 9px 三种，行高不齐</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="spec-block">
+        <div class="spec-head"><b>对齐实例</b><span>只有「居中」与「左」两条轴线</span></div>
+        <div class="spec-body">
+          <div class="table-wrap">
+            <table class="demo-table">
+              <thead><tr>
+                <th style="text-align:center">名称</th>
+                <th style="text-align:center">分类</th>
+                <th style="text-align:center">同步</th>
+                <th style="text-align:left">用途</th>
+                <th style="text-align:center">启用</th>
+                <th style="text-align:center">操作</th>
+              </tr></thead>
+              <tbody>
+                <tr>
+                  <td style="text-align:center">algorithmic-art</td>
+                  <td style="text-align:center">通用</td>
+                  <td style="text-align:center">11/12</td>
+                  <td style="text-align:left">Creating algorithmic art using p5.js with seeded randomness</td>
+                  <td style="text-align:center">5/5 启用</td>
+                  <td style="text-align:center">⋯</td>
+                </tr>
+                <tr>
+                  <td style="text-align:center">lark-approval</td>
+                  <td style="text-align:center">办公协同</td>
+                  <td style="text-align:center">1.2.0</td>
+                  <td style="text-align:left">飞书审批：查询和处理审批待办/已办/实例</td>
+                  <td style="text-align:center">5/5 启用</td>
+                  <td style="text-align:center">⋯</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <p class="spec-note">v0.47.4 曾按「文本左 / 数字右 / 图标中」分三档，用户评审「很乱」——
+        6 列里出现三种轴线反而破坏扫读。现在收敛为两条。</p>
+    </section>
+
     <section id="s2-3e">
       <h3 id="s2-3e">2.3e 技能表列（<code>.skill-table</code>，v0.31.0 增两列）<a class="anchor" href="#s2-3e" aria-label="锚点">#</a></h3>
       <p>六列：名称 / 分类 / <strong>同步</strong>（<code>st-sync</code>，10%，见下「列合并纪律」）/
@@ -1779,22 +2165,173 @@ sharedRow.state === "current"      → ok
           <tr><td>表单</td><td><code>.modal.modal-form</code></td><td><code>.form-title</code></td><td><code>.form-body</code></td><td><code>.form-actions</code></td><td>编辑、设置</td></tr>
           <tr><td>确认 / 通知</td><td><code>.modal.cfm-card</code></td><td><code>.cfm-title</code></td><td><code>.cfm-msg</code></td><td><code>.actions</code></td><td>确认、结果通知、进度</td></tr>
           <tr><td>详情</td><td><code>.modal.ad-modal</code></td><td><code>.ad-name</code></td><td><code>.ad-body</code></td><td><code>.ad-foot</code></td><td>客户端详情、配置备份</td></tr>
+          <tr><td>进度 / 任务</td><td><code>.modal.cfm-card.task-card</code></td><td><code>.cfm-title</code></td><td><code>.prog-body</code> / <code>.upg-list</code></td><td><code>.actions</code></td><td>批量操作过程、升级流程</td></tr>
         </tbody>
       </table>
       <p>四类共用：<code>.modal</code> 容器（圆角 <code>--r-card</code>、边框 <code>--line</code>、阴影
         <code>--shadow-sheet</code>、<code>max-height: 92vh</code>）、<code>.modal-backdrop</code>（z-index 50）、
         关闭路径（Esc / 点遮罩 / 按钮，统一走 <code>closeModal</code>）。</p>
-      <h4>统一的三组数字（门禁校验）</h4>
+      <h4>统一的四组数字（门禁校验）</h4>
       <table>
         <thead><tr><th>项</th><th>规定值</th><th>为什么</th></tr></thead>
         <tbody>
           <tr><td>标题字号 / 字重</td><td><code>--fs-md</code> / 600</td><td>详情弹框原为 <code>1.35rem</code>/700，与表单弹框差两档</td></tr>
           <tr><td>底栏按钮</td><td><code>min-height: 32px</code>、<code>padding: var(--sp-3) var(--sp-8)</code>、<code>--r-control</code>、<code>--fs-sm</code></td><td>确认弹框原用 <code>--sp-8a</code>（22px），差 4px</td></tr>
           <tr><td>主体顶部内边</td><td><code>var(--sp-6)</code></td><td>详情弹框原为 <code>--sp-2</code>，标题与正文贴得太近</td></tr>
+          <tr><td>头部顶部内边</td><td><code>var(--sp-9a)</code>（28px）</td><td>详情弹框原为 <code>--sp-9</code>（24px），两个家族标题距容器顶差 4px</td></tr>
         </tbody>
       </table>
       <p><strong>允许保持不同</strong>（家族特性，不是漂移）：标题对齐方式（通知居中 / 表单左对齐）、
         底栏对齐（通知居中 / 表单右对齐）、图标徽标（仅通知与确认有）。</p>
+
+      <!-- 实物样例：四类弹框的静态还原 -->
+      <div class="spec-block">
+        <div class="spec-head"><b>四类弹框实物对照</b><span>骨架各不相同，度量同一套</span></div>
+        <div class="spec-body">
+          <div class="modal-demo-grid">
+
+            <!-- 表单 -->
+            <div class="modal-demo">
+              <div class="md-label">表单 · .modal.modal-form</div>
+              <div class="md-frame">
+                <div class="md-head">
+                  <div class="md-title">编辑客户端</div>
+                  <div class="md-sub">三段式：头固定 / 身滚动 / 尾固定</div>
+                </div>
+                <div class="md-body">
+                  <div class="md-field"><span class="md-flabel">名称</span><span class="md-input">WorkBuddy</span></div>
+                  <div class="md-field"><span class="md-flabel">配置路径</span><span class="md-input">~/workbuddy/mcp.json</span></div>
+                </div>
+                <div class="md-foot">
+                  <span class="md-btn">取消</span>
+                  <span class="md-btn md-btn-primary">保存</span>
+                </div>
+              </div>
+              <div class="md-measure">
+                标题 --fs-md / 600 · 头部内边 --sp-9a<br>
+                主体内边 --sp-6 · 底栏紧贴（0 间隙）<br>
+                按钮 min-height 32px · 右对齐
+              </div>
+            </div>
+
+            <!-- 确认 -->
+            <div class="modal-demo">
+              <div class="md-label">确认 · .modal.cfm-card</div>
+              <div class="md-frame md-cfm md-cfm-err">
+                <div class="md-cfm-head">
+                  <div class="md-icon md-icon-err">!</div>
+                  <div class="md-title">删除端点</div>
+                </div>
+                <div class="md-msg md-cfm-msg">删除后不可恢复，确定继续吗？</div>
+                <div class="md-actions md-cfm-actions">
+                  <span class="md-btn">取消</span>
+                  <span class="md-btn md-btn-danger">确认删除</span>
+                </div>
+              </div>
+              <div class="md-measure">
+                宽度 min(400px, 94vw) · 顶部 3px 语义色带<br>
+                图标 32px + 标题<strong>同行</strong> · 左对齐<br>
+                底栏右对齐 · min-height 32px
+              </div>
+            </div>
+
+            <!-- 通知 -->
+            <div class="modal-demo">
+              <div class="md-label">通知 · .modal.cfm-card.notice-card</div>
+              <div class="md-frame md-cfm md-cfm-ok">
+                <div class="md-cfm-head">
+                  <div class="md-icon md-icon-ok">✓</div>
+                  <div class="md-title">已完成</div>
+                </div>
+                <div class="md-msg md-cfm-msg">共享约束已保存（403 B）。</div>
+                <div class="md-action" style="margin: 10px 16px 0"><span>›</span><span>写进各 Agent 请运行 --shared-rules-apply</span></div>
+                <div class="md-actions md-cfm-actions"><span class="md-btn">关闭</span></div>
+              </div>
+              <div class="md-measure">
+                顶部色带按 kind 着色 · 图标 + 标题同行<br>
+                结论（.cfm-msg）+ 下一步（.notice-action）<br>
+                单出口「好」· 进入时已聚焦
+              </div>
+            </div>
+
+            <!-- 详情 -->
+            <div class="modal-demo">
+              <div class="md-label">详情 · .modal.ad-modal</div>
+              <div class="md-frame md-frame-detail">
+                <div class="md-ad-head">
+                  <span class="md-type">IDE</span>
+                  <div class="md-title">WorkBuddy</div>
+                </div>
+                <div class="md-body">
+                  <div class="md-rows">
+                    <div class="md-row"><span class="md-k">类型</span><span class="md-v">IDE</span></div>
+                    <div class="md-row"><span class="md-k">配置路径</span><span class="md-v">~/workbuddy/mcp.json</span></div>
+                  </div>
+                </div>
+                <div class="md-foot md-foot-split">
+                  <span class="md-btn">关闭</span>
+                  <span class="md-btn">编辑</span>
+                </div>
+              </div>
+              <div class="md-measure">
+                宽度 min(880px, 94vw) · 头部内边 --sp-9a<br>
+                主体内边 --sp-6 · 底栏紧贴（0 间隙）<br>
+                按钮 min-height 32px · 左右分列
+              </div>
+            </div>
+
+          </div>
+          <p class="spec-note">样例按统一栏宽渲染，<strong>只示意骨架与内边节奏</strong>，
+            不代表各家族的实际宽度（见下方档位表）。四类共用同一套度量：标题
+            <code>--fs-md</code>/600、头部内边 <code>--sp-9a</code>、主体内边 <code>--sp-6</code>、
+            底栏按钮 <code>min-height: 32px</code>。允许不同的是对齐方式与图标有无——
+            那是家族语义，不是漂移。</p>
+        </div>
+      </div>
+
+      <!-- 宽度档位 -->
+      <div class="spec-block">
+        <div class="spec-head"><b>弹框宽度档位</b><span>只走 <code>--modal-w</code>，视口系数统一 94vw</span></div>
+        <div class="spec-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>类</th><th>宽度</th><th>用途</th></tr></thead>
+              <tbody>
+                <tr><td>（默认）</td><td><code>min(560px, 94vw)</code></td><td>普通表单弹框</td></tr>
+                <tr><td><code>.modal-md</code></td><td><code>min(640px, 94vw)</code></td><td>中等表单（客户端设置）</td></tr>
+                <tr><td><code>.modal-xl</code></td><td><code>min(760px, 94vw)</code></td><td>宽表单</td></tr>
+                <tr><td><code>.modal-lg</code></td><td><code>min(920px, 94vw)</code></td><td>大预览（一键合并预览）</td></tr>
+                <tr><td><code>.rules-modal</code></td><td><code>min(880px, 94vw)</code></td><td>约束编辑</td></tr>
+                <tr><td><code>.ad-modal</code></td><td><code>min(880px, 94vw)</code></td><td>详情</td></tr>
+                <tr><td><code>.cfm-card</code></td><td><code>min(400px, 94vw)</code></td><td>确认 / 通知</td></tr>
+                <tr><td><code>.task-card</code></td><td><code>min(420px, 94vw)</code></td><td>任务过程</td></tr>
+                <tr><td><code>.upg-modal</code></td><td><code>min(440px, 94vw)</code></td><td>升级流程</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="spec-note"><strong>禁止</strong>在模板里写 <code>style="width:min(...)"</code> 直接压
+            <code>.modal</code> 的 <code>width</code>——那会绕过变量体系，并把字面值散进模板。
+            需要新宽度就在上面加一档并登记 §2.9。</p>
+        </div>
+      </div>
+
+      <!-- 关闭路径与无障碍 -->
+      <div class="spec-block">
+        <div class="spec-head"><b>关闭路径与无障碍</b><span>由 <code>mountModal</code> 统一保证</span></div>
+        <div class="spec-body">
+          <div class="ctl-row">
+            <div class="ctl-label">关闭路径</div>
+            <span class="spec-note" style="margin:0">Esc（全局 keydown） · 点遮罩（<code>_bindBackdropClose</code>，判 <code>e.target === backdrop</code>） · 底栏按钮</span>
+          </div>
+          <div class="ctl-row">
+            <div class="ctl-label">无障碍</div>
+            <span class="spec-note" style="margin:0"><code>_ensureDialogA11y</code> 自动补 <code>role="dialog"</code> / <code>aria-modal="true"</code> / <code>aria-label</code>（取弹框内第一个标题元素文本），已手写的一律保留</span>
+          </div>
+          <p class="spec-note">这两条此前只写在规范里、代码从未实现：29 处弹框只有 5 处手写无障碍属性，
+            点遮罩没有任何反应。新增弹框不必记得写——挂载时统一补齐，<code>tests/test_design_spec_contract.py</code>
+            的 <code>ModalFamilyConsistencyTest</code> 守着。</p>
+        </div>
+      </div>
     </section>
 
     <section id="s2-5b3">
@@ -1864,7 +2401,7 @@ sharedRow.state === "current"      → ok
         <table>
           <thead><tr><th>类</th><th>用途</th><th>结构要点</th></tr></thead>
           <tbody>
-            <tr><td><code>.modal</code></td><td>表单弹窗</td><td>居中浮层 + <code>.modal-backdrop</code>；标题 <code>--display</code> + <code>--fs-md</code>；宽 <code>var(--modal-w, min(560px, 92vw))</code></td></tr>
+            <tr><td><code>.modal</code></td><td>表单弹窗</td><td>居中浮层 + <code>.modal-backdrop</code>；标题 <code>--display</code> + <code>--fs-md</code>；宽 <code>var(--modal-w, min(560px, 94vw))</code></td></tr>
             <tr><td><code>.cfm-card</code></td><td>确认弹窗</td><td>更窄：覆写 <code>--modal-w: min(400px, 94vw)</code>；出口按钮 <code>cfm-btn-danger</code> / <code>cfm-btn-cancel</code></td></tr>
             <tr><td><code>.sheet</code></td><td>侧拉面板</td><td>从右侧滑入；宽 <code>min(560px, 94vw)</code>；<code>--shadow-modal</code>；内部有 <code>.sheet-head</code> 工具条</td></tr>
           </tbody>

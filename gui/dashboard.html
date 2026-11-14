@@ -61,6 +61,12 @@
     --shadow-accent-hover: 0 4px 14px rgba(37,99,235,.36);
     --shadow-knob: 0 1px 2px rgba(0,0,0,.18);
     --shadow-sheet: 0 0 0 1px rgba(0,0,0,.03), 0 2px 6px rgba(0,0,0,.06), 0 12px 40px rgba(0,0,0,.12);
+    /* 弹框层次（v0.46.8）：卡片上缘内高光 + 底栏独立底色。
+       此前卡片、头部、底栏、按钮全用同一个 --panel 平面，只靠一条 1px 线分隔，
+       读起来是一张白纸；这三个 token 给「浮起的卡片 / 下沉的操作栏」两档层次。 */
+    --modal-hi: rgba(255,255,255,.92);
+    --modal-foot-bg: #F7F7F9;
+    --modal-rail: rgba(24,24,27,.14);
     /* 状态环：焦点/选中态的外发光 */
     --ring-ok: 0 0 0 3px var(--ok-bg);
     --ring-warn: 0 0 0 3px var(--warn-bg);
@@ -115,7 +121,6 @@
     --sp-5b: 15px;   /* 偶用竖向 */
     --sp-7a: 18px;   /* 弹窗标题下边距 */
     --sp-9a: 28px;   /* main 横向 */
-    --sp-9b: 32px;   /* 大卡片 */
     --sp-9c: 40px;   /* 空态大内边 */
     /* 2026-10-10 补齐：以下 6 档源自「间距字面值清零」。它们原先散落为字面值，
        这里为它们建 token 而不是继续裸写 —— 值逐个等价，所以是纯粹的取值来源
@@ -173,6 +178,9 @@
     --shadow-accent-hover: 0 4px 14px rgba(96,165,250,.30);
     --shadow-knob: 0 1px 2px rgba(0,0,0,.4);
     --shadow-sheet: 0 0 0 1px rgba(255,255,255,.03), 0 2px 6px rgba(0,0,0,.2), 0 12px 40px rgba(0,0,0,.3);
+    --modal-hi: rgba(255,255,255,.06);
+    --modal-foot-bg: #0E0E12;
+    --modal-rail: rgba(0,0,0,.55);
     --backdrop: rgba(0,0,0,.6);
   }
   html { color-scheme: light; }
@@ -282,7 +290,11 @@
   /* ============ banner ============ */
 
   /* ============ stat / quick ============ */
-  .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: var(--gap-5); margin-bottom: var(--sp-7a); }
+  /* 概览统计卡固定 3 列（v0.47.0）：原为 auto-fill minmax(190px, 1fr)，
+     在 1200px 内容区里正好卡在「6 张排不下」的临界点 → 第一行 5 张、
+     第二行 1 张孤悬（用户评审 P0-2）。固定 3 列后是规整的 3×2。 */
+  .stat-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--gap-5); margin-bottom: var(--sp-7a); }
+  @media (max-width: 900px) { .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   .stat-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-card); padding: var(--sp-7); box-shadow: var(--shadow-card); }
   .stat-card .num { font-family: var(--display); font-size: var(--fs-lg); font-weight: 600; line-height: 1.15; letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--text); }
   .stat-card .num.ok { color: var(--ok); }
@@ -361,7 +373,12 @@
   .ok-false { color: var(--err); }
   .ok-na { color: var(--faint); }
 
-  .tag { display: inline-block; font-size: var(--fs-2xs); border-radius: var(--r-pill); padding: var(--sp-0a) var(--sp-3b); border: 1px solid var(--line); color: var(--muted); background: rgba(113,113,122,.07); font-family: var(--mono); font-weight: 500; letter-spacing: .02em; }
+  /* 高度显式钉死（v0.47.10）：`.tag` 是 <button>，WKWebView（App）与 Blink（浏览器）
+     对 button 的默认 line-height / padding 处理不同 —— 同一份 CSS 在浏览器里量 40px、
+     在 App 里量 51px，导致「有胶囊的行比无胶囊的高 12px」。固定 height + line-height
+     后两端一致（20px），再由 td 的 height: 40px 兜平。 */
+  .tag { display: inline-block; height: 20px; line-height: 18px; box-sizing: border-box;
+    font-size: var(--fs-2xs); border-radius: var(--r-pill); padding: 0 var(--sp-3b); border: 1px solid var(--line); color: var(--muted); background: rgba(113,113,122,.07); font-family: var(--mono); font-weight: 500; letter-spacing: .02em; }
   .tag.ok { color: var(--ok); border-color: var(--ok-border); background: var(--ok-bg); }
   .tag.warn { color: var(--warn); border-color: var(--warn-border); background: var(--warn-bg); }
   .tag.err { color: var(--err); border-color: var(--err-border); background: var(--err-bg); }
@@ -504,6 +521,17 @@
      设计读法：密集运维台（非营销页）。端点状态用「固定列 + 形态/色彩双编码」，
      端点名只出现在表头（不再在每个单元格里重复），条目清单放最后一列，
      窗口变窄时先横向滚出，覆盖矩阵本身始终可见。 */
+  /* MCP 表基础规则（v0.47.7）：此前只依赖全局 th/td，没有自己的
+     border-collapse 与单元格定位，补竖线后 ::after 会相对错误祖先定位。 */
+  .mcp-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: var(--fs-sm); }
+  /* 行高统一（v0.47.8）：有胶囊的行被撑到 38px、无胶囊的只有 34px，
+     用户看到「行高还是不一样」。固定最小行高 40px 后两类一致。 */
+  .mcp-table td { height: var(--sp-9c); padding: 0 var(--sp-5); vertical-align: middle; }
+  .mcp-table th, .mcp-table td,
+  .merge-table th, .merge-table td,
+  .upg-table th, .upg-table td { position: relative; }
+  .mcp-table tbody tr:last-child td { border-bottom: none; }
+  .mcp-table thead th { background: var(--bg-elev); }
   .mcp-table thead th.mcp-c-ep { text-transform: none; letter-spacing: 0; font-family: var(--mono); text-align: center; }
   .mcp-table th.mcp-c-client { min-width: 150px; }
   .mcp-table th.mcp-c-ep { width: 104px; }
@@ -581,8 +609,11 @@
   .merge-sec-title { margin: var(--sp-8) 0 var(--sp-3); font-size: var(--fs-xs); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: var(--gap-3); }
   .merge-sec-n { font-weight: 500; color: var(--faint); text-transform: none; letter-spacing: 0; font-size: var(--fs-xs); font-family: var(--mono); }
   .merge-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
-  .merge-table th { text-align: left; font-size: var(--fs-2xs); text-transform: uppercase; letter-spacing: .06em; color: var(--faint); font-weight: 600; padding: var(--sp-3a) var(--sp-4); border-bottom: 1px solid var(--line-strong); white-space: nowrap; }
-  .merge-table td { padding: var(--sp-3a) var(--sp-4); border-bottom: 1px solid var(--line); vertical-align: middle; }
+  .merge-table th { text-align: center; font-size: var(--fs-2xs); text-transform: uppercase; letter-spacing: .06em; color: var(--faint); font-weight: 600; padding: var(--sp-3a) var(--sp-4); border-bottom: 1px solid var(--line-strong); white-space: nowrap; }
+  .merge-table td { padding: var(--sp-3a) var(--sp-4); border-bottom: 1px solid var(--line); vertical-align: middle; text-align: center; }
+  /* 行首（客户端）与长文本（Skills 路径）左对齐，其余居中 */
+  .merge-table th:nth-child(1), .merge-table td:nth-child(1),
+  .merge-table th:nth-child(3), .merge-table td:nth-child(3) { text-align: left; }
   .merge-table tbody tr:last-child td { border-bottom: none; }
   /* 表头内联图标（替代此前的 emoji，见 ICONS.trash/refresh/chart） */
   .merge-table th .th-ico { display: inline-flex; align-items: center; vertical-align: -1px; margin-right: var(--gap-1); }
@@ -682,53 +713,106 @@
     /* S13：宽度改为变量 —— 原来 .modal-xl/.cfm-card/.task-card 各自用 !important
        去压这一条同表规则，属「用 !important 覆盖自身样式」的特异性问题。
        变量在更具体的类上赋值即可覆盖，无需 !important。 */
-    width: var(--modal-w, min(560px, 92vw));
+    width: var(--modal-w, min(560px, 94vw));
     max-height: 92vh;
     overflow-y: auto;
-    box-shadow: var(--shadow-sheet);
+    /* 双层阴影：外投影负责「浮起」，内高光负责「有厚度」。
+       纯外投影的白卡片在浅色背景上像贴纸，上缘一条 1px 高光才读得出实体。 */
+    box-shadow: var(--shadow-sheet), inset 0 1px 0 var(--modal-hi);
     animation: modalCardIn .22s cubic-bezier(.16,1,.3,1);
   }
-  .modal h3 { margin: 0 0 var(--sp-5); font-family: var(--display); font-size: var(--fs-md); font-weight: 600; letter-spacing: -.01em; color: var(--text); }
   .modal .actions { display: flex; gap: var(--gap-4); justify-content: flex-end; margin-top: var(--sp-9); }
   .modal .rows { display: flex; flex-direction: column; gap: var(--gap-4); }
   .modal .rows .k { flex: 0 0 110px; }
   .modal .row + .row { margin-top: 0; }
   .modal-xl { --modal-w: min(760px, 94vw); }
+  /* 中间两档宽度（v0.46.8）：此前两个表单弹框用内联 `style="width:min(...)"`
+     直接压 `.modal` 的 width，既绕过 `--modal-w` 变量体系，又把 640/920 两个
+     字面值和 92vw/94vw 两种视口系数散进模板。宽度一律走变量，档位在此登记。 */
+  .modal-md { --modal-w: min(640px, 94vw); }
+  .modal-lg { --modal-w: min(920px, 94vw); }
   .modal-section { margin-top: var(--sp-7); padding-top: var(--sp-6); border-top: 1px solid var(--line); }
   .modal-section h4 { margin: 0 0 var(--sp-3); font-family: var(--display); font-size: var(--fs-xs); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
   .endpoint-form { display: flex; gap: var(--gap-3); flex-wrap: wrap; align-items: center; }
 
   /* 确认对话框 */
-  .cfm-card { text-align: center; --modal-w: min(400px, 94vw); padding: var(--sp-9b) var(--sp-9a) var(--sp-9); }
+  /* 确认 / 通知弹框（v0.46.8 用户反馈「头有点轻，就一个大图标很不协调」）。
+     此前图标 40px 居中孤悬、与标题垂直堆叠 —— 头部信息量太少，视觉重量全压在一个圆上。
+     改为「图标 + 标题同行」的横向头部条：图标 32px 作为标题前缀，其余内容跨列铺满。
+     用 grid 重排而不是改 DOM：所有 open* 函数的模板一行都不用动。 */
+  .cfm-card {
+    --modal-w: min(400px, 94vw);
+    overflow: hidden;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    column-gap: var(--gap-4);
+    row-gap: var(--gap-4);
+    text-align: left;
+    padding: var(--sp-8) var(--sp-9a) var(--sp-9);
+    /* 受光面跟随新的左对齐重心（原来按居中算，现在偏左上） */
+    background-image: radial-gradient(120% 70% at 18% -10%, var(--bg-elev), transparent 60%);
+  }
+  /* 第一行：图标 | 标题（进度卡的 spinner 占同一格） */
+  .cfm-card > .cfm-icon,
+  .cfm-card > .prog-spinner { grid-column: 1; grid-row: 1; margin: 0; }
+  .cfm-card > .cfm-title { grid-column: 2; grid-row: 1; margin: 0; }
+  /* 其余内容（正文 / 下一步 / 统计 / 输入框 / 底栏）一律跨两列 */
+  .cfm-card > *:not(.cfm-icon):not(.prog-spinner):not(.cfm-title) { grid-column: 1 / -1; }
+  /* 顶部 3px 语义色带 —— **四类弹框统一都有**（v0.46.8）。
+     上一版只有确认 / 通知有，表单和详情没有，用户评审：「有的上面有色条，有的没有」。
+     现在它是弹框容器的固定组成部分，颜色只表达语义，不表达家族：
+       accent  操作类（表单 / 普通确认 / 进度中）
+       muted   只读类（详情 / 无后续动作）
+       ok/warn/err  结果类（成功 / 注意 / 失败） */
+  .modal { position: relative; }
+  .modal::before {
+    content: ""; position: absolute; inset: 0 0 auto; height: 3px;
+    border-radius: var(--r-card) var(--r-card) 0 0;
+    background: var(--accent);
+    pointer-events: none;
+  }
+  .modal.ad-modal::before { background: var(--muted); }
+  .modal.cfm-card::before { background: var(--muted); }
+  .modal.cfm-card.cfm-info::before { background: var(--accent); }
+  .modal.cfm-card.cfm-danger::before { background: var(--err); }
+  .modal.notice-card.notice-ok::before { background: var(--ok); }
+  .modal.notice-card.notice-warn::before { background: var(--warn); }
+  .modal.notice-card.notice-err::before { background: var(--err); }
+  .modal.notice-card.notice-info::before { background: var(--accent); }
+  .modal.cfm-card.progress-card::before { background: var(--accent); }
   /* 图标徽标（v0.41.0 重排）：底色/描边跟随语义色，**不再一律红底**。
      用户截图里「已完成」配的是粉红底绿勾 —— 红底会读成"出错了"，与标题冲突。
      直径 40px（原 48px）：通知类弹框的重心应该在文字，图标只是状态锚点。 */
   .cfm-icon {
-    width: 40px; height: 40px; border-radius: 50%;
-    margin: 0 auto var(--sp-6);
+    width: 32px; height: 32px; border-radius: 50%; flex: 0 0 auto;
     display: flex; align-items: center; justify-content: center;
-    font-size: var(--fs-md); font-weight: 700; font-family: var(--mono);
+    font-size: var(--fs-sm); font-weight: 700; font-family: var(--mono);
     background: var(--err-bg); color: var(--err); border: 1px solid var(--err-border);
+    box-shadow: 0 0 0 4px var(--err-bg), inset 0 1px 0 var(--modal-hi);
   }
-  .notice-card .cfm-icon { background: var(--panel-2); color: var(--muted); border-color: var(--line); }
-  .notice-card.notice-ok .cfm-icon { background: var(--ok-bg); color: var(--ok); border-color: var(--ok-border); }
-  .notice-card.notice-warn .cfm-icon { background: var(--warn-bg); color: var(--warn); border-color: var(--warn-border); }
-  .notice-card.notice-err .cfm-icon { background: var(--err-bg); color: var(--err); border-color: var(--err-border); }
-  .notice-card.notice-info .cfm-icon { background: var(--accent-bg); color: var(--accent); border-color: var(--accent-border); }
+  .notice-card .cfm-icon { background: var(--panel-2); color: var(--muted); border-color: var(--line); box-shadow: 0 0 0 4px var(--panel-2), inset 0 1px 0 var(--modal-hi); }
+  .notice-card.notice-ok .cfm-icon { background: var(--ok-bg); color: var(--ok); border-color: var(--ok-border); box-shadow: 0 0 0 4px var(--ok-bg), inset 0 1px 0 var(--modal-hi); }
+  .notice-card.notice-warn .cfm-icon { background: var(--warn-bg); color: var(--warn); border-color: var(--warn-border); box-shadow: 0 0 0 4px var(--warn-bg), inset 0 1px 0 var(--modal-hi); }
+  .notice-card.notice-err .cfm-icon { background: var(--err-bg); color: var(--err); border-color: var(--err-border); box-shadow: 0 0 0 4px var(--err-bg), inset 0 1px 0 var(--modal-hi); }
+  .notice-card.notice-info .cfm-icon { background: var(--accent-bg); color: var(--accent); border-color: var(--accent-border); box-shadow: 0 0 0 4px var(--accent-bg), inset 0 1px 0 var(--modal-hi); }
   /* 非破坏性确认（v0.45.1）：.cfm-icon 默认是 err 红（为危险确认而设）。
      「写入共享约束」这类**可逆**操作必须用中性色，否则与「删除」视觉同权。 */
-  .cfm-card.cfm-info .cfm-icon { background: var(--panel-2); color: var(--muted); border-color: var(--line); }
+  .cfm-card.cfm-info .cfm-icon { background: var(--panel-2); color: var(--muted); border-color: var(--line); box-shadow: 0 0 0 4px var(--panel-2), inset 0 1px 0 var(--modal-hi); }
   /* 破坏性确认：显式声明 err 色，不依赖 .cfm-icon 的默认值 —— 语义类要有自己的规则，
      否则读代码的人无法判断「这个类到底改变了什么」。 */
-  .cfm-card.cfm-danger .cfm-icon { background: var(--err-bg); color: var(--err); border-color: var(--err-border); }
-  .cfm-card .cfm-title { font-size: var(--fs-md); font-weight: 600; color: var(--text); margin: 0 0 var(--sp-2); }
+  .cfm-card.cfm-danger .cfm-icon { background: var(--err-bg); color: var(--err); border-color: var(--err-border); box-shadow: 0 0 0 4px var(--err-bg), inset 0 1px 0 var(--modal-hi); }
+  .cfm-card .cfm-title { font-size: var(--fs-md); font-weight: 600; color: var(--text); margin: 0; line-height: 1.3; }
   /* 通知类正文左对齐（v0.41.0）：居中 + 折行是这轮「信息太乱」的主因之一，
      多行中文居中后每行起止位置都在变，眼睛要重新找起点。确认框保持居中。 */
-  .notice-card { text-align: center; }
-  .notice-card .cfm-title { margin-bottom: var(--sp-5); }
+  .notice-card { text-align: left; }
+  .notice-card .cfm-title { margin-bottom: 0; }
   .notice-card .cfm-msg { text-align: left; margin: 0; }
   .notice-card .notice-body { text-align: left; }
-  .cfm-card .cfm-msg { font-size: var(--fs-sm); color: var(--muted); margin: 0 0 var(--sp-9); line-height: 1.55; white-space: pre-line; }
+  /* 头部（图标 + 标题）与正文之间加一条分隔线（v0.46.8）：
+     两者直接上下贴在一起时，仍然读成「一个图标 + 一段文字」；
+     一条 hairline 把「这是什么」与「具体内容」分成两段。 */
+  .cfm-card .cfm-msg { font-size: var(--fs-sm); color: var(--muted); margin: 0; padding-top: var(--sp-5); border-top: 1px solid var(--line); line-height: 1.55; white-space: pre-line; }
 
   /* 信息弹框（.notice-card，DESIGN.md §2.5b-2）
      取代原来的 toast：结果通知要能读完、能回看、能复制，自动消失的浮层做不到。
@@ -774,8 +858,8 @@
      一次操作 = 一个框：过程中列出每一步，结束后原地转成结果。
      与 .task-card 的区别：task-card 是「阶段占位」（按时间依次点亮，不代表真实
      进度），progress-card 是**真实步骤**（每完成一条追加一条，能看出哪一步失败）。 */
-  .progress-card .prog-spinner { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--accent-bg); border-top-color: var(--accent); animation: ts-spin .7s linear infinite; margin: 0 auto var(--sp-4); }
-  .progress-card .prog-count { margin: var(--sp-4) 0 0; text-align: center; }
+  .progress-card .prog-spinner { width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--accent-bg); border-top-color: var(--accent); animation: ts-spin .7s linear infinite; margin: 0 auto var(--sp-4); }
+  .progress-card .prog-count { margin: 0; text-align: left; }
   .progress-card .prog-body { max-height: 40vh; overflow: auto; }
   .progress-card .prog-list { display: flex; flex-direction: column; gap: var(--gap-2); text-align: left; }
   .progress-card .prog-step { display: flex; align-items: center; gap: var(--gap-2); font-size: var(--fs-xs); color: var(--muted); }
@@ -820,7 +904,7 @@
   .git-commit-modal .upg-warn { text-align: left; }
   .git-commit-modal .form-field { margin-top: var(--sp-4); }
   .prog-detail .git-res-hint { font-size: var(--fs-xs); color: var(--muted); padding-left: calc(var(--sp-2) + var(--gap-2)); margin-bottom: var(--sp-1); }
-  .cfm-card .actions { justify-content: center; gap: var(--gap-5); margin-top: 0; }
+  .cfm-card .actions { justify-content: flex-end; gap: var(--gap-4); margin-top: 0; }
   /* 按钮度量统一（v0.42.0）：.cfm-card 原用 --sp-8a(22px) 横向内边，.modal-form 用
      --sp-8(20px)，同一应用里两种弹框的按钮宽度差 4px。统一取 --sp-8。 */
   .cfm-card .actions button {
@@ -836,13 +920,13 @@
      红色专属于「删除 / 覆盖 不可逆」这一类，否则用户会以为点下去有损失。 */
   .cfm-btn-primary {
     background: var(--accent); color: var(--on-accent); border: none;
-    box-shadow: var(--shadow-accent);
+    box-shadow: var(--shadow-accent), inset 0 1px 0 rgba(255,255,255,.22);
   }
   .cfm-btn-primary:hover { background: var(--accent-strong); box-shadow: var(--shadow-accent-hover); }
   .cfm-btn-primary:active { transform: scale(.97); }
   .cfm-btn-danger {
     background: var(--err); color: var(--on-accent); border: none;
-    box-shadow: var(--shadow-err);
+    box-shadow: var(--shadow-err), inset 0 1px 0 rgba(255,255,255,.18);
   }
   .cfm-btn-danger:hover { background: var(--err-strong); box-shadow: var(--shadow-err-hover); }
   .cfm-btn-danger:active { transform: scale(.97); }
@@ -852,7 +936,7 @@
   .cfm-typed input { width: 100%; text-align: center; font-family: var(--mono); letter-spacing: .04em; }
 
   /* 进度 / 结果对话框 */
-  .task-card { --modal-w: min(420px, 94vw); }
+  .task-card { --modal-w: min(440px, 94vw); }
   /* 长耗时 CLI 调用期间的进度对话框（FEAT-11 UX 整改）：
      复用 task-card 的视觉语言，但完成即自动消失——刷新/统计会高频触发，
      强制多点一次「完成」只会招烦。同样走 <dialog> top layer：
@@ -943,11 +1027,17 @@
      标题固定 → 主体滚动 → 操作栏固定。结构由 mountModal 自动重排（见 form-head /
      form-body 的注入），各 open* 函数不需要记得包一层。 */
   .modal-form { padding: 0; display: flex; flex-direction: column; overflow: hidden; max-height: 92vh; }
-  .modal-form .form-head { flex: 0 0 auto; padding: var(--sp-9a) var(--sp-9a) var(--sp-6); border-bottom: 1px solid var(--line); }
+  /* 头部与主体之间除了 1px 线，再加一道极轻的下投影（v0.46.8）：
+     三段式如果只靠线分隔，读起来仍是同一张纸；这道阴影让「头」浮在「身」上。 */
+  .modal-form .form-head { flex: 0 0 auto; padding: var(--sp-9a) var(--sp-9a) var(--sp-6); border-bottom: 1px solid var(--line); box-shadow: 0 10px 18px -20px var(--modal-rail); }
   .modal-form .form-head .form-title { margin: 0 0 var(--sp-1); }
   .modal-form .form-head .form-sub { margin: 0; }
   .modal-form .form-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: var(--sp-6) var(--sp-9a); }
-  .modal-form .form-actions { flex: 0 0 auto; margin-top: 0; padding: var(--sp-5) var(--sp-9a); border-top: 1px solid var(--line); background: var(--panel); }
+  /* 底栏：固定不滚动、右对齐、紧贴主体（v0.46.8 合并两条重复声明）。
+     此前同一条规则声明两次，后一条带上外边距覆盖前一条的零值，
+     实测表单弹框主体到底栏 19px、详情弹框 0。间距由 padding 提供，
+     本规则**只此一处**，不得再拆成第二条。 */
+  .modal-form .form-actions { flex: 0 0 auto; display: flex; gap: var(--gap-4); justify-content: flex-end; padding: var(--sp-5) var(--sp-9a); border-top: 1px solid var(--line); background: var(--modal-foot-bg); }
   .modal-form .form-title { font-size: var(--fs-md); font-weight: 600; color: var(--text); margin: 0 0 var(--sp-1); letter-spacing: -.01em; }
   .modal-form .form-sub { font-size: var(--fs-xs); color: var(--muted); margin: 0 0 var(--sp-7a); line-height: 1.4; }
   .modal-form .form-field { margin-bottom: var(--sp-5); }
@@ -969,8 +1059,7 @@
   .modal-form .form-row { display: flex; gap: var(--gap-4); align-items: center; }
   .modal-form .form-row .form-field { flex: 1; margin-bottom: 0; }
   .modal-form .form-row button { flex: 0 0 auto; }
-  .modal-form .form-actions { display: flex; gap: var(--gap-4); justify-content: flex-end; margin-top: var(--sp-8); }
-  .modal-form .form-actions button {
+    .modal-form .form-actions button {
     min-height: 32px; padding: var(--sp-3) var(--sp-8); border-radius: var(--r-control); font-size: var(--fs-sm); font-weight: 500;
     transition: all .15s var(--ease); cursor: pointer;
   }
@@ -981,8 +1070,12 @@
   .modal-form .btn-cancel:active { transform: scale(.97); }
   .modal-form .btn-save {
     background: var(--accent); color: var(--on-accent); border: none;
-    box-shadow: var(--shadow-accent);
+    /* 实心主按钮加一道上缘高光：纯色块在浅色卡片里读起来是「印刷色」，
+       一道 1px 高光才像有厚度的按键。悬停上浮 1px 而不是放大，避免布局抖动。 */
+    box-shadow: var(--shadow-accent), inset 0 1px 0 rgba(255,255,255,.22);
+    transition: background .15s var(--ease), box-shadow .15s var(--ease), transform .15s var(--ease);
   }
+  .modal-form .btn-save:hover { transform: translateY(-1px); }
   .modal-form .btn-save:hover { background: var(--accent-strong); box-shadow: var(--shadow-accent-hover); }
   .modal-form .btn-save:active { transform: scale(.97); }
   .modal-form .btn-danger {
@@ -1003,7 +1096,9 @@
   /* 宽详情弹框（Agent/MCP 详情）。与 task-card / upg-modal 同用 --modal-w
    * 变量体系，不再各自写 width —— 归并后统一由 .modal 的 width 消费。 */
   .ad-modal { --modal-w: min(880px, 94vw); padding: 0; overflow: hidden; text-align: left; }
-  .ad-head { padding: var(--sp-9) var(--sp-9a) var(--sp-8); border-bottom: 1px solid var(--line); }
+  /* 头部顶部内边与 .form-head 对齐（v0.46.8）：原为 --sp-9(24px)，比表单弹框
+     少 4px，两个家族的标题距容器顶不一致。 */
+  .ad-head { padding: var(--sp-9a) var(--sp-9a) var(--sp-8); border-bottom: 1px solid var(--line); box-shadow: 0 10px 18px -20px var(--modal-rail); }
   .ad-head-top { display: flex; align-items: center; gap: var(--gap-3); margin-bottom: var(--sp-4); }
   .ad-type {
     font-family: var(--mono); font-size: var(--fs-2xs); font-weight: 600;
@@ -1078,7 +1173,11 @@
   .ad-foot-note { padding: var(--sp-4) var(--sp-9a) var(--sp-7a); font-family: var(--mono); font-size: var(--fs-2xs); color: var(--muted); border-top: 1px solid var(--line); margin-top: calc(-1 * var(--sp-0a)); line-height: 1.6; }
   .ad-entry.mcp-entry { align-items: center; gap: var(--gap-4); }
   .mcp-loc-type { font-family: var(--mono); font-size: var(--fs-2xs); color: var(--faint); border: 1px solid var(--line); border-radius: var(--r-hair); padding: 0 var(--sp-1); margin-right: var(--sp-0b); }
-  .ad-foot { display: flex; align-items: center; gap: var(--gap-4); padding: var(--sp-6) var(--sp-9a) var(--sp-8); border-top: 1px solid var(--line); }
+  .ad-foot { display: flex; align-items: center; gap: var(--gap-4); padding: var(--sp-6) var(--sp-9a) var(--sp-8); border-top: 1px solid var(--line); background: var(--modal-foot-bg); }
+  /* 触达目标（v0.46.8）：详情弹框底栏此前只有 .btn-cancel 自带 padding，
+     .btn-soft 走全局 padding（7px 12px）实测 34px、且没有显式 min-height，
+     与 cfm / form-actions 的「显式 32px」不同族。统一在这里声明。 */
+  .ad-foot button { min-height: 32px; }
   .ad-foot .close-push { margin-left: auto; }
   .ad-foot .btn-soft.danger { background: var(--err-bg); border-color: var(--err-border); color: var(--err); }
   .ad-foot .btn-soft.danger:hover { background: var(--err); border-color: var(--err); color: var(--on-accent); }
@@ -1253,10 +1352,21 @@
      实测本页有别的规则把 td 设成了 inline-block，表格单元格脱队后列宽与竖线全错
      （表头 241→489，对应单元格却是 241→391）。表头一直正常，所以只看表头量不出来。 */
   .agent-list-table th, .agent-list-table td { display: table-cell; position: relative; }
-  .agent-list-table th:not(:last-child)::after,
-  .agent-list-table td:not(:last-child)::after {
-    content: ""; position: absolute; top: 0; bottom: 0; right: -0.5px; width: 1px;
-    background: var(--line); pointer-events: none;
+  /* MCP 表也补竖线（v0.47.7）：此前只有技能表与 Agent 表有，MCP 表没有 ——
+     用户评审「有的列之间有分隔线，有的没有」。 */
+  /* 竖线统一用 background-image 画（v0.47.12）。
+     此前用 `::after` + `right: -0.5px`，而多个 td 带 `overflow: hidden`（为文本省略），
+     落在盒子外的伪元素被直接裁掉 —— Skills 名称列、Agent 表多数列因此看不到竖线。
+     background 不受 overflow 影响，也不与 box-shadow（异常行左侧色条）抢属性。 */
+  .agent-list-table th:not(:last-child),
+  .agent-list-table td:not(:last-child),
+  .mcp-table th:not(:last-child),
+  .mcp-table td:not(:last-child),
+  .merge-table th:not(:last-child),
+  .merge-table td:not(:last-child),
+  .upg-table th:not(:last-child),
+  .upg-table td:not(:last-child) {
+    background-image: linear-gradient(to right, transparent calc(100% - 1px), var(--line-strong) 0);
   }
   .agent-list-table thead th { background: var(--bg-elev); }
   .agent-list-table tbody tr:last-child td { border-bottom: none; }
@@ -1265,7 +1375,7 @@
     color: var(--faint); font-weight: 600; padding: var(--sp-3a) var(--sp-3); border-bottom: 1px solid var(--line-strong);
   }
   /* overflow: hidden —— fixed 布局下超长内容不会自动换行，必须显式裁切兜底（2026-10-14）。 */
-  .agent-list-table td { padding: var(--sp-3a) var(--sp-3); border-bottom: 1px solid var(--line); vertical-align: middle; overflow: hidden; }
+  .agent-list-table td { height: var(--sp-9c); padding: 0 var(--sp-5); border-bottom: 1px solid var(--line); vertical-align: middle; overflow: hidden; }
   /* 操作列不做裁切（v0.43.1）：单元格里的按钮组带 3px 光晕，overflow:hidden 会把光晕
      削成直角、与相邻列的竖线粘在一起（用户截图「这里的线没有对齐、连在一起」）。 */
   .agent-list-table td:nth-child(10) { overflow: visible; }
@@ -1319,14 +1429,12 @@
   /* 同一条约定也适用于其它表格（向导里的客户端对照表）：
      「操作」列的表头与单元格必须同轴居中，不得只给表头写内联 right。 */
   th.al-op-cell, td.al-op-cell { text-align: center; }
-  .agent-list-table th:nth-child(3),
-  .agent-list-table th:nth-child(7),
-  .agent-list-table th:nth-child(8),
-  .agent-list-table th:nth-child(9),
-  .agent-list-table td:nth-child(3),
-  .agent-list-table td:nth-child(7),
-  .agent-list-table td:nth-child(8),
-  .agent-list-table td:nth-child(9) { text-align: center; }
+  /* 列对齐（v0.47.13 统一）：表头居中；行首两列（名称 / 类型）左对齐；
+     其余列居中。行首左对齐是行标识的可读性要求，不是例外。 */
+  .agent-list-table th,
+  .agent-list-table td { text-align: center; }
+  .agent-list-table th:nth-child(-n+2),
+  .agent-list-table td:nth-child(-n+2) { text-align: left; }
   /* 列宽受控：紧列定宽 + 文本列弹性（2026-10-14 按量化诊断整改）。
      问题：默认 auto 布局下浏览器把**全部**宽度按内容比例分摊，于是"只装一枚 20px 图标"
      的列被分到 89-125px。1440px 窗口实测：技能目录列 125px 装 20px（浪费 105px）、
@@ -1676,12 +1784,17 @@
   .settings-tab.active { background: var(--panel); color: var(--text); box-shadow: var(--shadow-card); }
   .settings-tab .st-count { font-family: var(--mono); font-size: var(--fs-2xs); color: var(--faint); margin-left: var(--sp-1a); }
   .settings-tab.active .st-count { color: var(--accent); }
+  /* 开关旁的状态文字：.switch 本身不显示 on/off 文案，需要一句文字兜底
+     （aria-checked 只服务读屏，视觉用户也要能一眼读出当前状态）。 */
+  .patrol-state { margin-left: var(--gap-3); font-size: var(--fs-xs); color: var(--muted); }
   .settings-tab-panel { display: flex; flex-direction: column; }
   .settings-tab-panel .settings-card:last-child { margin-bottom: 0; }
 
   /* ============ skeleton / empty ============ */
   .empty { margin: var(--sp-9) 0; padding: var(--sp-8); text-align: center; color: var(--muted); border: 1px dashed var(--line-strong); border-radius: var(--r-card); }
   .card-skeleton { min-height: 88px; }
+  /* 表格骨架行（v0.47.0）：形状对齐技能表，避免数据到达时整页跳变 */
+  .sk-row td { padding: var(--sp-4) var(--sp-5); border-bottom: 1px solid var(--line); }
   .sk-line { height: 12px; border-radius: var(--r-control); background: var(--panel-2); margin: var(--sp-2) 0; animation: skpulse 1.4s ease-in-out infinite; }
   @keyframes skpulse { 0%,100% { opacity: .5; } 50% { opacity: 1; } }
 
@@ -1786,6 +1899,7 @@
 
   /* 技能页工具栏：分段筛选 + 网格/列表切换 */
   .skill-toolbar { display: flex; align-items: center; gap: var(--gap-3); flex-wrap: wrap; margin-bottom: var(--sp-4); }
+  .skill-legend-note { margin: 0 0 var(--sp-3); font-size: var(--fs-2xs); color: var(--faint); line-height: 1.5; }
   .skill-legend { display: flex; align-items: center; gap: var(--gap-5); flex-wrap: wrap; padding: var(--sp-3a) var(--sp-5); margin-bottom: var(--sp-4); border: 1px solid var(--line); border-radius: var(--r-control); background: var(--bg-elev); font-size: var(--fs-xs); color: var(--muted); }
   /* 标签列**定宽**：同一页叠放的多条图例名字长短不一，
      不定宽就会让各自的第一个色点错开（实测差 2px）。
@@ -1844,29 +1958,41 @@
      此前 .skill-table 只有横线、没有列分隔线，用户读成「线断开了」。
      做法：separate + border-spacing:0，每个单元格用 ::after 画 1px 竖线。 */
   .skill-table { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; font-size: var(--fs-sm); background: var(--panel); }
-  .skill-table th, .skill-table td { position: relative; }
-  .skill-table th:not(:last-child)::after,
-  .skill-table td:not(:last-child)::after {
-    content: ""; position: absolute; top: 0; bottom: 0; right: -0.5px; width: 1px;
-    background: var(--line); pointer-events: none;
+  /* 列对齐（v0.47.5 用户定案）：**默认居中，表头居中，长段落左对齐**。
+     此前按「文本左 / 数字右 / 图标中」分三类，用户评审认为「有的左有的右有的居中，
+     很乱」。现在只有两种：长段落（用途）左，其余一律居中。 */
+  .skill-table th, .skill-table td { position: relative; text-align: center; }
+  /* 名称列也是左对齐（v0.47.7）：它是行首标识，居中会在左侧留一大片空
+     （用户截图「左边空白太多」）。规则统一为「行首与长段落左对齐，其余居中」。 */
+  .skill-table th.st-name, .skill-table td.st-name { text-align: left; }
+  .skill-table th.st-usage, .skill-table td.st-usage { text-align: left; }
+  .skill-table th:not(:last-child),
+  .skill-table td:not(:last-child) {
+    background-image: linear-gradient(to right, transparent calc(100% - 1px), var(--line-strong) 0);
   }
   .skill-table thead th { background: var(--bg-elev); }
   .skill-table tbody tr:last-child td { border-bottom: none; }
   .skill-table th {
-    text-align: left; font-size: var(--fs-2xs); text-transform: uppercase; letter-spacing: .06em;
+    /* 表头与内容同向居中（v0.47.5）：这里原写 left，会覆盖上面的整列居中规则
+       （同特异性、定义在后），导致「表头左、内容中」—— 正是用户反馈的错位。 */
+    text-align: center; font-size: var(--fs-2xs); text-transform: uppercase; letter-spacing: .06em;
     color: var(--faint); font-weight: 600; padding: var(--sp-3a) var(--sp-5); border-bottom: 1px solid var(--line-strong); white-space: nowrap;
   }
   .skill-table th.st-name { width: 18%; padding-left: var(--sp-9e); }
   .skill-table th.st-cat { width: 10%; }
+  /* 同步列是日期（11/12），按「数字/日期右对齐」规则（v0.47.4 §2.3e-0） */
   .skill-table th.st-sync { width: 10%; }
   .skill-table th.st-usage { width: auto; }
-  .skill-table th.st-status { width: 11%; text-align: right; }
-  .skill-table th.st-ops { width: 4%; text-align: right; }
+  .skill-table th.st-status { width: 11%; }
+  /* 操作列是单个 ⋯ 图标，按「图标居中」规则（v0.47.4）：右对齐会贴边，
+     且与表头不同轴 */
+  /* 操作列右侧留白与左侧（展开箭头占位 36px）对称（v0.47.6）。
+     列宽 4%→6%：36px padding 之后仍要放得下 22px 的 ⋯。 */
+  .skill-table th.st-ops { width: 6%; padding-right: var(--sp-9e); }
   .skill-table td.st-sync { white-space: nowrap; }
   /* 统一升级模态（v0.31.0 三阶段：确认 → 进度 → 完成；2026-10-23
    * taste-skill 重设计——视觉锚点（display 字体技能名/大数字）+ 层次
    * 分层（主句 text / 次要 muted）+ 留白节奏，取值全 token） */
-  .upg-modal { --modal-w: min(440px, 92vw); }
   /* 确认阶段（2026-10-23 二次重设计：大数字锚点 + 双列 chip 网格，
    * 数量自适应：1 个走锚点分支；2-16 双列全显；>16 显示 14 + +N 徽标） */
   .upg-hero { padding: var(--sp-1a) 0 var(--sp-3); }
@@ -1888,7 +2014,7 @@
   .upg-warn .w-ic svg { width: 13px; height: 13px; flex: none; }
   /* 确认表格（2026-10-23 用户定案：完整显示所有技能 + 版本对比 + 分页） */
   .upg-table { width: 100%; border-collapse: collapse; margin-top: var(--sp-2); table-layout: fixed; }
-  .upg-table th { text-align: left; font-size: var(--fs-xs); font-weight: 500; color: var(--muted); padding: var(--sp-2) var(--sp-2); border-bottom: 1px solid var(--line-strong); }
+  .upg-table th { text-align: center; font-size: var(--fs-xs); font-weight: 500; color: var(--muted); padding: var(--sp-2) var(--sp-2); border-bottom: 1px solid var(--line-strong); }
   .upg-table td { font-size: var(--fs-sm); padding: var(--sp-2) var(--sp-2); border-bottom: 1px solid var(--line); }
   .upg-table tr:last-child td { border-bottom: none; }
   /* 列宽固定：技能列吃剩余宽度（长名优先完整显示），版本列等宽便于纵向比对，
@@ -1897,7 +2023,7 @@
   .upg-table col.c-ver { width: 22%; }
   .upg-table col.c-arrow { width: 1.75rem; }
   .upg-table .t-name { font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .upg-table .t-ver { font-family: var(--mono); color: var(--muted); white-space: nowrap; text-align: right; overflow: hidden; text-overflow: ellipsis; }
+  .upg-table .t-ver { font-family: var(--mono); color: var(--muted); white-space: nowrap; text-align: center; overflow: hidden; text-overflow: ellipsis; }
   .upg-table .t-ver.to { color: var(--accent); }
   .upg-table .t-arrow { color: var(--muted); text-align: center; padding-left: 0; padding-right: 0; }
   .upg-warn { margin-top: var(--sp-4); }
@@ -1942,7 +2068,7 @@
   .skill-table .tag-upgradable { cursor: pointer; }
   .skill-table .tag-upgradable:hover { border-color: var(--warn-border); filter: brightness(1.05); }
   .skill-table .tag-upgradable:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .skill-table td { padding: var(--sp-2) var(--sp-5); border-bottom: 1px solid var(--line); vertical-align: middle; }
+  .skill-table td { height: var(--sp-9c); padding: 0 var(--sp-5); border-bottom: 1px solid var(--line); vertical-align: middle; }
   .skill-table tbody tr:last-child td { border-bottom: none; }
   .skill-table tbody tr { cursor: pointer; }
   .skill-table tbody tr:hover td { background: var(--bg-elev); }
@@ -1973,8 +2099,8 @@
   .skill-table .st-usage .st-home-link { display: inline-flex; align-items: center; gap: var(--gap-1); flex: none; border: none; background: transparent; box-shadow: none; padding: 0; color: var(--accent); font-family: var(--mono); font-size: var(--fs-2xs); cursor: pointer; }
   .skill-table .st-usage .st-home-link svg { width: 11px; height: 11px; flex: none; }
   .skill-table .st-usage .st-home-link:hover { color: var(--accent-strong); text-decoration: underline; }
-  .skill-table .st-status { text-align: right; white-space: nowrap; }
-  .skill-table .st-ops { text-align: right; white-space: nowrap; }
+  .skill-table .st-status { white-space: nowrap; }
+  .skill-table .st-ops { text-align: center; white-space: nowrap; padding-right: var(--sp-9e); }
   .skill-table .sk-cat { display: inline-block; vertical-align: middle; font-size: var(--fs-2xs); line-height: 1.5; font-weight: 600; letter-spacing: .03em; color: var(--accent); background: var(--accent-bg); padding: var(--sp-0a) var(--sp-3); border-radius: var(--r-pill); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
   .skill-table .st-count {
     display: inline-block; vertical-align: middle; font-family: var(--mono); font-size: var(--fs-2xs); line-height: 1.5; padding: var(--sp-0a) var(--sp-3);
@@ -2356,10 +2482,10 @@
       <div class="page-head">
         <div class="hd"><h2>Skills</h2><div class="hint">技能清单与每客户端启用状态</div></div>
         <div class="page-actions">
-          <button class="btn-soft" data-action="open-insight">使用分析</button>
-          <button class="btn-soft" data-action="open-market">技能市场</button>
-          <button class="btn-soft" data-action="refresh-skills">刷新技能</button>
-          <button class="btn-soft" data-action="skill-check-updates" title="只读检查：本地版本 vs 远端最新版（不修改任何技能）">检查更新</button>
+          <button class="ghost" data-action="open-insight">使用分析</button>
+          <button class="ghost" data-action="open-market">技能市场</button>
+          <button class="ghost" data-action="refresh-skills">刷新技能</button>
+          <button class="primary" data-action="skill-check-updates" title="只读检查：本地版本 vs 远端最新版（不修改任何技能）">检查更新</button>
           <button class="btn-soft" data-action="skill-upgrade-all" title="按顺序逐个升级全部「有更新」的技能（每个先备份）">一键升级</button>
           <button class="btn-soft" data-action="merge" title="仅重建各客户端 skills 链接，不合并重复技能">修复链接</button>
         </div>
@@ -2426,13 +2552,9 @@
           <button type="button" class="view-btn" data-view="list" aria-label="列表视图"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
         </span>
       </div>
-      <div id="skill-legend" class="skill-legend hidden">
-        <span class="legend-label">启用</span>
-        <span class="legend-item"><span class="legend-swatch ok"></span>全部启用</span>
-        <span class="legend-item"><span class="legend-swatch warn"></span>部分启用</span>
-        <span class="legend-item"><span class="legend-swatch err"></span>未启用</span>
-        <span class="legend-note"></span>
-      </div>
+      <!-- 图例只保留 N/M 口径说明（v0.47.0）：状态色点与筛选 chip 是同一份信息，
+           两行并排时用户要读两遍才分清哪个能点。筛选交给上面的 chip 行。 -->
+      <p id="skill-legend" class="skill-legend-note hidden"></p>
       <div id="skills-list" class="skill-cards"></div>
       <div id="skills-pagination"></div>
     </section>
@@ -2630,10 +2752,48 @@ function _normalizeFormModal(root) {
   card.insertBefore(body, actions);
 }
 
+// 弹框无障碍语义统一补齐（v0.46.8）。
+//
+// 为什么放在这里而不是逐个模板手写：29 处弹框里只有 5 处手写了
+// role/aria-modal/aria-label，其余 24 处是裸 <div class="modal">——屏幕阅读器
+// 不会把它播报成对话框。新增弹框时抄旧模板就必然继续漏，和 _normalizeFormModal
+// 同样的道理：结构性约束由 mountModal 统一保证，而不是靠每个调用点记得。
+//
+// 已手写的属性一律保留（不覆盖）：少数弹框的 aria-label 带具体名称，比兜底值更准。
+function _ensureDialogA11y(root) {
+  const card = root.querySelector(".modal, .sheet");
+  if (!card) return;
+  if (!card.hasAttribute("role")) card.setAttribute("role", "dialog");
+  if (!card.hasAttribute("aria-modal")) card.setAttribute("aria-modal", "true");
+  if (!card.hasAttribute("aria-label")) {
+    const t = card.querySelector(
+      ".form-title, .cfm-title, .ad-name, .sheet-head h3, .prog-title, h3, h4"
+    );
+    const label = String((t && t.textContent) || "").trim().slice(0, 60);
+    card.setAttribute("aria-label", label || "对话框");
+  }
+  if (!card.hasAttribute("tabindex")) card.setAttribute("tabindex", "-1");
+}
+
+// 点遮罩关闭（DESIGN.md §2.5b-4 的「关闭路径：Esc / 点遮罩 / 按钮」）。
+//
+// 此前只实现了 Esc（全局 keydown）与按钮，规范里承诺的「点遮罩」从未落地：
+// 用户点空白处没有任何反应，只能去找 Esc 或按钮。
+// 判定用 e.target === backdrop，点在弹框卡片内部不触发。
+function _bindBackdropClose(root) {
+  const bd = root.querySelector(".modal-backdrop");
+  if (!bd) return;
+  bd.addEventListener("click", (e) => {
+    if (e.target === bd) closeModal();
+  });
+}
+
 function mountModal(html) {
   const modal = $("modal-root");
   modal.innerHTML = html;
   _normalizeFormModal(modal);
+  _ensureDialogA11y(modal);
+  _bindBackdropClose(modal);
   // 必须走 showModal()：结果面板（使用分析）本身是 top layer 的 <dialog>，
   // 而 top layer 内的元素一律绘制在所有普通浮层之上。确认框若还留在普通文档流里，
   // 被面板整个盖住——用户点了按钮却"什么都没发生"。
@@ -2731,7 +2891,7 @@ function modalNotice(kind, title, message, opts) {
     ${statsHtml}
     ${actionHtml}
     <div class="actions">
-      <button class="cfm-btn-cancel" id="notice-ok">好</button>
+      <button class="cfm-btn-cancel" id="notice-ok">关闭</button>
     </div>
   </div></div>`);
   const btn = $("notice-ok");
@@ -2817,7 +2977,7 @@ function progressFinish(title, ok, detail, detailHtml) {
     <div data-progress-replace="${kind}"></div>
     ${detailBlock}
     ${stepsHtml}
-    <div class="actions"><button class="cfm-btn-cancel" id="prog-ok">关掉</button></div>
+    <div class="actions"><button class="cfm-btn-cancel" id="prog-ok">关闭</button></div>
   </div></div>`);
   const btn = $("prog-ok");
   if (btn) { btn.onclick = closeModal; try { btn.focus(); } catch (e) {} }
@@ -2835,7 +2995,7 @@ function confirmModal(title, message, danger, confirmText) {
     // v0.31.0：danger 只是视觉强调（红色按钮），确认文案可自定义——
     // 升级是覆盖性写操作该用红色，但按钮写死「确认删除」会误导
     // （用户截图反馈「升级服务为什么是确认删除」）。
-    const yesText = confirmText || (danger ? "确认删除" : "确认");
+    const yesText = confirmText || (danger ? "删除" : "确定");
     // 走 mountModal 而不是直接写 innerHTML：必须 showModal() 进入 top layer，
     // 否则会被同为 top layer 的结果面板整个盖住（用户看不到确认框）。
     mountModal(`<div class="modal-backdrop"><div class="modal cfm-card ${danger ? "cfm-danger" : "cfm-info"}" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}" tabindex="-1">
@@ -2866,7 +3026,7 @@ function confirmTypedKeyModal(title, message, keyName) {
         placeholder="输入 ${escapeHtml(keyName)} 以确认" aria-label="输入条目名以确认" /></div>
       <div class="actions">
         <button class="cfm-btn-cancel" id="cfm-no">取消</button>
-        <button class="cfm-btn-danger" id="cfm-yes" disabled>确认删除</button>
+        <button class="cfm-btn-danger" id="cfm-yes" disabled>删除</button>
       </div>
     </div></div>`);
     const input = $("cfm-typed-input");
@@ -4138,12 +4298,9 @@ function renderSkillList() {
   if (legendEl) {
     const hasData = total > 0 && list.length > 0;
     legendEl.classList.toggle("hidden", !hasData);
-    const note = legendEl.querySelector(".legend-note");
-    if (note) {
-      note.textContent = hasData
-        ? `N / M = 已挂载该技能的客户端数 / 客户端总数（共 ${total} 个 IDE 与 Agent）`
-        : "";
-    }
+    legendEl.textContent = hasData
+      ? `N / M = 已挂载该技能的客户端数 / 客户端总数（共 ${total} 个 IDE 与 Agent）`
+      : "";
   }
   const q = ($("skill-filter") && $("skill-filter").value || "").trim().toLowerCase();
   const seg = skillSeg();
@@ -4256,10 +4413,10 @@ function renderSkillList() {
         + `<span class="st-name-text" title="${escapeHtml(s)}">${escapeHtml(skillDisplayName(s))}</span>`
         + (r.isContainer ? nestCountBadge(r.children.length) : "");
       const nestRow = r.isContainer
-        ? `<tr class="nest-tr" data-nest-of="${escapeHtml(s)}" hidden><td colspan="7"><div class="nest-list">${nestHtml(s)}</div></td></tr>`
+        ? `<tr class="nest-tr" data-nest-of="${escapeHtml(s)}" hidden><td colspan="6"><div class="nest-list">${nestHtml(s)}</div></td></tr>`
         : "";
       // S6：不在 <tr> 上写 role="button" —— 那会把行从表格语义里摘出去，
-      // 读屏丢失「第几行/对应哪个表头」的行列关联（该表 5 列）。
+      // 读屏丢失「第几行/对应哪个表头」的行列关联（该表 6 列）。
       // 保留 tabindex 与 Enter/Space 键盘补丁，可聚焦性不变。
       // v0.31.0：版本列（SKILL.md frontmatter）+ 更新列（检查后三态 tag）
       // v0.31.0：无 version 显示最后更新时间（lock 的 updatedAt，MM-DD 短格式，
@@ -4529,7 +4686,7 @@ function openRenameSkillModal(skill) {
 }
 
 async function confirmDeleteSkill(skill) {
-  const ok = await confirmModal("删除技能", `将把 ${skill} 移到统一目录的 _trash/ 回收目录（删除前自动备份到 _backup/，可恢复）。确定继续？`, true);
+  const ok = await confirmModal("删除技能", `将把 ${skill} 移到统一目录的 _trash/ 回收目录（删除前自动备份到 _backup/，可恢复）。确定继续？`, true, "删除");
   if (!ok) return;
   if (!tauriInvoke) { modalNotice("warn", "请注意", "浏览器预览模式：写入需在桌面 App 内执行"); return; }
   await runTaskModal(`删除 ${skill}`, async () => {
@@ -4547,7 +4704,7 @@ async function confirmDeleteSkill(skill) {
 function renderEndpointCredentials(reports) {
   const body = $("endpoint-cred-body");
   if (!body) return;
-  if (!reports.length) { body.innerHTML = '<div class="empty">端点库为空<div class="empty-cta">先在「MCP 端点库」添加端点</div></div>'; return; }
+  if (!reports.length) { body.innerHTML = '<div class="empty">无端点<div class="empty-cta">先在「MCP 端点库」添加端点</div></div>'; return; }
   const rows = reports.map((r) => {
     const canStoreSource = r.mode === "keychain" || r.mode === "file";
     const stateBadge = !r.configured ? '<span class="cred-status warn">未配置</span>'
@@ -4649,7 +4806,7 @@ function renderEndpointLibrary() {
   if (!el) return;
   const mcp = (SNAP && SNAP.mcp) || {};
   const endpoints = mcp.endpoints || [];
-  if (!endpoints.length) { el.innerHTML = '<div class="empty">端点库为空，点「添加端点」。</div>'; return; }
+  if (!endpoints.length) { el.innerHTML = '<div class="empty">无端点，点「添加端点」。</div>'; return; }
   // 「认证」列：显示凭据来源，**不回显任何凭据值**。
   // 此前「编辑」按钮把 auth_token 塞进 data-auth_token 属性 —— 等于把明文令牌
   // 写进 DOM 属性，快照/开发者工具/复制页面都能读到。现在明文不再离开后端
@@ -5481,7 +5638,7 @@ function openAgentSettings(name) {
     </div>`).join("") + `<button class="path-field-add pf-add" data-pf="${id}" data-placeholder="${placeholder}" data-kind="${kind || ""}">+ 添加路径</button>`;
   }
 
-  mountModal(`<div class="modal-backdrop"><div class="modal modal-form" style="width:min(640px,92vw)">
+  mountModal(`<div class="modal-backdrop"><div class="modal modal-form modal-md">
     <div class="form-title">${escapeHtml(name)} · 设置</div>
     <div class="form-sub">类型：${escapeHtml(t.type || "")}</div>
 
@@ -5920,8 +6077,12 @@ function renderSettings() {
     <h4>后台巡检（定时检查）</h4>
     <div class="rows" style="font-size:var(--fs-sm)">
       <div class="row"><span class="k">启用后台巡检</span><span class="v">
-        <button type="button" class="seg-btn${_patrolEnabled ? " active" : ""}" data-patrol-toggle="on">开启</button>
-        <button type="button" class="seg-btn${_patrolEnabled ? "" : " active"}" data-patrol-toggle="off">关闭</button>
+        <button type="button" class="switch" role="switch"
+          aria-checked="${_patrolEnabled ? "true" : "false"}"
+          data-patrol-switch aria-label="启用后台巡检">
+          <span class="sw-track"></span><span class="sw-knob"></span>
+        </button>
+        <span class="patrol-state" aria-hidden="true">${_patrolEnabled ? "已开启" : "已关闭"}</span>
       </span></div>
       <div class="row"><span class="k">巡检间隔</span><span class="v"><span class="segmented" id="patrol-interval-seg" role="group" aria-label="巡检间隔">
         ${patrolBtns}
@@ -6087,7 +6248,7 @@ function renderSettings() {
     <h4>活动端点</h4>
     <div class="rows" style="font-size:var(--fs-sm)">
       <div class="row"><span class="k">当前活动</span><span class="v">
-        <select id="settings-active-profile" class="modal-form .form-field input" style="width:auto;min-width:200px" aria-label="活动端点">
+        <select id="settings-active-profile" style="width:auto;min-width:200px" aria-label="活动端点">
           <option value="" ${!_activeProfile ? "selected" : ""}>无活动端点</option>
           ${_epOpts}
         </select>
@@ -6150,13 +6311,17 @@ function renderSettings() {
   el.querySelectorAll("[data-usage-auto]").forEach((b) => {
     b.addEventListener("click", () => setUsageAutoMinutes(b.dataset.usageAuto));
   });
-  el.querySelectorAll("[data-patrol-toggle]").forEach((b) => {
-    b.addEventListener("click", () => {
-      const want = b.dataset.patrolToggle === "on";
+  // 后台巡检开关（v0.47.0）：从「开启/关闭 两个 seg-btn」改为 .switch。
+  // 同一设置页里布尔项必须只有一种形态 —— 共享约束同步用的是 .switch，
+  // 这里原本是按钮对，用户要在两套交互之间切换心智（用户评审 P0-1）。
+  const _patrolSw = el.querySelector("[data-patrol-switch]");
+  if (_patrolSw) {
+    _patrolSw.addEventListener("click", () => {
+      const want = _patrolSw.getAttribute("aria-checked") !== "true";
       if (want === _patrolEnabled) return;   // 已是该状态，不产生无意义写操作
       setPatrolSetting("patrol_enabled", want ? "true" : "false", "启用后台巡检");
     });
-  });
+  }
   el.querySelectorAll("[data-patrol-interval]").forEach((b) => {
     b.addEventListener("click", () => {
       const min = parseInt(b.dataset.patrolInterval, 10);
@@ -6407,9 +6572,22 @@ async function runCli(args, progress) {
   }
 }
 
+// 首屏骨架（v0.47.0 评审 P1-5）：此前只有 agents-list 有占位，
+// skills / mcp / dsh 三个页面在 CLI 返回前是空白直出 —— 数据慢时用户看到的是
+// 「页面坏了」而不是「正在加载」。现在四个数据页各自按自己的最终形状给占位。
 function showSkeleton() {
-  const sk = (n) => Array.from({ length: n }, () => '<div class="card card-skeleton"><div class="sk-line" style="width:45%"></div><div class="sk-line" style="width:65%"></div><div class="sk-line"></div><div class="sk-line" style="width:80%"></div></div>').join("");
-  $("agents-list").innerHTML = '<div class="cards">' + sk(6) + "</div>";
+  const skCard = (n) => Array.from({ length: n }, () =>
+    '<div class="card card-skeleton"><div class="sk-line" style="width:45%"></div>'
+    + '<div class="sk-line" style="width:65%"></div><div class="sk-line"></div>'
+    + '<div class="sk-line" style="width:80%"></div></div>').join("");
+  // 表格骨架：形状对齐技能表（名称 / 分类 / 同步 / 用途 / 启用 / 操作）
+  const skRow = (n) => Array.from({ length: n }, () =>
+    '<tr class="sk-row"><td colspan="6"><div class="sk-line"></div></td></tr>').join("");
+  const set = (id, html) => { const el = $(id); if (el) el.innerHTML = html; };
+  set("agents-list", '<div class="cards">' + skCard(6) + "</div>");
+  set("skills-list", '<table class="skill-table"><tbody>' + skRow(5) + "</tbody></table>");
+  set("mcp-clients", '<div class="cards">' + skCard(3) + "</div>");
+  set("dsh-body", '<div class="cards">' + skCard(3) + "</div>");
 }
 
 async function loadManagement() {
@@ -7456,7 +7634,7 @@ function renderEndpointStatus() {
       <div class="upg-warn"><span class="w-ic">${ICONS.info}</span><span>提交会把<strong>全部</strong>改动一起记入（含删除）。若只是想丢弃某些改动，请先在终端处理。</span></div>
       <div class="actions">
         <button class="cfm-btn-cancel" id="git-commit-cancel">取消</button>
-        <button class="cfm-btn-cancel" id="git-commit-confirm">确认提交</button>
+        <button class="cfm-btn-cancel" id="git-commit-confirm">提交</button>
       </div>
     </div></div>`);
 
@@ -8095,7 +8273,7 @@ function renderEndpointStatus() {
     const clearBtn = body.querySelector("[data-gt-clear]");
     if (clearBtn) {
       clearBtn.onclick = async () => {
-        const ok = await confirmModal("清除 token", "确认清除已保存的 GitHub token？", true);
+        const ok = await confirmModal("清除 token", "确认清除已保存的 GitHub token？", true, "清除");
         if (!ok) return;
         await runTaskModal("清除 token", async () => {
           const res = await runCli(["--set-github-token", ""]);
@@ -8266,7 +8444,7 @@ function renderEndpointStatus() {
     // 此前直接把 .row 拼进 body，行之间没有 hairline，整块看起来是散落的表单。
     const listBlock = sources.length
       ? `<div class="rows" style="font-size:var(--fs-sm)">${rows}</div>`
-      : '<div class="empty">无市场源（检查更新将提示配置源）</div>';
+      : '<div class="empty">无市场源：检查更新时会提示配置</div>';
     const fallbackNote = _marketSourcesData.fallback
       ? '<div class="note" style="margin-top:var(--sp-3)">当前为默认源（未自定义配置）。</div>' : "";
     const invalidNote = (_marketSourcesData.invalid || []).length
@@ -8295,7 +8473,7 @@ function renderEndpointStatus() {
     body.querySelectorAll("[data-ms-remove]").forEach((b) => {
       b.onclick = async () => {
         const id = b.dataset.msRemove;
-        const ok = await confirmModal("删除市场源", `确认删除源「${id}」？`, true);
+        const ok = await confirmModal("删除市场源", `确认删除源「${id}」？`, true, "删除");
         if (!ok) return;
         await runTaskModal(`删除源 ${id}`, async () => {
           const res = await runCli(["--remove-market-source", id]);
@@ -8490,7 +8668,7 @@ function renderEndpointStatus() {
         <div class="upg-warn"><span class="w-ic">${ICONS.info}</span><span>本地内容会被上游覆盖，每个升级前自动备份；上游仓库迁移时按建议自动重装。</span></div>
         <div class="actions">
           <button class="cfm-btn-cancel close-push" id="upg-cancel">取消</button>
-          <button class="cfm-btn-danger" id="upg-confirm">确认升级</button>
+          <button class="cfm-btn-danger" id="upg-confirm">升级</button>
         </div>
       </div></div>`
       : `<div class="modal-backdrop"><div class="modal cfm-card task-card upg-modal">
@@ -8513,7 +8691,7 @@ function renderEndpointStatus() {
         <div class="upg-warn"><span class="w-ic">${ICONS.info}</span><span>本地内容会被上游覆盖，升级前自动备份</span></div>
         <div class="actions">
           <button class="cfm-btn-cancel close-push" id="upg-cancel">取消</button>
-          <button class="cfm-btn-danger" id="upg-confirm">确认升级</button>
+          <button class="cfm-btn-danger" id="upg-confirm">升级</button>
         </div>
       </div></div>`;
     mountModal(confirmHtml);
@@ -9008,7 +9186,7 @@ function showAgentDetail(name) {
   const pill = (paths, vers) => {
     const arr = (paths && paths.length) ? paths : [];
     const v = vers || [];
-    if (!arr.length) return '<span class="ad-none">未检测到</span>';
+    if (!arr.length) return '<span class="ad-none">无</span>';
     return `<div class="ad-pills">${arr.map((p, i) => `<span class="ad-pill" title="${escapeHtml(p)}"><span class="ad-pill-path">${escapeHtml(p)}</span>${v[i] ? `<span class="ad-pill-ver" title="版本">${escapeHtml(v[i])}</span>` : ""}</span>`).join("")}</div>`;
   };
   const textVal = (v) => (v == null || v === "" || (Array.isArray(v) && !v.length))
@@ -9573,7 +9751,7 @@ function renderMergePreview(data) {
   // 两份的 class 组装与无障碍属性只能各自演化（card() 还带 title 提示）。
   ].map((s) => statCard(s.n, s.l, s.c)).join("");
 
-  mountModal(`<div class="modal-backdrop"><div class="modal modal-form" style="width:min(920px,94vw)">
+  mountModal(`<div class="modal-backdrop"><div class="modal modal-form modal-lg">
     <div class="form-title">一键合并预览</div>
     <div class="form-sub">以下为 dry-run 预览；确认后将真实写入（带备份回滚）。</div>
 
@@ -10180,7 +10358,7 @@ function openEditEndpoint(ds) {
 }
 
 async function removeEndpoint(key) {
-  const ok = await confirmModal("删除端点", `确认删除端点 ${key}？此操作不可撤销。`, true);
+  const ok = await confirmModal("删除端点", `确认删除端点 ${key}？此操作不可撤销。`, true, "删除");
   if (!ok) return;
   showBanner("warn", "正在删除端点…");
   runCli(["--remove-endpoint", key]).then((res) => {
@@ -10395,7 +10573,7 @@ function needFixSkillsFor(a) {
 //
 // 判定与列表单元格同源，避免「格子是黄的但菜单说不用修」这种自相矛盾：
 //   - 该客户端没有官方约定的约束文件（格子是「·」）→ 不修（没地方可写）
-//   - 所有约束文件都不存在（格子 0/M，中性色）→ 不修（应由用户先创建文件）
+//   - 有约定路径但文件都不存在 → **仍然要修**（v0.46.9：写入会新建文件）
 //   - 至少一个文件存在，且共享内容非空、该 Agent 未达标 → 需要修复
 function needFixRulesFor(a) {
   if (!(a && a.installed)) return false;
@@ -10589,7 +10767,7 @@ function runAgentMenu(pm, name) {
   else if (pm === "remove") confirmRemoveClient(name);
 }
 async function confirmRemoveClient(name) {
-  const ok = await confirmModal("移出管理", `确认将 ${name} 移出管理？将在本机停用该客户端（不删共享注册表）、删除其残留配置文件与 skills 链接（统一仓库内容不受影响，配置会先备份）。`, true);
+  const ok = await confirmModal("移出管理", `确认将 ${name} 移出管理？将在本机停用该客户端（不删共享注册表）、删除其残留配置文件与 skills 链接（统一仓库内容不受影响，配置会先备份）。`, true, "移出");
   if (!ok) return;
   await runTaskModal(`移出 ${name}`, async () => {
     const res = await runCli(["--remove-client", name]);
@@ -10631,6 +10809,9 @@ async function fixRulesFor(name, opts) {
       `${name} 只声明了规则目录（不是单个文件），不支持整体写入共享块。请用「详情」里的路径进入目录，逐文件编辑。`);
     return { ok: false };
   }
+  const paths = all.map((x) => x.path);
+  // 尚不存在的会在写入时新建，确认框里必须说清楚，不能让用户以为只改已有文件。
+  const toCreate = all.filter((x) => !x.exists).map((x) => x.path);
   const hasContent = typeof SHARED_RULES !== "undefined"
     && !!(SHARED_RULES && (SHARED_RULES.content || "").trim());
   if (!hasContent) {
@@ -10755,7 +10936,7 @@ async function fixMcpFor(name) {
 }
 
 async function cleanLegacyMcp(name) {
-  const ok = await confirmModal("清理旧 MCP", `将直接移除 ${name} 的旧 Hermes/legacy 通道条目（旧通道），原配置会先备份。若该旧通道是它当前唯一的连接，删除后可用「修复 MCP」重新接入。未纳管条目不会被删除。继续？`, true);
+  const ok = await confirmModal("清理旧 MCP", `将直接移除 ${name} 的旧 Hermes/legacy 通道条目（旧通道），原配置会先备份。若该旧通道是它当前唯一的连接，删除后可用「修复 MCP」重新接入。未纳管条目不会被删除。继续？`, true, "清理");
   if (!ok) return;
   await runTaskModal(`清理 ${name} 的旧 MCP`, async () => {
     const res = await runCli(["--remove-legacy-mcp", "--client", name]);
@@ -10919,7 +11100,7 @@ async function removeMcpEntry(name, key, high, reason) {
     : `将从 ${name} 的 MCP 配置中移除条目「${key}」。\n原配置会先备份，可用「从备份恢复」还原。继续？`;
   const ok = high
     ? await confirmTypedKeyModal("删除疑似客户端自带条目", msg, key)
-    : await confirmModal("删除 MCP 条目", msg, true);
+    : await confirmModal("删除 MCP 条目", msg, true, "删除");
   if (!ok) return;
   await runTaskModal(`删除 ${name} 的 ${key}`, async () => {
     const args = ["--remove-mcp-entry", key, "--client", name, "--format", "json"];
@@ -10963,7 +11144,7 @@ async function showConfigBackups(name) {
         data-name="${escapeHtml(name)}" data-path="${escapeHtml(b.path)}">还原到此版本</button>
     </div>`).join("");
   const emptyNote = (res && payload)
-    ? '<div class="ad-none">暂无备份</div>'
+    ? '<div class="ad-none">无备份</div>'
     : `<div class="ad-none">无法读取备份列表：${escapeHtml(cliFailLines(res) || cliErrDetail(res))}</div>`;
   mountModal(`<div class="modal-backdrop"><div class="modal ad-modal">
     <div class="ad-head"><div class="ad-head-top"><span class="ad-type">${escapeHtml(name)}</span></div>
@@ -10990,7 +11171,7 @@ async function restoreConfigBackup(name, path) {
 }
 
 async function cleanupConfigFor(name) {
-  const ok = await confirmModal("删除客户端", `将在本机停用 ${name}（不删共享注册表）：删除残留配置与 skills 链接（统一仓库内容不受影响，配置会先备份）。仅适用于「仅配置」状态、无 app/cli 的客户端。继续？`, true);
+  const ok = await confirmModal("删除客户端", `将在本机停用 ${name}（不删共享注册表）：删除残留配置与 skills 链接（统一仓库内容不受影响，配置会先备份）。仅适用于「仅配置」状态、无 app/cli 的客户端。继续？`, true, "删除");
   if (!ok) return;
   await runTaskModal(`删除 ${name}`, async () => {
     const res = await runCli(["--cleanup-config", "--client", name]);
@@ -11070,10 +11251,10 @@ async function fixAllSkillsMcp() {
 
 // ---------------- sample (browser preview) ----------------
 // 仅浏览器直开（无桌面壳、无本地 overlay）时用于预览渲染的「未配置」初始态：
-// 端点库为空、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
+// 无端点、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.46.6", build: 199, build_number: 199, semver_ok: true, full: "v0.46.6 (build 199)" },
+  app: { name: "Skill MCP Studio", version: "0.47.13", build: 216, build_number: 216, semver_ok: true, full: "v0.47.13 (build 216)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

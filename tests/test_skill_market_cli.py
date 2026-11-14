@@ -90,7 +90,12 @@ class MarketCliTest(unittest.TestCase):
         def snap():
             if not skills.is_dir():
                 return {}
-            return {p.name: p.stat().st_mtime_ns for p in skills.iterdir()}
+            # 排除隐藏条目（v0.47.1）：统一库本身是一个 git 仓库，`--market check`
+            # 的 git fetch 必然更新 .git 的 mtime。原断言把 .git 也纳入快照，
+            # 于是「缓存过期 → 真 fetch」那一轮必然误报「check 修改了技能库」。
+            # 这里比的是**技能目录**，不是仓库元数据。
+            return {p.name: p.stat().st_mtime_ns for p in skills.iterdir()
+                    if not p.name.startswith(".")}
 
         before = snap()
         proc = run_market("check")
@@ -105,6 +110,75 @@ class MarketCliTest(unittest.TestCase):
         self.assertIn("summary", data)
         for key in ("total", "outdated", "current", "unknown"):
             self.assertIn(key, data["summary"])
+
+
+class PruneCacheInvalidationTest(unittest.TestCase):
+    """清理登记残留必须让「检查更新」缓存失效（v0.47.1）。
+
+    用户实测：清理掉 9 条残留后立刻点「检查更新」，弹框仍显示 9 ——
+    因为 `--market check` 有 1 小时 TTL 的 data/market_check_cache.json，
+    清理操作没有让它失效，命中的还是清理前的快照。
+    """
+
+    def test_prune_deletes_check_cache(self):
+        src = (ROOT / "scan.py").read_text(encoding="utf-8")
+        start = src.index("def _run_prune_skill_lock")
+        end = src.index("\ndef ", start + 10)
+        body = src[start:end]
+        self.assertIn("invalidate_check_cache", body,
+                      "清理成功后必须让检查缓存失效（走公共出口）")
+        self.assertIn('result["status"] == "ok"', body,
+                      "只在真正删了条目时才失效缓存（nothing-to-prune 不该删）")
+
+
+class MarketWriteCacheInvalidationTest(unittest.TestCase):
+    """安装/升级成功后必须让「检查更新」缓存失效（v0.47.2）。
+
+    用户实测：升级完成（弹框显示「升级完成（共 2 个）」），但随后点「检查更新」
+    仍显示「2 可升级」且标题带「（缓存）」—— 缓存是升级前的快照。
+    """
+
+    def test_market_write_invalidates_check_cache(self):
+        src = (ROOT / "scan.py").read_text(encoding="utf-8")
+        start = src.index("def _run_market_write")
+        end = src.index("\ndef ", start + 10)
+        body = src[start:end]
+        self.assertIn("invalidate_check_cache", body,
+                      "安装/升级成功后必须让检查缓存失效（走公共出口）")
+        self.assertIn('if result.get("ok")', body,
+                      "只在写操作成功时失效缓存")
+
+
+class SkillWriteCacheInvalidationTest(unittest.TestCase):
+    """所有改动技能库的写操作都必须让检查缓存失效（v0.47.3）。
+
+    此前只有 prune（v0.47.1）与 install/upgrade（v0.47.2）覆盖，
+    删除 / 合并 / 回滚三处漏了 —— 用户操作完立刻检查更新会看到旧快照。
+    统一收口到 `skill_market.invalidate_check_cache()`。
+    """
+
+    FUNCS = ("_run_skill_delete", "_run_merge_skills", "_run_skill_rollback",
+             "_run_market_write", "_run_prune_skill_lock")
+
+    def test_every_skill_write_invalidates_cache(self):
+        src = (ROOT / "scan.py").read_text(encoding="utf-8")
+        missing = []
+        for fn in self.FUNCS:
+            start = src.index(f"def {fn}(")
+            nxt = src.find("\ndef ", start + 10)
+            body = src[start: nxt if nxt > 0 else len(src)]
+            if "invalidate_check_cache" not in body:
+                missing.append(fn)
+        self.assertEqual(missing, [],
+                         f"这些写操作未失效检查缓存：{missing}")
+
+    def test_helper_is_public_and_single_exit(self):
+        mk = (ROOT / "core" / "skill_market.py").read_text(encoding="utf-8")
+        self.assertIn("def invalidate_check_cache()", mk,
+                      "应有统一的缓存失效出口，而不是各处自己 unlink")
+        start = mk.index("def invalidate_check_cache()")
+        body = mk[start:start + 900]
+        self.assertIn("_check_cache_path().unlink(missing_ok=True)", body)
 
 
 class MarketCliHumanOutputTest(unittest.TestCase):

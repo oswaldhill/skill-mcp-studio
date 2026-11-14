@@ -1362,6 +1362,8 @@ def _run_skill_delete(args, config, config_path) -> int:
     # 同进程内后续枚举（如紧随其后的校验/矩阵）必须看到最新清单。dry-run 未动盘。
     if result["status"] == "ok":
         invalidate_repo_skill_names()
+        from skill_market import invalidate_check_cache
+        invalidate_check_cache()
     _print_skill_op(result)
     return 0 if result["status"] in ("ok", "dry-run") else 2
 
@@ -1373,9 +1375,14 @@ def _run_prune_skill_lock(args) -> int:
     里根本不渲染（列表按磁盘目录生成），``--delete-skill`` 又要求目录存在，
     所以必须由登记表自己提供清理入口。
     """
-    from skill_market import prune_missing_registrations
+    from skill_market import invalidate_check_cache, prune_missing_registrations
 
     result = prune_missing_registrations(dry_run=bool(getattr(args, "dry_run", False)))
+    # 清理成功后必须让「检查更新」的缓存失效（v0.47.1）。
+    # 缓存 TTL 1 小时，不清的话用户清理完立刻点「检查更新」，命中的还是清理前
+    # 的快照 —— missing 仍显示 N，看起来像「清理没生效」（用户实测反馈）。
+    if result["status"] == "ok" and result.get("removed"):
+        invalidate_check_cache()
     if getattr(args, "format", None) == "json":
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0 if result["status"] in ("ok", "dry-run", "nothing-to-prune") else 2
@@ -1415,6 +1422,9 @@ def _run_merge_skills(args, config, config_path) -> int:
             dry_run=args.dry_run,
         )
 
+    if result.get("status") == "ok":
+        from skill_market import invalidate_check_cache
+        invalidate_check_cache()
     if getattr(args, "format", None) == "json":
         print(_json.dumps(result, ensure_ascii=False))
     else:
@@ -2131,6 +2141,12 @@ def _run_market_write(args) -> int:
         return 2  # 非 0：本次未执行任何写操作
 
     result = execute_plan(plan)
+    # 安装/升级成功后必须让「检查更新」缓存失效（v0.47.2）。
+    # 否则用户升级完立刻点「检查更新」，命中的还是升级前的快照 ——
+    # 弹框显示「N 可升级」，而实际已经升到最新（用户实测反馈）。
+    if result.get("ok"):
+        from skill_market import invalidate_check_cache
+        invalidate_check_cache()
     want_json = getattr(args, "format", None) == "json"
     if want_json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -2189,6 +2205,9 @@ def _run_skill_rollback(args) -> int:
         return 2
 
     result = restore_skill_backup(name, target)
+    if result.get("ok"):
+        from skill_market import invalidate_check_cache
+        invalidate_check_cache()
     if want_json:
         print(json.dumps({"kind": "skill-rollback", "name": name, **result},
                          ensure_ascii=False, indent=2))
