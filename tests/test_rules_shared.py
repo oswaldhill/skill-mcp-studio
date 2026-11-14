@@ -305,14 +305,16 @@ class AgentMenuRulesEntryTest(unittest.TestCase):
 
     def test_writer_does_not_skip_nonexistent_paths(self):
         """写入实现不得把「尚不存在的文件」过滤掉后再判断为空（v0.46.9）。"""
-        start = self.gui.index("async function fixRulesFor(name)")
+        start = self.gui.index("async function fixRulesFor(")
         rest = self.gui[start:]
         nxt = rest.find("\nasync function ", 10)
         body = rest[: nxt if nxt > 0 else 4000]
         self.assertNotIn("filter((x) => x.exists).map((x) => x.path)", body,
                          "不得先过滤掉不存在的路径再判断「无可写入的约束文件」")
-        self.assertIn("toCreate", body,
-                      "必须区分「将新建」的文件并在确认框里说明")
+        self.assertIn("x.creatable", body,
+                      "必须用 CLI 提供的 creatable 判定「可新建」")
+        self.assertIn("isNew", body,
+                      "确认框必须标注「文件不存在，将新建」")
 
     def test_dispatch_and_writer_exist(self):
         self.assertIn('pm === "fix-rules"', self.gui, "菜单动作未分发")

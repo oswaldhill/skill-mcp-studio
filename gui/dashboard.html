@@ -10809,9 +10809,6 @@ async function fixRulesFor(name, opts) {
       `${name} 只声明了规则目录（不是单个文件），不支持整体写入共享块。请用「详情」里的路径进入目录，逐文件编辑。`);
     return { ok: false };
   }
-  const paths = all.map((x) => x.path);
-  // 尚不存在的会在写入时新建，确认框里必须说清楚，不能让用户以为只改已有文件。
-  const toCreate = all.filter((x) => !x.exists).map((x) => x.path);
   const hasContent = typeof SHARED_RULES !== "undefined"
     && !!(SHARED_RULES && (SHARED_RULES.content || "").trim());
   if (!hasContent) {
