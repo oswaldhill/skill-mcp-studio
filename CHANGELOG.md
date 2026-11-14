@@ -7,6 +7,20 @@
 
 ## [Unreleased]
 
+### 修复：测试类重名导致 v0.42.0 弹框度量用例从未执行（2026-11-14）
+
+合并 `a05dc6b` 后 `tests/test_design_spec_contract.py` 出现两个同名
+`ModalFamilyConsistencyTest`：v0.42.0 的（标题刻度 / 按钮度量 / 主体内边，
+3 个用例）在前，v0.46.8 的（弹框家族六处漂移，15 个用例）在后。Python 后者
+覆盖前者，**前一组 3 个用例从未真正运行**，而 CI 与本地一直显示「全绿」。
+
+- 较新的 v0.46.8 组重命名为 `ModalFamilyMetricsConsistencyTest`，两组用例都生效。
+- ruff `F811` 随之消除（这是仓库唯一的 ruff 诊断）。
+- 单测总数 1829 → 1832（+3 即恢复的三个用例），全部通过。
+
+> 判据：修复前 `ruff check core tests scan.py scripts setup.py` 报 1 error；
+> 修复后 `All checks passed!`。
+
 ## [v0.47.13] - 2026-11-13
 
 当前发布版本（build 216）。

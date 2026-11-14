@@ -1639,8 +1639,13 @@ class ModalSkeletonTest(unittest.TestCase):
                       "mountModal 必须调用重排，否则每个弹框都要自己包一层")
 
 
-class ModalFamilyConsistencyTest(unittest.TestCase):
+class ModalFamilyMetricsConsistencyTest(unittest.TestCase):
     """弹框家族度量一致性（v0.46.8，用户要求「检查所有弹框是否统一」）。
+
+    > 类名于 2026-11-14 由 ``ModalFamilyConsistencyTest`` 改为本名：合并
+    > a05dc6b 后本文件出现两个同名类，后者覆盖前者，导致 v0.42.0 的
+    > ``ModalFamilyConsistencyTest``（标题刻度 / 按钮度量 / 主体内边 三项）
+    > 从未真正执行。重命名较新的一组以保住两边用例。
 
     ## 背景：骨架统一，度量有六处漂移
 
