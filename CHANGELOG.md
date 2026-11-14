@@ -733,9 +733,28 @@ VS Code  current
   交给 JSON 解析器，报 `Expecting value` 而静默失败。
 - 两处修复后实测：`updated` → 真实写入 373 字节 → 再次运行才是真 `unchanged`。
 
+### 缺失约束文件的新建与写入
+
+用户：「这不是我现在写入的问题……如果没有的话，也需要有这个操作按钮」。
+
+此前 `needFixRulesFor` 里 `if (!paths.some(x => x.exists)) return false`：
+`~/.dsh/AGENTS.md` 不存在时，菜单里根本没有「写入共享约束」；即使点到了，
+`fixRulesFor` 也会把不存在的路径过滤掉后直接弹警告返回 —— **从未调用 CLI**。
+而 CLI 的 `write_rules` 本来就会新建文件与父目录。缺文件是可修复状态，不是
+「无可写入」。
+
+- **CLI**：`core/rules_files.py` / `core/rules_shared.py` 补 `creatable` / `kind`
+  字段，区分「可新建的文件」与「只能逐文件编辑的目录」。
+- **GUI**：`needFixRulesFor` 改为「至少有一个非目录目标」即给入口；`fixRulesFor`
+  用 `writable`（`creatable || kind !== "dir"`），确认框用 `isNew(x)` 标注
+  「文件不存在，将新建」。
+- **边界**：只声明规则目录（`kind === "dir"`）的客户端仍拒绝整体写入，提示用
+  「详情」进入目录逐文件编辑 —— 目录里可能已有用户自己的文件，整体写入会误伤。
+
 ### 测试
 
 - 更新写死 `supports=False` 的断言，补 `manual_only` 与空文件用例。
+- 补「缺失文件可写入」与「仅目录则拒绝」两组用例。
 - 提交时全套 **1794 项通过**。
 
 ## [v0.46.6] - 2026-11-12
