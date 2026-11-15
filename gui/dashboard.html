@@ -2484,6 +2484,7 @@
         <div class="page-actions">
           <button class="ghost" data-action="open-insight">使用分析</button>
           <button class="ghost" data-action="open-market">技能市场</button>
+            <button class="ghost" data-action="open-github-install" title="粘贴 GitHub 仓库地址，读取其中技能后选择性安装">从 GitHub 安装</button>
           <button class="ghost" data-action="refresh-skills">刷新技能</button>
           <button class="primary" data-action="skill-check-updates" title="只读检查：本地版本 vs 远端最新版（不修改任何技能）">检查更新</button>
           <button class="btn-soft" data-action="skill-upgrade-all" title="按顺序逐个升级全部「有更新」的技能（每个先备份）">一键升级</button>
@@ -2512,6 +2513,34 @@
         <div id="market-results" class="market-results"></div>
         </div>
       </dialog>
+
+        <!-- 从 GitHub 安装（2026-11-15）：独立入口。
+             为什么不塞进「技能市场」弹窗：实测用户打开市场弹窗、输入关键词，
+             完全看不到 GitHub 相关痕迹，以为功能没做。独立按钮 + 独立弹窗
+             让这条路径自己说明自己。 -->
+        <dialog id="github-install-panel" class="insight-backdrop hidden" aria-label="从 GitHub 安装技能">
+          <div class="insight-dialog">
+          <div class="insight-toolbar">
+            <span class="insight-title">从 GitHub 安装技能</span>
+            <span class="insight-spacer"></span>
+            <button class="btn-soft" data-action="github-install-close">关闭</button>
+          </div>
+          <div class="market-toolbar">
+            <input type="text" id="github-install-url" placeholder="粘贴 GitHub 仓库地址，如 https://github.com/owner/repo" aria-label="GitHub 仓库地址" />
+            <button class="btn-soft" data-action="github-install-fetch">读取技能</button>
+          </div>
+          <div id="github-install-progress" class="market-lines"></div>
+          <div id="github-install-list" class="market-results"></div>
+          <!-- 操作栏放在滚动区之外：结果区是唯一的滚动容器，
+               按钮若放进列表内部，技能一多就会被滚出视野（实测被裁切）。 -->
+          <div id="github-install-actions" class="market-toolbar hidden">
+            <button class="btn-soft" data-action="github-install-select-all">全选</button>
+            <button class="btn-soft" data-action="github-install-select-none">全不选</button>
+            <span class="insight-spacer"></span>
+            <button class="primary" data-action="github-install-go">安装所选</button>
+          </div>
+          </div>
+        </dialog>
 
       <dialog id="insight-panel" class="insight-backdrop hidden" aria-label="技能使用分析">
         <div class="insight-dialog">
@@ -8302,6 +8331,153 @@ function renderEndpointStatus() {
       executeRepoInstall(src, allSkills);
     }
 
+    // ── 从 GitHub 安装（2026-11-15，独立入口）──────────────────────────
+    // 与市场弹窗里那条路径共用 --market-preview / --market-install 出口，
+    // 只是把「贴地址」这件事放到一个自己说明自己的按钮后面。
+    function toggleGithubInstallPanel(show) {
+      const el = $("github-install-panel");
+      if (!el) return;
+      const open = show === undefined ? el.classList.contains("hidden") : show;
+      if (open) openOverlay(el); else closeOverlay(el);
+      if (open) {
+        const inp = $("github-install-url");
+        if (inp) { inp.value = ""; inp.focus(); }
+        clearGithubInstallResults();
+      }
+    }
+
+    function clearGithubInstallResults() {
+      const prog = $("github-install-progress");
+      const list = $("github-install-list");
+      const bar = $("github-install-actions");
+      if (prog) prog.innerHTML = "";
+      if (list) { list.innerHTML = ""; list.className = "market-results"; }
+      if (bar) bar.classList.add("hidden");
+    }
+
+    /** 读取仓库技能清单。只读：走 --market-preview，绝不安装。 */
+    async function runGithubInstallFetch(btn) {
+      const inp = $("github-install-url");
+      const url = ((inp && inp.value) || "").trim();
+      const prog = $("github-install-progress");
+      const list = $("github-install-list");
+      if (!url) { modalNotice("err", "操作失败", "请先粘贴 GitHub 仓库地址"); return; }
+      if (btn) { btn.disabled = true; btn.textContent = "读取中…"; }
+      if (prog) prog.textContent = `正在读取「${url}」…`;
+      if (list) { list.innerHTML = ""; list.className = "market-results"; }
+      try {
+        const res = await runCli(["--market-preview", url, "--format", "json"],
+                                 "读取 GitHub 仓库技能列表（只读，不安装）");
+        if (!res || res.code !== 0) {
+          if (prog) {
+            prog.textContent = ((res && (res.stderr || res.stdout)) || "读取失败")
+              .trim().split("\n").filter(Boolean).pop() || "读取失败";
+          }
+          return;
+        }
+        let plan;
+        try { plan = JSON.parse(res.stdout || "{}"); }
+        catch (e) { if (prog) prog.textContent = "返回内容无法解析"; return; }
+        if (!plan.ok) {
+          if (prog) prog.textContent = plan.reason || "仓库地址无效";
+          return;
+        }
+        if (prog) prog.textContent = `共 ${(plan.skills || []).length} 个技能，勾选后点「安装所选」`;
+        renderGithubInstallList(plan);
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = "读取技能"; }
+      }
+    }
+
+    function renderGithubInstallList(plan) {
+      const list = $("github-install-list");
+      if (!list) return;
+      list.innerHTML = "";
+      list.className = "market-results list-rows";
+      const skills = Array.isArray(plan.skills) ? plan.skills : [];
+      if (!skills.length) {
+        list.appendChild(marketEmpty("没有找到技能", "该仓库可能不含 SKILL.md，或清单读取失败"));
+        return;
+      }
+      skills.forEach((s) => {
+        const row = document.createElement("label");
+        row.className = "list-row";
+        row.style.cursor = "pointer";
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.className = "github-install-cb";
+        cb.value = s.name;
+        row.appendChild(cb);
+        const cell = document.createElement("div");
+        cell.className = "list-main";
+        const t = document.createElement("div");
+        t.className = "list-title mono";
+        t.textContent = s.name;
+        const m = document.createElement("div");
+        m.className = "list-meta";
+        m.textContent = s.description || "";
+        cell.appendChild(t);
+        cell.appendChild(m);
+        row.appendChild(cell);
+        list.appendChild(row);
+      });
+
+      // 操作栏固定在滚动区之外（见 #github-install-actions），列表这里只管列表。
+      const bar = $("github-install-actions");
+      if (bar) bar.classList.remove("hidden");
+    }
+
+    function selectedGithubRepoNames() {
+      return Array.from(document.querySelectorAll(".github-install-cb:checked"))
+        .map((cb) => cb.value);
+    }
+
+    function toggleGithubChecks(on) {
+      document.querySelectorAll(".github-install-cb").forEach((cb) => { cb.checked = !!on; });
+    }
+
+    function confirmGithubInstall() {
+      const inp = $("github-install-url");
+      const url = ((inp && inp.value) || "").trim();
+      const picked = selectedGithubRepoNames();
+      if (!picked.length) {
+        modalNotice("err", "操作失败", "请先勾选要安装的技能");
+        return;
+      }
+      const msg = `确定要从「${url}」安装这 ${picked.length} 个技能吗？\n\n`
+        + `${picked.join("、")}\n\n它们都会写入统一技能库。`;
+      if (!window.confirm(msg)) { return; }
+      executeGithubInstall(url, picked);
+    }
+
+    async function executeGithubInstall(url, names) {
+      if (!tauriInvoke) {
+        modalNotice("warn", "请注意", "浏览器预览模式：写入需在桌面 App 内执行");
+        return;
+      }
+      const prog = $("github-install-progress");
+      if (prog) prog.textContent = `正在安装 ${names.length} 个技能…`;
+      const res = await runCli(
+        ["--market-install", url, "--market-skills", (names || []).join(","),
+         "--yes", "--format", "json"],
+        `安装：从 ${url} 拉取 ${names.length} 个技能`);
+      if (!res || res.code !== 0) {
+        if (prog) prog.textContent = `安装失败：${(res && res.stderr) || "无输出"}`;
+        modalNotice("err", "操作失败", "安装失败，详见面板提示");
+        return;
+      }
+      let ok = true;
+      try { ok = JSON.parse(res.stdout || "{}").ok !== false; } catch (e) { ok = false; }
+      if (prog) prog.textContent = ok ? `已安装 ${names.length} 个技能` : "安装未成功，详见下方输出";
+      if (ok) {
+        modalNotice("ok", "已完成", `已安装 ${names.join("、")}`);
+        await refreshBlocks(["skills"]);
+      } else {
+        modalNotice("err", "操作失败", "安装未成功");
+      }
+    }
+
+
     function renderMarketResults(data) {
       renderMarketProgress([]);
       const results = data.results || [];
@@ -10697,6 +10873,12 @@ document.addEventListener("click", (e) => {
     }
     else if (a === "merge-all") runMergeAll(act)
     else if (a === "open-market") toggleMarketPanel();
+    else if (a === "open-github-install") toggleGithubInstallPanel();
+    else if (a === "github-install-close") toggleGithubInstallPanel(false);
+    else if (a === "github-install-fetch") runGithubInstallFetch(act);
+    else if (a === "github-install-select-all") toggleGithubChecks(true);
+    else if (a === "github-install-select-none") toggleGithubChecks(false);
+    else if (a === "github-install-go") confirmGithubInstall();
     else if (a === "market-close") toggleMarketPanel(false);
     else if (a === "market-search") runMarketSearch(act);
     else if (a === "market-check") runMarketCheck(act);
