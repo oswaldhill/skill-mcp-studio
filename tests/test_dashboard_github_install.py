@@ -171,3 +171,33 @@ class InstallErrorDisplayTest(unittest.TestCase):
         """scan.py 失败时若仍输出 JSON（如 err 字段），要优先用它的 reason。"""
         body = _fn("executeGithubInstall")
         self.assertIn("JSON.parse", body)
+
+
+class ConfirmDialogAclTest(unittest.TestCase):
+    """确认框必须用 confirmModal，不能用 window.confirm（2026-11-15 实测）。
+
+    Tauri 的 ACL 只放行 `dialog:default` 与 `dialog:allow-open`，**没有**允许
+    `dialog:confirm`。在桌面 App 里调 window.confirm 会抛：
+
+        Command plugin:dialog|confirm not allowed by ACL
+
+    该异常逃逸成 unhandled rejection，被全局处理器兜住后弹出
+    「操作失败 / 后台操作失败：Command plugin:dialog|confirm not allowed by ACL」，
+    而安装其实已经成功——用户看到的是自相矛盾的两条结果。
+
+    项目早已提供 confirmModal（注释原话：「replaces browser window.confirm()」），
+    新增代码必须用它。
+    """
+
+    def test_github_install_does_not_use_window_confirm(self):
+        for fn in ("confirmGithubInstall", "confirmRepoInstall"):
+            body = _fn(fn)
+            self.assertNotIn(
+                "window.confirm", body,
+                f"{fn} 用了 window.confirm：Tauri ACL 不允许 dialog:confirm，会抛错")
+
+    def test_github_install_uses_confirm_modal(self):
+        for fn in ("confirmGithubInstall", "confirmRepoInstall"):
+            body = _fn(fn)
+            self.assertIn("confirmModal", body, f"{fn} 应改用 confirmModal")
+            self.assertIn("await", body, f"{fn} 必须 await confirmModal 的结果")

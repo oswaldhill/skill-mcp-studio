@@ -7,6 +7,29 @@
 
 ## [Unreleased]
 
+### 修复：桌面 App 里弹「plugin:dialog|confirm not allowed by ACL」（2026-11-15）
+
+用户安装技能后，界面**同时**出现两条矛盾的结果：一个绿色「已完成 / 已安装 xxx」
+和一个红色「操作失败 / 后台操作失败：Command plugin:dialog|confirm not allowed
+by ACL」。实测统一库确实多了该技能 —— 红框是误报。
+
+根因：Tauri 的 capabilities 只放行 `dialog:default` 与 `dialog:allow-open`，
+**没有** `dialog:confirm`。在桌面 App 里调浏览器原生确认框会抛
+`Command plugin:dialog|confirm not allowed by ACL`，该异常逃逸成
+unhandled rejection，被全局处理器兜住后弹红框。
+
+项目早已提供 `confirmModal(title, message, danger, confirmText)` 并在注释里
+写明「replaces browser window.confirm()」——新增代码没有沿用，直接用了原生 API。
+
+- `confirmGithubInstall` / `confirmRepoInstall`（本轮新增）：改用 `confirmModal`。
+- `confirmMarketInstall` / `confirmMarketUpgrade`（**既有代码**）也用了原生确认框，
+  意味着此前在市场里点「安装」「升级」同样会误弹 ACL 错误，一并修正。
+- 四个函数随之改为 `async` 并 `await` `confirmModal` 的结果。
+
+> 判据：新增 2 例测试锁定（GitHub 安装流程禁止出现原生确认框、必须 await
+> `confirmModal`）；全量 1891 passed / 2 skipped；ruff → All checks passed；
+> `gui/dist/app.js` 中 `window.confirm(msg)` 调用数为 0。
+
 ### 修复：仓库安装崩溃（KeyError: 'package'）与错误展示错位（2026-11-15）
 
 用户粘贴 `https://github.com/mattpocock/skills`、勾选 wayfinder 点「安装所选」后

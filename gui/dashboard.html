@@ -8313,7 +8313,7 @@ function renderEndpointStatus() {
       await refreshBlocks(["skills"]);
     }
 
-    function confirmRepoInstall(src, allSkills) {
+    async function confirmRepoInstall(src, allSkills) {
       // 先校验再确认：没勾选时不该先弹「确定要安装吗」再报错，
       // 用户点「确定」后才发现什么都没装，体验与预期相反。
       let picked = [];
@@ -8326,8 +8326,9 @@ function renderEndpointStatus() {
       }
       const msg = allSkills
         ? `确定要从「${src}」安装该仓库的全部技能吗？\n\n它们都会写入统一技能库。`
-        : `确定要从「${src}」安装这 ${picked.length} 个技能吗？\n\n${picked.join("、")}\n\n它们会写入统一技能库。`;
-      if (!window.confirm(msg)) { appendMarketProgress("已取消安装", "info"); return; }
+        : `确定要从「${src}」安装这 ${picked.length} 个技能吗？\n\n${picked.join("、")}\n\n它们都会写入统一技能库。`;
+      // 同 confirmGithubInstall：必须用 confirmModal，Tauri ACL 不给 dialog:confirm。
+      if (!(await confirmModal("安装技能", msg, false, "安装"))) { return; }
       executeRepoInstall(src, allSkills);
     }
 
@@ -8447,7 +8448,7 @@ function renderEndpointStatus() {
       document.querySelectorAll(".github-install-cb").forEach((cb) => { cb.checked = !!on; });
     }
 
-    function confirmGithubInstall() {
+    async function confirmGithubInstall() {
       const inp = $("github-install-url");
       const url = ((inp && inp.value) || "").trim();
       const picked = selectedGithubRepoNames();
@@ -8455,9 +8456,12 @@ function renderEndpointStatus() {
         modalNotice("err", "操作失败", "请先勾选要安装的技能");
         return;
       }
+      // 用 confirmModal 而不是浏览器原生确认框：Tauri 的 ACL 只放行
+      // dialog:default 与 dialog:allow-open，原生确认框会抛
+      // 「plugin:dialog|confirm not allowed by ACL」，安装成功后还弹一次红框。
       const msg = `确定要从「${url}」安装这 ${picked.length} 个技能吗？\n\n`
         + `${picked.join("、")}\n\n它们都会写入统一技能库。`;
-      if (!window.confirm(msg)) { return; }
+      if (!(await confirmModal("安装技能", msg, false, "安装"))) { return; }
       executeGithubInstall(url, picked);
     }
 
@@ -9369,20 +9373,22 @@ function renderEndpointStatus() {
   }
 
   // 安装与升级必须二次确认：市场技能来自第三方仓库，存在供应链风险。
-  function confirmMarketInstall(pkg) {
+  async function confirmMarketInstall(pkg) {
     if (!pkg) return;
     const msg = "确定要安装「" + pkg + "」吗？\n\n来源为第三方仓库，安装前请确认可信。";
-    if (!window.confirm(msg)) {
+    // Tauri ACL 不给 dialog:confirm，必须走 confirmModal
+    if (!(await confirmModal("安装技能", msg, false, "安装"))) {
       appendMarketProgress(`已取消安装 ${pkg}`, "info");
       return;
     }
     executeMarketInstall(pkg);
   }
 
-  function confirmMarketUpgrade(name) {
+  async function confirmMarketUpgrade(name) {
     if (!name) return;
     const msg = "确定要升级「" + name + "」吗？\n\n将拉取上游最新版本并覆盖本地内容。";
-    if (!window.confirm(msg)) {
+    // Tauri ACL 不给 dialog:confirm，必须走 confirmModal
+    if (!(await confirmModal("升级技能", msg, false, "升级"))) {
       appendMarketProgress(`已取消升级 ${name}`, "info");
       return;
     }
