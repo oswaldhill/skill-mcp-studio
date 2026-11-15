@@ -222,3 +222,65 @@ class InstalledBadgeTest(unittest.TestCase):
     def test_progress_reports_installed_count(self):
         body = _fn("runGithubInstallFetch")
         self.assertIn("installed_count", body)
+
+
+class ToolbarPriorityTest(unittest.TestCase):
+    """工具栏在窄窗口下的优先级契约（2026-11-15）。
+
+    用户 App 窗口约 770px 宽，Skills 工具栏已有 8 个按钮。换行会让排在后面的
+    按钮视觉上「消失」，这正是此前「找不到从 GitHub 安装」的同类风险。
+
+    约定：**主操作**（从 GitHub 安装 / 来源视图）必须排在最前，保证任何
+    宽度下第一屏就能看到；次要操作（刷新 / 检查更新 / 一键升级 / 修复链接）
+    排在后面。
+    """
+
+    PRIMARY = ("open-github-install", "open-provenance")
+
+    def _buttons(self):
+        section = _section("page-skills")
+        return re.findall(r'data-action="([^"]+)"', section)
+
+    def test_primary_actions_exist(self):
+        actions = self._buttons()
+        for a in self.PRIMARY:
+            self.assertIn(a, actions, f"缺少主操作 {a}")
+
+    def test_primary_actions_come_first(self):
+        """主操作必须排在工具栏最前面（忽略「使用分析」这类辅助入口）。"""
+        actions = [a for a in self._buttons()
+                   if a not in ("refresh-skills", "skill-check-updates",
+                                "skill-upgrade-all", "merge", "open-insight")]
+        # 过滤后剩下的就是主操作，顺序应为 来源视图 → 从 GitHub 安装 → 技能市场
+        self.assertEqual(actions[:2], ["open-provenance", "open-github-install"],
+                         f"主操作顺序不符合约定：{actions[:3]}")
+
+    def test_secondary_actions_exist_after(self):
+        actions = self._buttons()
+        for a in ("refresh-skills", "skill-check-updates", "merge"):
+            self.assertIn(a, actions)
+
+
+class ToolbarOverflowTest(unittest.TestCase):
+    """工具栏不得溢出容器（2026-11-15 实测修正）。
+
+    我第一版测试只断言「按钮都在第一行」，结果 770px 宽时虽然都在 row 0，
+    却**横向溢出**：右侧按钮被切到屏幕外、标题被挤成竖排。
+    正确的契约是：每个按钮的右边界都在其容器内。
+    """
+
+    def test_page_actions_allow_wrapping(self):
+        src = _src()
+        m = re.search(r'\n\s*\.page-actions \{([^}]*)\}', src)
+        self.assertIsNotNone(m, "未找到 .page-actions 规则")
+        body = m.group(1)
+        # 允许换行，才不会在窄窗口把按钮挤出屏幕
+        self.assertIn("flex-wrap: wrap", body)
+
+    def test_page_head_allows_actions_to_wrap(self):
+        """header 容器本身也要能换行：否则 actions 换行时会把标题压扁。"""
+        src = _src()
+        m = re.search(r'\n\s*\.page-head \{([^}]*)\}', src)
+        self.assertIsNotNone(m, "未找到 .page-head 规则")
+        body = m.group(1)
+        self.assertIn("flex-wrap: wrap", body, ".page-head 需要 flex-wrap: wrap")

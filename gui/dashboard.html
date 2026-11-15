@@ -239,13 +239,23 @@
   main::-webkit-scrollbar { width: 10px; }
   main::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: var(--r-pill); border: 3px solid transparent; background-clip: content-box; }
   .page-head {
+    /* 窄窗口下允许换行：8 个工具按钮 + 标题放不下一行时，
+       强行不换行会把标题压成竖排、把右侧按钮挤出屏幕（实测 770px）。 */
     display: flex; align-items: flex-start; justify-content: space-between; gap: var(--gap-5);
+    flex-wrap: wrap;
     border-bottom: 1px solid var(--line); padding-bottom: var(--sp-7); margin-bottom: var(--sp-7a);
   }
+  /* 标题区最小宽度：低于此值就换行，而不是把文字压成竖排。 */
+  .page-head > .hd { flex: 1 1 220px; min-width: 0; }
   .page-head .hd { min-width: 0; }
   .page-head h2 { margin: 0; font-family: var(--display); font-size: var(--fs-md); font-weight: 600; letter-spacing: -.015em; }
   .page-head .hint { color: var(--muted); font-size: var(--fs-sm); margin-top: var(--sp-1); max-width: 60ch; }
-  .page-actions { display: flex; align-items: center; gap: var(--gap-3); flex: none; flex-wrap: wrap; justify-content: flex-end; align-self: flex-start; }
+  /* flex:none 会让 actions 按内容宽度撑开（实测 770px 时占 717px、超出容器
+     474px，右侧按钮被裁掉）。改为可收缩 + 可换行：放不下时整体换到下一行，
+     按钮在行内再折行，任何宽度都不会被切。 */
+  .page-actions { display: flex; align-items: center; gap: var(--gap-3);
+    flex: 1 1 auto; min-width: 0; max-width: 100%; flex-wrap: wrap;
+    justify-content: flex-end; align-self: flex-start; }
   .subhead { font-family: var(--display); font-size: var(--fs-xs); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: var(--sp-9d) 0 var(--sp-4); }
   .subline { color: var(--muted); font-size: var(--fs-xs); margin: var(--sp-0b) 0 var(--sp-5); }
   .hint { color: var(--muted); font-size: var(--fs-sm); }
@@ -2482,10 +2492,10 @@
       <div class="page-head">
         <div class="hd"><h2>Skills</h2><div class="hint">技能清单与每客户端启用状态</div></div>
         <div class="page-actions">
-          <button class="ghost" data-action="open-insight">使用分析</button>
           <button class="ghost" data-action="open-provenance" title="按来源仓库分组查看已安装技能（只读）">来源视图</button>
-          <button class="ghost" data-action="open-market">技能市场</button>
             <button class="ghost" data-action="open-github-install" title="粘贴 GitHub 仓库地址，读取其中技能后选择性安装">从 GitHub 安装</button>
+          <button class="ghost" data-action="open-market">技能市场</button>
+          <button class="ghost" data-action="open-insight">使用分析</button>
           <button class="ghost" data-action="refresh-skills">刷新技能</button>
           <button class="primary" data-action="skill-check-updates" title="只读检查：本地版本 vs 远端最新版（不修改任何技能）">检查更新</button>
           <button class="btn-soft" data-action="skill-upgrade-all" title="按顺序逐个升级全部「有更新」的技能（每个先备份）">一键升级</button>
