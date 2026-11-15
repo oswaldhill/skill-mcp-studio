@@ -7,6 +7,36 @@
 
 ## [Unreleased]
 
+### 新增：技能市场支持 GitHub 仓库安装与预览（2026-11-14）
+
+此前「技能市场」只能按包名搜索并安装，无法处理用户手上已有的 GitHub 地址；
+而需求是两种入口：**搜索/输入包名** 与 **贴 GitHub 地址**。
+
+`npx skills add` 本身已支持 `https://github.com/owner/repo`（实测 `--help`
+确认），但直接透传有两个问题：① 一个仓库常含多个技能，直接 `add` 会把它们
+**全部**写进统一库；② 外部地址是供应链入口，不能原样交给下游命令自己校验。
+
+- **来源分派** `classify_install_source`：把输入分成 `github` / `package` /
+  `rejected`。URL 只放行 `github.com` 及其 `www`/`raw` 变体，`file://`、任意
+  第三方主机一律拒绝（单测锁定）。
+- **仓库预览** `plan_repo_preview` → `--market-preview URL`：生成
+  `add <url> -l`，只列技能不安装。护栏测试断言该 argv 不含
+  `-y/-g/--all`，防止「预览」退化成安装。
+- **选择性安装** `plan_install_repo` → `--market-install URL --market-skills`：
+  必须显式给技能名或 `*`；**不接受什么都不传**，否则一次误点会装进整仓库。
+- **重名检测** `detect_conflicts`：安装前把「已存在」与「缺失」分开报，
+  避免 `add` 静默覆盖统一库里的同名技能。
+- **GUI**：技能市场弹窗的搜索框现在同时接受关键词与 GitHub 地址；输入 URL
+  时自动走预览，渲染来源行（安装所选 / 安装全部）与技能名输入框，
+  确认后经 `run_cli` 执行并刷新技能列表。
+
+`run_cli` 白名单同步登记 `--market-preview`/`--market-skills`/`--market-agents`：
+不登记的话前端一点就会被安全边界拦下（`test_run_cli_boundary` 会失败）。
+
+> 判据：新增 `tests/test_skill_install_source.py`（22 例）与
+> `tests/test_skill_install_cli.py`（7 例）全部通过；全量 1859 passed /
+> 2 skipped；`ruff check core tests scan.py scripts setup.py` → All checks passed。
+
 ### 修复：测试类重名导致 v0.42.0 弹框度量用例从未执行（2026-11-14）
 
 合并 `a05dc6b` 后 `tests/test_design_spec_contract.py` 出现两个同名

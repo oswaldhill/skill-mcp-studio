@@ -18,6 +18,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -50,6 +51,164 @@ def plan_install(package: str) -> Dict[str, Any]:
         "package": pkg,
         "argv": ["add", pkg, "-g", "-y"],
         "reason": "",
+    }
+
+
+# ---------------------------------------------------------------------------
+# 安装源识别（2026-11-14 新增）
+#
+# 需求：Skill 页要支持「输入/搜索包名」与「贴 GitHub 地址」两种安装入口。
+#
+# 为什么源识别要单独成函数、而不是把输入直接塞进 plan_install：
+#   `npx skills add` 对包名和 URL 的解析规则不同，且**只认 GitHub**。若把用户
+#   粘贴的任意 URL 原样传给 npx，等于让一个外部地址决定装什么进统一库——这是
+#   供应链入口，必须先在前置环节把形状限定死，不能指望下游命令替我们校验。
+# ---------------------------------------------------------------------------
+
+#: 允许的来源主机。只放行 GitHub 本身，不接受任意 URL。
+_ALLOWED_HOSTS = frozenset({
+    "github.com",
+    "www.github.com",
+    "raw.githubusercontent.com",
+})
+
+_GITHUB_URL_RE = re.compile(
+    r"^(?:https?://|git\+https?://|ssh://git@|git@)"
+    r"(?P<host>[^/:]+)"
+    r"[:/]"
+    r"(?P<owner>[A-Za-z0-9._-]+)/"
+    r"(?P<repo>[A-Za-z0-9._-]+?)"
+    r"(?:\.git)?"
+    r"(?:/tree/[^/]+/(?P<subpath>.+?))?"
+    r"/?$",
+    re.IGNORECASE,
+)
+
+#: 包名形状：`owner/repo` 或 `owner/repo@skill`。
+_PACKAGE_RE = re.compile(
+    r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+(?:@[A-Za-z0-9._-]+)?$")
+
+
+def classify_install_source(raw: Optional[str]) -> Dict[str, Any]:
+    """把用户输入分派成 ``github`` / ``package`` / ``rejected``。
+
+    返回 ``kind`` 而非布尔值，是为了让调用方能据类型走不同 UI：
+    GitHub URL 要先 `--list` 预览仓库里有哪些技能，包名可以直接装。
+    """
+    text = (raw or "").strip()
+    if not text:
+        return {"ok": False, "kind": "rejected", "reason": "安装源为空"}
+
+    # 先认 URL（含 git@ 形式）。不是 URL 才按包名判，避免把 URL 误当包名。
+    if "://" in text or text.startswith("git@"):
+        m = _GITHUB_URL_RE.match(text)
+        if not m:
+            return {"ok": False, "kind": "rejected",
+                    "reason": "仅支持 GitHub 仓库地址（https://github.com/owner/repo）"}
+        host = (m.group("host") or "").lower()
+        if host not in _ALLOWED_HOSTS:
+            return {"ok": False, "kind": "rejected",
+                    "reason": f"仅允许 github.com 地址，当前为 {host}"}
+        owner, repo = m.group("owner"), m.group("repo")
+        if not owner or not repo:
+            return {"ok": False, "kind": "rejected", "reason": "无法解析 owner/repo"}
+        return {
+            "ok": True, "kind": "github", "source": text,
+            "host": host, "owner": owner, "repo": repo,
+            "subpath": (m.group("subpath") or "").strip("/"),
+            "canonical": f"https://github.com/{owner}/{repo}",
+        }
+
+    if not _PACKAGE_RE.match(text):
+        return {"ok": False, "kind": "rejected",
+                "reason": "包名形状应为 owner/repo 或 owner/repo@skill"}
+    return {"ok": True, "kind": "package", "source": text, "package": text}
+
+
+def plan_repo_preview(source: str) -> Dict[str, Any]:
+    """生成「列出仓库内技能」的计划，不执行也不安装。
+
+    `add -l` 只读：列出该仓库包含哪些技能。一个仓库常含多个技能，直接 add
+    会把它们全装进统一库，所以必须先预览再让用户选。
+    """
+    cls = classify_install_source(source)
+    if not cls["ok"]:
+        return {"ok": False, "action": "preview", "argv": [],
+                "reason": cls["reason"]}
+    if cls["kind"] != "github":
+        return {"ok": False, "action": "preview", "argv": [],
+                "reason": "预览仅适用于 GitHub 仓库地址"}
+    return {
+        "ok": True, "action": "preview", "source": cls["canonical"],
+        "argv": ["add", cls["canonical"], "-l"],
+        "reason": "",
+    }
+
+
+def plan_install_repo(
+    source: str,
+    skills: Optional[List[str]] = None,
+    all_skills: bool = False,
+    agents: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """生成「从 GitHub 仓库安装指定技能」的计划，不执行。
+
+    必须显式二选一：``skills``（装指定）或 ``all_skills=True``（装全部）。
+    **不接受「什么都不传」**：那会让一次误点把整仓库几十个技能装进统一库。
+    """
+    cls = classify_install_source(source)
+    if not cls["ok"]:
+        return {"ok": False, "action": "install", "argv": [],
+                "reason": cls["reason"]}
+    if cls["kind"] != "github":
+        return {"ok": False, "action": "install", "argv": [],
+                "reason": "该入口仅用于 GitHub 仓库地址"}
+
+    clean_skills = [s.strip() for s in (skills or []) if s and s.strip()]
+    if clean_skills and all_skills:
+        return {"ok": False, "action": "install", "argv": [],
+                "reason": "不能同时指定具体技能与全部技能"}
+    if not clean_skills and not all_skills:
+        return {"ok": False, "action": "install", "argv": [],
+                "reason": "未选择要安装的技能：请先预览并勾选，或显式选择全部"}
+
+    argv = ["add", cls["canonical"], "-g", "-y"]
+    if all_skills:
+        argv += ["--skill", "*"]
+    else:
+        argv += ["--skill", ",".join(clean_skills)]
+
+    clean_agents = [a.strip() for a in (agents or []) if a and a.strip()]
+    if clean_agents:
+        argv += ["--agent", ",".join(clean_agents)]
+
+    return {
+        "ok": True, "action": "install", "source": cls["canonical"],
+        "owner": cls["owner"], "repo": cls["repo"],
+        "skills": clean_skills, "all_skills": all_skills,
+        "agents": clean_agents, "argv": argv, "reason": "",
+    }
+
+
+def detect_conflicts(names: List[str]) -> Dict[str, Any]:
+    """装前重名检测：已存在与缺失分开报，绝不静默覆盖。
+
+    `npx skills add` 遇到同名技能会覆盖既有内容，而用户往往不知道统一库里
+    已有同名技能 —— 直接装等于无声替换。因此安装前必须先查一次。
+    """
+    root = _skills_dir()
+    present, missing = [], []
+    for name in names or []:
+        clean = (name or "").strip()
+        if not clean:
+            continue
+        (present if (root / clean).is_dir() else missing).append(clean)
+    return {
+        "ok": True,
+        "conflicts": present,
+        "missing": missing,
+        "has_conflict": bool(present),
+        "root": str(root),
     }
 
 

@@ -662,6 +662,13 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
         // 一点就被安全边界拦下；两者是独立 flag，不是 --market 的取值。
         "--market-install",
         "--market-upgrade",
+        // GitHub 仓库安装（2026-11-14）：预览只读（npx skills add -l）；
+        // --market-skills / --market-agents 是它的取值来源，独立 flag 不是
+        // --market 的取值，不登记会从界面一点就被安全边界拦下。
+        // --market-preview 只列技能不写盘。
+        "--market-preview",
+        "--market-skills",
+        "--market-agents",
         // 技能回滚（v0.31.0 #4 后半）：只读列出备份 / 写回滚。
         // --skill-rollback 写 data/skill_backups + 技能目录，不碰 trunk config。
         "--list-skill-backups",
@@ -1179,6 +1186,7 @@ mod tests {
             "--management", "--version", "--list-endpoints", "--skill-usage",
             "--merge-advice", "--skill-insight", "--merge-skills", "--delete-skill",
             "--market", "--market-install", "--market-upgrade",
+            "--market-preview", "--market-skills", "--market-agents",
         ];
         for a in ALLOWED {
             assert!(!is_denied_flag(a), "白名单标志 {a} 被误判为拒绝项");

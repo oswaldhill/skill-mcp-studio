@@ -1998,6 +1998,29 @@ def _run_market(args) -> int:
     return 0
 
 
+def _run_market_preview(args) -> int:
+    """预览 GitHub 仓库内有哪些技能（只读）。
+
+    为什么不直接装：一个仓库常含多个技能，直接 `add` 会把它们全部装进统一库。
+    先 `add -l` 列出来，让用户勾选后再装。
+    """
+    from skill_market_ops import plan_repo_preview
+
+    plan = plan_repo_preview(args.market_preview)
+    if not plan.get("ok"):
+        print(f"  ❌ {plan.get('reason')}")
+        return 2
+
+    if getattr(args, "format", None) == "json":
+        print(json.dumps(plan, ensure_ascii=False, indent=2))
+        return 0
+
+    print(f"  预览仓库：{plan['source']}")
+    print(f"  命令：npx skills {' '.join(plan['argv'])}")
+    print("  （该命令只列出技能，不安装）")
+    return 0
+
+
 def _run_market_source_cmds(args) -> int:
     """市场源 CRUD（v0.31.0 #4）：独立早返回出口，读写 data/market_sources.yaml。"""
     from market_sources import list_sources, remove_source, set_source
@@ -2116,15 +2139,43 @@ def _run_market_write(args) -> int:
 
     必须先 --yes：市场技能来自第三方仓库，静默安装是供应链风险。
     """
-    from skill_market_ops import execute_plan, plan_install, plan_upgrade
+    from skill_market_ops import (
+        classify_install_source,
+        execute_plan,
+        plan_install,
+        plan_install_repo,
+        plan_upgrade,
+    )
 
     if args.market_install and args.market_upgrade:
         print("  ❌ --market-install 与 --market-upgrade 互斥")
         return 2
 
     if args.market_install:
-        plan = plan_install(args.market_install)
-        what = f"安装 {args.market_install}"
+        raw = args.market_install
+        cls = classify_install_source(raw)
+        if not cls["ok"]:
+            print(f"  ❌ {cls['reason']}")
+            return 2
+        if cls["kind"] == "github":
+            # 从 GitHub 仓库安装：必须显式指定技能（或 * 表示全部）。
+            # 不接受「不给选择」——那会让一次误点把整仓库技能装进统一库。
+            sel = (getattr(args, "market_skills", None) or "").strip()
+            names = [s for s in sel.split(",") if s.strip()]
+            all_skills = names == ["*"]
+            agents = [a for a in
+                      (getattr(args, "market_agents", None) or "").split(",")
+                      if a.strip()]
+            plan = plan_install_repo(
+                raw,
+                skills=None if all_skills else names,
+                all_skills=all_skills,
+                agents=agents,
+            )
+            what = f"从 {cls['owner']}/{cls['repo']} 安装技能"
+        else:
+            plan = plan_install(raw)
+            what = f"安装 {raw}"
     else:
         names = [n for n in str(args.market_upgrade).split(",") if n.strip()]
         plan = plan_upgrade(names)
@@ -3084,8 +3135,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="配合 --market search：搜索词",
     )
     parser.add_argument(
-        "--market-install", type=str, default=None, metavar="PKG",
-        help="从技能市场安装（写操作，需 --yes）：包名形如 owner/repo@skill",
+        "--market-install", type=str, default=None, metavar="PKG_OR_URL",
+        help="从技能市场安装（写操作，需 --yes）：包名 owner/repo@skill，"
+             "或 GitHub 地址 https://github.com/owner/repo",
+    )
+    parser.add_argument(
+        "--market-skills", type=str, default=None, metavar="NAMES",
+        help="配合 --market-install 的 GitHub 地址：指定要装的技能名，"
+             "逗号分隔；用 * 表示全部",
+    )
+    parser.add_argument(
+        "--market-agents", type=str, default=None, metavar="AGENTS",
+        help="配合 --market-install：指定要启用的客户端，逗号分隔",
+    )
+    parser.add_argument(
+        "--market-preview", type=str, default=None, metavar="URL",
+        help="预览 GitHub 仓库里有哪些技能（只读，npx skills add -l）",
     )
     parser.add_argument(
         "--market-upgrade", type=str, default=None, metavar="NAME",
@@ -3937,6 +4002,8 @@ def main() -> int:
     # 只读；安装/升级不在 CLI 出口内。
     if getattr(args, "market", None):
         return _run_market(args)
+    if getattr(args, "market_preview", None):
+        return _run_market_preview(args)
     if getattr(args, "market_install", None) or getattr(args, "market_upgrade", None):
         return _run_market_write(args)
 
