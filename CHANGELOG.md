@@ -7,6 +7,38 @@
 
 ## [Unreleased]
 
+### 新增：已安装标记与技能来源视图（2026-11-15）
+
+用户装了 `research` 之后反馈：「对于已安装的 skill 请你进行一个展示」。实测问题
+属实——预览列表里它和没装过的技能**长得一模一样**，勾选框照旧可用：
+既无法确认刚装了什么，又可能重复安装（覆盖本地内容）。
+
+**安装弹窗标出已装**：
+- `parse_preview_skills` 复用既有 `detect_conflicts`，给每项打 `installed`
+  标记，并给出 `installed_count` / `new_count`。
+- GUI 已装项显示「· 已安装」徽标并**禁用勾选框**；进度行改为
+  「共 38 个技能：已安装 2 个（不可重复勾选），未安装 36 个」。
+
+**技能来源视图（新增）**：
+- Skills 页工具栏新增「来源视图」，按来源仓库分组列出已安装技能
+  （组按数量降序，组内按安装时间倒序）。
+- 新增只读出口 `--skill-provenance [--format json]`，GUI 与 CLI 共用。
+- **数据源是 `npx skills` 自己的 lock**（`~/.agents/.skill-lock.json`），
+  只做投影、绝不写回，也不自建第二份来源表——两份数据迟早漂移，
+  且漂移后没人能判断哪份对。
+- **覆盖缺口如实报出**：实测 169 个技能里仅 47 个有来源登记，
+  界面写明「122 个没有来源记录（手工拷入或整仓库形态）」，
+  不把「没有记录」渲染成「没有来源」。
+- 新模块 `core/skill_provenance.py`；lock 缺失或损坏一律返回空列表，
+  来源视图出问题不拖垮整个 Skills 页。
+
+`run_cli` 白名单同步登记 `--skill-provenance`。
+
+> 判据：新增 16 例测试（来源模块 8 + CLI 2 + 已装标记 6）全过；
+> 全量 1907 passed / 2 skipped；ruff → All checks passed；
+> Playwright 驱动构建产物实测：预览标出 research/wayfinder 已装且禁用勾选、
+> 来源视图渲染 8 个仓库分组。
+
 ### 修复：桌面 App 里弹「plugin:dialog|confirm not allowed by ACL」（2026-11-15）
 
 用户安装技能后，界面**同时**出现两条矛盾的结果：一个绿色「已完成 / 已安装 xxx」

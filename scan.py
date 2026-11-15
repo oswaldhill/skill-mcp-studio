@@ -1998,6 +1998,42 @@ def _run_market(args) -> int:
     return 0
 
 
+def _run_skill_provenance(args) -> int:
+    """只读：按来源仓库分组列出已安装技能。
+
+    数据源是 `npx skills` 的 lock（`~/.agents/.skill-lock.json`），只做投影
+    不写回。缺失的覆盖度如实报出（unrecorded），绝不把「没记录」当成「没问题」。
+    """
+    from skill_provenance import provenance_payload
+    from skill_market_ops import _skills_dir
+
+    try:
+        total = sum(1 for d in _skills_dir().iterdir() if d.is_dir())
+    except OSError:
+        total = None
+
+    payload = provenance_payload(installed_total=total)
+
+    if getattr(args, "format", None) == "json":
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
+
+    s = payload["summary"]
+    print(f"  已安装来源视图：{s['recorded']} 个技能有来源记录"
+          f"（共 {s['sources']} 个来源）")
+    if s["installed_total"] is not None:
+        print(f"  统一库共 {s['installed_total']} 个技能，"
+              f"{s['unrecorded']} 个没有来源记录（手工拷入或整仓库形态）")
+    print()
+    for g in payload["groups"]:
+        print(f"  ── {g['source']}（{g['count']} 个）")
+        for item in g["skills"]:
+            when = (item.get("installed_at") or "")[:10]
+            print(f"      {item['name']}" + (f"   [{when}]" if when else ""))
+        print()
+    return 0
+
+
 def _run_market_preview(args) -> int:
     """预览 GitHub 仓库内有哪些技能（只读）。
 
@@ -2027,6 +2063,8 @@ def _run_market_preview(args) -> int:
         "declared_count": parsed["declared_count"],
         "parsed_count": parsed["parsed_count"],
         "count_mismatch": parsed["count_mismatch"],
+        "installed_count": parsed.get("installed_count", 0),
+        "new_count": parsed.get("new_count", 0),
         "reason": parsed["reason"] or ("" if res.get("code") == 0 else
                                        (res.get("stderr") or "仓库读取失败")[:300]),
     }
@@ -2040,9 +2078,12 @@ def _run_market_preview(args) -> int:
         return 2
 
     print(f"  预览仓库：{payload['source']}")
-    print(f"  共 {payload['parsed_count']} 个技能：")
+    installed_n = payload.get("installed_count", 0)
+    suffix = f"（已安装 {installed_n}，未安装 {payload['new_count']}）" if installed_n else ""
+    print(f"  共 {payload['parsed_count']} 个技能{suffix}：")
     for item in payload["skills"]:
-        print(f"    - {item['name']}")
+        mark = " [已安装]" if item.get("installed") else ""
+        print(f"    - {item['name']}{mark}")
         if item.get("description"):
             desc = item["description"]
             print(f"        {desc[:100]}{'…' if len(desc) > 100 else ''}")
@@ -3186,6 +3227,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="预览 GitHub 仓库里有哪些技能（只读，npx skills add -l）",
     )
     parser.add_argument(
+        "--skill-provenance", action="store_true",
+        help="只读：按来源仓库分组列出已安装技能（读 npx skills 的 lock）",
+    )
+    parser.add_argument(
         "--market-upgrade", type=str, default=None, metavar="NAME",
         help="升级已装技能（写操作，需 --yes）：可按逗号分隔多个技能名",
     )
@@ -4035,6 +4080,8 @@ def main() -> int:
     # 只读；安装/升级不在 CLI 出口内。
     if getattr(args, "market", None):
         return _run_market(args)
+    if getattr(args, "skill_provenance", False):
+        return _run_skill_provenance(args)
     if getattr(args, "market_preview", None):
         return _run_market_preview(args)
     if getattr(args, "market_install", None) or getattr(args, "market_upgrade", None):

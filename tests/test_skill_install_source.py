@@ -350,3 +350,69 @@ class ExecuteRepoInstallTest(unittest.TestCase):
                             return_value=Path(tmp)):
                 out = execute_plan(plan, runner=self._runner(True))
         self.assertEqual(out["verify"]["present"], ["myskill"])
+
+
+class MarkInstalledTest(unittest.TestCase):
+    """`--market-preview` 必须标出哪些技能已经装了（2026-11-15 用户反馈）。
+
+    用户装了 research 之后，预览列表里它和没装过的技能长得**一模一样**，
+    勾选框照旧可用，看不出来已经装过。列表要么标「已安装」，要么根本不该
+    再提供勾选 —— 否则用户会重复安装，且无法确认刚才装的是什么。
+    """
+
+    def test_parse_marks_installed(self):
+        import tempfile
+        from pathlib import Path
+        from skill_market_ops import parse_preview_skills
+        raw = (
+            "\u25c7  Found 2 skills\n"
+            "\u2502    research\n"
+            "\u2502\n"
+            "\u2502      Investigate a question.\n"
+            "\u2502\n"
+            "\u2502    tdd\n"
+            "\u2502\n"
+            "\u2502      Test-driven development.\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "research").mkdir()
+            with mock.patch("skill_market_ops._skills_dir",
+                            return_value=Path(tmp)):
+                r = parse_preview_skills(raw)
+        by_name = {s["name"]: s for s in r["skills"]}
+        self.assertTrue(by_name["research"]["installed"])
+        self.assertFalse(by_name["tdd"]["installed"])
+
+    def test_summary_counts_installed(self):
+        import tempfile
+        from pathlib import Path
+        from skill_market_ops import parse_preview_skills
+        raw = (
+            "\u25c7  Found 3 skills\n"
+            "\u2502    a\n"
+            "\u2502      d\n"
+            "\u2502    b\n"
+            "\u2502      d\n"
+            "\u2502    c\n"
+            "\u2502      d\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "a").mkdir()
+            (Path(tmp) / "c").mkdir()
+            with mock.patch("skill_market_ops._skills_dir",
+                            return_value=Path(tmp)):
+                r = parse_preview_skills(raw)
+        self.assertEqual(r["installed_count"], 2)
+        self.assertEqual(r["new_count"], 1)
+
+    def test_installed_flag_defaults_false_when_none(self):
+        import tempfile
+        from pathlib import Path
+        from skill_market_ops import parse_preview_skills
+        raw = "\u25c7  Found 1 skills\n\u2502    x\n\u2502      d\n"
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch("skill_market_ops._skills_dir",
+                            return_value=Path(tmp)):
+                r = parse_preview_skills(raw)
+        self.assertFalse(r["skills"][0]["installed"])
+        self.assertEqual(r["installed_count"], 0)

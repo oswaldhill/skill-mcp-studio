@@ -201,3 +201,24 @@ class ConfirmDialogAclTest(unittest.TestCase):
             body = _fn(fn)
             self.assertIn("confirmModal", body, f"{fn} 应改用 confirmModal")
             self.assertIn("await", body, f"{fn} 必须 await confirmModal 的结果")
+
+
+class InstalledBadgeTest(unittest.TestCase):
+    """预览列表要标出「已安装」并禁用其勾选（2026-11-15 用户反馈）。
+
+    用户装了 research 后，列表里它和没装过的完全一样，勾选框照旧可用：
+    既无法确认刚装了什么，又会重复安装。
+    """
+
+    def test_list_marks_installed(self):
+        body = _fn("renderGithubInstallList")
+        self.assertIn("installed", body)
+
+    def test_installed_checkbox_is_disabled(self):
+        body = _fn("renderGithubInstallList")
+        # 已装的不能勾选，避免重复安装
+        self.assertIn("disabled", body)
+
+    def test_progress_reports_installed_count(self):
+        body = _fn("runGithubInstallFetch")
+        self.assertIn("installed_count", body)

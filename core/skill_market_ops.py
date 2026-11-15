@@ -225,7 +225,22 @@ def parse_preview_skills(raw: str) -> Dict[str, Any]:
         return {"ok": False, "skills": [],
                 "reason": "这个仓库里没有技能（需要带 SKILL.md 的目录）",
                 "declared_count": declared, "parsed_count": 0,
-                "count_mismatch": mismatch}
+                "count_mismatch": mismatch,
+                "installed_count": 0, "new_count": 0}
+
+    # 标出哪些已经装过（2026-11-15 用户反馈）：装了 research 之后列表里它和
+    # 没装过的长得一模一样，勾选框照旧可用，既看不出装过、又会重复安装。
+    state = detect_conflicts([s["name"] for s in skills])
+    have = set(state["conflicts"])
+    for item in skills:
+        item["installed"] = item["name"] in have
+    installed_n = len(have)
+
+    return {"ok": True, "skills": skills, "reason": "",
+            "declared_count": declared, "parsed_count": parsed,
+            "count_mismatch": mismatch,
+            "installed_count": installed_n,
+            "new_count": parsed - installed_n}
     return {"ok": True, "skills": skills, "reason": "",
             "declared_count": declared, "parsed_count": parsed,
             "count_mismatch": mismatch}

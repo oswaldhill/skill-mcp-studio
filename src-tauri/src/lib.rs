@@ -669,6 +669,8 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
         "--market-preview",
         "--market-skills",
         "--market-agents",
+        // 技能来源视图（2026-11-15）：只读，读 npx skills 的 lock 做投影。
+        "--skill-provenance",
         // 技能回滚（v0.31.0 #4 后半）：只读列出备份 / 写回滚。
         // --skill-rollback 写 data/skill_backups + 技能目录，不碰 trunk config。
         "--list-skill-backups",
@@ -1187,6 +1189,7 @@ mod tests {
             "--merge-advice", "--skill-insight", "--merge-skills", "--delete-skill",
             "--market", "--market-install", "--market-upgrade",
             "--market-preview", "--market-skills", "--market-agents",
+            "--skill-provenance",
         ];
         for a in ALLOWED {
             assert!(!is_denied_flag(a), "白名单标志 {a} 被误判为拒绝项");

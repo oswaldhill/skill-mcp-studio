@@ -2483,6 +2483,7 @@
         <div class="hd"><h2>Skills</h2><div class="hint">技能清单与每客户端启用状态</div></div>
         <div class="page-actions">
           <button class="ghost" data-action="open-insight">使用分析</button>
+          <button class="ghost" data-action="open-provenance" title="按来源仓库分组查看已安装技能（只读）">来源视图</button>
           <button class="ghost" data-action="open-market">技能市场</button>
             <button class="ghost" data-action="open-github-install" title="粘贴 GitHub 仓库地址，读取其中技能后选择性安装">从 GitHub 安装</button>
           <button class="ghost" data-action="refresh-skills">刷新技能</button>
@@ -2539,6 +2540,21 @@
             <span class="insight-spacer"></span>
             <button class="primary" data-action="github-install-go">安装所选</button>
           </div>
+          </div>
+        </dialog>
+
+        <!-- 来源视图（2026-11-15）：按来源仓库分组列出已安装技能。
+             数据源是 npx skills 的 lock，只读投影；覆盖缺口如实报出。 -->
+        <dialog id="provenance-panel" class="insight-backdrop hidden" aria-label="技能来源视图">
+          <div class="insight-dialog">
+          <div class="insight-toolbar">
+            <span class="insight-title">技能来源</span>
+            <span class="insight-spacer"></span>
+            <button class="btn-soft" data-action="provenance-refresh">刷新</button>
+            <button class="btn-soft" data-action="provenance-close">关闭</button>
+          </div>
+          <div id="provenance-summary" class="market-lines"></div>
+          <div id="provenance-list" class="market-results"></div>
           </div>
         </dialog>
 
@@ -8383,7 +8399,12 @@ function renderEndpointStatus() {
             return;
           }
           if (prog) {
-            prog.textContent = `共 ${(plan.skills || []).length} 个技能，勾选后点「安装所选」`;
+            const inst = plan.installed_count || 0;
+            const fresh = plan.new_count != null ? plan.new_count
+              : (plan.skills || []).length - inst;
+            prog.textContent = inst
+              ? `共 ${(plan.skills || []).length} 个技能：已安装 ${inst} 个（不可重复勾选），未安装 ${fresh} 个`
+              : `共 ${(plan.skills || []).length} 个技能，勾选后点「安装所选」`;
           }
           renderGithubInstallList(plan);
           return;
@@ -8414,17 +8435,26 @@ function renderEndpointStatus() {
       skills.forEach((s) => {
         const row = document.createElement("label");
         row.className = "list-row";
-        row.style.cursor = "pointer";
+        row.style.cursor = s.installed ? "default" : "pointer";
         const cb = document.createElement("input");
         cb.type = "checkbox";
         cb.className = "github-install-cb";
         cb.value = s.name;
+        // 已安装的不能再勾：重复安装没有意义，而且会覆盖本地内容。
+        if (s.installed) { cb.disabled = true; cb.checked = false; }
         row.appendChild(cb);
         const cell = document.createElement("div");
         cell.className = "list-main";
         const t = document.createElement("div");
         t.className = "list-title mono";
         t.textContent = s.name;
+        if (s.installed) {
+          // 用文字徽标而不是 emoji 图标（规范 3b 禁止 emoji 当 UI 图标）。
+          const badge = document.createElement("span");
+          badge.className = "list-meta";
+          badge.textContent = " · 已安装";
+          t.appendChild(badge);
+        }
         const m = document.createElement("div");
         m.className = "list-meta";
         m.textContent = s.description || "";
@@ -8433,11 +8463,8 @@ function renderEndpointStatus() {
         row.appendChild(cell);
         list.appendChild(row);
       });
-
-      // 操作栏固定在滚动区之外（见 #github-install-actions），列表这里只管列表。
-      const bar = $("github-install-actions");
-      if (bar) bar.classList.remove("hidden");
     }
+
 
     function selectedGithubRepoNames() {
       return Array.from(document.querySelectorAll(".github-install-cb:checked"))
@@ -8528,6 +8555,81 @@ function renderEndpointStatus() {
       modalNotice("ok", "已完成", `已安装 ${names.join("、")}`);
       await refreshBlocks(["skills"]);
     }
+
+    // ── 技能来源视图（2026-11-15）────────────────────────────────────
+    // 数据源是 npx skills 的 lock（`~/.agents/.skill-lock.json`），只读投影。
+    // 覆盖缺口（库里有的技能 lock 里没登记）必须显式说明，不能把「没记录」
+    // 渲染成「没有来源」。
+    function toggleProvenancePanel(show) {
+      const el = $("provenance-panel");
+      if (!el) return;
+      const open = show === undefined ? el.classList.contains("hidden") : show;
+      if (open) { openOverlay(el); loadProvenance(); } else { closeOverlay(el); }
+    }
+
+    async function loadProvenance() {
+      const sum = $("provenance-summary");
+      const list = $("provenance-list");
+      if (sum) sum.textContent = "正在读取来源记录…";
+      if (list) { list.innerHTML = ""; list.className = "market-results"; }
+      const res = await runCli(["--skill-provenance", "--format", "json"],
+                               "读取技能来源（只读）");
+      if (!res || res.code !== 0) {
+        if (sum) sum.textContent = ((res && (res.stderr || res.stdout)) || "读取失败").slice(0, 300);
+        return;
+      }
+      let payload = null;
+      try { payload = JSON.parse(res.stdout || "{}"); } catch (e) { payload = null; }
+      if (!payload) { if (sum) sum.textContent = "返回内容无法解析"; return; }
+      renderProvenance(payload);
+    }
+
+    function renderProvenance(payload) {
+      const sum = $("provenance-summary");
+      const list = $("provenance-list");
+      if (!sum || !list) return;
+      const s = payload.summary || {};
+      const groups = payload.groups || [];
+
+      // 汇总：有缺口时说清缺口，不做「全部都有来源」的暗示。
+      sum.innerHTML = "";
+      const line1 = document.createElement("div");
+      line1.textContent = `${s.recorded || 0} 个技能有来源记录，来自 ${s.sources || 0} 个仓库`;
+      sum.appendChild(line1);
+      if (s.installed_total != null && s.unrecorded) {
+        const line2 = document.createElement("div");
+        line2.className = "list-meta";
+        line2.textContent = `统一库共 ${s.installed_total} 个技能，`
+          + `${s.unrecorded} 个没有来源记录（手工拷入或整仓库形态）`;
+        sum.appendChild(line2);
+      }
+
+      list.innerHTML = "";
+      list.className = "market-results list-rows";
+      if (!groups.length) {
+        list.appendChild(marketEmpty("还没有来源记录",
+          "用「从 GitHub 安装」装技能后，这里会按来源仓库分组显示。"));
+        return;
+      }
+      groups.forEach((g) => {
+        const head = document.createElement("div");
+        head.className = "list-row";
+        const main = document.createElement("div");
+        main.className = "list-main";
+        const t = document.createElement("div");
+        t.className = "list-title mono";
+        t.textContent = g.source;
+        const m = document.createElement("div");
+        m.className = "list-meta";
+        const names = (g.skills || []).map((x) => x.name).join("、");
+        m.textContent = `${g.count} 个：${names}`;
+        main.appendChild(t);
+        main.appendChild(m);
+        head.appendChild(main);
+        list.appendChild(head);
+      });
+    }
+
 
 
 
@@ -10929,6 +11031,9 @@ document.addEventListener("click", (e) => {
     else if (a === "merge-all") runMergeAll(act)
     else if (a === "open-market") toggleMarketPanel();
     else if (a === "open-github-install") toggleGithubInstallPanel();
+    else if (a === "open-provenance") toggleProvenancePanel();
+    else if (a === "provenance-close") toggleProvenancePanel(false);
+    else if (a === "provenance-refresh") loadProvenance();
     else if (a === "github-install-close") toggleGithubInstallPanel(false);
     else if (a === "github-install-fetch") runGithubInstallFetch(act);
     else if (a === "github-install-select-all") toggleGithubChecks(true);
