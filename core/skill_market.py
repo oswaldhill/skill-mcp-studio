@@ -433,7 +433,9 @@ def _http_get_json(url: str, timeout: int = 20):
     if curl:
         try:
             proc = subprocess.run(
-                [curl, "-sS", "-w", "\n%{http_code}", "--max-time", str(timeout),
+                # -L 必须带：仓库改名后 GitHub 返回 301，不跟随就会被读成
+                # 「仓库不存在」（实测 simonwong/agent-skills → 301 → 200）。
+                [curl, "-sS", "-L", "-w", "\n%{http_code}", "--max-time", str(timeout),
                  *headers, url],
                 capture_output=True, text=True, timeout=timeout + 10,
             )

@@ -23,6 +23,7 @@ origin/<branch> 之间，该技能目录有没有差异」。此前它们全部�
 
 from __future__ import annotations
 
+import re
 import subprocess
 from typing import Any, Dict, Iterable, Optional, Set, Tuple
 
@@ -78,6 +79,46 @@ def _resolve_rename(line: str) -> str:
         new_part = inside.split("=>")[-1].strip()
         return f"{prefix}{new_part}{suffix}"
     return line.split("=>")[-1].strip()
+
+
+#: 只记录本机环境的元数据文件（相对技能目录）。
+#:
+#: `_skillhub_meta.json` 里有 `iconLocalPath`（本机绝对路径，如
+#: `/Users/<用户名>/.workbuddy/...`）。换一台机器或换用户名时它必然被改写，
+#: 与技能内容无关。把它算进「本地未提交修改」会让这类技能永远显示
+#: 「同步前需先提交或还原」——实测 lark-unified 正是如此（2026-11-15）。
+MACHINE_LOCAL_FILES = frozenset({"_skillhub_meta.json"})
+
+#: 文件重命名的 git 简写：`old => new` 或 `dir/{a => b}`
+_RENAME_RE = re.compile(r"^(.*?)\{(.*?) => (.*?)\}(.*)$")
+
+
+def _expand_rename(path: str) -> list:
+    """把 `dir/{a => b}.json` 展开成 [旧路径, 新路径]。"""
+    m = _RENAME_RE.match(path)
+    if not m:
+        return [path]
+    pre, old, new, post = m.groups()
+    return [f"{pre}{old}{post}", f"{pre}{new}{post}"]
+
+
+def filter_machine_local(paths) -> tuple:
+    """把本机元数据文件从「未提交修改」里剔除。
+
+    返回 ``(保留的路径, 被剔除的路径)``。只认路径最后一段的文件名，
+    避免误伤技能里同名的业务文件。
+    """
+    kept, dropped = [], []
+    for raw in paths:
+        line = (raw or "").strip()
+        if not line:
+            continue
+        variants = _expand_rename(line)
+        if any(v.rsplit("/", 1)[-1] in MACHINE_LOCAL_FILES for v in variants):
+            dropped.append(line)
+        else:
+            kept.append(line)
+    return kept, dropped
 
 
 def _top_dirs_from_diff(paths: Iterable[str], known: Set[str]) -> Set[str]:
@@ -205,6 +246,9 @@ def snapshot(
         for line in out.splitlines():
             if len(line) > 3:
                 dirty_paths.append(line[3:])
+    # 本机元数据（_skillhub_meta.json 里的绝对路径）不算真实修改，
+    # 否则换机器后这类技能会永远显示「需先提交或还原」。
+    dirty_paths, _machine_meta = filter_machine_local(dirty_paths)
     dirty = _top_dirs_from_diff(dirty_paths, known)
 
     return {

@@ -7,6 +7,31 @@
 
 ## [Unreleased]
 
+### 修复：最后 2 个「未知」也都是误报，现已清零（2026-11-15）
+
+接上一版把 well-known 来源接上后，本机还剩 2 个 unknown。逐个查实，**两个都
+不是真的查不了**：
+
+**① `code-simplifier` —— 仓库改名，301 没被跟随**
+- 来源 `simonwong/agent-skills` 已改名为 `simonwong/skills`，GitHub API 返回
+  **301 重定向**（不是 404）。
+- `_http_get_json` 的 curl 调用没带 `-L`，把「改名」读成了「仓库不存在」。
+- 上游 `npx skills` 同样误报为 `Private or deleted repo`。
+- 修复：curl 加 `-L`。验证：跟随重定向后拿到 `full_name = simonwong/skills`。
+
+**② `lark-unified` —— 本机元数据被当成「未提交修改」**
+- 改动的是 `_skillhub_meta.json` 里的 `iconLocalPath`：
+  `/Users/hozonauto/...` → `/Users/oswaldhill/...`。
+- 该字段只记录**本机绝对路径**，换机器必然被改写，与技能内容无关。
+- 修复：新增 `MACHINE_LOCAL_FILES` 与 `filter_machine_local()`，计算 `dirty`
+  前先剔除这类文件（含 git 重命名简写 `dir/{a => b}` 的展开）。
+
+**实测结果：本机 171 个技能 unknown 25 → 0**，全部有确定结论。
+
+> 判据：新增 `tests/test_unknown_root_causes.py` 5 例（curl 必须带 -L、
+> 本机元数据必须被过滤、重命名简写、整批元数据等于不脏）全过；
+> 全量 1935 passed / 2 skipped；ruff → All checks passed。
+
 ### 新增：well-known 来源技能的更新检测（2026-11-15）
 
 用户反馈：「不是 GitHub 来源的应该也可以查询」。原判定把 22 个飞书 `lark-*`
