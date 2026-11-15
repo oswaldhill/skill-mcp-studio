@@ -8368,26 +8368,37 @@ function renderEndpointStatus() {
       try {
         const res = await runCli(["--market-preview", url, "--format", "json"],
                                  "读取 GitHub 仓库技能列表（只读，不安装）");
-        if (!res || res.code !== 0) {
-          if (prog) {
-            prog.textContent = ((res && (res.stderr || res.stdout)) || "读取失败")
-              .trim().split("\n").filter(Boolean).pop() || "读取失败";
+        // 先解析再判退出码：`--market-preview` 在「仓库里没有技能」时
+        // 仍输出完整 JSON、但退出码为 2（2 = 没有技能，不是崩溃）。
+        // 曾经先按退出码判失败、再把 stdout 末行当错误文案，界面上只剩个右花括号。
+        // （实测 Goblinmine/homelab-diagram）。
+        let plan = null;
+        try { plan = JSON.parse((res && res.stdout) || ""); } catch (e) { plan = null; }
+
+        if (plan && plan.action === "preview") {
+          if (!plan.ok) {
+            if (prog) prog.textContent = plan.reason || "仓库里没有可安装的技能";
+            renderGithubInstallList({ skills: [], source: plan.source });
+            return;
           }
+          if (prog) {
+            prog.textContent = `共 ${(plan.skills || []).length} 个技能，勾选后点「安装所选」`;
+          }
+          renderGithubInstallList(plan);
           return;
         }
-        let plan;
-        try { plan = JSON.parse(res.stdout || "{}"); }
-        catch (e) { if (prog) prog.textContent = "返回内容无法解析"; return; }
-        if (!plan.ok) {
-          if (prog) prog.textContent = plan.reason || "仓库地址无效";
-          return;
+
+        // 拿不到可解析的 JSON 才按命令失败处理，并优先用 stderr 的正文。
+        if (prog) {
+          prog.textContent = ((res && (res.stderr || res.stdout)) || "读取失败")
+            .trim().split("\n").filter(Boolean).slice(-3).join(" ")
+            || "读取失败";
         }
-        if (prog) prog.textContent = `共 ${(plan.skills || []).length} 个技能，勾选后点「安装所选」`;
-        renderGithubInstallList(plan);
       } finally {
         if (btn) { btn.disabled = false; btn.textContent = "读取技能"; }
       }
     }
+
 
     function renderGithubInstallList(plan) {
       const list = $("github-install-list");
@@ -8396,7 +8407,7 @@ function renderEndpointStatus() {
       list.className = "market-results list-rows";
       const skills = Array.isArray(plan.skills) ? plan.skills : [];
       if (!skills.length) {
-        list.appendChild(marketEmpty("没有找到技能", "该仓库可能不含 SKILL.md，或清单读取失败"));
+        list.appendChild(marketEmpty("该仓库里没有可安装的技能", "技能需要在仓库里带 SKILL.md（含 name 与 description）。这个仓库没有，所以没有可装的东西。"));
         return;
       }
       skills.forEach((s) => {

@@ -222,7 +222,8 @@ def parse_preview_skills(raw: str) -> Dict[str, Any]:
     parsed = len(skills)
     mismatch = declared is not None and declared != parsed
     if not skills:
-        return {"ok": False, "skills": [], "reason": "未能从仓库输出中解析出技能名",
+        return {"ok": False, "skills": [],
+                "reason": "这个仓库里没有技能（需要带 SKILL.md 的目录）",
                 "declared_count": declared, "parsed_count": 0,
                 "count_mismatch": mismatch}
     return {"ok": True, "skills": skills, "reason": "",

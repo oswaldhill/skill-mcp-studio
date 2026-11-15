@@ -120,3 +120,30 @@ class RunCliWhitelistTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class NoSkillRepoMessageTest(unittest.TestCase):
+    """仓库里没有技能时，界面必须说清「原因」，不能只吐一个 '}'。
+
+    实测（2026-11-15）：给一个不含 SKILL.md 的仓库（Goblinmine/homelab-diagram），
+    `scan.py --market-preview --format json` 输出**完整 JSON** 但退出码为 2
+    （2 表示「没有技能」，不是崩溃）。GUI 曾把非零退出码一律当失败，并把
+    stdout 的最后一行（那是 JSON 的收尾 `}`）当错误信息显示，界面上只剩一个 `}`。
+    """
+
+    def test_parses_json_even_on_nonzero_exit(self):
+        """退出码非 0 时仍要先尝试解析 stdout 里的 JSON。"""
+        body = _fn("runGithubInstallFetch")
+        # 关键：解析必须发生在「按退出码判定失败」之前，或至少对非 0 也解析
+        self.assertIn("JSON.parse", body)
+        # 不应把 stdout 末行直接当错误文案
+        self.assertNotIn("split(\"\\n\").filter(Boolean).pop()", body)
+
+    def test_no_skill_reason_is_surfaced(self):
+        """reason 字段（如「未能从仓库输出中解析出技能名」）必须被展示。"""
+        body = _fn("runGithubInstallFetch")
+        self.assertIn("plan.reason", body)
+
+    def test_empty_skills_message_mentions_skill_md(self):
+        """空清单的提示应说明「需要 SKILL.md」，用户才知道为什么没东西可装。"""
+        body = _fn("renderGithubInstallList")
+        self.assertIn("SKILL.md", body)
