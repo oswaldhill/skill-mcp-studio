@@ -2475,6 +2475,24 @@
       </div>
       <div id="overview-body"></div>
 
+      <!-- ===== 最近变更（2026-11-15）=====
+           变更详情原本只挂在「系统 → 变更详情」。那是低频但关键时刻很重要的
+           功能（排查「我什么都没动，为什么行为变了」），而那个位置不会让人
+           联想到「排查环境变化」。放到概览首屏，出问题时第一眼就能看到。 -->
+      <div class="panel" id="panel-overview-changes" style="margin-top:var(--sp-6)">
+        <div class="hd fc-head">
+          <div>
+            <h3>最近变更</h3>
+            <div class="hint">与上次快照相比，IDE / Agent、MCP、技能有哪些变化</div>
+          </div>
+          <div class="page-actions">
+            <button type="button" class="btn-soft" data-action="overview-snapshot">立即对比</button>
+            <button type="button" class="ghost" data-action="change-detail">查看详情</button>
+          </div>
+        </div>
+        <div id="overview-changes"><div class="hint">尚未运行对比：点「立即对比」查看自上次以来的变化</div></div>
+      </div>
+
       <!-- ===== 端点状态（独立于配置审计）=====
            用户明确要求：审计只判配置是否正确，端口是否正常要单独看。
            所以这里是一个**独立区域**，只在用户手动点按钮时才真探活，
@@ -6505,6 +6523,9 @@ function switchPage(page) {
   // 已拉过则不重拉，避免每次切页都起一次子进程。
   if (page === "dsh" && !DSH_DATA) loadDshPlugins();
   if (page === "agents") loadRules();
+  // 概览的「最近变更」进页即取：纯本地对比（读一份 yaml + 生成当前快照），
+  // 不发网络请求。用户进概览就是为了看「现在什么情况」，卡片不该是空壳。
+  if (page === "overview") runOverviewSnapshot();
 }
 document.querySelectorAll(".nav-item").forEach((btn) => {
   btn.addEventListener("click", () => switchPage(btn.dataset.page));
@@ -11117,6 +11138,8 @@ document.addEventListener("click", (e) => {
     else if (a === "cleanup-config") cleanupConfigFor(act.dataset.name);
     else if (a === "clean-legacy") cleanLegacyMcp(act.dataset.name);
     else if (a === "run-snapshot") runSnapshot();
+    else if (a === "overview-snapshot") runOverviewSnapshot();
+    else if (a === "change-detail") switchPage("changes");
     else if (a === "refresh-dsh") loadDshPlugins();
     else if (a === "ignore-change") ignoreChange(act.dataset.dim, act.dataset.name, act.dataset.type);
     else if (a === "show-mcp-class") showMcpClass(act.dataset.name, act.dataset.class);
@@ -11620,6 +11643,72 @@ async function runSnapshot() {
 
 // 缓存最近一次 diff，供「修复 / 保持」按钮取变更指纹（避免二次请求）
 let LAST_DIFF = null;
+
+/** 概览页「最近变更」卡片：跑一次对比并把结果摊开（不必先跳页）。
+
+与 renderChangesResult 的分工：后者是完整详情页（逐条列出、可修复/保持），
+这里只给**结论与量级**，细节交给「查看详情」。首屏不该被 20 条变更占满。
+*/
+async function runOverviewSnapshot() {
+  const el = $("overview-changes");
+  if (el) el.innerHTML = '<div class="hint">正在对比…</div>';
+  const res = await runCli(["--snapshot", "--format", "json"]);
+  let diff = null;
+  try { diff = JSON.parse((res && res.stdout) || ""); } catch (e) { diff = null; }
+  if (!diff) {
+    if (el) el.innerHTML = '<div class="hint">对比失败：' + escapeHtml(cliFailLines(res) || "无输出") + '</div>';
+    return;
+  }
+  renderOverviewChanges(el, diff);
+}
+
+function renderOverviewChanges(el, diff) {
+  if (!el) return;
+  if (diff.is_first) {
+    el.innerHTML = '<div class="hint">已建立基线快照。下次对比起，这里会显示具体变化。</div>';
+    return;
+  }
+  const s = diff.summary || {};
+  const totals = diff.totals || {};
+  const total = (s.agents || 0) + (s.mcp || 0) + (s.skills || 0);
+
+  if (!total) {
+    // 无变更也要有信息量：说清「对比了什么」，而不是留一片空。
+    el.innerHTML = '<div class="hint">自上次快照以来未发现变更'
+      + `（当前：IDE/Agent ${totals.agents || 0}、MCP ${totals.mcp || 0}、技能 ${totals.skills || 0}）</div>`;
+    return;
+  }
+
+  const dims = [["agents", "IDE/Agent"], ["mcp", "MCP"], ["skills", "技能"]];
+  let html = '<div class="chg-toolbar"><div class="chg-summary">';
+  for (const [k, label] of dims) {
+    const n = s[k] || 0;
+    if (!n) continue;
+    html += `<span class="chg-pill hot">${label} <b>${n}</b></span>`;
+  }
+  html += '</div></div>';
+
+  // 每条变更一行摘要，最多 5 条，其余以「还有 N 条」带过。
+  const rows = [];
+  for (const ch of (diff.changes || [])) rows.push(ch);
+  const shown = rows.slice(0, 5);
+  // 复用详情页已有的 chg-card / chg-head / chg-dim / chg-name 结构，
+  // 不新造类（本项目门禁会拦「markup 里出现 CSS 未定义的幽灵类」）。
+  html += '<div class="chg-list">';
+  for (const ch of shown) {
+    const label = ch.dimension === "skills" ? "技能"
+                : ch.dimension === "mcp" ? "MCP" : "IDE/Agent";
+    html += `<div class="chg-card"><div class="chg-head">`
+          + `<span class="chg-dim">${escapeHtml(label)}</span>`
+          + `<span class="chg-name">${escapeHtml(ch.name || "")}</span></div>`
+          + `<div class="chg-detail">${escapeHtml(ch.type || "")}</div></div>`;
+  }
+  if (rows.length > shown.length) {
+    html += `<div class="hint">还有 ${rows.length - shown.length} 条，点「查看详情」</div>`;
+  }
+  html += '</div>';
+  el.innerHTML = html;
+}
 
 function renderChangesResult(el, diff) {
   LAST_DIFF = diff;
