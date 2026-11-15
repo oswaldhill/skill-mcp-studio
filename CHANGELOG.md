@@ -7,6 +7,33 @@
 
 ## [Unreleased]
 
+### 新增：多远端分支拓扑约束（2026-11-15）
+
+本仓库同时推两个远端，职责不同：
+
+| 远端 | 分支 | 用途 |
+|---|---|---|
+| `origin`（codeup） | `master` + `develop` | 日常开发与发布 |
+| `github` | **只有 `master`** | 发布镜像，不该有 `develop` |
+
+实测出现过 GitHub `master` 停在 `50282e5`、落后 codeup `master` **14 个提交**
+（含代码，并非仅文档），而**没有任何检查会报出来**。
+
+新增两道约束，区分「故障」与「预期」：
+
+- `tests/test_remote_branch_consistency.py`（9 例）：守形状 ——
+  GitHub 不该有 `develop`、GitHub `master` 不许与本地分叉、
+  codeup 两条主干都在。
+- `scripts/check_remote_drift.py`：只读漂移报告。
+  **分叉**判失败（真故障）；**落后**只报告不判失败（GitHub 是镜像，阶段性
+  落后属预期，判失败会逼人推无意义的同步）。`--strict` 供发版前使用。
+- CI `test.yml` 新增 `remote-branch-shape` job，把契约定义钉在流水线上。
+- `CONTRIBUTING.md` 新增「远端的既定形状（不要破坏）」小节。
+
+> 判据：新增 9 例测试全过；全量 1961 passed / 2 skipped；
+> ruff → All checks passed；实测脚本正确报出「GitHub master 落后 14 个提交」，
+> 普通模式退出码 0、`--strict` 退出码 1。
+
 ### 改进：移除「变更详情」左侧导航项（2026-11-15 用户决定）
 
 用户判断该功能**没有形成使用习惯**，留着只是「一个没人点的入口 + 一个已经能

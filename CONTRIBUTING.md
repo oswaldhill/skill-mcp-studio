@@ -55,6 +55,28 @@ scripts/install-hooks.sh
 GITHUB_PUSH_ALLOW=1 git push github <branch>
 ```
 
+### 远端的既定形状（不要破坏）
+
+本仓库同时推两个远端，职责不同：
+
+| 远端 | 分支 | 用途 |
+|---|---|---|
+| `origin`（codeup） | `master` + `develop` | 日常开发与发布 |
+| `github` | **只有 `master`** | 发布镜像，**不该有 `develop`** |
+
+- **GitHub 上不要创建 `develop`。** 历史清理时明确只保留 master；
+  误推会在 `tests/test_remote_branch_consistency.py` 与 CI 的
+  `remote-branch-shape` job 上报红。
+- **GitHub 允许落后**（它是镜像）。想知道差多少，跑只读检查：
+
+  ```bash
+  python3 scripts/check_remote_drift.py          # 报告漂移，落后不算失败
+  python3 scripts/check_remote_drift.py --strict # 发版前用：落后也判失败
+  ```
+
+- **不许分叉。** 若 GitHub 与 codeup 的同名分支各有对方没有的提交，
+  脚本与测试都会失败，需要人工 merge 或 reset 后再推。
+
 ## 运行测试
 
 测试使用标准库 `unittest`，无需额外安装 pytest。**请使用与 CI 完全一致的命令**：

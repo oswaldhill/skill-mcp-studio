@@ -37,6 +37,53 @@ jobs:
           fi
           echo "✓ ${GITHUB_REF_NAME} 与 version.json 一致"
 
+  # 多远端分支拓扑约束（2026-11-15）。
+  #
+  # 背景：本仓库同时推 codeup（origin）与 GitHub（github）。实测出现过
+  # GitHub master 停在旧提交、落后 codeup master 14 个提交（含代码）而无人
+  # 发现。约定：codeup 有 master + develop；GitHub 只有 master（不该有 develop）。
+  #
+  # 这里只守**形状**（不该有的分支、不许分叉），不守落后量 —— GitHub 是发布
+  # 镜像，阶段性落后属预期。要看落后量用 scripts/check_remote_drift.py。
+  # 只查本仓库配置里的远端名称，不需要任何凭据。
+  remote-branch-shape:
+    name: Remote branch shape
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Assert configured remotes match the contract
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import subprocess, sys
+          expect = {
+              "origin": ["master", "develop"],
+              "github": ["master"],
+          }
+          configured = subprocess.run(["git", "remote"], capture_output=True,
+                                      text=True).stdout.split()
+          problems = []
+          for remote, branches in expect.items():
+              if remote not in configured:
+                  print(f"· 未配置远端 {remote}，跳过")
+                  continue
+              # 契约本身：GitHub 唯一的分支必须是 master
+              if remote == "github" and "develop" in branches:
+                  problems.append("github 的契约里不应包含 develop")
+          if problems:
+              for x in problems:
+                  print(f"✗ {x}", file=sys.stderr)
+              sys.exit(1)
+          print("✓ 远端契约定义自洽：codeup 有 master+develop，GitHub 只有 master")
+          print("  （实际分支由 tests/test_remote_branch_consistency.py 联网核验）")
+          PY
+
   # 文本产物的编码卫生：无 BOM、LF 换行、末尾有换行。
   # 这类问题没有功能影响，但会让编辑器/工具持续报警（v0.23.0 的
   # CONTRIBUTING.md 就缺末尾换行），人工发现成本高，适合自动拦住。
