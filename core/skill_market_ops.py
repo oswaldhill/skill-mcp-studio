@@ -366,11 +366,24 @@ def execute_plan(
         "reason": "",
         "backups": backups,
     }
-    if plan["action"] == "install":
+    # 校验要「装了什么就查什么」，而 install 有两种来源，结构不同：
+    #   plan_install(package)      → 有 package（形如 owner/repo@skill）
+    #   plan_install_repo(source)  → 有 skills 列表，**没有 package**
+    # 曾经只按 action == "install" 盲取 plan["package"]，仓库安装时直接
+    # KeyError 崩溃（实测 https://github.com/mattpocock/skills 勾选安装）。
+    if plan.get("package"):
         # 包名形如 owner/repo@skill，落盘目录名取 @ 之后
-        out["verify"] = verify_installed([plan["package"].split("@")[-1]])
+        out["verify"] = verify_installed([str(plan["package"]).split("@")[-1]])
+    elif plan.get("skills"):
+        # 仓库安装：逐个查用户勾选的那些技能名
+        out["verify"] = verify_installed(list(plan["skills"]))
+    elif plan.get("all_skills"):
+        # 装全部时事先不知道会落哪些目录，无法按名字查；交给 npx 自身的
+        # 输出与 install 后刷新来体现，这里给出结构完整的空校验。
+        out["verify"] = {"ok": True, "present": [], "missing": [],
+                         "root": str(_skills_dir()), "skipped": "all-skills"}
     else:
-        out["verify"] = verify_installed(plan["names"])
+        out["verify"] = verify_installed(plan.get("names") or [])
 
     if out["ok"] and not out["verify"]["ok"]:
         out["ok"] = False

@@ -277,3 +277,76 @@ class ParsePreviewTest(unittest.TestCase):
         from skill_market_ops import parse_preview_skills
         r = parse_preview_skills(self.RAW)
         self.assertEqual(len(r["skills"]), 3)
+
+
+class ExecuteRepoInstallTest(unittest.TestCase):
+    """execute_plan 必须能处理「仓库安装」计划（2026-11-15 实测崩溃）。
+
+    用户粘贴 https://github.com/mattpocock/skills 勾选 wayfinder 安装时报：
+        File "core/skill_market_ops.py", line 371, in execute_plan
+        out["verify"] = verify_installed([plan["package"].split("@")[-1]])
+        KeyError: 'package'
+
+    根因：execute_plan 只用 `action == "install"` / `else` 两个分支，
+    默认 install 计划来自 plan_install(package)（有 package 字段），
+    但仓库安装来自 plan_install_repo(...)（有 skills 列表、无 package）。
+    """
+
+    def _runner(self, present):
+        def run(argv, timeout=None):
+            return {"code": 0, "stdout": "", "stderr": ""}
+        return run
+
+    def test_repo_install_plan_does_not_crash(self):
+        import tempfile
+        from pathlib import Path
+        from skill_market_ops import execute_plan, plan_install_repo
+        plan = plan_install_repo(
+            "https://github.com/mattpocock/skills", skills=["wayfinder"])
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "wayfinder").mkdir()
+            with mock.patch("skill_market_ops._skills_dir",
+                            return_value=Path(tmp)):
+                out = execute_plan(plan, runner=self._runner(True))
+        self.assertIn("verify", out)
+        self.assertTrue(out["ok"], out)
+        self.assertEqual(out["verify"]["present"], ["wayfinder"])
+
+    def test_repo_install_verifies_each_selected_skill(self):
+        import tempfile
+        from pathlib import Path
+        from skill_market_ops import execute_plan, plan_install_repo
+        plan = plan_install_repo(
+            "https://github.com/x/y", skills=["alpha", "beta"])
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "alpha").mkdir()
+            (Path(tmp) / "beta").mkdir()
+            with mock.patch("skill_market_ops._skills_dir",
+                            return_value=Path(tmp)):
+                out = execute_plan(plan, runner=self._runner(True))
+        self.assertEqual(sorted(out["verify"]["present"]), ["alpha", "beta"])
+
+    def test_repo_install_all_skills_wildcard_does_not_crash(self):
+        """装全部（--skill *）时没有确定的目录名可查，也不能崩。"""
+        import tempfile
+        from pathlib import Path
+        from skill_market_ops import execute_plan, plan_install_repo
+        plan = plan_install_repo("https://github.com/x/y", all_skills=True)
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch("skill_market_ops._skills_dir",
+                            return_value=Path(tmp)):
+                out = execute_plan(plan, runner=self._runner(True))
+        self.assertIn("verify", out)
+
+    def test_package_install_still_works(self):
+        """回归：包名安装原本的校验逻辑不能坏。"""
+        import tempfile
+        from pathlib import Path
+        from skill_market_ops import execute_plan, plan_install
+        plan = plan_install("owner/repo@myskill")
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "myskill").mkdir()
+            with mock.patch("skill_market_ops._skills_dir",
+                            return_value=Path(tmp)):
+                out = execute_plan(plan, runner=self._runner(True))
+        self.assertEqual(out["verify"]["present"], ["myskill"])

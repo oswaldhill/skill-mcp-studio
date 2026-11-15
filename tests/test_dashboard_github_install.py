@@ -147,3 +147,27 @@ class NoSkillRepoMessageTest(unittest.TestCase):
         """空清单的提示应说明「需要 SKILL.md」，用户才知道为什么没东西可装。"""
         body = _fn("renderGithubInstallList")
         self.assertIn("SKILL.md", body)
+
+
+class InstallErrorDisplayTest(unittest.TestCase):
+    """安装失败时：错误进标准弹框，面板只留摘要（2026-11-15 实测）。
+
+    用户勾选技能点「安装所选」后，面板进度行被塞进一整段 Python traceback
+    （`File ".../scan.py", line 4575 ... KeyError: 'package'`），而弹框只写
+    「详见面板提示」。原始 traceback 对用户没有任何意义，且把界面撑得很难看。
+    """
+
+    def test_raw_traceback_not_dumped_into_panel(self):
+        body = _fn("executeGithubInstall")
+        self.assertNotIn("prog.textContent = `安装失败：${(res && res.stderr)", body)
+
+    def test_failure_goes_into_modal(self):
+        body = _fn("executeGithubInstall")
+        # 失败必须有 modalNotice，且带上有意义的说明
+        self.assertIn("modalNotice", body)
+        self.assertIn("安装失败", body)
+
+    def test_parses_json_on_failure_too(self):
+        """scan.py 失败时若仍输出 JSON（如 err 字段），要优先用它的 reason。"""
+        body = _fn("executeGithubInstall")
+        self.assertIn("JSON.parse", body)

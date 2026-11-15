@@ -8461,6 +8461,25 @@ function renderEndpointStatus() {
       executeGithubInstall(url, picked);
     }
 
+    /** 把命令失败转成一句人能读的话；兼容 scan.py 的 JSON err 与纯 stderr。 */
+    function cliFailureText(res, fallback) {
+      let payload = null;
+      try { payload = JSON.parse((res && res.stdout) || ""); } catch (e) { payload = null; }
+      if (payload) {
+        const msg = payload.reason || payload.err || payload.error;
+        if (msg) return String(msg).trim().slice(0, 400);
+      }
+      const raw = ((res && (res.stderr || res.stdout)) || "").trim();
+      if (!raw) return fallback || "命令退出码非 0，且没有任何输出";
+      // 原始 traceback 对用户没有意义：取最后一行（通常是异常类型与消息），
+      // 其余内容不再铺进界面。
+      const tail = raw.split("\n").map((x) => x.trim()).filter(Boolean).slice(-1)[0];
+      if (/^Traceback|^\s*File "/.test(raw)) {
+        return `内部错误：${tail || "未知异常"}（完整堆栈见终端日志）`;
+      }
+      return tail.slice(0, 400);
+    }
+
     async function executeGithubInstall(url, names) {
       if (!tauriInvoke) {
         modalNotice("warn", "请注意", "浏览器预览模式：写入需在桌面 App 内执行");
@@ -8472,21 +8491,40 @@ function renderEndpointStatus() {
         ["--market-install", url, "--market-skills", (names || []).join(","),
          "--yes", "--format", "json"],
         `安装：从 ${url} 拉取 ${names.length} 个技能`);
+
+      // 失败原因统一走「标准弹框」承载；面板只留一句摘要。
+      // 曾经把整段 traceback 写进 prog.textContent，弹框却说「详见面板提示」——
+      // 主次完全颠倒，且 traceback 对用户没有意义。
       if (!res || res.code !== 0) {
-        if (prog) prog.textContent = `安装失败：${(res && res.stderr) || "无输出"}`;
-        modalNotice("err", "操作失败", "安装失败，详见面板提示");
+        const detail = cliFailureText(res, "安装失败");
+        if (prog) prog.textContent = "安装失败";
+        modalNotice("err", "安装失败", detail);
         return;
       }
-      let ok = true;
-      try { ok = JSON.parse(res.stdout || "{}").ok !== false; } catch (e) { ok = false; }
-      if (prog) prog.textContent = ok ? `已安装 ${names.length} 个技能` : "安装未成功，详见下方输出";
-      if (ok) {
-        modalNotice("ok", "已完成", `已安装 ${names.join("、")}`);
-        await refreshBlocks(["skills"]);
-      } else {
-        modalNotice("err", "操作失败", "安装未成功");
+
+      let payload = null;
+      try { payload = JSON.parse(res.stdout || "{}"); } catch (e) { payload = null; }
+      if (!payload) {
+        if (prog) prog.textContent = "安装失败";
+        modalNotice("err", "安装失败", "命令输出无法解析，详见终端日志");
+        return;
       }
+      if (payload.ok === false) {
+        const detail = payload.reason || payload.stderr
+          || (payload.verify && (payload.verify.missing || []).length
+              ? `命令执行了，但统一库里没找到：${payload.verify.missing.join("、")}`
+              : "安装未成功");
+        if (prog) prog.textContent = "安装失败";
+        modalNotice("err", "安装失败", String(detail).slice(0, 400));
+        if (payload.stdout) appendMarketProgress(String(payload.stdout).slice(0, 2000), "err");
+        return;
+      }
+
+      if (prog) prog.textContent = `已安装 ${names.length} 个技能`;
+      modalNotice("ok", "已完成", `已安装 ${names.join("、")}`);
+      await refreshBlocks(["skills"]);
     }
+
 
 
     function renderMarketResults(data) {

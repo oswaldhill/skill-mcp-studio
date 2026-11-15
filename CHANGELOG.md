@@ -7,6 +7,42 @@
 
 ## [Unreleased]
 
+### 修复：仓库安装崩溃（KeyError: 'package'）与错误展示错位（2026-11-15）
+
+用户粘贴 `https://github.com/mattpocock/skills`、勾选 wayfinder 点「安装所选」后
+报 `KeyError: 'package'`，且整段 Python traceback 被铺在面板进度行里，而弹框
+只写「详见面板提示」——主次完全颠倒。
+
+**崩溃根因**：`execute_plan` 的安装后校验只写了两个分支：
+
+```python
+if plan["action"] == "install":
+    out["verify"] = verify_installed([plan["package"].split("@")[-1]])
+```
+
+它假设 install 计划一定有 `package` 字段（来自 `plan_install(package)`），
+但仓库安装来自 `plan_install_repo(...)` —— 那是 `skills` 列表，**没有 package**。
+两条 install 路径共用了同一个 `action` 值，校验处却只认其中一种结构。
+
+- 改为按计划**实际字段**分派：有 `package` 按包名校验；有 `skills` 逐个校验
+  用户勾选的名字；`all_skills` 时装之前不知道会落哪些目录，返回
+  `skipped: all-skills` 而不是硬猜。
+
+**错误展示错位**：
+
+- `executeGithubInstall` 曾把 `res.stderr` 整段塞进面板进度行，弹框只说
+  「详见面板提示」。改为：**弹框承载原因**，面板只留一句「安装失败」。
+- 新增 `cliFailureText()`：优先取 JSON 里的 `reason`/`err`；遇到原始 traceback
+  时只保留最后一行（`内部错误：KeyError: 'package'（完整堆栈见终端日志）`），
+  不再把堆栈倒给用户。
+- 安装失败时即使退出码非 0，也先尝试解析 stdout 的 JSON，与预览出口保持一致。
+
+> 判据：新增 7 例测试（仓库安装不崩、逐个校验、`--skill *` 不崩、包名安装回归、
+> 面板不铺 traceback、失败进弹框、失败也解析 JSON）全过；
+> 全量 1889 passed / 2 skipped；ruff → All checks passed；
+> 用真实仓库 `mattpocock/skills`（38 个技能）实测：勾选 wayfinder 安装成功，
+> 统一库 164 → 165，弹框显示「已完成 / 已安装 wayfinder」。
+
 ### 修复：无技能仓库只显示一个右花括号（2026-11-15）
 
 给一个不含 SKILL.md 的仓库（实测 `Goblinmine/homelab-diagram`）点「读取技能」，
