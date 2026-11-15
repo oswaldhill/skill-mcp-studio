@@ -854,6 +854,8 @@
   }
   .notice-card .notice-stat-v { font: 600 var(--fs-md)/1 var(--mono); color: var(--text); }
   .notice-card .notice-stat-k { font-size: var(--fs-xs); color: var(--muted); white-space: nowrap; }
+  /* 通知弹框里的可点附加动作：让「这条提示本身就能动手」。 */
+  .notice-extra { margin-top: var(--sp-4); display: flex; }
   .notice-card .notice-stat.todo .notice-stat-v { color: var(--warn); }
   .notice-card .notice-stat.warn .notice-stat-v { color: var(--warn); }
   .notice-card .notice-action {
@@ -2923,6 +2925,16 @@ function renderNoticeBody(body) {
 //   opts.stats  = [{ label, value, tone? }]  → 渲染成 key/value 网格
 //   opts.action = "一句可操作的下一步"        → 渲染成独立强调块
 // 两者都不传时行为与从前完全一致（纯文本路径不变）。
+/** 通知弹框里的统计卡 HTML（抽出来让 modalNotice 保持短小易读）。 */
+function _noticeStatsHtml(stats) {
+  if (!Array.isArray(stats) || !stats.length) return "";
+  return `<div class="notice-stats">${stats.map((st) =>
+    `<div class="notice-stat${st.tone ? " " + st.tone : ""}">
+       <span class="notice-stat-v">${escapeHtml(String(st.value))}</span>
+       <span class="notice-stat-k">${escapeHtml(String(st.label))}</span>
+     </div>`).join("")}</div>`;
+}
+
 function modalNotice(kind, title, message, opts) {
   const meta = NOTICE_META[kind] || NOTICE_META.info;
   const safeTitle = escapeHtml(title || meta.label);
@@ -2933,15 +2945,14 @@ function modalNotice(kind, title, message, opts) {
   const splitHtml = parts.next
     ? `<div class="notice-action"><span class="notice-action-icon" aria-hidden="true">›</span>${escapeHtml(parts.next)}</div>`
     : "";
-  const statsHtml = Array.isArray(o.stats) && o.stats.length
-    ? `<div class="notice-stats">${o.stats.map((st) =>
-        `<div class="notice-stat${st.tone ? " " + st.tone : ""}">
-           <span class="notice-stat-v">${escapeHtml(String(st.value))}</span>
-           <span class="notice-stat-k">${escapeHtml(String(st.label))}</span>
-         </div>`).join("")}</div>`
-    : "";
+  const statsHtml = _noticeStatsHtml(o.stats);
   const actionHtml = o.action
     ? `<div class="notice-action"><span class="notice-action-icon" aria-hidden="true">›</span>${escapeHtml(String(o.action))}</div>`
+    : "";
+  // 可点的附加动作：o.action 只是文字，用户常照着找却找不到入口。
+  const ex = o.extraAction;
+  const extra = ex && ex.action
+    ? `<div class="notice-extra"><button class="btn-soft" data-action="${escapeHtml(ex.action)}">${escapeHtml(ex.label || "处理")}</button></div>`
     : "";
   mountModal(`<div class="modal-backdrop"><div class="modal cfm-card notice-card notice-${kind}" role="dialog" aria-modal="true" aria-label="${safeTitle}" tabindex="-1">
     <div class="cfm-icon notice-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">${meta.path}</svg></div>
@@ -2950,6 +2961,7 @@ function modalNotice(kind, title, message, opts) {
     ${splitHtml}
     ${statsHtml}
     ${actionHtml}
+    ${extra}
     <div class="actions">
       <button class="cfm-btn-cancel" id="notice-ok">关闭</button>
     </div>
@@ -9128,15 +9140,24 @@ function renderEndpointStatus() {
         // 正文只保留「异常项需要留意」这一句结论；没有就留空，不写废话。
         const lead = needsAttention
           ? (s.missing
-              ? `有 ${s.missing} 个技能已卸载但登记残留，可在技能行删除`
+              ? `有 ${s.missing} 个技能已卸载但登记残留（登记表还留着条目，技能目录已不在）`
               : "部分技能未能判定版本，稍后可重试")
           : "";
 
+        // 登记残留必须**就地**给可点入口：那批技能的目录已不存在，
+        // 技能行里没有它们，让用户「去技能行删除」等于死路（2026-11-15 实测）。
+        const opts = { stats, action };
+        if (s.missing) {
+          opts.extraAction = {
+            label: `清理 ${s.missing} 条登记残留`,
+            action: "prune-skill-lock",
+          };
+        }
         modalNotice(
           needsAttention ? "warn" : "ok",
           `检查完成${cached}`,
           lead,
-          { stats, action });
+          opts);
       }
     } catch (e) {
       modalNotice("err", "操作失败", "检查返回无法解析：" + e);

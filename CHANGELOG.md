@@ -7,6 +7,29 @@
 
 ## [Unreleased]
 
+### 修复：清理登记残留没有可点的入口（2026-11-15）
+
+用户看到检查完成弹框写着「有 5 个技能已卸载但登记残留，可在技能行删除」，
+但**那 5 个技能的目录已经不在了，技能行里根本没有它们**，无法按提示删除。
+真正的清理按钮藏在「设置」页，从这条提示根本找不到。
+
+清理能力本身早已存在（`prune_missing_registrations`：dry-run → 备份 →
+只删磁盘上确实没有的，保留其它字段），缺的只是**入口可达**：
+
+- `modalNotice` 新增 `opts.extraAction = {label, action}`，让提示本身就能动手
+  （此前 `opts.action` 只是**一行文字**，无法点击）。
+- 检查完成弹框在 `missing > 0` 时直接给出「清理 N 条登记残留」按钮，
+  点击即走既有的 dry-run → 确认 → 执行链路。
+- 提示文案改为「登记表还留着条目，技能目录已不在」，不再误导用户去技能行删除。
+- 顺带把统计卡 HTML 抽成 `_noticeStatsHtml()`，保持 `modalNotice` 短小
+  （原测试约定函数体前 1200 字符内必须出现 mountModal）。
+
+> 判据：新增 `tests/test_prune_missing_entry.py` 6 例（后端 dry-run 能力、
+> GUI 入口存在、弹框内有可点按钮、文案不再误导、必须二次确认、先 dry-run）；
+> 全量 1918 passed / 2 skipped；ruff → All checks passed；
+> Playwright 实测：弹框内「清理 5 条登记残留」按钮可点，点击后弹出确认框
+> 并准确列出 lark-minutes、lark-note、lark-vc、lark-vc-agent、slides。
+
 ### 修复：窄窗口下 Skills 工具栏溢出、标题被压成竖排（2026-11-15）
 
 用户 App 窗口约 770px 宽，工具栏有 8 个按钮。截图显示：「Skills」标题被挤成
