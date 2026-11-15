@@ -131,10 +131,13 @@ class ClaimsMatchCodeTest(unittest.TestCase):
         # 必须回来改这里与 PRD §5.3，防止文档与实现各说各话。
         gui = (ROOT / "gui" / "dashboard.html").read_text(encoding="utf-8")
         pages = set(re.findall(r'data-page="([a-z-]+)"', gui))
+        # 2026-11-15：移除「变更详情」导航项（用户决定，改用概览页「最近变更」
+        # 卡片进入；page-changes 页面本体保留，承载「保持」与完整清单）。
+        # 导航页由七页变六页，PRD §5.3 与 DESIGN.md 已同步。
         self.assertEqual(
-            {"overview", "agents", "skills", "mcp", "changes", "dsh", "settings"},
+            {"overview", "agents", "skills", "mcp", "dsh", "settings"},
             pages,
-            "PRD §5.3 说七页，dashboard 的 data-page 集合变了就要同步改文档",
+            "PRD §5.3 的页面集合变了就要同步改文档",
         )
 
     def test_registry_count_claim_is_true(self):

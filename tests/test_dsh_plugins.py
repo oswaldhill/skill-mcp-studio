@@ -289,17 +289,20 @@ class DshPageGuiTest(unittest.TestCase):
             "分组由 DOM 顺序隐式决定（applyNavGroup 按兄弟节点顺序收集 nav-item），"
             "所以位置即语义。若确实要改归属，请同步改 docs/DESIGN.md §2.3g 与本断言。")
 
-    def test_nav_item_precedes_changes_in_dom(self):
-        """「变更详情」属于系统组，DSH 插件不应再排在它之后。
+    def test_nav_item_precedes_settings_in_dom(self):
+        """DSH 插件必须排在它后面的项之前（当前是「设置」）。
 
         这条与上一条互补：上一条守「组边界」，这条守「组内相对位置」。二者分开的
         原因是失败信息不同——一个说「跨组了」，一个说「组内顺序变了」，便于定位。
+
+        2026-11-15：原先的比较对象是「变更详情」，用户决定移除该导航项（改用
+        概览页的「最近变更」卡片进入），所以锚点改为同组的下一项「设置」。
         """
         nav_start = self.body.find('<nav class="nav">')
         nav = self.body[nav_start:self.body.find("</nav>", nav_start)]
         self.assertLess(
-            nav.find('id="nav-dsh"'), nav.find('id="nav-changes"'),
-            "DSH 插件排在了「变更详情」之后 —— 两页都将在系统组内或顺序错乱")
+            nav.find('id="nav-dsh"'), nav.find('id="nav-settings"'),
+            "DSH 插件排在了「设置」之后 —— 系统组内顺序错乱")
 
     def test_nav_count_badge_present_like_siblings(self):
         """DSH 插件必须带 `.count` 徽标，与同组四项保持同一视觉语言。
