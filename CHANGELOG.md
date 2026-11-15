@@ -7,6 +7,35 @@
 
 ## [Unreleased]
 
+### 新增：仓库预览解析为可勾选清单（2026-11-15）
+
+上一版 `--market-preview` 只是把 `npx skills add <url> -l` 交给下游打印，
+用户还得自己从终端输出里抄技能名。现在它**真的执行并解析**该命令，
+GUI 直接渲染成可勾选的清单。
+
+- `parse_preview_skills`：解析 clack 渲染的输出。先由 `strip_ansi` 洗掉
+  颜色码与 `\r` 重绘，再按「`│` 后恰好 4 空格 + 单 token」识别技能名、
+  6 空格以上识别描述。标题行（`◇`）与噪声行（`Found N skills`、
+  `Available Skills`、`Use --skill`）都不会被误收。
+- **声明数与解析数不一致会显式报出**（`count_mismatch`）：仓库说 9 个、
+  只解析出 1 个时，界面标「清单可能不完整」，而不是把残缺清单当完整结果。
+- GUI 预览区改为复选框列表：每行技能名 + 描述，配「全选 / 全不选」，
+  底部「安装所选」只装勾选项，「安装全部」仍需二次确认。
+- 去掉了上一版的自由文本输入框——勾选比手打技能名更不容易拼错。
+
+验收中发现并修复：
+- 重写渲染后按钮丢了 `data-src`，导致安装命令的仓库地址变成
+  `undefined`（实测 argv 里是 `"--market-install", null`）。
+- 我一度在界面文案里用了 emoji 当警示图标，被
+  `test_design_spec_contract.py::EmojiAsIconBanTest` 拦下（规范 3b），
+  已改为纯文字「注意：」。
+
+> 判据：新增解析测试 7 例全过；全量 1866 passed / 2 skipped；
+> `ruff check core tests scan.py scripts setup.py` → All checks passed；
+> 用 Playwright 驱动构建产物实测：预览出 9 个技能名与描述、全选/全不选
+> 生效、勾选 2 个后 argv 为
+> `--market-skills vercel-composition-patterns,deploy-to-vercel`。
+
 ### 新增：技能市场支持 GitHub 仓库安装与预览（2026-11-14）
 
 此前「技能市场」只能按包名搜索并安装，无法处理用户手上已有的 GitHub 地址；

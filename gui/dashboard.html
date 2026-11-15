@@ -2639,6 +2639,8 @@ const escapeHtml = (v) => String(v == null ? "" : v)
   .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
 let SNAP = null;
+  // GitHub 仓库预览结果（2026-11-15）：来源 + 技能清单，供勾选安装使用。
+  let REPO_PREVIEW = { source: "", skills: [] };
 // Git 技能源（2026-11-07）：登记表 + 最近一次检查结果。
 let GIT_SOURCES = { loading: false, items: [], summary: null, error: "", adoptTried: false, autoAdopted: null, adoptError: "" };
 // 约束文件数据（v0.37.9）：主表的「约束」列与设置页逐 Agent 行共用。
@@ -8147,6 +8149,7 @@ function renderEndpointStatus() {
     }
 
     /** 渲染仓库预览区：显示来源、技能名输入框与两个安装入口。 */
+    /** 渲染仓库预览区：来源 + 技能清单（可勾选）+ 安装入口。 */
     function renderMarketRepo(plan) {
       renderMarketProgress([]);
       const el = $("market-repo");
@@ -8154,6 +8157,10 @@ function renderEndpointStatus() {
       el.classList.remove("hidden");
       el.innerHTML = "";
 
+      const skills = Array.isArray(plan.skills) ? plan.skills : [];
+      REPO_PREVIEW = { source: plan.source || "", skills };
+
+      // 头部：来源 + 计数 + 两个安装按钮
       const head = document.createElement("div");
       head.className = "list-row";
       const main = document.createElement("div");
@@ -8163,7 +8170,10 @@ function renderEndpointStatus() {
       title.textContent = plan.source || "";
       const meta = document.createElement("div");
       meta.className = "list-meta";
-      meta.textContent = "填技能名（逗号分隔）后点「安装所选」，或点「安装全部」";
+      meta.textContent = `共 ${skills.length} 个技能` +
+        (plan.count_mismatch
+          ? `（注意：仓库声明 ${plan.declared_count} 个，解析出 ${skills.length} 个，清单可能不完整）`
+          : "，勾选后点「安装所选」");
       main.appendChild(title);
       main.appendChild(meta);
 
@@ -8182,15 +8192,65 @@ function renderEndpointStatus() {
       head.appendChild(all);
       el.appendChild(head);
 
-      const field = document.createElement("div");
-      field.className = "market-toolbar";
-      const inp = document.createElement("input");
-      inp.type = "text";
-      inp.id = "market-repo-skills";
-      inp.placeholder = "技能名，逗号分隔（留空则请用「安装全部」）";
-      inp.setAttribute("aria-label", "要安装的技能名");
-      field.appendChild(inp);
-      el.appendChild(field);
+      // 清单：每行一个复选框 + 名字 + 描述首句
+      if (!skills.length) {
+        el.appendChild(marketEmpty("没有找到技能", "该仓库可能不含 SKILL.md，或清单读取失败"));
+        return;
+      }
+      const box = document.createElement("div");
+      box.className = "list-rows";
+      box.id = "market-repo-list";
+      skills.forEach((s) => {
+        const row = document.createElement("label");
+        row.className = "list-row";
+        row.style.cursor = "pointer";
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.className = "market-repo-cb";
+        cb.value = s.name;
+        cb.dataset.name = s.name;
+        row.appendChild(cb);
+
+        const cell = document.createElement("div");
+        cell.className = "list-main";
+        const t = document.createElement("div");
+        t.className = "list-title mono";
+        t.textContent = s.name;
+        const m = document.createElement("div");
+        m.className = "list-meta";
+        m.textContent = s.description || "";
+        cell.appendChild(t);
+        cell.appendChild(m);
+        row.appendChild(cell);
+        box.appendChild(row);
+      });
+      el.appendChild(box);
+
+      // 快捷：全选 / 全不选
+      const bar = document.createElement("div");
+      bar.className = "market-toolbar";
+      const selAll = document.createElement("button");
+      selAll.className = "btn-soft";
+      selAll.dataset.action = "market-repo-select-all";
+      selAll.textContent = "全选";
+      const selNone = document.createElement("button");
+      selNone.className = "btn-soft";
+      selNone.dataset.action = "market-repo-select-none";
+      selNone.textContent = "全不选";
+      bar.appendChild(selAll);
+      bar.appendChild(selNone);
+      el.appendChild(bar);
+    }
+
+    /** 取当前勾选的技能名。 */
+    /** 全选 / 全不选仓库技能复选框。 */
+    function toggleRepoChecks(on) {
+      document.querySelectorAll(".market-repo-cb").forEach((cb) => { cb.checked = !!on; });
+    }
+
+    function selectedRepoNames() {
+      return Array.from(document.querySelectorAll(".market-repo-cb:checked"))
+        .map((cb) => cb.value);
     }
 
     function clearMarketRepo() {
@@ -8204,58 +8264,57 @@ function renderEndpointStatus() {
         modalNotice("warn", "请注意", "浏览器预览模式：写入需在桌面 App 内执行");
         return;
       }
-      let argv;
+      let names;
       if (allSkills) {
-        argv = ["--market-install", src, "--market-skills", "*",
-                "--yes", "--format", "json"];
+        names = "*";
       } else {
-        const inp = $("market-repo-skills");
-        const names = ((inp && inp.value) || "").trim();
-        if (!names) {
-          modalNotice("err", "操作失败", "请先填写要安装的技能名，或点「安装全部」");
+        const picked = selectedRepoNames();
+        if (!picked.length) {
+          modalNotice("err", "操作失败", "请先勾选要安装的技能，或点「安装全部」");
           return;
         }
-        argv = ["--market-install", src, "--market-skills", names,
-                "--yes", "--format", "json"];
+        names = picked.join(",");
       }
-      appendMarketProgress(`正在从 ${src} 安装${allSkills ? "全部技能" : "所选技能"}`, "info");
+      const argv = ["--market-install", src, "--market-skills", names,
+                    "--yes", "--format", "json"];
+      const label = allSkills ? "全部技能" : `${names.split(",").length} 个技能`;
+      appendMarketProgress(`正在从 ${src} 安装${label}`, "info");
       const res = await runCli(argv, `安装：从 ${src} 拉取`);
       reportMarketExec(res, `从 ${src} 安装`);
       await refreshBlocks(["skills"]);
     }
 
     function confirmRepoInstall(src, allSkills) {
-      // 先校验再确认：没填技能名时不该先弹「确定要安装吗」再报错，
+      // 先校验再确认：没勾选时不该先弹「确定要安装吗」再报错，
       // 用户点「确定」后才发现什么都没装，体验与预期相反。
-      let names = "";
+      let picked = [];
       if (!allSkills) {
-        const inp = $("market-repo-skills");
-        names = ((inp && inp.value) || "").trim();
-        if (!names) {
-          modalNotice("err", "操作失败", "请先填写要安装的技能名，或点「安装全部」");
+        picked = selectedRepoNames();
+        if (!picked.length) {
+          modalNotice("err", "操作失败", "请先勾选要安装的技能，或点「安装全部」");
           return;
         }
       }
-        const msg = allSkills
-          ? "确定要从「" + src + "」安装该仓库的全部技能吗？\n\n它们都会写入统一技能库。"
-          : "确定要从「" + src + "」安装技能「" + names + "」吗？\n\n它们会写入统一技能库。";
-        if (!window.confirm(msg)) { appendMarketProgress("已取消安装", "info"); return; }
-        executeRepoInstall(src, allSkills);
-      }
-
-  function renderMarketResults(data) {
-    renderMarketProgress([]);
-    const results = data.results || [];
-    const el = $("market-results");
-    if (!el) return;
-    el.innerHTML = "";
-    el.className = "market-results list-rows";
-    if (!results.length) {
-      el.appendChild(marketEmpty(
-        "没有匹配的技能",
-        data.reason || "换个关键词再试，或点「检查更新」看已装技能的上游状态"));
-      return;
+      const msg = allSkills
+        ? `确定要从「${src}」安装该仓库的全部技能吗？\n\n它们都会写入统一技能库。`
+        : `确定要从「${src}」安装这 ${picked.length} 个技能吗？\n\n${picked.join("、")}\n\n它们会写入统一技能库。`;
+      if (!window.confirm(msg)) { appendMarketProgress("已取消安装", "info"); return; }
+      executeRepoInstall(src, allSkills);
     }
+
+    function renderMarketResults(data) {
+      renderMarketProgress([]);
+      const results = data.results || [];
+      const el = $("market-results");
+      if (!el) return;
+      el.innerHTML = "";
+      el.className = "market-results list-rows";
+      if (!results.length) {
+        el.appendChild(marketEmpty(
+          "没有匹配的技能",
+          data.reason || "换个关键词再试，或点「检查更新」看已装技能的上游状态"));
+        return;
+      }
     results.forEach((r) => {
       // 一行一个条目：主标题包名、元信息安装量、右侧安装。不再额外往进度区
       // 重复输出一遍同样的内容，会让同一屏出现两份列表。
@@ -10646,6 +10705,8 @@ document.addEventListener("click", (e) => {
     else if (a === "market-install") confirmMarketInstall(act.dataset.pkg);
     else if (a === "market-repo-pick") confirmRepoInstall(act.dataset.src, false);
     else if (a === "market-repo-all") confirmRepoInstall(act.dataset.src, true);
+    else if (a === "market-repo-select-all") toggleRepoChecks(true);
+    else if (a === "market-repo-select-none") toggleRepoChecks(false);
     else if (a === "market-upgrade") confirmMarketUpgrade(act.dataset.name);
     else if (a === "reprobe") reprobeEndpoints(act);
     // 「检查端点连通性」走独立出口，与审计刷新（refresh-audit）完全分开。

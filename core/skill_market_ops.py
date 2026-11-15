@@ -89,6 +89,20 @@ _PACKAGE_RE = re.compile(
     r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+(?:@[A-Za-z0-9._-]+)?$")
 
 
+
+#: ANSI / OSC 转义序列。`npx skills` 走 clack 渲染，stdout 里混着颜色与光标控制。
+_ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07]*\x07")
+
+#: `◇  Found 9 skills`
+_FOUND_RE = re.compile(r"Found\s+(\d+)\s+skills?", re.IGNORECASE)
+
+#: 技能名行：`│    vercel-composition-patterns`（`│` 后恰好 4 空格，单 token）
+_SKILL_NAME_RE = re.compile(r"^\s*\u2502 {4}([A-Za-z0-9][A-Za-z0-9._-]*)\s*$")
+
+#: 描述行：`│      React composition patterns...`（`│` 后 6 个以上空格）
+_SKILL_DESC_RE = re.compile(r"^\s*\u2502 {6,}(\S.*?)\s*$")
+
+
 def classify_install_source(raw: Optional[str]) -> Dict[str, Any]:
     """把用户输入分派成 ``github`` / ``package`` / ``rejected``。
 
@@ -143,6 +157,77 @@ def plan_repo_preview(source: str) -> Dict[str, Any]:
         "argv": ["add", cls["canonical"], "-l"],
         "reason": "",
     }
+
+
+def strip_ansi(text: str) -> str:
+    """去掉 ANSI 转义与行内光标控制，保留可读正文。
+
+    `npx skills` 用 clack 输出：颜色码、`\x1b[1G\x1b[J` 这类清行控制、以及
+    spinner 的 `\r` 重绘都会混进 stdout，不先洗掉就无法按行解析。
+    """
+    if not text:
+        return ""
+    # CSI 序列（颜色、光标移动、清屏）与 OSC 序列
+    text = _ANSI_RE.sub("", text)
+    # spinner 用 
+    # spinner 用回车符反复重绘同一行：只保留最后一次绘制的内容
+    text = text.replace("\r", "\n")
+    return text
+
+
+def parse_preview_skills(raw: str) -> Dict[str, Any]:
+    """解析 `npx skills add <url> -l` 的输出，返回可勾选的技能清单。
+
+    实测输出形状（2026-11-15）：
+        ◇  Found 9 skills
+        │
+        ◇  Available Skills
+        │
+        │    vercel-composition-patterns      ← 名字：4 空格缩进
+        │
+        │      React composition patterns...  ← 描述：6 空格缩进
+        │
+        │    deploy-to-vercel
+
+    判定规则：只认「`│` 后恰好 4 个空格 + 无空格的单 token」为技能名；
+    描述行缩进更深，标题行带 `◇`，都不会被误收。
+    """
+    text = strip_ansi(raw)
+    if not text.strip():
+        return {"ok": False, "skills": [], "reason": "仓库未返回技能列表",
+                "declared_count": None, "parsed_count": 0,
+                "count_mismatch": False}
+
+    declared = None
+    m = _FOUND_RE.search(text)
+    if m:
+        declared = int(m.group(1))
+
+    skills: List[Dict[str, str]] = []
+    pending_name: Optional[str] = None
+    for line in text.split("\n"):
+        nm = _SKILL_NAME_RE.match(line)
+        if nm:
+            pending_name = nm.group(1)
+            skills.append({"name": pending_name, "description": ""})
+            continue
+        dm = _SKILL_DESC_RE.match(line)
+        if dm and skills:
+            desc = dm.group(1)
+            # 只取第一条描述行：描述可能折成多行，全拼起来反而难读
+            if not skills[-1]["description"]:
+                skills[-1]["description"] = desc
+            continue
+
+    parsed = len(skills)
+    mismatch = declared is not None and declared != parsed
+    if not skills:
+        return {"ok": False, "skills": [], "reason": "未能从仓库输出中解析出技能名",
+                "declared_count": declared, "parsed_count": 0,
+                "count_mismatch": mismatch}
+    return {"ok": True, "skills": skills, "reason": "",
+            "declared_count": declared, "parsed_count": parsed,
+            "count_mismatch": mismatch}
 
 
 def plan_install_repo(

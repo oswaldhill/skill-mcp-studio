@@ -173,3 +173,107 @@ class ConflictTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class ParsePreviewTest(unittest.TestCase):
+    """解析 `npx skills add -l` 的输出，得到可勾选的技能清单。
+
+    实测输出形状（2026-11-15）：
+        ◇  Found 9 skills
+        │
+        ◇  Available Skills
+        │
+        │    vercel-composition-patterns
+        │
+        │      React composition patterns that scale. ...
+        │
+        │    deploy-to-vercel
+        │
+        │      Deploy applications and websites to Vercel. ...
+  """
+
+    RAW = (
+        "\u250c   skills \n"
+        "\u2502\n"
+        "\u25c7  Source: https://github.com/vercel-labs/agent-skills.git\n"
+        "\u2502\n"
+        "\u25c7  Found 3 skills\n"
+        "\u2502\n"
+        "\u25c7  Available Skills\n"
+        "\u2502\n"
+        "\u2502    vercel-composition-patterns\n"
+        "\u2502\n"
+        "\u2502      React composition patterns that scale. Use when refactoring.\n"
+        "\u2502\n"
+        "\u2502    deploy-to-vercel\n"
+        "\u2502\n"
+        "\u2502      Deploy applications and websites to Vercel.\n"
+        "\u2502\n"
+        "\u2502    vercel-optimize\n"
+        "\u2502\n"
+        "\u2502      Use for Vercel cost and performance optimization.\n"
+        "\u2502\n"
+        "\u2514  Use --skill <name> to install specific skills\n"
+    )
+
+    def test_parses_names_and_descriptions(self):
+        from skill_market_ops import parse_preview_skills
+        r = parse_preview_skills(self.RAW)
+        self.assertTrue(r["ok"])
+        names = [s["name"] for s in r["skills"]]
+        self.assertEqual(names, [
+            "vercel-composition-patterns",
+            "deploy-to-vercel",
+            "vercel-optimize",
+        ])
+        self.assertIn("React composition", r["skills"][0]["description"])
+        self.assertIn("Deploy applications", r["skills"][1]["description"])
+
+    def test_declared_count_matches(self):
+        from skill_market_ops import parse_preview_skills
+        r = parse_preview_skills(self.RAW)
+        self.assertEqual(r["declared_count"], 3)
+        self.assertEqual(r["parsed_count"], 3)
+
+    def test_count_mismatch_is_flagged(self):
+        """声明 3 个却只解析出 1 个：必须报出来，不能静默当成完整的。"""
+        from skill_market_ops import parse_preview_skills
+        raw = (
+            "\u25c7  Found 3 skills\n"
+            "\u2502    only-one\n"
+            "\u2502      desc\n"
+        )
+        r = parse_preview_skills(raw)
+        self.assertEqual(r["parsed_count"], 1)
+        self.assertTrue(r["count_mismatch"])
+
+    def test_strips_ansi(self):
+        from skill_market_ops import parse_preview_skills
+        raw = (
+            "\x1b[38;5;250m\u25c7  Found 1 skills\x1b[0m\n"
+            "\x1b[1G\x1b[J\u2502    alpha-skill\n"
+            "\u2502\n"
+            "\u2502      first description\n"
+        )
+        r = parse_preview_skills(raw)
+        self.assertEqual([s["name"] for s in r["skills"]], ["alpha-skill"])
+
+    def test_empty_output_is_not_ok(self):
+        from skill_market_ops import parse_preview_skills
+        r = parse_preview_skills("")
+        self.assertFalse(r["ok"])
+        self.assertTrue(r["reason"])
+
+    def test_rejects_noise_lines(self):
+        """'Found N skills'、'Available Skills'、'Use --skill' 不能当技能名。"""
+        from skill_market_ops import parse_preview_skills
+        r = parse_preview_skills(self.RAW)
+        names = {s["name"] for s in r["skills"]}
+        for noise in ("Found", "Available", "Use", "skills", "Source"):
+            self.assertNotIn(noise, names)
+        self.assertTrue(all(" " not in n for n in names))
+
+    def test_skill_with_version_suffix(self):
+        """多行描述不应被误当成技能名（描述行缩进更深）。"""
+        from skill_market_ops import parse_preview_skills
+        r = parse_preview_skills(self.RAW)
+        self.assertEqual(len(r["skills"]), 3)

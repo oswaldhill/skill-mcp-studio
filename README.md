@@ -291,7 +291,7 @@ cleanup / commit / push / 修复。
 --market sources|list|search|check        市场源 / 列表 / 搜索 / 只读更新检查
 --market-install PKG [--yes]              安装技能包（带备份）
 --market-install URL --market-skills NAMES 从 GitHub 仓库安装（NAMES 逗号分隔，`*` 为全部）
---market-preview URL                      只读：列出 GitHub 仓库里有哪些技能（add -l）
+--market-preview URL                      只读：执行 add -l 并解析出技能清单（可勾选）
 --market-upgrade NAME [--yes]             升级已装技能
 --list-market-sources                     只读：列出市场源
 --set-market-source ID [KEY=VALUE ...]    新增/修改市场源

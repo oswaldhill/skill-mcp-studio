@@ -2003,21 +2003,54 @@ def _run_market_preview(args) -> int:
 
     为什么不直接装：一个仓库常含多个技能，直接 `add` 会把它们全部装进统一库。
     先 `add -l` 列出来，让用户勾选后再装。
+
+    本出口会**真的执行** `npx skills add <url> -l`（联网读取仓库清单），
+    但 `-l` 保证只列不装；解析交给 `parse_preview_skills`。
     """
-    from skill_market_ops import plan_repo_preview
+    from skill_market_ops import _run_npx, parse_preview_skills, plan_repo_preview
 
     plan = plan_repo_preview(args.market_preview)
     if not plan.get("ok"):
         print(f"  ❌ {plan.get('reason')}")
         return 2
 
-    if getattr(args, "format", None) == "json":
-        print(json.dumps(plan, ensure_ascii=False, indent=2))
-        return 0
+    res = _run_npx(plan["argv"], timeout=180)
+    combined = (res.get("stdout") or "") + "\n" + (res.get("stderr") or "")
+    parsed = parse_preview_skills(combined)
 
-    print(f"  预览仓库：{plan['source']}")
-    print(f"  命令：npx skills {' '.join(plan['argv'])}")
-    print("  （该命令只列出技能，不安装）")
+    payload = {
+        "action": "preview",
+        "source": plan["source"],
+        "argv": plan["argv"],
+        "ok": parsed["ok"],
+        "skills": parsed["skills"],
+        "declared_count": parsed["declared_count"],
+        "parsed_count": parsed["parsed_count"],
+        "count_mismatch": parsed["count_mismatch"],
+        "reason": parsed["reason"] or ("" if res.get("code") == 0 else
+                                       (res.get("stderr") or "仓库读取失败")[:300]),
+    }
+
+    if getattr(args, "format", None) == "json":
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0 if payload["ok"] else 2
+
+    if not payload["ok"]:
+        print(f"  ❌ {payload['reason']}")
+        return 2
+
+    print(f"  预览仓库：{payload['source']}")
+    print(f"  共 {payload['parsed_count']} 个技能：")
+    for item in payload["skills"]:
+        print(f"    - {item['name']}")
+        if item.get("description"):
+            desc = item["description"]
+            print(f"        {desc[:100]}{'…' if len(desc) > 100 else ''}")
+    if payload["count_mismatch"]:
+        print(f"  ⚠️ 仓库声明 {payload['declared_count']} 个，只解析出"
+              f" {payload['parsed_count']} 个，清单可能不完整")
+    print()
+    print("  安装示例：--market-install <URL> --market-skills 名字1,名字2 --yes")
     return 0
 
 
