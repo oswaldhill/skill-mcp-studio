@@ -7,6 +7,43 @@
 
 ## [Unreleased]
 
+### 新增：well-known 来源技能的更新检测（2026-11-15）
+
+用户反馈：「不是 GitHub 来源的应该也可以查询」。原判定把 22 个飞书 `lark-*`
+技能全部落进 `unknown`「无 GitHub 来源信息，无法比对」——25 个未知里占 88%。
+
+**这三类技能此前没有任何一方在检查**：上游 `npx skills update` 实测把它们归为
+`cannot be checked automatically (Well-known skill)`，而我们只认 GitHub。
+
+但端点本身是公开可读的（实测 HTTP 200）：
+- `https://<host>/.well-known/skills/index.json` — 技能与文件清单
+- `https://<host>/.well-known/skills/<name>/SKILL.md` — 正文
+
+- 新增 `core/skill_wellknown.py`：`classify_source` / `parse_index` /
+  `compare_skill`。**判定用 SKILL.md 内容哈希，不用 files 清单**——实测
+  `lark-doc` 本地 44 个文件、远端 index 只报 16 个，清单不可作依据。
+- `check_updates` 里 well-known 判定**优先于所有分支**：这些记录常既无
+  skillPath 又无版本号，会先落进「本地无版本号」兜底分支（`lark-doc` 实测踩到）。
+- 查不成一律 `unknown`（网络失败 / 404 / 本地缺 SKILL.md），绝不静默算 `current`
+  —— 那正是本次要修的毛病。
+
+**实测效果（本机 166 个技能）**：
+
+| 指标 | 修复前 | 修复后 |
+|---|---|---|
+| 未知 | 25 | **2** |
+| 已最新 | 141 | 158 |
+| 可升级 | 0 | **6** |
+
+剩下 2 个未知都有真实原因：`code-simplifier`（上游仓库已私有/删除）、
+`lark-unified`（本地有未提交修改）。并且首次查出 6 个飞书技能上游确有新版本：
+`lark-apps`、`lark-base`、`lark-calendar`、`lark-event`、`lark-task`、
+`lark-workflow-meeting-summary`。
+
+> 判据：新增 `tests/test_wellknown_check.py` 12 例（来源识别、index 解析、
+> 内容比对、拉取失败必须 unknown、URL 构造）全过；全量 1930 passed / 2 skipped；
+> ruff → All checks passed。
+
 ### 修复：清理登记残留没有可点的入口（2026-11-15）
 
 用户看到检查完成弹框写着「有 5 个技能已卸载但登记残留，可在技能行删除」，

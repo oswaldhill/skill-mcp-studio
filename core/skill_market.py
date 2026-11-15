@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from paths import is_reserved_skill_dir
+from skill_wellknown import classify_source
 
 import paths
 from tool_registry import which_with_fallback
@@ -182,6 +183,7 @@ def list_installed(
             "source": meta.get("source"),
             "source_type": meta.get("sourceType"),
             "source_url": meta.get("sourceUrl"),
+            "source_base_url": meta.get("sourceBaseUrl"),
             "skill_path": meta.get("skillPath"),
             "installed_at": meta.get("installedAt"),
             "updated_at": meta.get("updatedAt"),
@@ -726,6 +728,27 @@ def check_updates(
         # API 不提供目录 hash 对比；raw 拉文件需多次请求且要处理 ref）。
         local_time = _local_skill_time(name, row, paths.skills_dir())
         skill_path = row.get("skill_path")
+
+        # well-known 来源优先判定（2026-11-15）：按协议拉远端 SKILL.md 比哈希。
+        # 必须放在所有分支**之前**——这些记录常常既没有 skillPath 也没有版本号，
+        # 会先落进下面「本地无版本号」的兜底分支，永远走不到这里（lark-doc 实测）。
+        # 上游 npx skills 自己也不查这类（归为 "cannot be checked automatically
+        # (Well-known skill)"），不接的话就是永久「未知」。
+        _wk = classify_source({
+            "sourceType": row.get("source_type"),
+            "source": row.get("source"),
+            "sourceBaseUrl": row.get("source_base_url"),
+        })
+        if _wk["kind"] == "wellknown":
+            from skill_wellknown import compare_skill as _cmp_wellknown
+            wr = _cmp_wellknown(name, paths.skills_dir() / name,
+                                base_url=_wk["base_url"])
+            counts[wr["state"]] += 1
+            rows.append(dict(row, state=wr["state"], local_version=local,
+                             remote_version=None, remote_time=None,
+                             note=f"按 well-known 协议比对：{wr['detail']}"))
+            continue
+
         if local is None and owner_repo and local_time and skill_path:
             state = "unknown"
             if rate_limited:
@@ -756,7 +779,7 @@ def check_updates(
         if local is None:
             reason = "本地无版本号且无安装时间/路径信息，无法比对"
         elif not owner_repo:
-            reason = "无 GitHub 来源信息，无法比对"
+            reason = "无 GitHub 来源信息，且不是 well-known 站点，无法比对"
         elif rate_limited:
             reason = "GitHub API 配额已用尽，本轮跳过（可设 GITHUB_TOKEN 提升配额）"
         else:
