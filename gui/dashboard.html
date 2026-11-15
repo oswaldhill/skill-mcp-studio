@@ -121,7 +121,7 @@
     --sp-5b: 15px;   /* 偶用竖向 */
     --sp-7a: 18px;   /* 弹窗标题下边距 */
     --sp-9a: 28px;   /* main 横向 */
-    --sp-9c: 40px;   /* 空态大内边 */
+    --sp-9c: 48px;   /* 数据表行高（两张数据表共用）；40px 对 6 列太挤，48px 给文字呼吸 */
     /* 2026-10-10 补齐：以下 6 档源自「间距字面值清零」。它们原先散落为字面值，
        这里为它们建 token 而不是继续裸写 —— 值逐个等价，所以是纯粹的取值来源
        收敛，渲染结果不变。 */
@@ -660,7 +660,10 @@
   .mono { font-family: var(--mono); font-size: var(--fs-xs); }
 
   /* ============ skill cards ============ */
-  .skill-search { display: flex; align-items: center; gap: var(--gap-4); margin-bottom: var(--sp-5); }
+  /* 搜索框与筛选用同一条视觉节奏：此前搜索独占一行（mb 12px）+ toolbar 再占一行，
+     两行叠加吃掉约 90px 纵向空间，表格被推到首屏之外。
+     改为紧凑的一段：搜索在上、筛选紧随，间距统一为 8px。 */
+  .skill-search { display: flex; align-items: center; gap: var(--gap-4); margin-bottom: var(--sp-3); }
   .skill-search input { flex: 1; min-width: 200px; }
   .skill-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--gap-5); align-items: stretch; }
   .skill-card { height: 100%; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-card); padding: var(--sp-5) var(--sp-6); display: flex; flex-direction: column; gap: var(--gap-3); cursor: pointer; box-shadow: var(--shadow-card); transition: border-color .18s var(--ease), box-shadow .18s var(--ease); box-sizing: border-box; }
@@ -1877,7 +1880,13 @@
   .kebab svg { width: 16px; height: 16px; }
   .kebab.skill-kebab { margin-left: 0; }
   .skill-card .sk-top-right { display: inline-flex; align-items: center; gap: var(--gap-2); flex: none; }
-  .skill-table .st-ops .kebab { width: 22px; height: 22px; }
+  /* 与 Agent 表同一套交互（.agent-list-table 早已如此）：kebab 常驻会在每行
+     右侧留一串「...」，20 行叠起来就是明显的视觉噪声。改为悬停/聚焦才显形，
+     键盘用户用 :focus-within 同样能看到。 */
+  .skill-table .st-ops .kebab { width: 22px; height: 22px; opacity: 0; transition: opacity .12s ease; }
+  .skill-table tbody tr:hover .st-ops .kebab,
+  .skill-table tbody tr:focus-within .st-ops .kebab { opacity: 1; }
+  .skill-table .st-ops .kebab:focus-visible { opacity: 1; }
   .pop-menu { position: fixed; z-index: 60; min-width: 176px; background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--r-control); box-shadow: var(--shadow-modal); padding: var(--sp-1); animation: palin .14s var(--ease); }
   .pop-menu .pm-item { display: flex; align-items: center; gap: var(--gap-3); width: 100%; padding: var(--sp-3a) var(--sp-4); border: none; background: transparent; box-shadow: none; border-radius: var(--r-control); cursor: pointer; text-align: left; color: var(--text); font-size: var(--fs-sm); font-weight: 500; }
   .pop-menu .pm-item:hover { background: var(--panel-2); }
@@ -1911,6 +1920,7 @@
 
   /* 技能页工具栏：分段筛选 + 网格/列表切换 */
   .skill-toolbar { display: flex; align-items: center; gap: var(--gap-3); flex-wrap: wrap; margin-bottom: var(--sp-4); }
+  .skill-toolbar + .skill-legend-note { margin-top: 0; }
   .skill-legend-note { margin: 0 0 var(--sp-3); font-size: var(--fs-2xs); color: var(--faint); line-height: 1.5; }
   .skill-legend { display: flex; align-items: center; gap: var(--gap-5); flex-wrap: wrap; padding: var(--sp-3a) var(--sp-5); margin-bottom: var(--sp-4); border: 1px solid var(--line); border-radius: var(--r-control); background: var(--bg-elev); font-size: var(--fs-xs); color: var(--muted); }
   /* 标签列**定宽**：同一页叠放的多条图例名字长短不一，
@@ -1930,9 +1940,15 @@
   .skill-legend .legend-swatch.neutral { background: var(--muted); }
   .skill-legend .legend-note { color: var(--faint); font-family: var(--mono); font-size: var(--fs-2xs); margin-left: auto; }
   .skill-cat-chips { display: inline-flex; gap: var(--gap-2); flex-wrap: wrap; }
-  .cat-chip { display: inline-flex; align-items: center; gap: var(--gap-1); border: 1px solid var(--line); background: var(--panel); color: var(--muted); border-radius: var(--r-pill); padding: var(--sp-0b) var(--sp-4); font-size: var(--fs-xs); font-weight: 500; cursor: pointer; box-shadow: none; }
-  .cat-chip:hover { border-color: var(--accent-border); color: var(--text); }
-  .cat-chip.active { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  /* 11 个带描边的胶囊排成一行，与上方状态分段控件挤在一起时像两排并列的按钮墙。
+     改为「文字 + 计数」的轻量标签：默认无边框无底色，选中才加浅底。
+     筛选能力不变，视觉噪声降低一个量级（2026-11-15 用户反馈「拥挤」）。 */
+  .cat-chip { display: inline-flex; align-items: center; gap: var(--gap-1); border: 1px solid transparent;
+    background: transparent; color: var(--muted); border-radius: var(--r-control);
+    padding: var(--sp-0b) var(--sp-3); font-size: var(--fs-xs); font-weight: 500;
+    cursor: pointer; box-shadow: none; transition: background .12s ease, color .12s ease; }
+  .cat-chip:hover { background: var(--panel-2); color: var(--text); }
+  .cat-chip.active { background: var(--accent-bg); color: var(--accent); border-color: var(--accent-border); }
   .cat-chip .cat-n { font-family: var(--mono); font-size: var(--fs-2xs); opacity: .75; }
   .nest-toggle { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; flex: none; border: none; background: transparent; box-shadow: none; padding: 0; color: var(--faint); cursor: pointer; border-radius: var(--r-hair); }
   .nest-toggle.nest-slot { cursor: default; pointer-events: none; }
@@ -1990,7 +2006,7 @@
     text-align: center; font-size: var(--fs-2xs); text-transform: uppercase; letter-spacing: .06em;
     color: var(--faint); font-weight: 600; padding: var(--sp-3a) var(--sp-5); border-bottom: 1px solid var(--line-strong); white-space: nowrap;
   }
-  .skill-table th.st-name { width: 18%; padding-left: var(--sp-9e); }
+  .skill-table th.st-name { width: 16%; padding-left: var(--sp-9e); }
   .skill-table th.st-cat { width: 10%; }
   /* 同步列是日期（11/12），按「数字/日期右对齐」规则（v0.47.4 §2.3e-0） */
   .skill-table th.st-sync { width: 10%; }
