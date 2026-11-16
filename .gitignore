@@ -11,6 +11,22 @@ venv/
 .mypy_cache/
 .ruff_cache/
 
+# uv 锁文件（2026-11-16 判定：忽略，不入库）
+#
+# 本项目的依赖管理事实标准是 **pip**，不是 uv：
+#   * CI（.github/workflows/test.yml）直接 `pip install PyYAML certifi`，从不读锁文件；
+#   * pyproject.toml 没有 [tool.uv] 段；
+#   * README / CONTRIBUTING / BUILD.md 均无 uv 记载。
+#
+# 该文件是本地用 `uv venv` 建 .venv 时的副产物（仅锁定 certifi / PyYAML / 本项目 3 个包）。
+# 提交它会产生「该信 pyproject 还是 uv.lock」的第二个事实来源，而 CI 不消费它 →
+# 锁文件必然与真实安装漂移、逐渐腐烂（与 .cargo-home 那类「本机布局被误当仓库约定」
+# 的坑同源，见下方 Rust 段注释）。
+#
+# 若将来正式改用 uv（CI 换成 `uv sync`、文档同步更新、pyproject 补 [tool.uv]），
+# 删掉这一行并提交锁文件即可 —— 那时它才是「可复现构建」的凭据。
+uv.lock
+
 # Packaging
 build/
 dist/
