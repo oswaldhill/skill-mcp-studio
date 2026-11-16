@@ -2397,6 +2397,36 @@ GUI 不直接改配置文件。间隔由 CLI 钳到 ≥5 分钟，界面需回�
 > 设置项的取值来源必须与「谁是唯一事实来源」一致：偏好类（主题/缩放/统计间隔）用
 > localStorage，跨进程共享类（巡检开关）用 config.yaml 并经 CLI。
 
+**iCloud 备份卡片**（2026-11-16，`#icloud-backup-card`，通用 tab，紧跟配置
+导入 / 导出之后）：灾难恢复入口，与「导出」刻意分列两张卡。结构：
+
+```
+┌ settings-card#icloud-backup-card ───────────────────────────┐
+│ H4: iCloud 备份                                              │
+│ row: 备份状态 | [N 份 · X MB · 最近 时间]                    │
+│ row: 操作     | [ghost sm 立即备份] [ghost sm 清理旧备份]    │
+│ list: 每份一行 · mono id + muted 时间 + btn-soft 恢复        │
+│ note: 备份范围 · 保留 7 份 · 含明文密钥警示 · 仅 macOS       │
+└─────────────────────────────────────────────────────────────┘
+```
+
+- **为什么与「导出」分列而不是合并**：两者语义相反 —— 导出**脱敏**（产物可分享），
+  备份**含明文密钥**（产物只能自用）。合并成一张卡会让「点了哪个按钮」与
+  「密钥有没有落盘」脱钩，这正是最危险的误解。note 必须同时写清
+  「含明文密钥，请勿分享」与「换机分享请用导出配置」。
+- **读写一律经 CLI**（`--icloud-backup` / `--icloud-backup-status` /
+  `--list-icloud-backups` / `--restore-icloud-backup` / `--prune-icloud-backups`），
+  全部登记在 Rust `run_cli` 白名单内。
+- 状态行与列表由 `--icloud-backup-status --format json` **一次调用**返回
+  （`count` / `bytes` / `latest` / `items`），避免两次进程启动。
+- 恢复是写操作：先 `confirmModal`（强确认、danger 按钮）说明「会覆盖 config.yaml
+  与 data/ 配置，写前各自备份」，再 `runTaskModal`。
+- 行内列表复用 `.list-row` / `.mono` / `.muted` / `.btn-soft`，不新造类；
+  字号一律 `var(--fs-xs|sm)`，间距一律 `var(--gap-*)`。**`gap` 若是 style 的
+  最后一条声明必须补尾分号** —— 否则设计门禁的声明解析会把后续内容吞进
+  gap 值，报「gap 族出现非 --gap-* token」。
+- 非 macOS 时状态接口返回 `available:false`，卡片显示原因而不是报错。
+
 **市场源卡片**（`#market-sources-card`，v0.31.0 起；v0.37.3 重排）：
 
 ```

@@ -2928,6 +2928,33 @@ def build_parser() -> argparse.ArgumentParser:
         help="合并导入配置导出包（导入值优先、不删除本地键；按正典通道分流写 "
              "overlay / trunk / discovered，导入前自动备份）",
     )
+    # iCloud 完整备份（2026-11-16）：与 --export-config 分工见 core/cloud_backup.py
+    # —— 导出脱敏用于换机分享，备份含密钥用于灾难恢复。
+    parser.add_argument(
+        "--icloud-backup", action="store_true",
+        help="把配置与数据（config.yaml + data/ 下的 overlay/discovered/sources/token）"
+             "备份到 iCloud Drive，保留最近 7 份（仅 macOS；备份含明文密钥）",
+    )
+    parser.add_argument(
+        "--list-icloud-backups", action="store_true",
+        help="列出 iCloud 上的备份（新的在前）",
+    )
+    parser.add_argument(
+        "--restore-icloud-backup", type=str, default=None, metavar="ID|PATH",
+        help="按备份恢复配置与数据（写前对每个文件生成 .bak-<ts>）",
+    )
+    parser.add_argument(
+        "--prune-icloud-backups", action="store_true",
+        help="删除超出保留份数的旧备份（配合 --keep，默认 7）",
+    )
+    parser.add_argument(
+        "--icloud-backup-status", action="store_true",
+        help="只读汇总：备份目录、份数、总字节、最近一份时间",
+    )
+    parser.add_argument(
+        "--keep", type=int, default=7, metavar="N",
+        help="配合 --prune-icloud-backups：保留最近 N 份（默认 7）",
+    )
     parser.add_argument(
         "--profile", type=str, default=None,
         help="指定 endpoint profile（覆盖 config.yaml 的 active_profile）",
@@ -3772,6 +3799,87 @@ def _run_import_config(args, config_path) -> int:
         return 2
 
 
+def _run_icloud_backup_cmds(args) -> int:
+    """iCloud 完整备份的创建 / 列出 / 恢复 / 清理（2026-11-16，macOS 专属）。
+
+    独立早返回出口。与 --export-config 的分工：导出**脱敏**、用于换机与分享；
+    备份**含密钥**、用于灾难恢复（见 core/cloud_backup.py 模块 docstring）。
+
+    退出码：0=成功（含 dry-run 与「无备份」这类正常空态）；2=平台不支持、
+    文件缺失、包校验或写入失败。
+    """
+    from cloud_backup import (
+        backup_status,
+        create_backup,
+        list_backups,
+        prune_backups,
+        restore_backup,
+    )
+
+    as_json = getattr(args, "format", None) == "json"
+    dry = bool(getattr(args, "dry_run", False))
+
+    def _emit(payload: dict, human: str) -> None:
+        if as_json:
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        else:
+            print(f"  {human}")
+
+    try:
+        if getattr(args, "icloud_backup_status", False):
+            payload = backup_status()
+            if as_json:
+                print(json.dumps(payload, ensure_ascii=False, indent=2))
+                return 0
+            if not payload["available"]:
+                print(f"  ℹ️ {payload['reason']}")
+                return 0
+            latest = payload.get("latest")
+            print(f"  iCloud 备份目录: {payload['root']}")
+            print(f"  备份份数: {payload['count']} · 合计 {payload['bytes']} 字节")
+            if latest:
+                print(f"  最近一份: {latest['id']}（{latest['mtime_text']}）")
+            else:
+                print("  最近一份: 暂无")
+            return 0
+
+        if getattr(args, "list_icloud_backups", False):
+            items = list_backups()
+            payload = {"kind": "icloud-backups", "backups": items}
+            if as_json:
+                print(json.dumps(payload, ensure_ascii=False, indent=2))
+                return 0
+            if not items:
+                print("  （iCloud 上还没有备份）")
+                return 0
+            print(f"  共 {len(items)} 份备份:")
+            for item in items:
+                print(f"    - {item['id']} · {item['mtime_text']} · {item['size']} 字节")
+            return 0
+
+        if getattr(args, "restore_icloud_backup", None):
+            result = restore_backup(args.restore_icloud_backup, dry_run=dry)
+            _emit(result, f"{'✅' if result['status'] == 'ok' else 'ℹ️'} {result['message']}")
+            return 0
+
+        if getattr(args, "prune_icloud_backups", False):
+            result = prune_backups(keep=int(getattr(args, "keep", 7)), dry_run=dry)
+            _emit(result, f"{'✅' if result['status'] == 'ok' else 'ℹ️'} {result['message']}")
+            return 0
+
+        # 默认动作：创建一份备份
+        result = create_backup(dry_run=dry)
+        _emit(result, f"{'✅' if result['status'] == 'ok' else 'ℹ️'} {result['message']}")
+        return 0
+    except Exception as e:
+        if as_json:
+            print(json.dumps({"status": "error", "message": str(e)},
+                             ensure_ascii=False, indent=2))
+        else:
+            print(f"\n  ❌ iCloud backup failed: {e}")
+        return 2
+
+
 def _parse_fingerprint(raw: str):
     """解析 ``DIM:NAME:TYPE`` 形式的变更指纹。
 
@@ -4165,6 +4273,15 @@ def main() -> int:
         return _run_export_config(args, config_path)
     if getattr(args, "import_config", None):
         return _run_import_config(args, config_path)
+
+    # iCloud 完整备份（2026-11-16）：独立早返回出口——备份/恢复是否成功只由
+    # 该操作本身决定，不跑后续审计。非 macOS 在模块内显式报错。
+    if (getattr(args, "icloud_backup", False)
+            or getattr(args, "list_icloud_backups", False)
+            or getattr(args, "restore_icloud_backup", None)
+            or getattr(args, "prune_icloud_backups", False)
+            or getattr(args, "icloud_backup_status", False)):
+        return _run_icloud_backup_cmds(args)
 
     # 市场源 CRUD（v0.31.0 #4）：独立早返回出口（写 data/market_sources.yaml，
     # 不跑审计）。

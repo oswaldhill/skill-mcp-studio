@@ -7,6 +7,35 @@
 
 ## [Unreleased]
 
+### 新增：iCloud 完整备份（macOS，2026-11-16）
+
+用户要求「检查备份功能与配置导入导出，并为 Mac 版本增加 iCloud 备份」。审查结论：
+原有 4 类备份（客户端配置 `.bak-`、技能 `_backup/`、软删除 `_trash/`、原子写回滚）
+**全部就地**存于本机同一块盘；iCloud 通道只承载 `--export-config` 的**脱敏导出**
+（换机/分享用），不是备份 —— 磁盘损坏或换机时没有可恢复的完整副本。
+
+新增 `core/cloud_backup.py` + CLI + 设置页卡片：
+
+- **范围**：`config.yaml` + `data/` 下的 overlay、discovered、git/market sources、
+  `github_token`（存在才备）。**不含技能内容**（体积大且可从市场/仓库重装）。
+- **含明文密钥**：与导出刻意相反 —— 备份用于完整恢复，脱敏会让「恢复完还要手补
+  密钥」。落盘权限 `0600`，卡片与 CLI 输出都明确警示。
+- **版本化**：单文件 JSON `backup-<YYYYmmdd-HHMMSS>.json` 存于 iCloud Drive 的
+  `skill-mcp-studio/backups/`，保留最近 7 份（`--prune-icloud-backups --keep N`）。
+- **恢复**：只写白名单内文件、拒绝路径越界；写前对每个目标生成 `.bak-<ts>`。
+- **CLI**：`--icloud-backup` / `--icloud-backup-status` / `--list-icloud-backups` /
+  `--restore-icloud-backup <ID|PATH>` / `--prune-icloud-backups [--keep N]`，
+  全部登记进 Rust `run_cli` 白名单。
+- **GUI**：设置页「通用」新增 `#icloud-backup-card`（状态 / 立即备份 / 清理 /
+  按版本恢复），与「配置导入导出」分列两张卡（脱敏 vs 含密钥，语义相反）。
+
+> 判据：`tests/test_cloud_backup.py` 21 例（含「备份含明文密钥」「0600 权限」
+> 「拒绝白名单外路径」「恢复前真复制出 .bak-」「保留最近 N 份」）；
+> `tests/test_icloud_backup_ui.py` 11 例（卡片挂载、三个动作接线、恢复按钮带
+> data-id、token 纪律、明文密钥警示、Rust 白名单）。反向验证：删掉「立即备份」
+> 按钮后 UI 用例确实失败，恢复后通过。
+
+
 ## [v0.48.1] - 2026-11-16
 
 当前发布版本（build 218）。

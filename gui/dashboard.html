@@ -6223,6 +6223,23 @@ function renderSettings() {
     <div class="note" style="margin-top:var(--sp-4)">导出为单个 JSON（端点密钥自动脱敏，可安全放进 iCloud 或分享）；导入按「导入值优先、不删除本地已有项」合并，写入前自动备份。icloud 别名指向 iCloud Drive（仅 macOS）。</div>
   </div>`;
 
+  // 「通用」：iCloud 完整备份（2026-11-16）—— 灾难恢复入口，与上面的「导出」
+  // 刻意分开：导出**脱敏**用于换机/分享，备份**含明文密钥**用于完整恢复。
+  // 读写一律经 CLI（--icloud-backup / --list-icloud-backups / --restore-icloud-backup
+  // / --prune-icloud-backups），GUI 不直接碰文件。
+  const icloudBackupCard = `<div class="settings-card" id="icloud-backup-card">
+    <h4>iCloud 备份</h4>
+    <div class="rows" style="font-size:var(--fs-sm)">
+      <div class="row"><span class="k">备份状态</span><span class="v" id="icloud-backup-status-line">加载中…</span></div>
+      <div class="row"><span class="k">操作</span><span class="v" style="display:flex;align-items:center;gap:var(--gap-2);flex-wrap:wrap">
+        <button type="button" class="ghost sm" data-action="icloud-backup">立即备份</button>
+        <button type="button" class="ghost sm" data-action="prune-icloud-backups">清理旧备份</button>
+      </span></div>
+    </div>
+    <div id="icloud-backup-list" style="margin-top:var(--sp-3);font-size:var(--fs-sm)"><div class="empty">加载中…</div></div>
+    <div class="note" style="margin-top:var(--sp-4)">把配置与数据（config.yaml + data/ 下的 overlay、discovered、sources、token）备份到 iCloud Drive，保留最近 7 份，可按版本恢复（恢复前自动备份原文件）。<strong>备份含明文密钥</strong>，仅供自己的灾难恢复，请勿分享；换机分享请用上面的「导出配置」（已脱敏）。仅 macOS 可用。</div>
+  </div>`;
+
   // 统一技能目录已并入「Git 技能源」卡片（2026-11-08）：二者本是同一目录，
   // 分两张卡维护必然漂移。统一目录 = 登记表里标 primary 的那个源。
 
@@ -6390,7 +6407,7 @@ function renderSettings() {
   </div>${credCard}`;
 
   el.innerHTML =
-    `<div class="settings-tab-panel" data-panel="appearance">${appearanceCard}${patrolCard}${configPortCard}${_aboutCard}</div>` +
+    `<div class="settings-tab-panel" data-panel="appearance">${appearanceCard}${patrolCard}${configPortCard}${icloudBackupCard}${_aboutCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="general">${gitSourcesCard}${usageCard}${marketSourcesCard}${backupCard}${githubTokenCard}${webdavCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="agents">${sharedRulesCard()}${agentsCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="mcp">${mcpCard}</div>`;
@@ -6407,6 +6424,7 @@ function renderSettings() {
     loadSharedRules();
   }
   applyTheme(currentThemeMode(), false);
+  loadIcloudBackupStatus();  // iCloud 备份状态（异步，不阻塞设置页渲染）
   el.querySelectorAll("[data-scale-btn]").forEach((b) => {
     b.addEventListener("click", () => applyScale(parseFloat(b.dataset.scaleBtn), true));
   });
@@ -10302,6 +10320,79 @@ async function importConfigAction() {
   }, () => refreshBlocks(["settings", "agents"]));
 }
 
+// ---------------- iCloud 完整备份（2026-11-16，设置页「通用」卡片） ----------------
+// 与配置导出刻意分开：导出脱敏（换机/分享），备份含明文密钥（灾难恢复）。
+// 读写一律经 CLI；恢复是写操作，先 confirmModal 强确认再 runTaskModal。
+async function loadIcloudBackupStatus() {
+  const line = $("icloud-backup-status-line");
+  const listEl = $("icloud-backup-list");
+  if (!line || !listEl) return;
+  const res = await runCli(["--icloud-backup-status", "--format", "json"], "读取 iCloud 备份状态");
+  let d = null;
+  try { d = JSON.parse(stripAnsi((res && res.stdout) || "{}")); } catch (e) { d = null; }
+  if (!d) { line.textContent = "读取失败"; listEl.innerHTML = '<div class="empty">读取失败</div>'; return; }
+  if (!d.available) {
+    line.innerHTML = '<span class="tag warn">不可用</span>';
+    listEl.innerHTML = `<div class="empty">${escapeHtml(d.reason || "iCloud 备份不可用")}</div>`;
+    return;
+  }
+  const mb = ((d.bytes || 0) / 1024 / 1024).toFixed(2);
+  line.innerHTML = `${d.count || 0} 份 · ${mb} MB`
+    + (d.latest ? ` · 最近 ${escapeHtml(d.latest.mtime_text)}` : "");
+  const items = d.items || [];
+  if (!items.length) { listEl.innerHTML = '<div class="empty">iCloud 上还没有备份</div>'; return; }
+  listEl.innerHTML = items.map((it) => `<div class="list-row" style="align-items:center;gap:var(--gap-2);">
+      <span class="mono grow" style="font-size:var(--fs-xs)">${escapeHtml(it.id)}</span>
+      <span class="muted" style="font-size:var(--fs-xs)">${escapeHtml(it.mtime_text)}</span>
+      <button type="button" class="btn-soft sm" data-action="restore-icloud-backup" data-id="${escapeHtml(it.id)}">恢复</button>
+    </div>`).join("");
+}
+
+function icloudBackupAction() {
+  runTaskModal("备份到 iCloud", async () => {
+    const res = await runCli(["--icloud-backup"], "备份配置到 iCloud");
+    if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
+    if (res.code === 0) {
+      const detail = (res.stdout || "").split("\n").map(s => s.trim()).filter(Boolean).join("\n");
+      return { ok: true, message: "已备份到 iCloud", detail };
+    }
+    return { ok: false, message: "备份失败", detail: cliFailLines(res) || cliErrDetail(res) };
+  }, () => refreshBlocks(["settings"]));
+}
+
+async function restoreIcloudBackupAction(id) {
+  if (!id) return;
+  const ok = await confirmModal("从 iCloud 备份恢复",
+    `将用备份 ${id} 覆盖当前的 config.yaml 与 data/ 配置。\n`
+    + "恢复前会对每个将被覆盖的文件生成 .bak-<时间戳>，可回退。\n继续？",
+    true, "恢复");
+  if (!ok) return;
+  runTaskModal("恢复 iCloud 备份", async () => {
+    const res = await runCli(["--restore-icloud-backup", id], `恢复 ${id}`);
+    if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
+    if (res.code === 0) {
+      const detail = (res.stdout || "").split("\n").map(s => s.trim()).filter(Boolean).join("\n");
+      return { ok: true, message: "已从备份恢复", detail };
+    }
+    return { ok: false, message: "恢复失败", detail: cliFailLines(res) || cliErrDetail(res) };
+  }, () => refreshBlocks(["settings", "agents"]));
+}
+
+async function pruneIcloudBackupsAction() {
+  const ok = await confirmModal("清理 iCloud 旧备份",
+    "将删除超出最近 7 份的旧备份。确定继续？");
+  if (!ok) return;
+  runTaskModal("清理旧备份", async () => {
+    const res = await runCli(["--prune-icloud-backups"], "清理 iCloud 旧备份");
+    if (!res) return { ok: false, message: "工具未能执行", detail: "run_cli 无返回" };
+    if (res.code === 0) {
+      const detail = (res.stdout || "").split("\n").map(s => s.trim()).filter(Boolean).join("\n");
+      return { ok: true, message: "已清理", detail };
+    }
+    return { ok: false, message: "清理失败", detail: cliFailLines(res) || cliErrDetail(res) };
+  }, () => refreshBlocks(["settings"]));
+}
+
 async function openMergePreview() {
   setInlineBusy("正在生成合并预览（dry-run）…");
   // 整个流程包在 try/finally 里：下面有三条提前 return，任何一条漏关都会
@@ -11121,6 +11212,9 @@ document.addEventListener("click", (e) => {
     else if (a === "set-dir") openUnifiedDirModal();
     else if (a === "export-config") exportConfigAction();
     else if (a === "import-config") importConfigAction();
+    else if (a === "icloud-backup") icloudBackupAction();
+    else if (a === "restore-icloud-backup") restoreIcloudBackupAction(act.dataset.id);
+    else if (a === "prune-icloud-backups") pruneIcloudBackupsAction();
     else if (a === "merge") openMergePreview();
     else if (a === "add-endpoint") openAddEndpointModal();
     else if (a === "edit-endpoint") openEditEndpoint(act.dataset);
