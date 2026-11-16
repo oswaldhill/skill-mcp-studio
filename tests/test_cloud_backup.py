@@ -69,6 +69,8 @@ class _Env:
         self._patches = [
             mock.patch.object(cloud_backup, "_repo_root", lambda: str(self.repo)),
             mock.patch.object(cloud_backup, "backup_root", lambda: str(self.cloud)),
+            # 固定测试密钥：绝不碰用户真实钥匙串（_KEY_ENV 优先级高于钥匙串）。
+            mock.patch.dict(os.environ, {cloud_backup._KEY_ENV: "unit-test-key"}),
         ]
         for p in self._patches:
             p.start()
@@ -92,18 +94,32 @@ class PlatformGateTest(unittest.TestCase):
 
 
 class CreateBackupTest(unittest.TestCase):
-    def test_writes_json_with_plaintext_secrets(self):
-        """备份含明文密钥 —— 与导出（脱敏）刻意相反，这是灾难恢复的前提。"""
-        with _Env() as env:
+    def test_content_is_encrypted(self):
+        """落盘必须是密文：明文密钥不得出现在文件里（2026-11-16 用户要求）。"""
+        with _Env():
             result = create_backup()
             self.assertEqual("ok", result["status"])
             path = Path(result["path"])
             self.assertTrue(path.is_file())
-            payload = json.loads(path.read_text(encoding="utf-8"))
-            self.assertEqual(BACKUP_KIND, payload["kind"])
-            self.assertEqual(BACKUP_SCHEMA_VERSION, payload["schema_version"])
-            self.assertIn("token-in-test", payload["files"]["config.yaml"])
-            self.assertIn("ghp_secret", payload["files"]["data/github_token"])
+            raw = path.read_text(encoding="utf-8")
+            self.assertNotIn("token-in-test", raw, "明文 token 泄漏进了备份文件")
+            self.assertNotIn("ghp_secret", raw, "明文凭据泄漏进了备份文件")
+            envelope = json.loads(raw)
+            self.assertEqual(BACKUP_KIND, envelope["kind"])
+            self.assertEqual(BACKUP_SCHEMA_VERSION, envelope["schema_version"])
+            self.assertEqual("aes-256-cbc-pbkdf2", envelope["encoding"])
+            self.assertTrue(envelope["payload"].strip(), "缺少密文 payload")
+            # 信封里不应出现任何明文字段名（files / created_at 等）
+            self.assertNotIn("files", envelope)
+
+    def test_decrypts_back_to_full_plaintext(self):
+        """解密后内容完整（含密钥），证明加密没有损坏数据。"""
+        with _Env():
+            result = create_backup()
+            data = cloud_backup._load_backup(result["path"])
+            self.assertIn("token-in-test", data["files"]["config.yaml"])
+            self.assertIn("ghp_secret", data["files"]["data/github_token"])
+            self.assertEqual(BACKUP_KIND, data["kind"])
 
     def test_backup_file_is_owner_only(self):
         """备份含密钥，落盘权限必须是 0600。"""
@@ -117,7 +133,7 @@ class CreateBackupTest(unittest.TestCase):
         with _Env():
             result = create_backup()
             self.assertEqual("ok", result["status"])
-            payload = json.loads(Path(result["path"]).read_text(encoding="utf-8"))
+            payload = cloud_backup._load_backup(result["path"])
             self.assertNotIn("data/market_sources.yaml", payload["files"])
 
     def test_missing_core_file_raises(self):
@@ -135,7 +151,7 @@ class CreateBackupTest(unittest.TestCase):
             skills.mkdir()
             (skills / "some-skill.md").write_text("# skill\n", encoding="utf-8")
             result = create_backup()
-            payload = json.loads(Path(result["path"]).read_text(encoding="utf-8"))
+            payload = cloud_backup._load_backup(result["path"])
             self.assertFalse(any("skills/" in key for key in payload["files"]))
 
     def test_dry_run_writes_nothing(self):
@@ -205,7 +221,7 @@ class RestoreBackupTest(unittest.TestCase):
             evil = env.cloud / "backup-20260101-000000.json"
             evil.write_text(json.dumps({
                 "kind": BACKUP_KIND,
-                "schema_version": BACKUP_SCHEMA_VERSION,
+                "schema_version": 1,  # 明文格式：直接测白名单，不掺加密
                 "files": {"../../etc/passwd": "x"},
             }), encoding="utf-8")
             with self.assertRaises(ValueError) as ctx:
@@ -240,6 +256,43 @@ class RestoreBackupTest(unittest.TestCase):
             restored = restore_backup(Path(result["path"]).name, dry_run=True)
             self.assertEqual("dry-run", restored["status"])
             self.assertEqual("changed: true\n", trunk.read_text(encoding="utf-8"))
+
+
+class EncryptionContractTest(unittest.TestCase):
+    """加密契约（schema 2）：密钥不对要报可诊断的错，旧明文格式仍可读。"""
+
+    def test_wrong_key_reports_decrypt_failure(self):
+        with _Env():
+            result = create_backup()
+            with mock.patch.dict(os.environ, {cloud_backup._KEY_ENV: "another-key"}):
+                with self.assertRaises(ValueError) as ctx:
+                    cloud_backup._load_backup(result["path"])
+            self.assertIn("解密失败", str(ctx.exception))
+
+    def test_legacy_plaintext_backup_still_readable(self):
+        """schema 1（早期明文备份）不能被加密改造弄成不可读。"""
+        with _Env() as env:
+            env.cloud.mkdir(parents=True, exist_ok=True)
+            legacy = env.cloud / "backup-20260101-000000.json"
+            legacy.write_text(json.dumps({
+                "kind": BACKUP_KIND,
+                "schema_version": 1,
+                "files": {"config.yaml": "legacy: true\n"},
+            }, ensure_ascii=False), encoding="utf-8")
+            data = cloud_backup._load_backup(str(legacy))
+            self.assertEqual("legacy: true\n", data["files"]["config.yaml"])
+
+    def test_unknown_encoding_rejected(self):
+        with _Env() as env:
+            env.cloud.mkdir(parents=True, exist_ok=True)
+            bad = env.cloud / "backup-20260101-000000.json"
+            bad.write_text(json.dumps({
+                "kind": BACKUP_KIND, "schema_version": 2,
+                "encoding": "rot13", "payload": "x",
+            }), encoding="utf-8")
+            with self.assertRaises(ValueError) as ctx:
+                cloud_backup._load_backup(str(bad))
+            self.assertIn("不支持的备份编码", str(ctx.exception))
 
 
 class PruneBackupsTest(unittest.TestCase):

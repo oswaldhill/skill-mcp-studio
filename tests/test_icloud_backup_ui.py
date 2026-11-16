@@ -84,12 +84,35 @@ class IcloudBackupCardTest(unittest.TestCase):
         self.assertEqual([], literal_font, f"字号写死 px：{literal_font}")
         self.assertIn("var(--fs-sm)", body)
 
-    def test_warns_about_plaintext_secrets(self):
-        """安全警示是硬约束：备份含明文密钥，文案不能丢这条。"""
+    def test_mentions_encryption(self):
+        """安全说明是硬约束：必须讲清「内容已加密 + 密钥在本机钥匙串」。"""
         card = re.search(r'const configPortCard = `(.*?)`;', self.html, re.S)
         self.assertIsNotNone(card)
-        self.assertIn("明文密钥", card.group(1))
-        self.assertIn("请勿分享", card.group(1))
+        self.assertIn("内容已加密", card.group(1))
+        self.assertIn("钥匙串", card.group(1))
+
+    def test_list_hides_filename_and_absolute_time(self):
+        """列表只显示「备份 N · 相对时间」，不暴露文件名与绝对时间戳。"""
+        row = re.search(r'listEl\.innerHTML = items\.map.*?\.join\(""\);', self.html, re.S)
+        self.assertIsNotNone(row, "找不到备份列表渲染片段")
+        frag = row.group(0)
+        self.assertIn("备份 ${idx + 1}", frag, "列表应显示序号")
+        self.assertIn("backupTimeAgo(", frag, "列表应显示相对时间")
+        self.assertNotIn("${escapeHtml(it.mtime_text)}", frag,
+                         "列表不应再显示绝对时间戳")
+
+    def test_status_line_uses_relative_time(self):
+        """状态行也不得暴露绝对时间戳（同样属可识别信息）。"""
+        body = re.search(
+            r'async function loadIcloudBackupStatus\(\).*?\n}', self.html, re.S
+        )
+        self.assertIsNotNone(body, "找不到 loadIcloudBackupStatus 函数体")
+        frag = body.group(0)
+        self.assertIn("backupTimeAgo(", frag, "状态行应使用相对时间")
+        self.assertNotIn("d.latest.mtime_text}", frag,
+                         "状态行不应再直接渲染绝对时间戳")
+        self.assertNotIn('class="mono grow"', frag,
+                         "列表不应再把文件名当主标识展示")
 
     def test_points_share_export_to_export_card(self):
         """换机/分享必须指向「导出配置」（脱敏），不能让人拿备份去分享。"""

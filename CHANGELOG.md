@@ -7,6 +7,34 @@
 
 ## [Unreleased]
 
+## [v0.49.1] - 2026-11-16
+
+当前发布版本（build 221）。
+
+### 安全：备份内容加密，界面不再暴露文件名与时间（2026-11-16 用户要求）
+
+用户指出备份/导出的信息「不要用可识别的东西，需要编码成不可见的内容」，并明确
+边界：**名称可以识别，只是内容不可识别**。此前备份是明文 JSON，用 VS Code 打开
+就能直接读到 `github_token`（实测截图里确实如此）。
+
+- **内容加密**：落盘改为信封 `{kind, schema_version:2, encoding, payload}`，
+  明文只存在于内存。算法 AES-256-CBC + PBKDF2，密钥存 macOS 登录钥匙串
+  （service `io.skillmcp.studio.cloud-backup`）。用系统 `openssl` 而不是引入
+  `cryptography` —— 本项目依赖刻意保持极小（PyYAML + certifi）。
+- **向后兼容**：schema 1 的早期明文备份仍可恢复，按 schema 分流处理。
+- **密钥丢失语义**：换机或清空钥匙串后无法解密，明确报错并指向「导出配置」
+  迁移，而不是给一个含糊的 padding error。
+- **界面**：备份列表改为「备份 N · 相对时间」（刚刚 / N 分钟前 / N 小时前 /
+  N 天前），不再渲染文件名与绝对时间戳。恢复按钮仍携带 `data-id`（文件名）——
+  用户已确认名称可识别，且恢复动作需要它。
+- **文件名保持可读**：`backup-<YYYYmmdd-HHMMSS>.json` 不变，排序仍依赖它
+  （不回到 mtime，那条路已有分辨率教训）。
+
+> 判据：`tests/test_cloud_backup.py` 25 例（新增「落盘不含明文」「解密后内容完整」
+> 「错误密钥报解密失败」「schema 1 仍可读」「未知 encoding 拒绝」）；
+> `tests/test_icloud_backup_ui.py` 12 例（新增「列表不显示文件名与绝对时间」
+> 「文案说明加密」）。全量 1995+ 例通过。
+
 ## [v0.49.0] - 2026-11-16
 
 当前发布版本（build 219）。
@@ -6494,7 +6522,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.49.0...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.49.1...HEAD
+[v0.49.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.49.1
 [v0.49.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.49.0
 [v0.48.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.48.1
 [v0.48.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.48.0

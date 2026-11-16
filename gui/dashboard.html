@@ -6241,7 +6241,7 @@ function renderSettings() {
         </span></div>
       </div>
     </div>
-    <div class="note" style="margin-top:var(--sp-5)">两个场景别混：<strong>iCloud 备份</strong>把 config.yaml 与 data/ 下的 overlay、discovered、sources、token 打包到 iCloud Drive（保留最近 7 份，可逐版本恢复，恢复前自动备份原文件），<strong>含明文密钥</strong>，只用于自己的灾难恢复，请勿分享；<strong>导出 / 导入</strong>是换机或分享用的单 JSON，端点密钥已脱敏，导入按「导入值优先、不删除本地已有项」合并。icloud 别名指向 iCloud Drive（仅 macOS）。</div>
+    <div class="note" style="margin-top:var(--sp-5)">两个场景别混：<strong>iCloud 备份</strong>把 config.yaml 与 data/ 下的 overlay、discovered、sources、token 打包到 iCloud Drive（保留最近 7 份，可逐版本恢复，恢复前自动备份原文件），<strong>内容已加密</strong>（密钥存本机登录钥匙串），只用于自己的灾难恢复；<strong>导出 / 导入</strong>是换机或分享用的单 JSON，端点密钥已脱敏，导入按「导入值优先、不删除本地已有项」合并。icloud 别名指向 iCloud Drive（仅 macOS）。</div>
   </div>`;
 
   // 统一技能目录已并入「Git 技能源」卡片（2026-11-08）：二者本是同一目录，
@@ -10327,6 +10327,18 @@ async function importConfigAction() {
 // ---------------- iCloud 完整备份（2026-11-16，设置页「通用」卡片） ----------------
 // 与配置导出刻意分开：导出脱敏（换机/分享），备份含明文密钥（灾难恢复）。
 // 读写一律经 CLI；恢复是写操作，先 confirmModal 强确认再 runTaskModal。
+// 备份列表的相对时间。不显示绝对时间戳（2026-11-16 用户要求），
+// 但恢复前仍需要「哪份更新」这个判断依据，所以用相对时间而非干脆不显示。
+function backupTimeAgo(text) {
+  const ts = Date.parse(String(text || "").replace(" ", "T"));
+  if (!Number.isFinite(ts)) return "";
+  const diff = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  if (diff < 60) return "刚刚";
+  if (diff < 3600) return `${Math.floor(diff / 60)} 分钟前`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)} 小时前`;
+  return `${Math.floor(diff / 86400)} 天前`;
+}
+
 async function loadIcloudBackupStatus() {
   const line = $("icloud-backup-status-line");
   const listEl = $("icloud-backup-list");
@@ -10341,13 +10353,17 @@ async function loadIcloudBackupStatus() {
     return;
   }
   const mb = ((d.bytes || 0) / 1024 / 1024).toFixed(2);
+  // 状态行同样只给相对时间：绝对时间戳属「可识别信息」，用户要求不暴露。
   line.innerHTML = `${d.count || 0} 份 · ${mb} MB`
-    + (d.latest ? ` · 最近 ${escapeHtml(d.latest.mtime_text)}` : "");
+    + (d.latest ? ` · 最近 ${escapeHtml(backupTimeAgo(d.latest.mtime_text))}` : "");
   const items = d.items || [];
   if (!items.length) { listEl.innerHTML = '<div class="empty">iCloud 上还没有备份</div>'; return; }
-  listEl.innerHTML = items.map((it) => `<div class="list-row" style="align-items:center;gap:var(--gap-2);">
-      <span class="mono grow" style="font-size:var(--fs-xs)">${escapeHtml(it.id)}</span>
-      <span class="muted" style="font-size:var(--fs-xs)">${escapeHtml(it.mtime_text)}</span>
+  // 界面只显示「备份 N · 相对时间」：文件名与绝对时间戳留在磁盘上可读，
+  // 但不暴露在界面里（2026-11-16 用户要求）。恢复按钮仍带 data-id（文件名），
+  // 因为恢复动作需要它，而用户已确认「名称可以识别」。
+  listEl.innerHTML = items.map((it, idx) => `<div class="list-row" style="align-items:center;gap:var(--gap-2);">
+      <span class="grow" style="font-size:var(--fs-sm)">备份 ${idx + 1}</span>
+      <span class="muted" style="font-size:var(--fs-xs)">${escapeHtml(backupTimeAgo(it.mtime_text))}</span>
       <button type="button" class="btn-soft sm" data-action="restore-icloud-backup" data-id="${escapeHtml(it.id)}">恢复</button>
     </div>`).join("");
 }
@@ -12030,7 +12046,7 @@ async function fixAllSkillsMcp() {
 // 无端点、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.49.0", build: 219, build_number: 219, semver_ok: true, full: "v0.49.0 (build 219)" },
+  app: { name: "Skill MCP Studio", version: "0.49.1", build: 221, build_number: 221, semver_ok: true, full: "v0.49.1 (build 221)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

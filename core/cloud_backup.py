@@ -30,16 +30,25 @@ zip 会引入解压路径穿越的校验负担；JSON 可直接肉眼审阅与 d
 
 ## 安全
 
-- 备份含明文密钥 —— GUI 与 CLI 的输出都必须明确提示这一点；
+- **内容加密**（schema 2，2026-11-16 用户要求）：备份含明文密钥，落盘必须是密文。
+  文件名保持可读（用户明确「名称可以识别，只是内容不可识别」），内容用
+  AES-256-CBC + PBKDF2 加密，密钥存 macOS 登录钥匙串
+  （service ``io.skillmcp.studio.cloud-backup``）。用系统 ``openssl`` 而不是引入
+  ``cryptography`` 依赖 —— 本项目的依赖刻意保持极小（PyYAML + certifi）。
+- 早期 schema 1 的**明文**备份仍可读取（向后兼容），恢复逻辑按 schema 分流。
 - 恢复只写白名单内的文件，路径必须是相对仓库根、且不含 ``..``；
 - 恢复前对每个将被覆盖的文件生成 ``.bak-<ts>`` 备份（沿用 ``file_atomic`` 约定）。
+- 密钥丢失（换机 / 清空钥匙串）时无法解密：明确报错并指向「导出配置」迁移，
+  而不是给出含糊的解析失败。
 """
 
 from __future__ import annotations
 
 import json
 import os
+import secrets
 import shutil
+import subprocess
 import sys
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -47,8 +56,16 @@ from typing import Any, Dict, List, Optional
 from file_atomic import atomic_write, backup_path
 
 BACKUP_KIND = "skill-mcp-studio-cloud-backup"
-BACKUP_SCHEMA_VERSION = 1
+# schema 2（2026-11-16）：内容加密；schema 1 是早期明文格式，仍可读取。
+BACKUP_SCHEMA_VERSION = 2
+LEGACY_PLAINTEXT_SCHEMA = 1
+ENCRYPTION_ALG = "aes-256-cbc-pbkdf2"
 DEFAULT_KEEP = 7
+# 加密密钥的钥匙串坐标（复用 auth_secret 的封装，不重复实现 security 调用）。
+_KEYCHAIN_SERVICE = "io.skillmcp.studio.cloud-backup"
+_KEYCHAIN_ACCOUNT = "default"
+# 环境变量覆盖（测试与无人值守场景用；优先级高于钥匙串）。
+_KEY_ENV = "SMS_BACKUP_KEY"
 
 ICLOUD_BACKUP_REL = os.path.join(
     "Library", "Mobile Documents", "com~apple~CloudDocs",
@@ -105,6 +122,67 @@ def _app_version() -> str:
         return "unknown"
 
 
+def _resolve_key(*, create: bool) -> str:
+    """取备份加密密钥：环境变量优先，其次登录钥匙串；``create`` 时缺失则生成。
+
+    为什么用钥匙串而不是「固定密钥」：备份里含明文 ``github_token`` 等凭据，
+    固定密钥等于没有加密（源码就是密钥）。钥匙串由系统按登录用户保护，
+    是本机能做到的最低成本方案。
+
+    失败语义刻意区分「读不到」与「没有」：读不到（钥匙串被拒/超时）时给出
+    可诊断的原因；没有且不要求创建时，明确告诉用户这份备份无法解密、应改用
+    导出迁移 —— 而不是让后续解密报一个含糊的 padding error。
+    """
+    env_key = (os.environ.get(_KEY_ENV) or "").strip()
+    if env_key:
+        return env_key
+
+    from auth_secret import keychain_read, keychain_write
+
+    try:
+        existing = keychain_read(_KEYCHAIN_SERVICE, _KEYCHAIN_ACCOUNT)
+        if existing:
+            return existing
+    except RuntimeError as exc:
+        if not create:
+            raise ValueError(
+                f"无法读取备份密钥（{exc}）。换机器或清空过钥匙串的备份无法解密，"
+                "请改用「导出配置」迁移。"
+            ) from exc
+        # 创建路径继续往下走：可能是条目不存在，由 keychain_write 新建。
+
+    if not create:
+        raise ValueError(
+            "本机钥匙串里没有备份密钥，这份备份无法解密。"
+            "换机器或清空过钥匙串后请改用「导出配置」迁移。"
+        )
+
+    key = secrets.token_hex(32)
+    keychain_write(_KEYCHAIN_SERVICE, key, _KEYCHAIN_ACCOUNT)
+    return key
+
+
+def _openssl(args: list, data: str, key: str) -> str:
+    """跑一次 ``openssl enc``，密码经环境变量传入（不进进程参数）。"""
+    env = {**os.environ, _KEY_ENV: key}
+    proc = subprocess.run(
+        ["openssl", "enc", *args, "-pass", f"env:{_KEY_ENV}"],
+        input=data, capture_output=True, text=True, env=env,
+    )
+    if proc.returncode != 0:
+        reason = (proc.stderr or "").strip() or f"退出码 {proc.returncode}"
+        raise ValueError(f"openssl 失败：{reason}")
+    return proc.stdout
+
+
+def _encrypt(plaintext: str, key: str) -> str:
+    return _openssl(["-aes-256-cbc", "-pbkdf2", "-salt", "-base64"], plaintext, key)
+
+
+def _decrypt(ciphertext: str, key: str) -> str:
+    return _openssl(["-d", "-aes-256-cbc", "-pbkdf2", "-base64"], ciphertext, key)
+
+
 def _read_text(path: str) -> Optional[str]:
     try:
         with open(path, "r", encoding="utf-8") as fh:
@@ -141,7 +219,16 @@ def create_backup(*, dry_run: bool = False) -> Dict[str, Any]:
         "app_version": _app_version(),
         "files": files,
     }
-    rendered = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+    # 明文只存在于内存：落盘的是信封（kind / schema / encoding / payload 密文）。
+    # 文件名仍带可读时间戳（用户明确要求「名称可以识别」），排序也依赖它。
+    plain = json.dumps(payload, ensure_ascii=False, indent=2)
+    envelope = {
+        "kind": BACKUP_KIND,
+        "schema_version": BACKUP_SCHEMA_VERSION,
+        "encoding": ENCRYPTION_ALG,
+        "payload": _encrypt(plain, _resolve_key(create=True)),
+    }
+    rendered = json.dumps(envelope, ensure_ascii=False, indent=2) + "\n"
     out_path = os.path.join(root, f"backup-{_now_stamp()}.json")
 
     if dry_run:
@@ -161,8 +248,8 @@ def create_backup(*, dry_run: bool = False) -> Dict[str, Any]:
         "files": len(files),
         "bytes": len(rendered.encode("utf-8")),
         "message": (
-            f"已备份 {len(files)} 个文件到 iCloud（{len(rendered.encode('utf-8'))} 字节）"
-            "。注意：备份含明文密钥，请确保 iCloud 账户安全。"
+            f"已备份 {len(files)} 个文件到 iCloud（{len(rendered.encode('utf-8'))} 字节，已加密）"
+            "。解密密钥存放在本机登录钥匙串，换机后需改用「导出配置」迁移。"
         ),
     }
 
@@ -221,11 +308,29 @@ def _load_backup(path: str) -> Dict[str, Any]:
         raise ValueError(f"备份文件无法解析为 JSON：{exc}") from exc
     if not isinstance(data, dict) or data.get("kind") != BACKUP_KIND:
         raise ValueError("不是 skill-mcp-studio 的 iCloud 备份文件（kind 不符）")
-    if data.get("schema_version") != BACKUP_SCHEMA_VERSION:
+
+    version = data.get("schema_version")
+    if version == BACKUP_SCHEMA_VERSION:
+        # schema 2：信封格式，内容加密。
+        if data.get("encoding") != ENCRYPTION_ALG:
+            raise ValueError(f"不支持的备份编码：{data.get('encoding')!r}")
+        payload = data.get("payload")
+        if not isinstance(payload, str) or not payload.strip():
+            raise ValueError("备份文件缺少加密内容（payload 为空）")
+        try:
+            inner = json.loads(_decrypt(payload, _resolve_key(create=False)))
+        except ValueError as exc:
+            # 包含「密钥取不到」与「解密失败」两类，都指向同一处置：换导出迁移。
+            raise ValueError(f"备份解密失败（密钥不匹配或文件损坏）：{exc}") from exc
+        if not isinstance(inner, dict):
+            raise ValueError("解密后的备份内容不是对象")
+        data = inner
+    elif version != LEGACY_PLAINTEXT_SCHEMA:
         raise ValueError(
-            f"不支持的备份 schema_version：{data.get('schema_version')!r}"
-            f"（当前支持 {BACKUP_SCHEMA_VERSION}）"
+            f"不支持的备份 schema_version：{version!r}"
+            f"（当前支持 {BACKUP_SCHEMA_VERSION}，兼容早期明文 {LEGACY_PLAINTEXT_SCHEMA}）"
         )
+
     if not isinstance(data.get("files"), dict) or not data["files"]:
         raise ValueError("备份文件里没有可恢复的文件")
     return data
