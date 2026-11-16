@@ -605,6 +605,30 @@ class HintRestraintTest(unittest.TestCase):
             self.assertIn("aria-label=", tag,
                           f".hint-q 缺少 aria-label：{tag[:80]}")
 
+    def test_all_notes_respect_length_cap(self):
+        """全页面常驻说明遵守 §3a 的 2 行上限（约 80 字）。
+
+        例外（规范 §3a 明列）：动态数据展示与状态通知 —— 它们渲染的是本次真实
+        内容（源数量、自动接管路径等），属「内容」而非「说明」，不计入。
+        以模板变量 `${` 开头的 note 即视为动态内容。
+        """
+        notes = re.findall(r'<div class="note"[^>]*>(.*?)(?:</div>|$)', self.html)
+        offenders = []
+        for note in notes:
+            raw = note
+            visible = re.sub(r'title="[^"]*"', "", raw)
+            visible = re.sub(r"<[^>]+>", "", visible)
+            visible = re.sub(r"\s+", "", visible)
+            if "${" in raw:
+                continue      # 动态内容，豁免
+            if len(visible) > 80:
+                offenders.append(f"[{len(visible)}字] {visible[:50]}")
+        self.assertEqual(
+            offenders, [],
+            "以下常驻说明超过 80 字，应按 §3a 精简并移入 .hint-q 提示：\n"
+            + "\n".join(offenders),
+        )
+
     def test_backup_card_note_is_short(self):
         """备份与恢复卡片的常驻说明不得超过 2 行（约 80 中文字符）。
 

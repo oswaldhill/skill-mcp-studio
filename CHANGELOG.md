@@ -7,9 +7,36 @@
 
 ## [Unreleased]
 
+## [v0.50.5] - 2026-11-16
+
+当前发布版本（build 228）。
+
+### 改进：全站常驻说明按 §3a 收敛（用户要求「32 处都需要处理」）
+
+按 §3a 的 2 行上限（约 80 字）逐条清理，9 条超长说明精简为一句常驻 + `?` 完整说明：
+
+| 位置 | 原字数 | 现常驻 |
+|---|---|---|
+| 主页展示规则 | 85 | 按安装状态（真实检测）展示 |
+| 卡片视图路径来源 | 138 | 共 N 个 Agent/IDE，M 个分组 |
+| 市场源 | 86 | 默认源 skills.sh 可删可改，也支持添加 GitHub 仓库源 |
+| 清理已卸载登记 | 90 | 清理磁盘上已不存在的登记条目 |
+| 技能备份策略 | 105 | 升级前自动备份到 data/skill_backups/，用于回滚 |
+| GitHub API 配额 | 91 | 更新检查走 GitHub API，未鉴权 60 次/小时… |
+| 统一技能目录与拉取 | 152 | 统一技能目录 = 标记为「主源」的 Git 目录… |
+| 同步范围 | 95 | 同步覆盖配置与清单，不含凭据与技能包本体 |
+| 凭据引用机制 | 110 | 凭据以「引用」形式生效，明文不落盘 |
+
+**保留为常驻的两条**（§3a 例外：动态内容而非说明，渲染的是本次真实数据）：
+- `共 N 个源（启用 M）· 落后 X · 领先 Y…` 统计行
+- `已自动接管统一技能目录为 Git 源：<实际路径>（分支 <实际分支>）` 状态通知
+
+判据：`HintRestraintTest` 增到 7 例，新增 `test_all_notes_respect_length_cap`
+扫描全站 `.note`，超过 80 字即失败（含 `${` 的动态内容豁免）。
+
 ## [v0.50.4] - 2026-11-16
 
-当前发布版本（build 227）。
+历史版本（build 227）。
 
 ### 修复：VS Code 的 MCP 恒显示 0/2，反复修复无效
 
@@ -6669,7 +6696,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.50.4...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.50.5...HEAD
+[v0.50.5]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.50.5
 [v0.50.4]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.50.4
 [v0.50.3]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.50.3
 [v0.50.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.50.2

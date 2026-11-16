@@ -3917,7 +3917,7 @@ function renderHomeCardsView(q) {
   }).join("");
 
   body.innerHTML = `<div class="agent-grid">${sections}</div>
-    <div class="note" style="margin-top:var(--sp-5)">主页按 <strong>安装状态（真实检测）</strong> 展示，分组与设置页注册表分类一致；APP / CLI / CONFIG 各自显示「有 / 无」。点击组标题可折叠，点击路径可复制，点「⋯」或「详情」查看操作。</div>`;
+    <div class="note" style="margin-top:var(--sp-5)">按安装状态（真实检测）展示。<span class="hint-q" role="img" tabindex="0" aria-label="关于主页展示规则" data-tip="分组与设置页注册表分类一致；APP / CLI / CONFIG 各自显示「有 / 无」。点击组标题可折叠，点击路径可复制，点「⋯」或「详情」查看操作。" title="分组与设置页注册表分类一致；APP / CLI / CONFIG 各自显示「有 / 无」。点击组标题可折叠，点击路径可复制，点「⋯」或「详情」查看操作。">?</span></div>`;
   body.querySelectorAll(".agent-group-title").forEach((g) => {
     g.addEventListener("click", () => g.closest(".agent-group").classList.toggle("collapsed"));
   });
@@ -5593,7 +5593,7 @@ function renderAgentsTable(page) {
       </div>`;
     }).join("");
     body.innerHTML = `<div class="agent-grid">${sections}</div>
-      <div class="note" style="margin-top:var(--sp-4)">卡片视图共 ${tools.length} 个 Agent/IDE，${grouped.length} 个分组。此处路径为内置注册表收录的<strong>默认安装位置 / 命令名 / 配置路径</strong>，非检测本机是否安装；「未收录」表示注册表未配置该默认项。点击组标题可折叠，点击路径可复制，点「详情」编辑完整配置。</div>`;
+      <div class="note" style="margin-top:var(--sp-4)">共 ${tools.length} 个 Agent/IDE，${grouped.length} 个分组。<span class="hint-q" role="img" tabindex="0" aria-label="关于卡片视图的路径来源" data-tip="此处路径为内置注册表收录的默认安装位置 / 命令名 / 配置路径，非检测本机是否安装；「未收录」表示注册表未配置该默认项。点击组标题可折叠，点击路径可复制，点「详情」编辑完整配置。" title="此处路径为内置注册表收录的默认安装位置 / 命令名 / 配置路径，非检测本机是否安装；「未收录」表示注册表未配置该默认项。点击组标题可折叠，点击路径可复制，点「详情」编辑完整配置。">?</span></div>`;
 
     // 分组折叠：点击组标题切换 collapsed
     body.querySelectorAll(".agent-group-title").forEach((g) => {
@@ -6327,10 +6327,10 @@ function renderSettings() {
   const marketSourcesCard = `<div class="settings-card" id="market-sources-card">
     <h4>市场源</h4>
     <div id="market-sources-body"><div class="empty">加载中…</div></div>
-    <div class="note" style="margin-top:var(--sp-4)">默认源 skills.sh 可删可改；支持添加 GitHub 仓库源（更新检查按 latest release 比对版本）。源配置存本机 data/market_sources.yaml。</div>
+    <div class="note" style="margin-top:var(--sp-4)">默认源 skills.sh 可删可改，也支持添加 GitHub 仓库源。<span class="hint-q" role="img" tabindex="0" aria-label="关于市场源的说明" data-tip="更新检查按 latest release 比对版本。源配置存本机 data/market_sources.yaml。" title="更新检查按 latest release 比对版本。源配置存本机 data/market_sources.yaml。">?</span></div>
     <div class="settings-group">
       <h4>登记表维护</h4>
-      <div class="note">技能目录被手工删除后，来源登记表里会留下「已卸载但仍有登记」的条目：它们没有内容可升级，却会让检查结果比技能列表多出若干条。清理只删磁盘上确实不存在的条目，改前自动备份整份登记表。</div>
+      <div class="note">清理磁盘上已不存在的登记条目。<span class="hint-q" role="img" tabindex="0" aria-label="关于清理已卸载登记" data-tip="技能目录被手工删除后，来源登记表里会留下「已卸载但仍有登记」的条目：它们没有内容可升级，却会让检查结果比技能列表多出若干条。清理只删磁盘上确实不存在的条目，改前自动备份整份登记表。" title="技能目录被手工删除后，来源登记表里会留下「已卸载但仍有登记」的条目：它们没有内容可升级，却会让检查结果比技能列表多出若干条。清理只删磁盘上确实不存在的条目，改前自动备份整份登记表。">?</span></div>
       <div class="form-actions" style="margin-top:var(--sp-4)">
         <button class="btn-soft" data-action="prune-skill-lock">清理登记残留</button>
       </div>
@@ -6348,7 +6348,7 @@ function renderSettings() {
     <div class="form-actions" style="margin-top:var(--sp-4)">
       <button class="btn-soft" data-action="prune-skill-backups">清理备份</button>
     </div>
-    <div class="note" style="margin-top:var(--sp-4)">每次升级前会把技能目录整体备份到 data/skill_backups/，用于回滚。内容与上一份完全相同的不会重复备份；每个技能最多保留 10 份不同内容。清理只删重复副本与超出上限的旧版本，不同内容的历史版本保留。</div>
+    <div class="note" style="margin-top:var(--sp-4)">升级前自动备份到 data/skill_backups/，用于回滚。<span class="hint-q" role="img" tabindex="0" aria-label="关于技能备份策略" data-tip="内容与上一份完全相同的不会重复备份；每个技能最多保留 10 份不同内容。清理只删重复副本与超出上限的旧版本，不同内容的历史版本保留。" title="内容与上一份完全相同的不会重复备份；每个技能最多保留 10 份不同内容。清理只删重复副本与超出上限的旧版本，不同内容的历史版本保留。">?</span></div>
   </div>`;
 
   // 「Skill」：GitHub API Token（v0.31.0）——更新检查的配额提升通道。
@@ -6356,7 +6356,7 @@ function renderSettings() {
   const githubTokenCard = `<div class="settings-card" id="github-token-card">
     <h4>GitHub API Token</h4>
     <div id="github-token-body"><div class="empty">加载中…</div></div>
-    <div class="note" style="margin-top:var(--sp-4)">更新检查走 GitHub API（技能包本体在 GitHub 仓库）：未鉴权 60 次/小时，配置 token 后 5000 次/小时。token 存本机 data/github_token（不进 git）。</div>
+    <div class="note" style="margin-top:var(--sp-4)">更新检查走 GitHub API，未鉴权 60 次/小时，配置 token 后 5000 次/小时。<span class="hint-q" role="img" tabindex="0" aria-label="关于 GitHub API 配额" data-tip="技能包本体在 GitHub 仓库。token 存本机 data/github_token（不进 git）。" title="技能包本体在 GitHub 仓库。token 存本机 data/github_token（不进 git）。">?</span></div>
   </div>`;
 
   // 「Skill」：Git 技能源（2026-11-07）——把「一个 Git 目录」当技能来源。
@@ -6375,7 +6375,7 @@ function renderSettings() {
       <button class="btn-soft" data-action="git-source-commit">提交改动</button>
       <button class="btn-soft" data-action="git-source-push">推送</button>
     </div>
-    <div class="note" style="margin-top:var(--sp-4)">统一技能目录就是这里标记为「主源」的那个 Git 目录，所有客户端都指向它；它同时也参与检查与同步。要换统一目录，把另一个源设为主源即可。拉取默认只做快进：工作区有未提交改动或已与远端分叉时会拒绝，不 stash、不覆盖你的改动；确需合并时用「合并拉取」。配置存本机 data/git_sources.yaml。</div>
+    <div class="note" style="margin-top:var(--sp-4)">统一技能目录 = 标记为「主源」的 Git 目录，所有客户端都指向它。拉取默认只做快进。<span class="hint-q" role="img" tabindex="0" aria-label="关于统一技能目录与拉取策略" data-tip="要换统一目录，把另一个源设为主源即可；它同时参与检查与同步。拉取默认只做快进：工作区有未提交改动或已与远端分叉时会拒绝，不 stash、不覆盖你的改动；确需合并时用「合并拉取」。配置存本机 data/git_sources.yaml。" title="要换统一目录，把另一个源设为主源即可；它同时参与检查与同步。拉取默认只做快进：工作区有未提交改动或已与远端分叉时会拒绝，不 stash、不覆盖你的改动；确需合并时用「合并拉取」。配置存本机 data/git_sources.yaml。">?</span></div>
   </div>`;
 
   // 远程同步（WebDAV，v0.31.1）：个人配置跨设备同步。
@@ -6405,7 +6405,7 @@ function renderSettings() {
       <button class="btn-soft" id="webdav-pull">从远端拉取</button>
       <button class="btn-soft" id="webdav-toggle-form">编辑配置</button>
     </div>
-    <div class="note" style="margin-top:var(--sp-4)">同步范围：个人覆盖配置、市场源、自动发现清单、技能版本基准。凭据与技能包本体不同步。推/拉均为覆盖语义，但两端旧值各自留档（.remote- / .bak- 时间戳），冲突时可手工比对后重推重拉。</div>
+    <div class="note" style="margin-top:var(--sp-4)">同步覆盖配置与清单，不含凭据与技能包本体。<span class="hint-q" role="img" tabindex="0" aria-label="关于同步范围与冲突处理" data-tip="同步范围：个人覆盖配置、市场源、自动发现清单、技能版本基准。推 / 拉均为覆盖语义，但两端旧值各自留档（.remote- / .bak- 时间戳），冲突时可手工比对后重推重拉。" title="同步范围：个人覆盖配置、市场源、自动发现清单、技能版本基准。推 / 拉均为覆盖语义，但两端旧值各自留档（.remote- / .bak- 时间戳），冲突时可手工比对后重推重拉。">?</span></div>
   </div>`;
 
   // 「IDE / Agent」：内置注册表清单（数据来自内置数据库），支持卡片/列表视图
@@ -6461,7 +6461,7 @@ function renderSettings() {
   const credCard = `<div class="settings-card" id="endpoint-cred-card">
     <h4>MCP 端点凭据</h4>
     <div id="endpoint-cred-body"><div class="empty">加载中…</div></div>
-    <div class="note" style="margin-top:var(--sp-4)">凭据以「引用」形式生效：端点库只记录来源（环境变量名 / 钥匙串服务名 / 文件路径），客户端配置里写的也是引用，明文不再落盘。检测与存储经 CLI（--auth-secret-status / --set-auth-secret）。</div>
+    <div class="note" style="margin-top:var(--sp-4)">凭据以「引用」形式生效，明文不落盘。<span class="hint-q" role="img" tabindex="0" aria-label="关于凭据引用的机制" data-tip="端点库只记录来源（环境变量名 / 钥匙串服务名 / 文件路径），客户端配置里写的也是引用。检测与存储经 CLI（--auth-secret-status / --set-auth-secret）。" title="端点库只记录来源（环境变量名 / 钥匙串服务名 / 文件路径），客户端配置里写的也是引用。检测与存储经 CLI（--auth-secret-status / --set-auth-secret）。">?</span></div>
   </div>`;
   const mcpCard = `${_activeProfileCard}${_autoDiscoverCard}<div class="settings-card">
     <h4>MCP 端点库</h4>
@@ -12159,7 +12159,7 @@ async function fixAllSkillsMcp() {
 // 无端点、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.50.4", build: 227, build_number: 227, semver_ok: true, full: "v0.50.4 (build 227)" },
+  app: { name: "Skill MCP Studio", version: "0.50.5", build: 228, build_number: 228, semver_ok: true, full: "v0.50.5 (build 228)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",
