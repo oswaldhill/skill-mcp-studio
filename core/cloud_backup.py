@@ -60,7 +60,9 @@ BACKUP_KIND = "skill-mcp-studio-cloud-backup"
 BACKUP_SCHEMA_VERSION = 2
 LEGACY_PLAINTEXT_SCHEMA = 1
 ENCRYPTION_ALG = "aes-256-cbc-pbkdf2"
-DEFAULT_KEEP = 7
+# 只保留最新一份（2026-11-16 用户要求）：多版本对灾难恢复没有实际收益，
+# 却让 iCloud 里长期堆着含凭据的历史副本。
+DEFAULT_KEEP = 1
 # 加密密钥的钥匙串坐标（复用 auth_secret 的封装，不重复实现 security 调用）。
 _KEYCHAIN_SERVICE = "io.skillmcp.studio.cloud-backup"
 _KEYCHAIN_ACCOUNT = "default"
@@ -242,15 +244,32 @@ def create_backup(*, dry_run: bool = False) -> Dict[str, Any]:
 
     os.makedirs(root, exist_ok=True)
     atomic_write(out_path, rendered, 0o600)  # 含密钥：仅属主可读
+
+    # 只保留最新一份：写完立刻清理旧份，避免 iCloud 里长期堆着含凭据的历史副本。
+    # 失败不阻断备份本身（备份已落盘），但要把原因带回给调用方。
+    pruned = 0
+    prune_error = ""
+    try:
+        pruned = prune_backups(keep=DEFAULT_KEEP)["removed"]
+    except (OSError, ValueError) as exc:
+        prune_error = str(exc)
+
+    message = (
+        f"已备份 {len(files)} 个文件到 iCloud（{len(rendered.encode('utf-8'))} 字节，已加密）"
+        "。解密密钥存放在本机登录钥匙串，换机后需改用「导出配置」迁移。"
+    )
+    if pruned:
+        message += f" 已清理 {pruned} 份旧备份（只保留最新一份）。"
+    if prune_error:
+        message += f" 旧备份清理失败：{prune_error}"
+
     return {
         "status": "ok",
         "path": out_path,
         "files": len(files),
         "bytes": len(rendered.encode("utf-8")),
-        "message": (
-            f"已备份 {len(files)} 个文件到 iCloud（{len(rendered.encode('utf-8'))} 字节，已加密）"
-            "。解密密钥存放在本机登录钥匙串，换机后需改用「导出配置」迁移。"
-        ),
+        "pruned": pruned,
+        "message": message,
     }
 
 

@@ -164,11 +164,11 @@ class CreateBackupTest(unittest.TestCase):
 class ListBackupsTest(unittest.TestCase):
     def test_newest_first_by_timestamp(self):
         """按文件名时间戳排序（不依赖 mtime，避免秒级分辨率抹平顺序）。"""
-        with _Env():
-            with mock.patch.object(cloud_backup, "_now_stamp", lambda: "20260101-000000"):
-                create_backup()
-            with mock.patch.object(cloud_backup, "_now_stamp", lambda: "20260102-000000"):
-                create_backup()
+        with _Env() as env:
+            # 直接造文件：create_backup 现在会自动清理到 1 份，无法用它铺多份。
+            env.cloud.mkdir(parents=True, exist_ok=True)
+            for stamp in ("20260101-000000", "20260102-000000"):
+                (env.cloud / f"backup-{stamp}.json").write_text("{}", encoding="utf-8")
             items = list_backups()
             self.assertEqual(2, len(items))
             self.assertEqual("backup-20260102-000000.json", items[0]["id"])
@@ -296,14 +296,15 @@ class EncryptionContractTest(unittest.TestCase):
 
 
 class PruneBackupsTest(unittest.TestCase):
-    def _seed(self, stamps):
+    def _seed(self, env, stamps):
+        # 直接造文件：create_backup 会自动清理到 1 份，无法用它铺多份。
+        env.cloud.mkdir(parents=True, exist_ok=True)
         for stamp in stamps:
-            with mock.patch.object(cloud_backup, "_now_stamp", lambda s=stamp: s):
-                create_backup()
+            (env.cloud / f"backup-{stamp}.json").write_text("{}", encoding="utf-8")
 
     def test_keeps_most_recent_n(self):
-        with _Env():
-            self._seed(["20260101-000000", "20260102-000000", "20260103-000000",
+        with _Env() as env:
+            self._seed(env, ["20260101-000000", "20260102-000000", "20260103-000000",
                         "20260104-000000", "20260105-000000"])
             result = prune_backups(keep=2)
             self.assertEqual(3, result["removed"])
@@ -317,11 +318,36 @@ class PruneBackupsTest(unittest.TestCase):
                 prune_backups(keep=0)
 
     def test_dry_run_reports_without_deleting(self):
-        with _Env():
-            self._seed(["20260101-000000", "20260102-000000", "20260103-000000"])
+        with _Env() as env:
+            self._seed(env, ["20260101-000000", "20260102-000000", "20260103-000000"])
             result = prune_backups(keep=1, dry_run=True)
             self.assertEqual(2, result["removed"])
             self.assertEqual(3, len(list_backups()))
+
+
+class AutoPruneTest(unittest.TestCase):
+    """只保留最新一份（2026-11-16 用户要求）。"""
+
+    def test_create_backup_keeps_only_latest(self):
+        with _Env():
+            for stamp in ("20260101-000000", "20260102-000000", "20260103-000000"):
+                with mock.patch.object(cloud_backup, "_now_stamp", lambda s=stamp: s):
+                    create_backup()
+            items = list_backups()
+            self.assertEqual(1, len(items), "应只保留最新一份")
+            self.assertEqual("backup-20260103-000000.json", items[0]["id"])
+
+    def test_reports_pruned_count(self):
+        with _Env():
+            with mock.patch.object(cloud_backup, "_now_stamp", lambda: "20260101-000000"):
+                create_backup()
+            with mock.patch.object(cloud_backup, "_now_stamp", lambda: "20260102-000000"):
+                result = create_backup()
+            self.assertEqual(1, result["pruned"])
+            self.assertIn("已清理 1 份旧备份", result["message"])
+
+    def test_default_keep_is_one(self):
+        self.assertEqual(1, cloud_backup.DEFAULT_KEEP)
 
 
 class StatusTest(unittest.TestCase):

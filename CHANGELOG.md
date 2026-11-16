@@ -7,6 +7,24 @@
 
 ## [Unreleased]
 
+## [v0.49.2] - 2026-11-16
+
+当前发布版本（build 222）。
+
+### 改进：备份只保留最新一份（2026-11-16 用户要求）
+
+用户：「修改成只保留最新一个吧，不需要多个」。多版本对灾难恢复没有实际收益，
+却让 iCloud 里长期堆着含凭据的历史副本。
+
+- `DEFAULT_KEEP` 7 → 1；`create_backup` 写完立即 `prune_backups(keep=1)`。
+- 清理失败**不阻断备份本身**（备份已落盘），但原因回传给调用方
+  （消息里带「旧备份清理失败：…」）。
+- CLI 帮助（`--keep` 默认 1）与 GUI 说明同步。
+
+> 判据：`tests/test_cloud_backup.py` 28 例（新增「连续三次备份只留最新一份」
+> 「pruned 计数与消息」「DEFAULT_KEEP == 1」；原排序/清理用例改为直接造文件，
+> 因为 `create_backup` 已不能用来铺多份）。
+
 ## [v0.49.1] - 2026-11-16
 
 当前发布版本（build 221）。
@@ -6522,7 +6540,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.49.1...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.49.2...HEAD
+[v0.49.2]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.49.2
 [v0.49.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.49.1
 [v0.49.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.49.0
 [v0.48.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.48.1

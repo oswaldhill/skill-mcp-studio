@@ -2933,7 +2933,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--icloud-backup", action="store_true",
         help="把配置与数据（config.yaml + data/ 下的 overlay/discovered/sources/token）"
-             "备份到 iCloud Drive，保留最近 7 份（仅 macOS；备份含明文密钥）",
+             "备份到 iCloud Drive（仅保留最新一份，自动清理旧份；仅 macOS；内容加密）",
     )
     parser.add_argument(
         "--list-icloud-backups", action="store_true",
@@ -2945,7 +2945,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--prune-icloud-backups", action="store_true",
-        help="删除超出保留份数的旧备份（配合 --keep，默认 7）",
+        help="删除超出保留份数的旧备份（配合 --keep，默认 1）",
     )
     parser.add_argument(
         "--icloud-backup-status", action="store_true",
@@ -2953,7 +2953,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--keep", type=int, default=7, metavar="N",
-        help="配合 --prune-icloud-backups：保留最近 N 份（默认 7）",
+        help="配合 --prune-icloud-backups：保留最近 N 份（默认 1）",
     )
     parser.add_argument(
         "--profile", type=str, default=None,

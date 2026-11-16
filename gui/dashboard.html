@@ -6241,7 +6241,7 @@ function renderSettings() {
         </span></div>
       </div>
     </div>
-    <div class="note" style="margin-top:var(--sp-5)">两个场景别混：<strong>iCloud 备份</strong>把 config.yaml 与 data/ 下的 overlay、discovered、sources、token 打包到 iCloud Drive（保留最近 7 份，可逐版本恢复，恢复前自动备份原文件），<strong>内容已加密</strong>（密钥存本机登录钥匙串），只用于自己的灾难恢复；<strong>导出 / 导入</strong>是换机或分享用的单 JSON，端点密钥已脱敏，导入按「导入值优先、不删除本地已有项」合并。icloud 别名指向 iCloud Drive（仅 macOS）。</div>
+    <div class="note" style="margin-top:var(--sp-5)">两个场景别混：<strong>iCloud 备份</strong>把 config.yaml 与 data/ 下的 overlay、discovered、sources、token 打包到 iCloud Drive（只保留最新一份，每次备份自动清理旧份；恢复前自动备份原文件），<strong>内容已加密</strong>（密钥存本机登录钥匙串），只用于自己的灾难恢复；<strong>导出 / 导入</strong>是换机或分享用的单 JSON，端点密钥已脱敏，导入按「导入值优先、不删除本地已有项」合并。icloud 别名指向 iCloud Drive（仅 macOS）。</div>
   </div>`;
 
   // 统一技能目录已并入「Git 技能源」卡片（2026-11-08）：二者本是同一目录，
@@ -12046,7 +12046,7 @@ async function fixAllSkillsMcp() {
 // 无端点、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.49.1", build: 221, build_number: 221, semver_ok: true, full: "v0.49.1 (build 221)" },
+  app: { name: "Skill MCP Studio", version: "0.49.2", build: 222, build_number: 222, semver_ok: true, full: "v0.49.2 (build 222)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",
