@@ -29,16 +29,20 @@ class IcloudBackupCardTest(unittest.TestCase):
         cls.html = DASHBOARD.read_text(encoding="utf-8")
 
     def test_card_container_exists(self):
-        self.assertIn('id="icloud-backup-card"', self.html)
+        """合并后不再有独立卡片：iCloud 备份是 #cfg-port-card 里的一个分组。"""
+        self.assertIn('id="cfg-port-card"', self.html)
+        self.assertNotIn('id="icloud-backup-card"', self.html,
+                         "已合并进 #cfg-port-card，不应再有独立卡片")
+        self.assertIn("iCloud 备份 · 本机恢复（含密钥）", self.html)
 
     def test_card_is_rendered_into_settings_panel(self):
         """卡片变量必须真的被插进设置面板，否则定义了也看不见。"""
-        self.assertIn("${icloudBackupCard}", self.html)
+        self.assertIn("${configPortCard}", self.html)
         panel = re.search(
             r'data-panel="appearance">(.*?)</div>`', self.html, re.S
         )
         self.assertIsNotNone(panel)
-        self.assertIn("${icloudBackupCard}", panel.group(1))
+        self.assertIn("${configPortCard}", panel.group(1))
 
     def test_three_actions_present(self):
         for action in ("icloud-backup", "restore-icloud-backup", "prune-icloud-backups"):
@@ -72,9 +76,9 @@ class IcloudBackupCardTest(unittest.TestCase):
     def test_uses_design_tokens_not_literal_px(self):
         """卡片内联样式不得写死 px 字号（项目 token 纪律）。"""
         card = re.search(
-            r'const icloudBackupCard = `(.*?)`;', self.html, re.S
+            r'const configPortCard = `(.*?)`;', self.html, re.S
         )
-        self.assertIsNotNone(card, "找不到 icloudBackupCard 定义")
+        self.assertIsNotNone(card, "找不到 configPortCard 定义")
         body = card.group(1)
         literal_font = re.findall(r"font-size:\s*\d+px", body)
         self.assertEqual([], literal_font, f"字号写死 px：{literal_font}")
@@ -82,14 +86,14 @@ class IcloudBackupCardTest(unittest.TestCase):
 
     def test_warns_about_plaintext_secrets(self):
         """安全警示是硬约束：备份含明文密钥，文案不能丢这条。"""
-        card = re.search(r'const icloudBackupCard = `(.*?)`;', self.html, re.S)
+        card = re.search(r'const configPortCard = `(.*?)`;', self.html, re.S)
         self.assertIsNotNone(card)
         self.assertIn("明文密钥", card.group(1))
         self.assertIn("请勿分享", card.group(1))
 
     def test_points_share_export_to_export_card(self):
         """换机/分享必须指向「导出配置」（脱敏），不能让人拿备份去分享。"""
-        card = re.search(r'const icloudBackupCard = `(.*?)`;', self.html, re.S)
+        card = re.search(r'const configPortCard = `(.*?)`;', self.html, re.S)
         self.assertIn("导出配置", card.group(1))
 
 

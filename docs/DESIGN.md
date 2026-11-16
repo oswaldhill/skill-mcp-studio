@@ -2370,62 +2370,55 @@ GUI 不直接改配置文件。间隔由 CLI 钳到 ≥5 分钟，界面需回�
 > 两条新 CLI 命令走 overlay 路径（与 `--set-setting` 同模式），早返回不跑审计，
 > 均在 Rust `run_cli` 白名单内（不是重定向命令，不进 `DENIED_FLAG_PREFIXES`）。
 
-**配置导入 / 导出卡片**（v0.30.0 #3，`#cfg-port-card`，通用 tab，排在后台巡检与
-关于之间）：换机 / 分享的配置迁移入口。结构：
+**配置迁移与备份卡片**（v0.30.0 #3 导出导入 + 2026-11-16 iCloud 备份合并，
+`#cfg-port-card`，通用 tab，排在后台巡检与关于之间）：把配置搬走与存回来的唯一入口。
+
+**为什么合并成一张卡**：两者是同一件事的两个场景，差别只有一条 —— 密钥是否脱敏。
+分两张卡时用户要在两处判断该点哪个，而真正的风险（产物能否外传）藏在各自的 note 里。
+合并后用分组标题把这个差别顶到最显眼处：`iCloud 备份 · 本机恢复（含密钥）` 与
+`导出 / 导入 · 换机分享（已脱敏）`。
+
+结构（两个 `.settings-group`，主次：备份在前、导出导入在后）：
 
 ```
-┌ settings-card#cfg-port-card ────────────────────────────────┐
-│ H4: 配置导入 / 导出                                          │
-│ row: 导出配置 | [input#cfg-export-path] [ghost sm 导出]      │
-│ row: 导入配置 | [input#cfg-import-path] [ghost sm 导入]      │
-│ note: 单 JSON · 密钥脱敏 · 合并语义 · icloud 别名说明         │
-└─────────────────────────────────────────────────────────────┘
+┌ settings-card#cfg-port-card ──────────────────────────────────────┐
+│ H4: 配置迁移与备份                                                 │
+│ ┌ settings-group（首组去掉 border-top / margin-top）─────────────┐ │
+│ │ H4: iCloud 备份 · 本机恢复（含密钥）                            │ │
+│ │ row: 备份状态 | [N 份 · X MB · 最近 时间]                       │ │
+│ │ row: 操作     | [ghost sm 立即备份] [ghost sm 清理旧备份]       │ │
+│ │ list: 每份一行 · mono id + muted 时间 + btn-soft 恢复           │ │
+│ └─────────────────────────────────────────────────────────────────┘ │
+│ ┌ settings-group ────────────────────────────────────────────────┐ │
+│ │ H4: 导出 / 导入 · 换机分享（已脱敏）                            │ │
+│ │ row: 导出配置 | [input#cfg-export-path] [ghost sm 导出]         │ │
+│ │ row: 导入配置 | [input#cfg-import-path] [ghost sm 导入]         │ │
+│ └─────────────────────────────────────────────────────────────────┘ │
+│ note: 两个场景的区别（含明文密钥警示）· 保留 7 份 · icloud 别名    │
+└───────────────────────────────────────────────────────────────────┘
 ```
 
-- **读写一律经 CLI**（`--export-config` / `--import-config`，Rust 白名单内），
-  GUI 不直接碰配置文件——与后台巡检 / 活动端点同一纪律。
+- **分组标题必须点明「含密钥 / 已脱敏」**：这是两个场景唯一实质差别，不能只写在
+  note 里。note 仍须保留「含明文密钥，请勿分享」的警示（安全边界，测试守着）。
+- **首组覆盖 `.settings-group` 的上边框**（inline `margin-top:0; padding-top:0;
+  border-top:none`）：它是卡片内第一块内容，顶上再画一条线只会和卡片边框打架。
+- 两组的控件都走 CLI：`--export-config` / `--import-config` / `--icloud-backup` /
+  `--icloud-backup-status` / `--list-icloud-backups` / `--restore-icloud-backup` /
+  `--prune-icloud-backups`，全部在 Rust `run_cli` 白名单内。
 - 行内控件容器用 inline `display:flex; gap:var(--gap-2); flex-wrap:wrap`
-  （**不写 `width:100%`**，v0.29.1 裁剪教训）；输入框取全局
-  `input[type="text"]` 样式（`flex:1; min-width:160px`）。
-- 交互：路径为空 → 就地 `toast`（不弹任务模态）；导出走 `runTaskModal`
-  （无刷新）；导入先 `confirmModal` 说明合并语义（导入值优先、不删除本地
-  已有项、脱敏密钥保留本地值、自动备份），确认后 `runTaskModal` +
-  `refreshBlocks(["settings","agents"])`。
-- 为什么放通用 tab：导入/导出的是**整份配置**（跨 Skill / MCP 两域），
+  （**不写 `width:100%`**，v0.29.1 裁剪教训；**gap 若为 style 末条声明须补尾分号**，
+  否则设计门禁的声明解析会把后续内容吞进 gap 值）。
+- 交互：路径为空 → 就地 `toast`；导出 / 备份走 `runTaskModal`；导入与恢复先
+  `confirmModal` 说明代价（导入：合并语义 + 自动备份；恢复：整文件覆盖 + 写前备份），
+  确认后 `runTaskModal` + `refreshBlocks`。
+- 状态行与备份列表由 `--icloud-backup-status --format json` **一次调用**返回
+  （`count` / `bytes` / `latest` / `items`），避免两次进程启动。
+- 非 macOS 时状态接口返回 `available:false`，分组显示原因而不是报错。
+- 为什么放通用 tab：两者操作的都是**整份配置**（跨 Skill / MCP 两域），
   属通用配置级操作，与「关于」同为全局卡片；不放 MCP tab（那只是端点域）。
 
 > 设置项的取值来源必须与「谁是唯一事实来源」一致：偏好类（主题/缩放/统计间隔）用
 > localStorage，跨进程共享类（巡检开关）用 config.yaml 并经 CLI。
-
-**iCloud 备份卡片**（2026-11-16，`#icloud-backup-card`，通用 tab，紧跟配置
-导入 / 导出之后）：灾难恢复入口，与「导出」刻意分列两张卡。结构：
-
-```
-┌ settings-card#icloud-backup-card ───────────────────────────┐
-│ H4: iCloud 备份                                              │
-│ row: 备份状态 | [N 份 · X MB · 最近 时间]                    │
-│ row: 操作     | [ghost sm 立即备份] [ghost sm 清理旧备份]    │
-│ list: 每份一行 · mono id + muted 时间 + btn-soft 恢复        │
-│ note: 备份范围 · 保留 7 份 · 含明文密钥警示 · 仅 macOS       │
-└─────────────────────────────────────────────────────────────┘
-```
-
-- **为什么与「导出」分列而不是合并**：两者语义相反 —— 导出**脱敏**（产物可分享），
-  备份**含明文密钥**（产物只能自用）。合并成一张卡会让「点了哪个按钮」与
-  「密钥有没有落盘」脱钩，这正是最危险的误解。note 必须同时写清
-  「含明文密钥，请勿分享」与「换机分享请用导出配置」。
-- **读写一律经 CLI**（`--icloud-backup` / `--icloud-backup-status` /
-  `--list-icloud-backups` / `--restore-icloud-backup` / `--prune-icloud-backups`），
-  全部登记在 Rust `run_cli` 白名单内。
-- 状态行与列表由 `--icloud-backup-status --format json` **一次调用**返回
-  （`count` / `bytes` / `latest` / `items`），避免两次进程启动。
-- 恢复是写操作：先 `confirmModal`（强确认、danger 按钮）说明「会覆盖 config.yaml
-  与 data/ 配置，写前各自备份」，再 `runTaskModal`。
-- 行内列表复用 `.list-row` / `.mono` / `.muted` / `.btn-soft`，不新造类；
-  字号一律 `var(--fs-xs|sm)`，间距一律 `var(--gap-*)`。**`gap` 若是 style 的
-  最后一条声明必须补尾分号** —— 否则设计门禁的声明解析会把后续内容吞进
-  gap 值，报「gap 族出现非 --gap-* token」。
-- 非 macOS 时状态接口返回 `available:false`，卡片显示原因而不是报错。
 
 **市场源卡片**（`#market-sources-card`，v0.31.0 起；v0.37.3 重排）：
 

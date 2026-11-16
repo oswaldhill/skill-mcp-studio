@@ -2328,7 +2328,7 @@ class ColumnWidthGovernanceTest(unittest.TestCase):
 
 
 class ConfigPortCardContractTest(unittest.TestCase):
-    """§2.10「配置导入 / 导出」卡片契约（v0.30.0 双轨测试轨）。
+    """§2.10「配置迁移与备份」卡片契约（v0.30.0 双轨测试轨）。
 
     守住三件事：① 卡片与两个动作入口存在（HTML 结构 + data-action 分发）；
     ② 行内控件容器不写 inline ``width:100%``（v0.29.1 裁剪缺陷根因，规范
@@ -2371,10 +2371,10 @@ class ConfigPortCardContractTest(unittest.TestCase):
     def test_spec_and_html_title_mirror(self):
         """规范 §2.10 与 dashboard.html 的卡片标题字面一致（MD↔HTML 镜像）。"""
         spec = SPEC.read_text(encoding="utf-8")
-        self.assertIn("配置导入 / 导出卡片", spec, "DESIGN.md §2.10 缺该卡片规范")
+        self.assertIn("配置迁移与备份卡片", spec, "DESIGN.md §2.10 缺该卡片规范")
         self.assertIn("#cfg-port-card", spec, "规范未登记 #cfg-port-card 选择器")
         src = _src()
-        self.assertIn("<h4>配置导入 / 导出</h4>", src, "HTML 卡片标题与规范不一致")
+        self.assertIn("<h4>配置迁移与备份</h4>", src, "HTML 卡片标题与规范不一致")
 
 
 class RunTaskModalWrapperContractTest(unittest.TestCase):

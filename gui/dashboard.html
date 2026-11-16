@@ -6205,39 +6205,43 @@ function renderSettings() {
     <div class="note" style="margin-top:var(--sp-4)">本地多客户端 Skill / MCP 合规审计与修复工具。完整文档见仓库 README · CHANGELOG · SECURITY。</div>
   </div>`;
 
-  // 「通用」：配置导入/导出（v0.30.0 #3）—— 换机 / 分享的配置迁移入口。
-  // 读写一律经 CLI（--export-config / --import-config），GUI 不直接碰文件。
-  // 行内控件容器用 flex（v0.29.1 教训：不写 inline width:100%，防 .row .v 裁剪）。
+  // 「通用」：配置迁移与备份（v0.30.0 #3 导出导入 + 2026-11-16 iCloud 备份合并）。
+  //
+  // 为什么合并成一张卡：两者是同一件事的两个场景 —— 「把配置搬走」与「把配置
+  // 存回来」。分两张卡时用户要在两处判断该点哪个，而它们的差别只有一条：
+  // 密钥是否脱敏。合并后用分组标题把这个差别顶到最显眼的位置：
+  //   · iCloud 备份 = 本机恢复，含明文密钥，产物不能外传；
+  //   · 导出 / 导入 = 换机分享，已脱敏，产物可放进 iCloud 或发给别人。
+  // 主次：备份在前（一键、日常），导出导入在后（低频、要填路径）。
+  //
+  // 读写一律经 CLI；行内控件容器用 flex（v0.29.1 教训：不写 inline width:100%）。
   const configPortCard = `<div class="settings-card" id="cfg-port-card">
-    <h4>配置导入 / 导出</h4>
-    <div class="rows" style="font-size:var(--fs-sm)">
-      <div class="row"><span class="k">导出配置</span><span class="v" style="display:flex;align-items:center;gap:var(--gap-2);flex-wrap:wrap">
-        <input type="text" id="cfg-export-path" placeholder="导出路径（绝对路径或 icloud）">
-        <button type="button" class="ghost sm" data-action="export-config">导出</button>
-      </span></div>
-      <div class="row"><span class="k">导入配置</span><span class="v" style="display:flex;align-items:center;gap:var(--gap-2);flex-wrap:wrap">
-        <input type="text" id="cfg-import-path" placeholder="导入包路径（绝对路径或 icloud）">
-        <button type="button" class="ghost sm" data-action="import-config">导入</button>
-      </span></div>
+    <h4>配置迁移与备份</h4>
+    <div class="settings-group" style="margin-top:0;padding-top:0;border-top:none">
+      <h4>iCloud 备份 · 本机恢复（含密钥）</h4>
+      <div class="rows" style="font-size:var(--fs-sm)">
+        <div class="row"><span class="k">备份状态</span><span class="v" id="icloud-backup-status-line">加载中…</span></div>
+        <div class="row"><span class="k">操作</span><span class="v" style="display:flex;align-items:center;gap:var(--gap-2);flex-wrap:wrap">
+          <button type="button" class="ghost sm" data-action="icloud-backup">立即备份</button>
+          <button type="button" class="ghost sm" data-action="prune-icloud-backups">清理旧备份</button>
+        </span></div>
+      </div>
+      <div id="icloud-backup-list" style="margin-top:var(--sp-3);font-size:var(--fs-sm)"><div class="empty">加载中…</div></div>
     </div>
-    <div class="note" style="margin-top:var(--sp-4)">导出为单个 JSON（端点密钥自动脱敏，可安全放进 iCloud 或分享）；导入按「导入值优先、不删除本地已有项」合并，写入前自动备份。icloud 别名指向 iCloud Drive（仅 macOS）。</div>
-  </div>`;
-
-  // 「通用」：iCloud 完整备份（2026-11-16）—— 灾难恢复入口，与上面的「导出」
-  // 刻意分开：导出**脱敏**用于换机/分享，备份**含明文密钥**用于完整恢复。
-  // 读写一律经 CLI（--icloud-backup / --list-icloud-backups / --restore-icloud-backup
-  // / --prune-icloud-backups），GUI 不直接碰文件。
-  const icloudBackupCard = `<div class="settings-card" id="icloud-backup-card">
-    <h4>iCloud 备份</h4>
-    <div class="rows" style="font-size:var(--fs-sm)">
-      <div class="row"><span class="k">备份状态</span><span class="v" id="icloud-backup-status-line">加载中…</span></div>
-      <div class="row"><span class="k">操作</span><span class="v" style="display:flex;align-items:center;gap:var(--gap-2);flex-wrap:wrap">
-        <button type="button" class="ghost sm" data-action="icloud-backup">立即备份</button>
-        <button type="button" class="ghost sm" data-action="prune-icloud-backups">清理旧备份</button>
-      </span></div>
+    <div class="settings-group">
+      <h4>导出 / 导入 · 换机分享（已脱敏）</h4>
+      <div class="rows" style="font-size:var(--fs-sm)">
+        <div class="row"><span class="k">导出配置</span><span class="v" style="display:flex;align-items:center;gap:var(--gap-2);flex-wrap:wrap">
+          <input type="text" id="cfg-export-path" placeholder="导出路径（绝对路径或 icloud）">
+          <button type="button" class="ghost sm" data-action="export-config">导出</button>
+        </span></div>
+        <div class="row"><span class="k">导入配置</span><span class="v" style="display:flex;align-items:center;gap:var(--gap-2);flex-wrap:wrap">
+          <input type="text" id="cfg-import-path" placeholder="导入包路径（绝对路径或 icloud）">
+          <button type="button" class="ghost sm" data-action="import-config">导入</button>
+        </span></div>
+      </div>
     </div>
-    <div id="icloud-backup-list" style="margin-top:var(--sp-3);font-size:var(--fs-sm)"><div class="empty">加载中…</div></div>
-    <div class="note" style="margin-top:var(--sp-4)">把配置与数据（config.yaml + data/ 下的 overlay、discovered、sources、token）备份到 iCloud Drive，保留最近 7 份，可按版本恢复（恢复前自动备份原文件）。<strong>备份含明文密钥</strong>，仅供自己的灾难恢复，请勿分享；换机分享请用上面的「导出配置」（已脱敏）。仅 macOS 可用。</div>
+    <div class="note" style="margin-top:var(--sp-5)">两个场景别混：<strong>iCloud 备份</strong>把 config.yaml 与 data/ 下的 overlay、discovered、sources、token 打包到 iCloud Drive（保留最近 7 份，可逐版本恢复，恢复前自动备份原文件），<strong>含明文密钥</strong>，只用于自己的灾难恢复，请勿分享；<strong>导出 / 导入</strong>是换机或分享用的单 JSON，端点密钥已脱敏，导入按「导入值优先、不删除本地已有项」合并。icloud 别名指向 iCloud Drive（仅 macOS）。</div>
   </div>`;
 
   // 统一技能目录已并入「Git 技能源」卡片（2026-11-08）：二者本是同一目录，
@@ -6407,7 +6411,7 @@ function renderSettings() {
   </div>${credCard}`;
 
   el.innerHTML =
-    `<div class="settings-tab-panel" data-panel="appearance">${appearanceCard}${patrolCard}${configPortCard}${icloudBackupCard}${_aboutCard}</div>` +
+    `<div class="settings-tab-panel" data-panel="appearance">${appearanceCard}${patrolCard}${configPortCard}${_aboutCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="general">${gitSourcesCard}${usageCard}${marketSourcesCard}${backupCard}${githubTokenCard}${webdavCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="agents">${sharedRulesCard()}${agentsCard}</div>` +
     `<div class="settings-tab-panel hidden" data-panel="mcp">${mcpCard}</div>`;
