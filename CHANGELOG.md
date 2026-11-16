@@ -7,6 +7,64 @@
 
 ## [Unreleased]
 
+## [v0.48.1] - 2026-11-16
+
+当前发布版本（build 218）。
+
+**修 v0.48.0 暴露的两个 CI 故障**：一个是 macOS 构建长期被取消（自 11-14 起，
+含 v0.47.13），一个是 11-15 新增的远端形状测试在 CI 上必然失败。二者都不是
+v0.48.0 的改动引入的，但都让发布链的「三平台产物」与「CI 绿灯」同时失效。
+
+### 修复：macOS 构建自 11-14 起全部被取消（v0.48.0 的 Release 缺 macOS 产物）
+
+**现象**：workflow 里写的是标准标签 `runs-on: macos-14`，但 job 2 秒即 cancelled，
+报错 `The configuration 'macos-14-arm64-us-default' is not supported`。
+
+**范围**：10-30 及之前同一标签全部 success；**11-14 起全部 cancelled**
+（develop / master / v0.47.13 / dependabot / v0.48.0 无一例外）。所以这不是
+某次代码改动引起的，而是 GitHub 侧把 `macos-14` 解析成了 larger runner 配置
+`macos-14-arm64-us-default`，而本仓库是 **public + Free 账户**，拿不到该配置。
+
+**处置**：`runs-on: macos-14` → `macos-15`。用临时 workflow（`runner-probe.yml`，
+已删）逐标签实测：
+
+| 标签 | 结果 |
+| --- | --- |
+| `macos-14` | ❌ configuration not supported |
+| `macos-15` | ✅ 可用 |
+| `macos-latest` | ✅ 可用（macOS 26.7.2 / arm64） |
+| `macos-13` | ✅ 可用 |
+
+> 判据：macos-15 实测构建成功两次（首次 8m47s、缓存命中 2m14s），产出
+> `skill-mcp-studio-macos-universal`。
+
+### 修复：远端形状测试在 CI 上必然失败
+
+`tests/test_remote_branch_consistency.py` 的 `CodeupRemoteShapeTest` 只看
+「origin 是否存在」就执行 codeup 断言：
+
+```python
+@unittest.skipUnless(_has_remote("origin"), ...)      # CI 里 origin 存在
+def test_codeup_has_both_trunks(self):
+    self.assertTrue(_remote_branch_exists("origin", "develop"))  # 必挂
+```
+
+但 **CI 的 `origin` 指向 GitHub**（按契约只有 master），本机 `origin` 指向 codeup。
+两处同名不同物，套用同一断言必然失败 —— v0.48.0 的 Test workflow 因此
+`failures=2`。
+
+**处置**：
+
+- 新增 `_remote_url` / `_is_codeup`，skip 条件改为「origin 的 URL 确实指向
+  codeup」，不再只看远端名字。
+- `scripts/ci_parity.sh` 的 skip 基线由硬编码 `3` 改为按远端拓扑分档：
+  **双远端（本机）= 2**（实测：icloud 互补对 + 慢用例）、
+  **单远端（CI 形态）= 10**（按 CI 日志推算）。原值 3 在 11-15 新增双远端测试后
+  已失效，导致本机 `skipped=2 ≠ 3` 误报。
+
+> 判据：本机双远端 9 例全过；单远端克隆实测 `skipped=5`、`OK` 无失败；
+> GitHub Actions 的 Test workflow 转 success。
+
 ## [v0.48.0] - 2026-11-16
 
 当前发布版本（build 217）。
@@ -6373,7 +6431,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.48.0...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.48.1...HEAD
+[v0.48.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.48.1
 [v0.48.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.48.0
 [v0.47.13]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.47.13
 [v0.47.12]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.47.12
