@@ -260,6 +260,57 @@
   .subline { color: var(--muted); font-size: var(--fs-xs); margin: var(--sp-0b) 0 var(--sp-5); }
   .hint { color: var(--muted); font-size: var(--fs-sm); }
   .note { color: var(--muted); font-size: var(--fs-xs); }
+  /* 行内提示入口（v0.50.0 §3a）：圈问号 + 原生 title 气泡。
+     为什么要它：用户定案「界面说明要克制，用问号/感叹号悬停展示」，常驻说明段
+     改由这里承载。用 CSS 画圈而非引入图标字体 —— 7px 的小圆点不需要 SVG。
+     title 已在 HTML 上给出，所以这里只负责外观与焦点态；aria-label 由调用方补，
+     否则读屏用户拿到的是空元素。 */
+  .hint-q {
+    position: relative;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: var(--fs-md); height: var(--fs-md); margin-left: var(--gap-1);
+    border: 1px solid var(--line-strong); border-radius: var(--r-pill);
+    font-size: var(--fs-2xs); line-height: 1; color: var(--faint);
+    cursor: help; vertical-align: baseline; user-select: none;
+    transition: border-color .14s var(--ease), color .14s var(--ease);
+  }
+  .hint-q:hover { border-color: var(--accent); color: var(--accent); }
+  .hint-q:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  /* 提示气泡（v0.50.2）：**不再依赖原生 title**。
+     为什么改：原生 title 在 WKWebView（本 App 的宿主）里不可靠 —— 用户实测
+     「鼠标移上去没有内容」，而 DOM 探针确认 title 属性确实存在。原生气泡要等
+     系统 tooltip 计时（1-2 秒），且窗口未激活时可能根本不弹；触屏与纯键盘
+     用户更是完全拿不到。所以这里用 data-tip + 伪元素自绘，行为完全可控。
+     保留 title 属性作无障碍与原生兜底（悬停仍可能出系统气泡），但**不依赖它**。 */
+  .hint-q::after {
+    content: attr(data-tip);
+    position: absolute; top: calc(100% + var(--gap-2)); left: 50%;
+    transform: translateX(-50%) translateY(calc(-1 * var(--gap-1)));
+    width: max-content; max-width: 46ch;
+    padding: var(--sp-3) var(--sp-5);
+    background: var(--panel); color: var(--text);
+    border: 1px solid var(--line-strong); border-radius: var(--r-control);
+    box-shadow: var(--shadow-modal);
+    font-size: var(--fs-2xs); font-weight: 400; line-height: 1.6;
+    text-transform: none; letter-spacing: normal; white-space: normal; text-align: left;
+    /* 必须置顶：提示常出现在卡片内，会被相邻卡片或 sticky 头压住 */
+    z-index: 62; pointer-events: none;
+    opacity: 0; visibility: hidden;
+    transition: opacity .12s var(--ease), transform .12s var(--ease), visibility .12s;
+  }
+  .hint-q:hover::after,
+  .hint-q:focus-visible::after {
+    opacity: 1; visibility: visible;
+    transform: translateX(-50%) translateY(0);
+  }
+  /* 贴近视口底部时改为向上弹（气泡默认向下，见上） */
+  .hint-q.tip-up::after { top: auto; bottom: calc(100% + var(--gap-2)); transform: translateX(-50%) translateY(var(--gap-1)); }
+  .hint-q.tip-up:hover::after,
+  .hint-q.tip-up:focus-visible::after { transform: translateX(-50%) translateY(0); }
+  /* 靠边时向左收，避免气泡被视口裁掉（长提示尤其明显） */
+  .hint-q.tip-left::after { left: auto; right: 0; transform: translateX(0) translateY(var(--gap-1)); }
+  .hint-q.tip-left:hover::after,
+  .hint-q.tip-left:focus-visible::after { transform: translateX(0) translateY(0); }
   .nav-link { color: var(--accent); cursor: pointer; text-decoration: none; }
   .nav-link:hover { text-decoration: underline; }
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: calc(-1 * var(--sp-0a)); overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
@@ -1766,6 +1817,7 @@
   /* 约束文件编辑器（v0.37.7）：等宽、可纵向拉伸，占弹框主体 */
   .settings-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-card); padding: var(--sp-7a); margin-bottom: var(--sp-6); box-shadow: var(--shadow-card); }
   .settings-card h4 { margin: 0 0 var(--sp-5); font-family: var(--display); font-size: var(--fs-xs); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .settings-card .rows { display: flex; flex-direction: column; gap: var(--gap-2); }
   .settings-card .rows .row { padding: var(--sp-3b) 0; border-bottom: 1px solid var(--line); }
   .settings-card .rows .row:last-child { border-bottom: none; }
   .settings-card .row .k { flex: 0 0 150px; font-weight: 500; color: var(--text); }
@@ -6190,7 +6242,7 @@ function renderSettings() {
         ${patrolBtns}
       </span></span></div>
     </div>
-    <div class="note" style="margin-top:var(--sp-4)">开启后按间隔在后台运行快照对比（IDE/Agent · MCP · Skill），检测到变更时更新托盘图标状态并发通知。关闭则只在手动点「检查变更」时执行。与托盘菜单的「后台巡检」是同一个开关。</div>
+    <div class="note" style="margin-top:var(--sp-4)">后台按间隔对比配置变更，有变更时更新托盘并通知。<span class="hint-q" role="img" tabindex="0" aria-label="关于后台巡检的完整说明" data-tip="开启后按间隔在后台运行快照对比（IDE/Agent · MCP · Skill），检测到变更时更新托盘图标状态并发通知。关闭则只在手动点「检查变更」时执行。与托盘菜单的「后台巡检」是同一个开关。" title="开启后按间隔在后台运行快照对比（IDE/Agent · MCP · Skill），检测到变更时更新托盘图标状态并发通知。关闭则只在手动点「检查变更」时执行。与托盘菜单的「后台巡检」是同一个开关。">?</span></div>
   </div>`;
 
   // 「通用」：关于（版本 / 许可 / 说明）—— 数据源是快照 SNAP.app.full（与页脚同源）。
@@ -6205,43 +6257,50 @@ function renderSettings() {
     <div class="note" style="margin-top:var(--sp-4)">本地多客户端 Skill / MCP 合规审计与修复工具。完整文档见仓库 README · CHANGELOG · SECURITY。</div>
   </div>`;
 
-  // 「通用」：配置迁移与备份（v0.30.0 #3 导出导入 + 2026-11-16 iCloud 备份合并）。
+  // 「通用」：备份与恢复（v0.30.0 #3 导出导入 + 2026-11-16 iCloud 备份合并）。
   //
-  // 为什么合并成一张卡：两者是同一件事的两个场景 —— 「把配置搬走」与「把配置
-  // 存回来」。分两张卡时用户要在两处判断该点哪个，而它们的差别只有一条：
-  // 密钥是否脱敏。合并后用分组标题把这个差别顶到最显眼的位置：
-  //   · iCloud 备份 = 本机恢复，含明文密钥，产物不能外传；
-  //   · 导出 / 导入 = 换机分享，已脱敏，产物可放进 iCloud 或发给别人。
-  // 主次：备份在前（一键、日常），导出导入在后（低频、要填路径）。
+  // 为什么只有一张卡、三段平铺：三者在用户脑子里是同一件事 —— 「把配置存下来，
+  // 以后能拿回来」。此前用两个 settings-group 分「iCloud 备份」「导出/导入」，
+  // 读起来像两个拼在一起的模块（用户截图反馈「割裂」）。现在按**动作**分三段
+  // （备份 / 导出 / 导入），共享同一套 .rows 行结构，不再有分组横线切开。
+  //
+  // 「iCloud 备份」段落瘦身（用户要求）：只保留最新一份，所以「备份 1 · 11 小时前」
+  // 这样的列表没有信息量 —— 改成一行状态胶囊，三档语义：
+  //   有备份 → 绿色「已备份」+ 相对时间 + 恢复按钮
+  //   没备份 → 中性「尚无备份」+ 提示点「立即备份」
+  //   不可用 → 警示「不可用」+ 原因（非 macOS / iCloud 未开启）
+  //
+  // 恢复入口跟着状态走：只有「有备份」时才出现。没有备份时给一个能点的恢复按钮
+  // 是无意义的死路，用户点下去只会得到一句报错。
   //
   // 读写一律经 CLI；行内控件容器用 flex（v0.29.1 教训：不写 inline width:100%）。
   const configPortCard = `<div class="settings-card" id="cfg-port-card">
-    <h4>配置迁移与备份</h4>
+    <h4>备份与恢复</h4>
     <div class="settings-group" style="margin-top:0;padding-top:0;border-top:none">
-      <h4>iCloud 备份 · 本机恢复（含密钥）</h4>
+      <h4>iCloud 备份 · 本机灾备（含密钥）</h4>
       <div class="rows" style="font-size:var(--fs-sm)">
-        <div class="row"><span class="k">备份状态</span><span class="v" id="icloud-backup-status-line">加载中…</span></div>
-        <div class="row"><span class="k">操作</span><span class="v" style="display:flex;align-items:center;gap:var(--gap-2);flex-wrap:wrap">
-          <button type="button" class="ghost sm" data-action="icloud-backup">立即备份</button>
-          <button type="button" class="ghost sm" data-action="prune-icloud-backups">清理旧备份</button>
-        </span></div>
+        <div class="row"><span class="k">状态</span><span class="v" id="icloud-backup-status-line" style="display:flex;align-items:center;gap:var(--gap-2);flex-wrap:wrap">加载中…</span></div>
       </div>
-      <div id="icloud-backup-list" style="margin-top:var(--sp-3);font-size:var(--fs-sm)"><div class="empty">加载中…</div></div>
     </div>
     <div class="settings-group">
-      <h4>导出 / 导入 · 换机分享（已脱敏）</h4>
+      <h4>导出 · 换机分享（已脱敏）</h4>
       <div class="rows" style="font-size:var(--fs-sm)">
         <div class="row"><span class="k">导出配置</span><span class="v" style="display:flex;align-items:center;gap:var(--gap-2);flex-wrap:wrap">
           <input type="text" id="cfg-export-path" placeholder="导出路径（绝对路径或 icloud）">
           <button type="button" class="ghost sm" data-action="export-config">导出</button>
         </span></div>
+      </div>
+    </div>
+    <div class="settings-group">
+      <h4>导入 · 从分享包合并</h4>
+      <div class="rows" style="font-size:var(--fs-sm)">
         <div class="row"><span class="k">导入配置</span><span class="v" style="display:flex;align-items:center;gap:var(--gap-2);flex-wrap:wrap">
           <input type="text" id="cfg-import-path" placeholder="导入包路径（绝对路径或 icloud）">
           <button type="button" class="ghost sm" data-action="import-config">导入</button>
         </span></div>
       </div>
     </div>
-    <div class="note" style="margin-top:var(--sp-5)">两个场景别混：<strong>iCloud 备份</strong>把 config.yaml 与 data/ 下的 overlay、discovered、sources、token 打包到 iCloud Drive（只保留最新一份，每次备份自动清理旧份；恢复前自动备份原文件），<strong>内容已加密</strong>（密钥存本机登录钥匙串），只用于自己的灾难恢复；<strong>导出 / 导入</strong>是换机或分享用的单 JSON，端点密钥已脱敏，导入按「导入值优先、不删除本地已有项」合并。icloud 别名指向 iCloud Drive（仅 macOS）。</div>
+    <div class="note" style="margin-top:var(--sp-5)"><strong>备份含密钥，请勿分享</strong>；内容已加密，换机或分享请用「导出」。<span class="hint-q" role="img" tabindex="0" aria-label="备份与导出的完整说明" data-tip="备份：把 config.yaml 与 data/ 下的 overlay、discovered、sources、token 打包到 iCloud Drive，只保留最新一份，内容已加密（密钥存本机登录钥匙串），恢复前自动备份原文件（.bak-&lt;时间戳&gt;）。导出 / 导入：换机或分享用的单 JSON，端点密钥已脱敏，导入按「导入值优先、不删除本地已有项」合并。icloud 别名指向 iCloud Drive（仅 macOS）。" title="备份：把 config.yaml 与 data/ 下的 overlay、discovered、sources、token 打包到 iCloud Drive，只保留最新一份，内容已加密（密钥存本机登录钥匙串），恢复前自动备份原文件（.bak-&lt;时间戳&gt;）。导出 / 导入：换机或分享用的单 JSON，端点密钥已脱敏，导入按「导入值优先、不删除本地已有项」合并。icloud 别名指向 iCloud Drive（仅 macOS）。">?</span></div>
   </div>`;
 
   // 统一技能目录已并入「Git 技能源」卡片（2026-11-08）：二者本是同一目录，
@@ -10341,31 +10400,43 @@ function backupTimeAgo(text) {
 
 async function loadIcloudBackupStatus() {
   const line = $("icloud-backup-status-line");
-  const listEl = $("icloud-backup-list");
-  if (!line || !listEl) return;
+  if (!line) return;
   const res = await runCli(["--icloud-backup-status", "--format", "json"], "读取 iCloud 备份状态");
   let d = null;
   try { d = JSON.parse(stripAnsi((res && res.stdout) || "{}")); } catch (e) { d = null; }
-  if (!d) { line.textContent = "读取失败"; listEl.innerHTML = '<div class="empty">读取失败</div>'; return; }
-  if (!d.available) {
-    line.innerHTML = '<span class="tag warn">不可用</span>';
-    listEl.innerHTML = `<div class="empty">${escapeHtml(d.reason || "iCloud 备份不可用")}</div>`;
+  // 动作按钮跟着状态走：只有「可用」时才出现备份按钮，只有「有备份」时才出现恢复。
+  // 没有任何可执行动作时给一个点不动的按钮，比不给按钮更让人困惑。
+  const backupBtn = `<button type="button" class="ghost sm" data-action="icloud-backup">立即备份</button>`;
+  if (!d) {
+    line.innerHTML = '<span class="tag err">读取失败</span>' + backupBtn;
     return;
   }
-  const mb = ((d.bytes || 0) / 1024 / 1024).toFixed(2);
-  // 状态行同样只给相对时间：绝对时间戳属「可识别信息」，用户要求不暴露。
-  line.innerHTML = `${d.count || 0} 份 · ${mb} MB`
-    + (d.latest ? ` · 最近 ${escapeHtml(backupTimeAgo(d.latest.mtime_text))}` : "");
+  if (!d.available) {
+    line.innerHTML = '<span class="tag warn">不可用</span>'
+      + `<span class="muted" style="font-size:var(--fs-xs)">${escapeHtml(d.reason || "iCloud 备份不可用")}</span>`;
+    return;
+  }
   const items = d.items || [];
-  if (!items.length) { listEl.innerHTML = '<div class="empty">iCloud 上还没有备份</div>'; return; }
-  // 界面只显示「备份 N · 相对时间」：文件名与绝对时间戳留在磁盘上可读，
-  // 但不暴露在界面里（2026-11-16 用户要求）。恢复按钮仍带 data-id（文件名），
-  // 因为恢复动作需要它，而用户已确认「名称可以识别」。
-  listEl.innerHTML = items.map((it, idx) => `<div class="list-row" style="align-items:center;gap:var(--gap-2);">
-      <span class="grow" style="font-size:var(--fs-sm)">备份 ${idx + 1}</span>
-      <span class="muted" style="font-size:var(--fs-xs)">${escapeHtml(backupTimeAgo(it.mtime_text))}</span>
-      <button type="button" class="btn-soft sm" data-action="restore-icloud-backup" data-id="${escapeHtml(it.id)}">恢复</button>
-    </div>`).join("");
+  if (!items.length) {
+    // 空态：讲清「还没有」并把人推向唯一的下一步（立即备份）。
+    line.innerHTML = '<span class="tag">尚无备份</span>'
+      + '<span class="muted" style="font-size:var(--fs-xs)">iCloud 上还没有可恢复的备份</span>'
+      + backupBtn;
+    return;
+  }
+  // 有备份：只保留最新一份，所以直接展示这一份的状态，不再列成清单。
+  // 相对时间而非绝对时间戳（2026-11-16 用户要求：时间戳属可识别信息）。
+  // 「清理旧备份」不是主操作（正常不会有旧份），放在最右作为兜底。
+  const latest = items[0];
+  const mb = ((d.bytes || 0) / 1024 / 1024).toFixed(2);
+  line.innerHTML = '<span class="tag ok">已备份</span>'
+    + `<span style="font-size:var(--fs-sm)">${escapeHtml(backupTimeAgo(latest.mtime_text))}</span>`
+    + `<span class="muted" style="font-size:var(--fs-xs)">${mb} MB</span>`
+    + backupBtn
+    + `<button type="button" class="btn-soft sm" data-action="restore-icloud-backup" data-id="${escapeHtml(latest.id)}">恢复</button>`
+    + (items.length > 1
+      ? `<button type="button" class="tag tag-btn" data-action="prune-icloud-backups" title="删除除最新一份以外的旧备份">清理 ${items.length - 1} 份旧备份</button>`
+      : "");
 }
 
 function icloudBackupAction() {
@@ -10400,7 +10471,8 @@ async function restoreIcloudBackupAction(id) {
 
 async function pruneIcloudBackupsAction() {
   const ok = await confirmModal("清理 iCloud 旧备份",
-    "将删除超出最近 7 份的旧备份。确定继续？");
+    "备份已改为只保留最新一份，正常情况下不会有旧份。\n"
+    + "本操作会再扫一遍 iCloud 目录，删除除最新一份以外的所有备份。继续？");
   if (!ok) return;
   runTaskModal("清理旧备份", async () => {
     const res = await runCli(["--prune-icloud-backups"], "清理 iCloud 旧备份");
@@ -11541,9 +11613,18 @@ async function fixRulesFor(name, opts) {
   const hasContent = typeof SHARED_RULES !== "undefined"
     && !!(SHARED_RULES && (SHARED_RULES.content || "").trim());
   if (!hasContent) {
-    modalNotice("warn", "共享约束内容为空",
-      "请先在「设置 → IDE / Agent → 共享约束」填写约束内容并保存，再来写入各客户端。");
-    return;
+    // silent（一键修复）时也必须给出**结构化**失败原因：此前这里裸 return，
+    // 调用方拿到 undefined，报成一句没信息的「失败」，用户无从判断该去做什么。
+    if (!silent) {
+      modalNotice("warn", "共享约束内容为空",
+        "请先在「设置 → IDE / Agent → 共享约束」填写约束内容并保存，再来写入各客户端。");
+      return { ok: false, cancelled: true };
+    }
+    return {
+      ok: false,
+      message: `${name} 的共享约束未写入`,
+      detail: "共享约束内容为空。请到「设置 → 共享约束」填写并保存内容后重试。",
+    };
   }
   // 多文件客户端按职责分流（v0.46.0）：把「哪个文件写什么、哪个跳过」直接列出来，
   // 否则用户看不出为什么不是每个文件都写。
@@ -11982,11 +12063,6 @@ async function fixAllSkillsMcp() {
   console.info("[ops] fix-all skills+mcp+rules");
   const ok = await confirmModal("一键修复所有", "将对所有已安装客户端的 Skills 链接、MCP 配置与共享约束执行修复（带备份，未安装/无需修复的自动跳过；约束文件不存在时会新建）。继续？", false);
   if (!ok) return;
-  // 约束维度的数据只由 refreshRulesData 维护，这里仍需先保证它已被加载过；
-  // 没加载过时 needFixRulesFor 会返回 true（与黄色格子同口径），进而在下面逐个
-  // 调用 fixRulesFor —— 这是**误判成本很低**的行为：--shared-rules-apply 幂等，
-  // 已是最新时 changed=0 并回报「已是最新」。
-  //
   // 逐条真实进度（2026-11-06）：每个「客户端 × 维度」跑一次 CLI，跑完才报一行。
   //
   // 为什么不沿用「--fix-skills / --fix-mcp 各跑一次」：那样整个过程只有两个
@@ -11998,6 +12074,18 @@ async function fixAllSkillsMcp() {
     modalNotice("info", "提示", "没有已安装的客户端需要修复。");
     return;
   }
+  // 修复前先把约束类数据拉齐（2026-11-16 用户实测缺陷）。
+  //
+  // 为什么必须现拉：needFixRulesFor 依赖 SHARED_RULES.content 与 SHARED_AUDIT，
+  // 而这两个都是启动时异步加载的模块级变量。任一为空时 needFixRulesFor 会
+  // **静默 return false** —— 该客户端的约束维度被整个跳过，既不修复也不报错，
+  // 最终却显示「已完成 N 项修复」。用户看到的正是「提示全部成功但约束没修」。
+  // 现拉一份再判定，把「缓存没到时误判为无需修复」这条路堵死。
+  await Promise.all([
+    refreshRulesData().catch(() => {}),
+  ]);
+  const rulesReady = typeof SHARED_RULES !== "undefined"
+    && !!(SHARED_RULES && (SHARED_RULES.content || "").trim());
   await runTaskModal("一键修复所有 Skills / MCP / 约束", async (step) => {
     const errs = [];
     let done = 0;
@@ -12022,6 +12110,15 @@ async function fixAllSkillsMcp() {
       // 约束维度（v0.46.7）：此前「一键修复」完全不含共享约束，用户按了之后
       // 约束列还是黄的。只有**确实需要写**的客户端才调用 CLI，避免每个客户端
       // 都白跑一次进程（那正是刷新慢的来源之一）。
+      //
+      // v0.50.3：不再让「共享约束内容读不到」变成静默跳过。内容为空是**全局**
+      // 前置条件，不属于某个客户端 —— 直接记一条错误，让最终结论是「未完成」，
+      // 而不是假装成功。
+      if (!rulesReady) {
+        errs.push("共享约束：读不到约束内容，未能修复任何客户端（请到「设置 → 共享约束」确认内容已保存）");
+        step("约束 · 跳过（读不到共享约束内容）", false);
+        break;
+      }
       const needRules = needFixRulesFor(a);
       if (needRules) {
         const rr = await fixRulesFor(name, { silent: true });
@@ -12030,6 +12127,22 @@ async function fixAllSkillsMcp() {
         if (good) done++;
         else errs.push(`${name} 约束：${(rr && (rr.detail || rr.message)) || "未返回结果"}`);
       }
+    }
+    // 修复后回读校验（v0.50.3）：CLI 的 ok 只代表「写入动作没抛错」，
+    // 不代表文件里真的已是当前内容（例如内容含无法识别的旧块、或写到了
+    // 不参与审计的路径）。以审计结果收尾才是用户真正关心的答案。
+    let stillBad = [];
+    if (rulesReady) {
+      const audit = await runCli(["--shared-rules-audit", "--format", "json"]);
+      let payload = null;
+      try { payload = JSON.parse(stripAnsi((audit && audit.stdout) || "{}")); } catch (e) { payload = null; }
+      const rows = (payload && payload.rows) || [];
+      const touched = new Set(clients.map((c) => c.name));
+      stillBad = rows
+        .filter((r) => touched.has(r.name) && r.enabled !== false)
+        .filter((r) => !(r.state === "current" || r.state === "covered"))
+        .map((r) => `${r.name} 约束：${(r.paths || []).map((p) => p.state).join(" / ") || r.state}`);
+      stillBad.forEach((s) => errs.push(s));
     }
     if (errs.length) {
       return { ok: false, message: `已完成 ${done} 项，${errs.length} 项未完成`, detail: errs.join("\n") };
@@ -12046,7 +12159,7 @@ async function fixAllSkillsMcp() {
 // 无端点、无客户端挂载、无探活结论——真实数据由桌面壳注入的 --management 快照提供。
 const SAMPLE_MGMT = {
   kind: "management", active_profile: "",
-  app: { name: "Skill MCP Studio", version: "0.49.2", build: 222, build_number: 222, semver_ok: true, full: "v0.49.2 (build 222)" },
+  app: { name: "Skill MCP Studio", version: "0.50.4", build: 227, build_number: 227, semver_ok: true, full: "v0.50.4 (build 227)" },
   settings: {
     active_profile: "",
     unified_skills_dir: "~/.skills-manager/skills",

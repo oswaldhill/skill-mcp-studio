@@ -20,7 +20,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from profile_loader import ProfileError, list_profiles
-from tool_registry import normalized_name
+from tool_registry import effective_tools, normalized_name
 
 
 def list_endpoints(config: Dict[str, Any]) -> List[str]:
@@ -61,12 +61,40 @@ def clients_attached_to(config: Dict[str, Any], endpoint_key: str) -> set:
     Returns ``None``-free set.  Callers that need the default "all clients"
     should branch on ``has_explicit_attach`` first.
     """
+    # 遍历源 = 主干 mcp_tools（既有语义：未声明者默认挂全部端点）+ 其余来源里
+    # **显式声明**了 mcp_attach 的客户端。
+    #
+    # 为什么要补第二段：``check_agents`` 遍历 ``effective_tools``（主干 + tools 段
+    # + 自动发现，本机 22 个），而这里原先只遍历主干 ``mcp_tools``（本机 7 个）。
+    # 只在自动发现清单里的客户端（本机 VS Code）因此**不进循环**，即使它在
+    # ``client_mcp_attach`` / ``discovered_tools.yaml`` 里已经声明了挂载，
+    # 也永远算不进集合，被过滤逻辑整条剔除 —— records 里没有它，GUI 的
+    # 「MCP」列恒为 0/2，修复多少次都不变（2026-11-16 用户实测）。
+    #
+    # 为什么第二段只收「显式声明」的：未声明者的语义是「挂载全部端点」。
+    # 若把它们也补进来，收窄就退化成「谁都保留」，与既有契约冲突；
+    # 而它们在主干 mcp_tools 里时已由第一段覆盖，不存在遗漏。
     attached = set()
     for tool in config.get("mcp_tools", []) or []:
         if endpoint_key in resolve_client_attach(tool, config):
             name = tool.get("name", "")
             if name:
                 attached.add(normalized_name(name))
+    trunk = {normalized_name(t.get("name", "")) for t in (config.get("mcp_tools") or []) if isinstance(t, dict)}
+    try:
+        extra = list(effective_tools(config) or [])
+    except Exception:  # noqa: BLE001 - 注册表异常时退回主干，不影响既有行为
+        extra = []
+    for tool in extra:
+        name = tool.get("name", "")
+        if not name:
+            continue
+        if not tool.get("mcp_attach"):
+            continue            # 未声明 → 交给第一段/main-tools 语义，不在此扩展
+        if normalized_name(name) in trunk:
+            continue            # 主干已覆盖，避免重复
+        if endpoint_key in resolve_client_attach(tool, config):
+            attached.add(normalized_name(name))
     return attached
 
 

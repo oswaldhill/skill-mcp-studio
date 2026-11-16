@@ -221,3 +221,79 @@ class UnifiedNameScopeTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AttachCoversNonTrunkClientsTest(unittest.TestCase):
+    """挂载判定必须覆盖「不在主干 mcp_tools 里」的客户端（v0.50.4 修复）。
+
+    ## 缺陷
+
+    ``check_agents`` 遍历 ``effective_tools``（主干 mcp_tools + tools 段 +
+    自动发现，本机 22 个），而 ``clients_attached_to`` 原先只遍历主干
+    ``mcp_tools``（本机 7 个）。
+
+    只要任一客户端显式声明 mcp_attach（本机是 Codex → [K8s]），收窄就启用；
+    只在自动发现清单里的客户端（本机 VS Code）因**不进循环**而永远不在集合里，
+    被当作「未挂载」整条剔除 → records 里没有它 → GUI 的「MCP」列恒为 0/2。
+    用户实测表现为「修复之后还是 0/2」，并合理怀疑「VS Code 是不是不支持」。
+
+    ## 守什么
+
+    1. 非主干来源里**显式声明**了挂载的客户端，必须能被收进集合；
+    2. 未声明者仍走「主干 + 默认全挂载」的既有语义，不得被这段扩展带进来
+       （否则收窄失效，WorkBuddy / DeepSeek Harness 等会误伤）。
+    """
+
+    BASE = {
+        "schema_version": 2,
+        "active_profile": "a",
+        "profiles": {
+            "a": {"name": "mcp-a", "url": "https://a.example.com/mcp"},
+            "b": {"name": "mcp-b", "url": "https://b.example.com/mcp"},
+        },
+        "mcp_tools": [
+            {"name": "Cursor", "config_path": "~/.cursor/mcp.json", "mcp_attach": ["a"]},
+            {"name": "Claude", "config_path": "~/.claude.json", "mcp_attach": ["b"]},
+        ],
+        "tools": [],
+    }
+
+    def test_declared_discovered_client_is_included(self):
+        """自动发现里显式声明挂载的客户端，必须进得了 clients_attached_to。"""
+        from endpoint_library import clients_attached_to
+
+        discovered = [
+            {"name": "VS Code", "config_path": "~/.vscode/mcp.json",
+             "mcp_attach": ["a"]},
+        ]
+        with patch("config_store.load_discovered", return_value=discovered):
+            attached = clients_attached_to(self.BASE, "a")
+        self.assertIn("cursor", attached, "主干显式声明者应命中")
+        self.assertIn("vscode", attached,
+                      "自动发现里声明了 mcp_attach 的客户端必须命中，"
+                      "否则 records 里没有它，GUI 恒显示 0/N")
+
+    def test_undeclared_discovered_client_not_added_by_extension(self):
+        """未声明的自动发现客户端不得被这段扩展带进集合（收窄不能失效）。"""
+        from endpoint_library import clients_attached_to
+
+        discovered = [
+            {"name": "WorkBuddy", "config_path": "~/.workbuddy/mcp.json"},
+        ]
+        with patch("config_store.load_discovered", return_value=discovered):
+            attached = clients_attached_to(self.BASE, "a")
+        self.assertNotIn("workbuddy", attached,
+                         "未声明者不应被扩展段收进集合（其语义由主干默认全挂载处理）")
+
+    def test_declared_but_other_endpoint_excluded(self):
+        """自动发现客户端声明的是别的端点时，不应命中本端点。"""
+        from endpoint_library import clients_attached_to
+
+        discovered = [
+            {"name": "VS Code", "config_path": "~/.vscode/mcp.json",
+             "mcp_attach": ["b"]},
+        ]
+        with patch("config_store.load_discovered", return_value=discovered):
+            attached = clients_attached_to(self.BASE, "a")
+        self.assertNotIn("vscode", attached,
+                         "声明的是 b 端点，查 a 时不应命中")
