@@ -29,7 +29,14 @@ permissions:
 jobs:
   build-macos:
     name: Build universal macOS app (Intel + Apple Silicon)
-    runs-on: macos-14
+    # 2026-11-16：macos-14 → macos-15。
+    #
+    # 原标签 macos-14 自 2026-11-14 起全部 cancelled（10-30 之前同一标签全 success），
+    # 报错：The configuration 'macos-14-arm64-us-default' is not supported。
+    # 即 GitHub 把标准标签 macos-14 解析成了一个 larger runner 配置，而本仓库是
+    # public + Free 账户，拿不到该配置。换成 macos-15 试；若仍失败，用
+    # .github/workflows/runner-probe.yml 逐个探测可用标签（该文件为临时诊断用）。
+    runs-on: macos-15
     timeout-minutes: 45
     env:
       # 将 secret 提升为 job 级环境变量，供步骤 if 条件判断。
