@@ -120,6 +120,25 @@ cargo tauri build              # 产出 target/release/bundle/macos/skill-mcp-st
 
 详细步骤见 [`src-tauri/BUILD.md`](src-tauri/BUILD.md)。
 
+> ⚠️ **构建前必须跑 `scripts/bump_version.py`** —— 包括只是本地验证用的构建。
+>
+> `version.json` 是版本单一真源，bump 会同步 11 处（`tauri.conf.json` /
+> `Cargo.toml` / `Cargo.lock` / `pyproject.toml` / README 徽章 / 架构图 /
+> CHANGELOG 链接块等）。两条规则：
+>
+> - `version`：按提交类型推断（`feat` → minor，`fix` → patch，破坏性 → major）；
+> - `build`：**每次构建必增**，monotonic 永不回落。
+>
+> ```bash
+> scripts/bump_version.py --dry-run   # 先看会升成什么
+> scripts/bump_version.py             # 按 git 提交类型自动推断并落盘
+> ```
+>
+> 为什么「本地验证构建也算」：`build` 号的意义是**区分产物**。同一个 build 号
+> 对应多份不同二进制时，它就不再能回答「这台机器上装的是哪一份」。
+> 2026-11-16 实际发生过一次：`build 218` 被用于三份产物（0.48.1 发版、iCloud
+> 功能验证、卡片合并验证），事后只能靠 commit 时间倒推。
+
 ### 改 GUI 不必重建：开发态热加载
 
 生产构建会把 `gui/` 整体嵌入二进制（`tauri.conf.json` 的 `frontendDist`），

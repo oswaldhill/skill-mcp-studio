@@ -7,6 +7,15 @@
 
 ## [Unreleased]
 
+## [v0.49.0] - 2026-11-16
+
+当前发布版本（build 219）。
+
+> 版本号补记（2026-11-16 用户指出）：本批两个提交（`4066efb` feat / `11bbb76`
+> refactor）当初只提交、未跑 `bump_version.py`，导致 `0.48.1` 与 `build 218`
+> 被沿用，而 `build 218` 实际对应过三份不同产物（0.48.1 发版、iCloud 功能验证、
+> 卡片合并验证）。按语义化版本补升 minor 到 `0.49.0`，build 递增到 `219`。
+
 ### 改进：合并「配置导入 / 导出」与「iCloud 备份」为一张卡片（2026-11-16）
 
 用户判断两者应合并，并按现有 UI 规范重排。它们本是同一件事的两个场景 ——
@@ -6485,7 +6494,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.48.1...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.49.0...HEAD
+[v0.49.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.49.0
 [v0.48.1]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.48.1
 [v0.48.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.48.0
 [v0.47.13]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.47.13
