@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+## [v0.48.0] - 2026-11-16
+
+当前发布版本（build 217）。
+
 ### 新增：多远端分支拓扑约束（2026-11-15）
 
 本仓库同时推两个远端，职责不同：
@@ -6369,7 +6373,8 @@ build 96。
 - README 增加 badges、仓库结构树、文档索引与管理台 UI 截图；
 - README「开发」章节补充 CI/发布说明与 Apple 签名 secrets 配置表。
 
-[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.47.13...HEAD
+[Unreleased]: https://github.com/oswaldhill/skill-mcp-studio/compare/v0.48.0...HEAD
+[v0.48.0]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.48.0
 [v0.47.13]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.47.13
 [v0.47.12]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.47.12
 [v0.47.11]: https://github.com/oswaldhill/skill-mcp-studio/releases/tag/v0.47.11
