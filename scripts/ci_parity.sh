@@ -20,22 +20,35 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 CI_PATTERN='test_*.py'
-# CI 基线：CI 上稳定出现的 skip 数。
-# 允许用环境变量覆盖 —— CI 侧若新增/移除可选依赖，skip 数会变化，
-# 硬编码会让本脚本对「正确的结果」误报不一致，退化成噪音源。
-# Q2-2：基线 3 对应下面这三条「与环境耦合」的可选用例（避免后人看到 skipped≠基线 无从判断）：
-#   1) test_combined_checker.CombinedCheckerTest.test_dsh_installed_via_config_evidence
-#      —— 本机无 ~/.dsh 配置证据时跳过（T-6 环境耦合）
-#   2) test_config_porter.ResolvePathTest 中 icloud 别名的一对互补用例
+# skip 基线：按「本机远端拓扑」分两档（2026-11-16 复核，原为硬编码 3）。
+#
+# 为什么不再是一个数字：2026-11-15 新增 test_remote_branch_consistency.py 后，
+# skip 数开始依赖「本机有几个远端」—— CI 只有一个 origin（=GitHub），开发者
+# 机器有 origin（=codeup）+ github。同一个测试文件在两处产生的 skip 不同，
+# 单一基线必然误报。实测：v0.48.0 的 Test workflow 因此红（CodeupRemoteShapeTest
+# 在 CI 里没跳过而是失败），本机则 skipped=2 ≠ 基线 3。
+#
+# 双远端（origin=codeup + github，开发者机器）→ 2，已实测：
+#   1) test_config_porter.ResolvePathTest 的 icloud 别名互补对
 #      （test_icloud_alias_on_macos / test_icloud_alias_rejected_off_macos）
-#      —— 按 sys.platform 恰好跳一条：macOS 跳 off_macos，Linux 跳 on_macos，
-#         故该对用例对 skip 总数的贡献恒为 1，与平台无关。
-#   3) test_merge_exec.MergeExecRealAdviceTest.test_real_scan_rejects_bogus_group
-#      —— 需 SMS_SLOW_TESTS=1 才跑（慢用例，默认跳过）
-# 注：基线 2 → 3 是 2026-10-21 新增 test_config_porter.py（#2 那对互补用例）后
-# 未同步更新所致；本条经实测三点核实（1319 tests / skipped=3），非环境异常。
-# 若你机器上实际 skipped 与此不同，先确认是不是新增了环境耦合用例，再改这个值。
-CI_BASELINE_SKIPPED="${CI_BASELINE_SKIPPED:-3}"
+#      —— 按 sys.platform 恰好跳一条，贡献恒为 1。
+#   2) test_merge_exec.MergeExecRealAdviceTest.test_real_scan_rejects_bogus_group
+#      —— 需 SMS_SLOW_TESTS=1 才跑。
+#   注：test_combined_checker 的 DSH 证据断言在本机**不跳过**（存在 ~/.dsh），
+#   test_reserved_skill_dirs 同理（存在技能库），所以不计入本机基线。
+#
+# 单远端（只有 origin，CI 形态）→ 10，来源：CI 实测 skipped=8（含上面 2 条 +
+#   DSH 证据 + 技能库 + GithubRemoteShapeTest 的 3 条）+ CodeupRemoteShapeTest
+#   的 2 条（origin 非 codeup 后跳过）。⚠️ 该值按 CI 日志推算，尚未在单远端
+#   容器里逐条复核；若你在 CI 形态下运行发现不一致，用 CI_BASELINE_SKIPPED 覆盖。
+#
+# 环境变量 CI_BASELINE_SKIPPED 仍可覆盖（新增/移除可选依赖时用）。
+if git remote 2>/dev/null | grep -qx 'github'; then
+  _DEFAULT_SKIP_BASELINE=2
+else
+  _DEFAULT_SKIP_BASELINE=10
+fi
+CI_BASELINE_SKIPPED="${CI_BASELINE_SKIPPED:-$_DEFAULT_SKIP_BASELINE}"
 
 PY="${PYTHON:-python3}"
 

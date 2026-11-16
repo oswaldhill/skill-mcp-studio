@@ -38,6 +38,24 @@ def _has_remote(name: str) -> bool:
     return name in _git("remote").split()
 
 
+def _remote_url(name: str) -> str:
+    """远端的 URL（不存在时返回空串）。"""
+    return _git("remote", "get-url", name) if _has_remote(name) else ""
+
+
+def _is_codeup(name: str) -> bool:
+    """该远端是否指向 codeup。
+
+    为什么必须看 URL 而不是只看名字：CI（GitHub Actions）里 `origin` 指向
+    **GitHub 仓库**，而本机 `origin` 指向 codeup。两处都叫 origin，拓扑却相反。
+    2026-11-16 实测：v0.48.0 的 Test workflow 因此挂掉 ——
+    `CodeupRemoteShapeTest` 只看 `_has_remote("origin")` 就执行，随后断言
+    「origin 上有 develop」，而 GitHub 按约定只有 master，必然失败。
+    """
+    url = _remote_url(name).lower()
+    return "codeup" in url
+
+
 def _remote_branch_exists(remote: str, branch: str) -> bool:
     """直接问服务器，不看本地 tracking ref（tracking 可能过期）。"""
     out = subprocess.run(
@@ -72,9 +90,14 @@ class GithubRemoteShapeTest(unittest.TestCase):
                          "（merge 或 reset），不能只推快进")
 
 
-@unittest.skipUnless(_has_remote("origin"), "本机未配置 origin 远端")
+@unittest.skipUnless(_is_codeup("origin"),
+                     "origin 不是 codeup 远端（CI 的 origin 指向 GitHub，单远端拓扑下无 develop 可断言）")
 class CodeupRemoteShapeTest(unittest.TestCase):
-    """codeup 远端的分支形状。"""
+    """codeup 远端的分支形状。
+
+    仅当 `origin` 确实指向 codeup 时才验证 —— 见 `_is_codeup` 的说明：
+    CI 的 `origin` 是 GitHub，套用这套断言会必然失败。
+    """
 
     def test_codeup_has_both_trunks(self):
         self.assertTrue(_remote_branch_exists("origin", "master"))

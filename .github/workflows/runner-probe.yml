@@ -1,0 +1,34 @@
+# 临时诊断用：探测某个 runner 标签在当前账户下是否可用。
+#
+# 背景（2026-11-16）：v0.48.0 发布时 macOS 构建全部 cancelled，报
+#   The configuration 'macos-14-arm64-us-default' is not supported
+# 而 workflow 里写的是标准标签 `runs-on: macos-14`。10-30 之前同一标签
+# 全部 success，11-14 起全部 cancelled —— 说明是账户/平台侧的标签解析变了，
+# 不是构建脚本的问题。
+#
+# 这个 workflow 只做「能不能拿到机器」，几秒出结果，避免为了验证一个标签
+# 去跑 45 分钟的完整打包。
+#
+# 用完即删（见 PR/提交说明）。
+name: Runner Probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      label:
+        description: '要探测的 runner 标签（如 macos-15 / macos-14 / macos-latest）'
+        required: true
+        default: 'macos-15'
+
+jobs:
+  probe:
+    name: probe ${{ inputs.label }}
+    runs-on: ${{ inputs.label }}
+    timeout-minutes: 5
+    steps:
+      - name: 报告机器信息
+        run: |
+          echo "请求的标签: ${{ inputs.label }}"
+          echo "实际架构: $(uname -m)"
+          sw_vers
+          echo "RUNNER_PROBE_OK"
