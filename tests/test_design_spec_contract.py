@@ -537,6 +537,118 @@ class TokenRegistryCompletenessTest(unittest.TestCase):
         )
 
 
+class HintRestraintTest(unittest.TestCase):
+    """规范 §3a：界面说明必须克制，长说明收进「?」提示而非常驻。
+
+    2026-11-16 用户定案：「页面上不需要增加大量常驻的说明，所有的界面说明都要
+    克制、精简。可以使用问号或者感叹号的形式，让用户在鼠标移上去的时候进行展示。」
+
+    ## 守什么
+
+    1. 规范里这条约束本身必须存在（防止只改代码不改规范，下一个人又加回去）；
+    2. `.hint-q` 组件必须带 `title`（没有 title 的问号是个死图标）；
+    3. `.hint-q` 必须可键盘聚焦且有 `aria-label`（否则读屏用户拿到空元素，
+       而悬停提示对键盘用户本就不存在）；
+    4. 备份卡片的常驻说明不得超过 2 行（用户截图里那条 3 行的说明是直接动因）。
+
+    ## 不守什么
+
+    不逐个卡片做字数统计 —— 阈值会误伤合法文案。这里只守住「最坏的那个案例」
+    与组件契约；新增卡片时由评审按 §3a 判断。
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.spec = SPEC.read_text(encoding="utf-8")
+        cls.html = _src()
+
+    def test_spec_has_hint_restraint_section(self):
+        """§3a 必须存在于规范中，且写明核心判据。"""
+        self.assertIn("## 3a. 说明文案的克制原则", self.spec,
+                      "DESIGN.md 缺少 §3a 说明文案的克制原则")
+        self.assertIn("克制", self.spec)
+        self.assertIn("title", self.spec)
+
+    def test_hint_q_always_has_title(self):
+        """每个 .hint-q 都必须带 title（原生兜底 + 读屏语义）。"""
+        tags = re.findall(r'<span class="hint-q"[^>]*>', self.html)
+        self.assertTrue(tags, "未找到任何 .hint-q 用法")
+        for tag in tags:
+            self.assertIn("title=", tag, f".hint-q 缺少 title：{tag[:80]}")
+
+    def test_hint_q_has_data_tip_bubble(self):
+        """每个 .hint-q 必须带 data-tip —— 自绘气泡才是实际生效的提示。
+
+        v0.50.2 实测：原生 `title` 在 WKWebView 里不弹出（用户反馈「鼠标移上去
+        没有内容」，而 DOM 探针确认属性存在）。所以提示必须由 `::after` +
+        `attr(data-tip)` 自绘；只写 title 的 `.hint-q` 在 App 里是个死图标。
+        """
+        tags = re.findall(r'<span class="hint-q"[^>]*>', self.html)
+        self.assertTrue(tags, "未找到任何 .hint-q 用法")
+        for tag in tags:
+            self.assertIn("data-tip=", tag, f".hint-q 缺少 data-tip：{tag[:80]}")
+
+    def test_hint_bubble_uses_data_tip_attr(self):
+        """样式层必须真的消费 attr(data-tip)，否则属性只是死数据。"""
+        self.assertIn("content: attr(data-tip)", self.html,
+                      "缺少 .hint-q::after { content: attr(data-tip) } 气泡样式")
+        self.assertIn(".hint-q:hover::after", self.html, "悬停未触发气泡")
+        self.assertIn(".hint-q:focus-visible::after", self.html,
+                      "键盘聚焦未触发气泡（键盘用户拿不到提示）")
+
+    def test_hint_q_is_keyboard_reachable_and_labelled(self):
+        """可聚焦 + aria-label：悬停提示对键盘/读屏用户不能是黑洞。"""
+        tags = re.findall(r'<span class="hint-q"[^>]*>', self.html)
+        for tag in tags:
+            self.assertIn("tabindex=\"0\"", tag,
+                          f".hint-q 不可键盘聚焦：{tag[:80]}")
+            self.assertIn("aria-label=", tag,
+                          f".hint-q 缺少 aria-label：{tag[:80]}")
+
+    def test_all_notes_respect_length_cap(self):
+        """全页面常驻说明遵守 §3a 的 2 行上限（约 80 字）。
+
+        例外（规范 §3a 明列）：动态数据展示与状态通知 —— 它们渲染的是本次真实
+        内容（源数量、自动接管路径等），属「内容」而非「说明」，不计入。
+        以模板变量 `${` 开头的 note 即视为动态内容。
+        """
+        notes = re.findall(r'<div class="note"[^>]*>(.*?)(?:</div>|$)', self.html)
+        offenders = []
+        for note in notes:
+            raw = note
+            visible = re.sub(r'title="[^"]*"', "", raw)
+            visible = re.sub(r"<[^>]+>", "", visible)
+            visible = re.sub(r"\s+", "", visible)
+            if "${" in raw:
+                continue      # 动态内容，豁免
+            if len(visible) > 80:
+                offenders.append(f"[{len(visible)}字] {visible[:50]}")
+        self.assertEqual(
+            offenders, [],
+            "以下常驻说明超过 80 字，应按 §3a 精简并移入 .hint-q 提示：\n"
+            + "\n".join(offenders),
+        )
+
+    def test_backup_card_note_is_short(self):
+        """备份与恢复卡片的常驻说明不得超过 2 行（约 80 中文字符）。
+
+        动因：用户截图圈出卡片底部那条 3 行说明，要求收进悬停提示。
+        """
+        card = re.search(r'const configPortCard = `(.*?)`;', self.html, re.S)
+        self.assertIsNotNone(card, "找不到 configPortCard 定义")
+        notes = re.findall(r'<div class="note"[^>]*>(.*?)</div>', card.group(1), re.S)
+        self.assertTrue(notes, "备份卡片应保留一句常驻说明（安全边界）")
+        # 去掉标签与 title 属性里的长文本，只统计真正显示在页面上的字
+        for note in notes:
+            visible = re.sub(r'title="[^"]*"', "", note)
+            visible = re.sub(r"<[^>]+>", "", visible)
+            visible = re.sub(r"\s+", "", visible)
+            self.assertLessEqual(
+                len(visible), 80,
+                f"常驻说明过长（{len(visible)} 字，上限 80）：{visible[:60]}",
+            )
+
+
 class EmojiAsIconBanTest(unittest.TestCase):
     """规范 §3b：图标用 SVG，不用 emoji 当 UI 图标。
 
@@ -2328,7 +2440,7 @@ class ColumnWidthGovernanceTest(unittest.TestCase):
 
 
 class ConfigPortCardContractTest(unittest.TestCase):
-    """§2.10「配置导入 / 导出」卡片契约（v0.30.0 双轨测试轨）。
+    """§2.10「备份与恢复」卡片契约（v0.30.0 双轨测试轨；v0.50.0 改名）。
 
     守住三件事：① 卡片与两个动作入口存在（HTML 结构 + data-action 分发）；
     ② 行内控件容器不写 inline ``width:100%``（v0.29.1 裁剪缺陷根因，规范
@@ -2371,10 +2483,10 @@ class ConfigPortCardContractTest(unittest.TestCase):
     def test_spec_and_html_title_mirror(self):
         """规范 §2.10 与 dashboard.html 的卡片标题字面一致（MD↔HTML 镜像）。"""
         spec = SPEC.read_text(encoding="utf-8")
-        self.assertIn("配置导入 / 导出卡片", spec, "DESIGN.md §2.10 缺该卡片规范")
+        self.assertIn("备份与恢复卡片", spec, "DESIGN.md §2.10 缺该卡片规范")
         self.assertIn("#cfg-port-card", spec, "规范未登记 #cfg-port-card 选择器")
         src = _src()
-        self.assertIn("<h4>配置导入 / 导出</h4>", src, "HTML 卡片标题与规范不一致")
+        self.assertIn("<h4>备份与恢复</h4>", src, "HTML 卡片标题与规范不一致")
 
 
 class RunTaskModalWrapperContractTest(unittest.TestCase):

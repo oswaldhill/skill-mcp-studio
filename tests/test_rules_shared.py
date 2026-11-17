@@ -360,6 +360,73 @@ class AgentMenuRulesEntryTest(unittest.TestCase):
         self.assertIn("refreshRulesData(", body, "一键修复后要刷新约束数据")
 
 
+class FixAllRulesSilentSkipTest(unittest.TestCase):
+    """一键修复不得「报全部成功、实际没修约束」（v0.50.3 用户实测缺陷）。
+
+    现象：用户改了 Agent 的约束文件内容后点「一键修复」，弹框说全部成功，
+    但约束列仍是黄的（stale），文件内容没被写回。
+
+    根因链（三处叠加）：
+      1. `needFixRulesFor` 在 `SHARED_RULES` 为空时 **静默 return false**，
+         该客户端的约束维度被整个跳过，既不修也不报错；
+      2. `fixRulesFor` 内容为空时裸 `return`（undefined），调用方报成没信息的
+         「失败」，而不是告诉用户去哪里填内容；
+      3. `fixAllSkillsMcp` 只信 CLI 的 `ok: true`，修复后**不回读审计**，
+         写没写进去无从得知。
+
+    这三条各建一条断言，缺任何一条都会让「假成功」重新出现。
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.gui = Path(__file__).resolve().parents[1].joinpath("gui", "dashboard.html").read_text(encoding="utf-8")
+
+    def _fix_all_body(self) -> str:
+        start = self.gui.index("async function fixAllSkillsMcp(")
+        rest = self.gui[start:]
+        nxt = rest.find("\n// ----------------", 10)
+        return rest[: nxt if nxt > 0 else 8000]
+
+    def test_fix_all_refreshes_rules_before_judging(self):
+        """判定前必须先现拉约束数据，不能依赖启动时的异步缓存。"""
+        body = self._fix_all_body()
+        idx_refresh = body.find("refreshRulesData(")
+        idx_need = body.find("needFixRulesFor(a)")
+        self.assertTrue(idx_refresh > 0, "一键修复未先刷新约束数据")
+        self.assertTrue(idx_need > 0, "一键修复未调用 needFixRulesFor")
+        self.assertLess(
+            idx_refresh, idx_need,
+            "必须 refreshRulesData 之后再 needFixRulesFor，否则缓存未到会误判为无需修复",
+        )
+
+    def test_fix_all_reports_when_rules_content_unreadable(self):
+        """读不到共享约束内容时，必须报错而不是静默跳过。"""
+        body = self._fix_all_body()
+        self.assertIn("rulesReady", body, "缺少共享约束可用性判定")
+        self.assertIn("errs.push", body, "读不到内容时必须计入错误")
+        # 不能出现 rulesReady 为假却继续假装成功的路径
+        self.assertIn("未能修复任何客户端", body,
+                      "读不到内容时应明确告知「未能修复任何客户端」")
+
+    def test_fix_all_reads_back_audit_after_fix(self):
+        """修复后必须回读审计，以真实状态而非 CLI 的 ok 收尾。"""
+        body = self._fix_all_body()
+        self.assertIn("--shared-rules-audit", body,
+                      "修复后必须回读 --shared-rules-audit 校验")
+        self.assertIn("stillBad", body, "缺少修复后仍不达标的收集")
+        self.assertIn("current", body, "回读校验应按 current/covered 判定达标")
+
+    def test_fix_rules_returns_structured_failure_when_content_empty(self):
+        """fixRulesFor 内容为空时必须返回 {ok:false, message, detail}。"""
+        start = self.gui.index("async function fixRulesFor(")
+        rest = self.gui[start:]
+        nxt = rest.find("\nasync function ", 10)
+        body = rest[: nxt if nxt > 0 else 6000]
+        seg = body.split("if (!hasContent)")[1].split("// 多文件客户端")[0]
+        self.assertIn("ok: false", seg,
+                      "内容为空的分支必须返回结构化失败，不能裸 return")
+
+
 class MultiFileRoutingTest(unittest.TestCase):
     """多个约束文件按职责分流（v0.46.0 用户要求）。
 

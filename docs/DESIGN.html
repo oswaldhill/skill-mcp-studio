@@ -635,6 +635,7 @@
     <a href="#s2-10" class="sub">2.10 设置页</a>
     <a href="#s2-11" class="sub">2.11 概览页「全量检查」区</a>
     <a href="#s3">3. 排版与间距</a>
+    <a href="#s3a">3a. 说明文案的克制原则</a>
     <a href="#s3b">3b. 可访问性</a>
     <a href="#s4">4. 落地页配方（不采用）</a>
     <a href="#s5">5. 检查清单</a>
@@ -2802,6 +2803,42 @@ sharedRow.state === "current"      → ok
         <li>一行元信息里的分隔符最多一个，优先用换行或留白，不用符号堆砌。</li>
         <li>中文正文不手动加空格；中英文混排不加空格，靠字体回退处理。</li>
         <li><strong>禁用 em-dash</strong>：正文、标题、标签、按钮文案一律用普通连字符或改写句子。</li>
+      </ul>
+    </section>
+
+    <!-- ═══ 3a ═══ -->
+    <section id="s3a">
+      <h2><span class="num">3a</span>说明文案的克制原则（硬要求）<a class="anchor" href="#s3a" aria-label="锚点">#</a></h2>
+      <p>2026-11-16 用户定案：页面上不需要增加大量常驻的说明，所有的界面说明都要克制、精简。可以使用问号或者感叹号的形式，让用户在鼠标移上去的时候进行展示。</p>
+      <p><strong>为什么</strong>：常驻说明段会在每个界面里都占掉一块视觉重量，而用户读了三次之后就不再读了。它既没被读到，又持续挤压真正的控件。说明的正确位置是用户主动想了解的那一刻，不是每一次打开页面。</p>
+      <h3>判断标准：一句话放得下就不进提示</h3>
+      <ul>
+        <li>控件自身已说明用途（按钮文案、label、占位符）：<strong>什么都不加</strong>。</li>
+        <li>一行以内、每次操作都需要知道的前提：保留常驻，接在 label 或控件旁。</li>
+        <li>多行解释、边界条件、安全语义、变更历史：<strong>收进 <code>title</code> 提示</strong>，正文只留一句短句或图标。</li>
+        <li>整段风险提示（如「含明文密钥」）：提炼成一句常驻 + 完整语义进提示。</li>
+      </ul>
+      <p><strong>硬约束</strong>：一个卡片内常驻说明（<code>.note</code> / 段落文字）不超过 1 段，且该段不超过 2 行（约 80 个中文字符）。超出的部分一律转成提示。</p>
+      <h3>实现方式</h3>
+      <ul>
+        <li><strong>提示必须用 <code>.hint-q</code> + <code>data-tip</code> 自绘，不能只靠原生 <code>title</code></strong>（v0.50.2 实测）。原生 <code>title</code> 在本 App 的宿主 WKWebView 里<strong>不弹出</strong>：用户反馈「鼠标移上去没有内容」，而 DOM 探针确认 <code>title</code> 属性存在、<code>getComputedStyle</code> 也正常。原生气泡要等系统 tooltip 计时（1-2 秒），窗口未激活时可能根本不弹，触屏与纯键盘用户更是拿不到。所以气泡由 <code>::after { content: attr(data-tip) }</code> 自绘，悬停与 <code>:focus-visible</code> 都触发，行为完全可控。</li>
+        <li><code>title</code> 仍然保留（原生兜底 + 部分读屏实现会读），但<strong>不再是被依赖的展示路径</strong>。<code>title</code> 与 <code>data-tip</code> 的文本必须一致，且同样受「禁用 em-dash」约束。</li>
+        <li>视觉锚点用 <code>.hint-q</code>（圈问号，<code>--fs-md</code> 见方，<code>--faint</code>，<code>cursor: help</code>），必须同时带 <code>title</code> + <code>data-tip</code> + <code>tabindex="0"</code> + <code>aria-label</code>。气泡默认向下弹（问号通常在内容末尾）；贴近视口底部时加 <code>.tip-up</code> 改向上。</li>
+        <li>图标不得单独承担唯一信息：它旁边必须有可见的短句，或该提示属于「补充」而非「前提」。用户不看提示也能把事做完，这是硬门槛。</li>
+      </ul>
+      <h3>反例（本规范明令禁止）</h3>
+      <pre><code>&lt;!-- 禁止：整段常驻说明，占掉半个卡片 --&gt;
+&lt;div class="note"&gt;开启后按间隔在后台运行快照对比（IDE/Agent · MCP · Skill），
+检测到变更时更新托盘图标状态并发通知。关闭则只在手动点「检查变更」执行，
+与托盘菜单的「后台巡检」是同一个开关。&lt;/div&gt;
+
+&lt;!-- 推荐：一句常驻 + 完整语义进提示 --&gt;
+&lt;span class="k"&gt;巡检间隔 &lt;span class="hint-q" title="开启后按间隔在后台运行快照对比…" aria-label="关于巡检间隔"&gt;?&lt;/span&gt;&lt;/span&gt;</code></pre>
+      <h3>例外（允许常驻）</h3>
+      <ul>
+        <li><strong>安全边界</strong>：数据会被分享到外部时，警示必须常驻可见，不能藏在悬停里（悬停即「没看过」，而密钥泄漏不可撤销）。典型：备份含明文密钥、导出已脱敏。这类提示可以做「一句常驻 + 完整代价进 <code>title</code>」，但<strong>不能只留图标</strong>。</li>
+        <li><strong>破坏性操作</strong>：确认框里必须写清代价（这是 <code>confirmModal</code> 的既有约束，不受本节影响）。</li>
+        <li><strong>空态 / 错误态</strong>：空态的意义就是告诉用户「这里为什么是空的、下一步做什么」，属于内容而非说明，不受字数限制。</li>
       </ul>
     </section>
 

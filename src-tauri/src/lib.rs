@@ -698,6 +698,16 @@ async fn run_cli(args: Vec<String>) -> Result<String, String> {
         // package.json / cordis.patch.yml。不写任何 DSH 文件、不跑 pnpm，
         // patch 层的 config 值（含明文 apiKey）一律不回显。
         "--dsh-plugins",
+        // iCloud 完整备份（2026-11-16，macOS 专属）：写 iCloud Drive 下的备份
+        // 目录，不改变引擎的 config 指向；恢复会写 config.yaml 与 data/ 下的
+        // 配置（写前各自 .bak- 备份）。--keep 是 --prune-icloud-backups 的
+        // 独立取值 flag，不登记会从界面一点就被安全边界拦下。
+        "--icloud-backup",
+        "--icloud-backup-status",
+        "--list-icloud-backups",
+        "--restore-icloud-backup",
+        "--prune-icloud-backups",
+        "--keep",
     ];
     // Reject redirection-class flags outright (they re-point the engine at an
     // arbitrary config/profile file, a privilege escalation vector).
