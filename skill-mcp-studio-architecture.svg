@@ -28,13 +28,13 @@
     <text x="58" y="128" font-size="12" font-weight="600" fill="#e2e8f0">skill-mcp-studio.app</text>
     <text x="58" y="148" font-size="10" fill="#7dd3fc">macOS 桌面应用</text>
     <text x="58" y="164" font-size="10" fill="#7dd3fc">webview 直接装载 dashboard.html</text>
-    <text x="58" y="180" font-size="10" fill="#475569">无构建步骤 · 单文件静态页</text>
+    <text x="58" y="180" font-size="10" fill="#475569">构建期拆分 dist/ · 源文件单文件</text>
 
     <rect x="362" y="106" width="436" height="98" fill="rgba(8,51,68,0.40)" stroke="#22d3ee" stroke-width="1.5" rx="6"/>
-    <text x="374" y="128" font-size="12" font-weight="600" fill="#e2e8f0">gui/dashboard.html · 五页管理台</text>
-    <text x="374" y="148" font-size="10" fill="#7dd3fc">概览 · IDE/Agent · Skills · MCP · 设置</text>
+    <text x="374" y="128" font-size="12" font-weight="600" fill="#e2e8f0">gui/dashboard.html · 七页管理台</text>
+    <text x="374" y="148" font-size="10" fill="#7dd3fc">概览 · IDE/Agent · Skills · MCP · DSH 插件 · 设置</text>
     <text x="374" y="166" font-size="10" fill="#7dd3fc">通用配置（设置页）与业务动作（各页）分离</text>
-    <text x="374" y="190" font-size="10" fill="#475569">消费管快照 --management --format json</text>
+    <text x="374" y="190" font-size="10" fill="#475569">消费管理快照 --management --format json</text>
 
     <rect x="814" y="106" width="160" height="98" fill="rgba(8,51,68,0.40)" stroke="#22d3ee" stroke-width="1.5" rx="6"/>
     <text x="826" y="128" font-size="12" font-weight="600" fill="#e2e8f0">桥接</text>
@@ -67,7 +67,7 @@
     <rect x="30" y="358" width="960" height="262" fill="rgba(6,78,59,0.26)" stroke="#34d399" stroke-width="1.5" rx="8"/>
     <rect x="30" y="358" width="960" height="262" fill="#0f172a" rx="8"/>
     <rect x="30" y="358" width="960" height="262" fill="rgba(6,78,59,0.26)" stroke="#34d399" stroke-width="1.5" rx="8"/>
-    <text x="46" y="382" font-size="12" font-weight="700" fill="#34d399">③ 核心域 core/ · 39 模块</text>
+    <text x="46" y="382" font-size="12" font-weight="700" fill="#34d399">③ 核心域 core/ · 75 模块</text>
 
     <!-- row 1 -->
     <rect x="46" y="394" width="464" height="60" fill="rgba(6,78,59,0.35)" stroke="#34d399" stroke-width="1" rx="5"/>
@@ -81,7 +81,7 @@
     <!-- row 2 -->
     <rect x="46" y="462" width="464" height="60" fill="rgba(6,78,59,0.35)" stroke="#34d399" stroke-width="1" rx="5"/>
     <text x="58" y="482" font-size="11" font-weight="600" fill="#a7f3d0">综合审计</text>
-    <text x="58" y="502" font-size="9" fill="#6ee7b7">combined_checker · hooks_checker · change_tracker</text>
+    <text x="58" y="502" font-size="9" fill="#6ee7b7">combined_checker · change_tracker · skill_usage</text>
 
     <rect x="526" y="462" width="464" height="60" fill="rgba(6,78,59,0.35)" stroke="#34d399" stroke-width="1" rx="5"/>
     <text x="538" y="482" font-size="11" font-weight="600" fill="#a7f3d0">profile 与能力组</text>
@@ -94,7 +94,7 @@
 
     <rect x="526" y="530" width="464" height="60" fill="rgba(6,78,59,0.35)" stroke="#34d399" stroke-width="1" rx="5"/>
     <text x="538" y="550" font-size="11" font-weight="600" fill="#a7f3d0">管理台与端点库</text>
-    <text x="538" y="570" font-size="9" fill="#6ee7b7">management_snapshot · endpoint_library · endpoint_store</text>
+    <text x="538" y="570" font-size="9" fill="#6ee7b7">management_snapshot · endpoint_library · endpoint_store · cloud_backup</text>
 
     <text x="46" y="610" font-size="9" fill="#64748b">+ 支撑：scanner · reporter · tool_registry · mainstream_registry · git_sync · workspace_cleaner · change_tracker 等</text>
   </g>
