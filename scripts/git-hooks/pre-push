@@ -1,26 +1,29 @@
 #!/bin/sh
-# pre-push hook：门禁，两道检查。
+# pre-push hook：门禁，三道检查。
 #
 # 本 hook 随仓库提交（scripts/git-hooks/），由 core.hooksPath 加载；
 # 换机器或重新 clone 后执行一次 scripts/install-hooks.sh 即可启用。
 #
-# 第一道：文本卫生（P2-17 / P2-14）—— 与 CI 的 text-hygiene job 同判据。
-#   为什么加在 pre-push 而不是 pre-commit：
+# 顺序按「由快到慢」排列，让明显不合规的推送立刻失败，不必白等：
+#
+# 第一道：文本卫生（P2-17 / P2-14）—— 与 CI 的 text-hygiene job 同判据，亚秒级。
 #   实测 2026-11-17，4066efb 引入的 3 个文件末尾缺换行，本地门禁
 #   scripts/ci_parity.sh 能报出来，但没有任何 hook 会调用它，
 #   于是残缺代码一路推到两个远端，最后由 GitHub CI 判定失败。
-#   检查很轻（纯本地读文件，亚秒级），放在推送前最合适；
-#   全量测试耗时较长，不适合放进 hook，仍由 ci_parity.sh 手动执行。
 #
-# 第二道：默认拦截推送到 GitHub 的请求。
+# 第二道：GitHub 推送保护 —— 纯字符串判断，毫秒级。
 #   除非调用时显式设置 GITHUB_PUSH_ALLOW=1，否则拒绝任何推送到 github remote
 #   （remote 名为 github，或目标 URL 含 github.com）的操作。
+#   放行示例（仅在用户明确要求提交 GitHub 时使用）：
+#     GITHUB_PUSH_ALLOW=1 git push github master
 #
-# 放行示例（仅在用户明确要求提交 GitHub 时使用）：
-#   GITHUB_PUSH_ALLOW=1 git push github master
+# 第三道：完整门禁 scripts/ci_parity.sh —— 约 100 秒。
+#   与 CI 同源：ruff / node:test / cargo test / unittest / 干净环境自检 /
+#   密钥泄露扫描等。用户 2026-11-17 明确要求「后置也包括」。
 #
-# 跳过文本卫生（仅在确知原因时使用）：
-#   TEXT_HYGIENE_SKIP=1 git push ...
+# 跳过通道（均需确知原因）：
+#   TEXT_HYGIENE_SKIP=1   跳过第一道
+#   CI_PARITY_SKIP=1      跳过第三道
 #
 # 注意：本 hook 无参数时也要能工作，因此 $1/$2 一律加引号防护 set -u。
 
@@ -99,20 +102,61 @@ INNER
 fi
 
 # ---------- 第二道：GitHub 推送保护 ----------
+# 放在完整门禁之前：这是纯字符串判断，毫秒级。
+# 若先跑 100 秒的完整门禁再告诉用户「这个远端本来就不许推」，纯属浪费。
+GH_ALLOWED=0
 if [ "$remote_name" = "github" ] || echo "$remote_url" | grep -qi "github.com"; then
     if [ "${GITHUB_PUSH_ALLOW:-}" = "1" ]; then
         echo "[门禁] 已放行推送到 GitHub（GITHUB_PUSH_ALLOW=1）。"
-        exit 0
+        GH_ALLOWED=1
+    else
+        echo "" >&2
+        echo "⛔ 门禁拦截：检测到推送到 GitHub 的请求。" >&2
+        echo "   remote=$remote_name  url=$remote_url" >&2
+        echo "" >&2
+        echo "   按当前约定，只有在你明确要求时才允许提交 GitHub。" >&2
+        echo "   如需放行本次推送，请使用：" >&2
+        echo "     GITHUB_PUSH_ALLOW=1 git push github <branch>" >&2
+        echo "" >&2
+        exit 1
     fi
-    echo "" >&2
-    echo "⛔ 门禁拦截：检测到推送到 GitHub 的请求。" >&2
-    echo "   remote=$remote_name  url=$remote_url" >&2
-    echo "" >&2
-    echo "   按当前约定，只有在你明确要求时才允许提交 GitHub。" >&2
-    echo "   如需放行本次推送，请使用：" >&2
-    echo "     GITHUB_PUSH_ALLOW=1 git push github <branch>" >&2
-    echo "" >&2
-    exit 1
+fi
+
+# ---------- 第三道：完整门禁（ci_parity.sh）----------
+# 与 CI 同源的完整校验：ruff / node:test / cargo test / unittest /
+# 干净环境自检 / 密钥泄露扫描等。约 100 秒。
+#
+# 为什么也放进 pre-push（用户 2026-11-17 明确要求「后置也包括」）：
+# 此前只有文本卫生在 hook 里，其余全靠人记得手动跑 ci_parity.sh。
+# 2026-11-17 的实际事故正属于这一类 —— 检查存在但没人调用。
+#
+# 放在最后一道的原因：前面的检查都是秒级或直接拒绝，
+# 先让明显不合规的推送立即失败，避免白等 100 秒。
+# GitHub 拦截也移到完整门禁之前，理由相同。
+#
+# 跳过方式（仅在确知原因时使用）：
+#   CI_PARITY_SKIP=1 git push ...
+#
+# 注意：pre-push 的 stdin 是 git 传入的 ref 列表，ci_parity.sh 不读 stdin
+# （已确认全脚本无 read 调用），但为稳妥起见仍显式关闭其 stdin，
+# 防止将来某个子脚本误读导致 ref 列表被吞掉、推送行为异常。
+if [ "${CI_PARITY_SKIP:-0}" != "1" ]; then
+    if [ -x "$ROOT/scripts/ci_parity.sh" ]; then
+        echo "[pre-push] 运行完整门禁 scripts/ci_parity.sh（约 100 秒）…" >&2
+        if ! ( cd "$ROOT" && bash scripts/ci_parity.sh </dev/null ); then
+            echo "" >&2
+            echo "⛔ 推送已中止：完整门禁 ci_parity.sh 未通过。" >&2
+            echo "   上面列出的失败项需修复后再推送；本地已拦截，避免推到远端才红。" >&2
+            echo "   单独复跑查看详情：bash scripts/ci_parity.sh" >&2
+            echo "   确需跳过：CI_PARITY_SKIP=1 git push ..." >&2
+            echo "" >&2
+            exit 1
+        fi
+        echo "[pre-push] ✓ 完整门禁通过。" >&2
+    else
+        echo "[pre-push] 未找到可执行的 scripts/ci_parity.sh，跳过完整门禁。" >&2
+        echo "[pre-push] 注意：这会与 CI 结果不一致。" >&2
+    fi
 fi
 
 exit 0
