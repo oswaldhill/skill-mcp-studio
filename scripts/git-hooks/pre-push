@@ -1,19 +1,106 @@
 #!/bin/sh
-# pre-push hook：门禁 —— 默认拦截推送到 GitHub 的请求。
+# pre-push hook：门禁，两道检查。
 #
-# 规则：除非调用时显式设置 GITHUB_PUSH_ALLOW=1，否则拒绝任何推送到 github remote
-# （remote 名为 github，或目标 URL 含 github.com）的操作。
+# 本 hook 随仓库提交（scripts/git-hooks/），由 core.hooksPath 加载；
+# 换机器或重新 clone 后执行一次 scripts/install-hooks.sh 即可启用。
+#
+# 第一道：文本卫生（P2-17 / P2-14）—— 与 CI 的 text-hygiene job 同判据。
+#   为什么加在 pre-push 而不是 pre-commit：
+#   实测 2026-11-17，4066efb 引入的 3 个文件末尾缺换行，本地门禁
+#   scripts/ci_parity.sh 能报出来，但没有任何 hook 会调用它，
+#   于是残缺代码一路推到两个远端，最后由 GitHub CI 判定失败。
+#   检查很轻（纯本地读文件，亚秒级），放在推送前最合适；
+#   全量测试耗时较长，不适合放进 hook，仍由 ci_parity.sh 手动执行。
+#
+# 第二道：默认拦截推送到 GitHub 的请求。
+#   除非调用时显式设置 GITHUB_PUSH_ALLOW=1，否则拒绝任何推送到 github remote
+#   （remote 名为 github，或目标 URL 含 github.com）的操作。
 #
 # 放行示例（仅在用户明确要求提交 GitHub 时使用）：
 #   GITHUB_PUSH_ALLOW=1 git push github master
 #
-# 本 hook 安装在 .git/hooks/pre-push，不随仓库提交。
+# 跳过文本卫生（仅在确知原因时使用）：
+#   TEXT_HYGIENE_SKIP=1 git push ...
+#
+# 注意：本 hook 无参数时也要能工作，因此 $1/$2 一律加引号防护 set -u。
 
-remote_name="$1"
-remote_url="$2"
+set -eu
 
+remote_name="${1:-}"
+remote_url="${2:-}"
+
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo ".")"
+
+# ---------- 第一道：文本卫生 ----------
+if [ "${TEXT_HYGIENE_SKIP:-0}" != "1" ]; then
+    PY=""
+    for c in python3 python; do
+        command -v "$c" >/dev/null 2>&1 && PY="$c" && break
+    done
+
+    if [ -z "$PY" ]; then
+        echo "[pre-push] 未找到 python，跳过文本卫生检查。" >&2
+        echo "[pre-push] 这会导致与 CI 的 check 结果不一致，建议安装 python3。" >&2
+    else
+        if ! ( cd "$ROOT" && "$PY" - <<'INNER'
+import subprocess, sys
+
+SKIP_SUFFIX = (
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".icns",
+    ".pdf", ".zip", ".gz", ".woff", ".woff2", ".ttf", ".otf",
+    ".dmg", ".exe", ".msi", ".deb", ".rpm", ".so", ".dylib",
+)
+
+# 已跟踪 + 未跟踪都查：新增但未提交的文件同样会被推送后的 CI 检查到。
+files = subprocess.run(
+    ["git", "ls-files", "-co", "--exclude-standard"],
+    capture_output=True, text=True, check=True,
+).stdout.split()
+
+problems, checked = [], 0
+for f in files:
+    if f.lower().endswith(SKIP_SUFFIX):
+        continue
+    try:
+        raw = open(f, "rb").read()
+    except OSError:
+        continue
+    if b"\x00" in raw[:8000]:
+        continue
+    checked += 1
+    if raw.startswith(b"\xef\xbb\xbf"):
+        problems.append(f + ": 含 UTF-8 BOM")
+    if b"\r\n" in raw:
+        problems.append(f + ": 含 CRLF（本仓库统一 LF）")
+    if not raw.endswith(b"\n"):
+        problems.append(f + ": 末尾缺少换行")
+    elif raw.endswith(b"\n\n"):
+        problems.append(f + ": 末尾多余空行（应恰好一个换行）")
+
+if problems:
+    print(
+        "[pre-push] 文本卫生检查未通过（检查了 %d 个文本文件）：" % checked,
+        file=sys.stderr,
+    )
+    for p in problems:
+        print("  - " + p, file=sys.stderr)
+    sys.exit(1)
+INNER
+        ); then
+            echo "" >&2
+            echo "⛔ 推送已中止：文本卫生检查未通过（与 CI text-hygiene 同判据）。" >&2
+            echo "   修法：补齐/去掉末尾换行，或去掉 BOM、把 CRLF 转为 LF。" >&2
+            echo "   完整校验：bash scripts/ci_parity.sh" >&2
+            echo "   确需跳过：TEXT_HYGIENE_SKIP=1 git push ..." >&2
+            echo "" >&2
+            exit 1
+        fi
+    fi
+fi
+
+# ---------- 第二道：GitHub 推送保护 ----------
 if [ "$remote_name" = "github" ] || echo "$remote_url" | grep -qi "github.com"; then
-    if [ "$GITHUB_PUSH_ALLOW" = "1" ]; then
+    if [ "${GITHUB_PUSH_ALLOW:-}" = "1" ]; then
         echo "[门禁] 已放行推送到 GitHub（GITHUB_PUSH_ALLOW=1）。"
         exit 0
     fi
