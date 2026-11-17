@@ -10,7 +10,7 @@
 </p>
 
 **Skill MCP Studio** 是一套本地多客户端 **Skill / MCP 合规审计与修复工具**，由一个
-Python 审计 CLI、一个纯前端八页管理台（Tauri 桌面壳）和 66 个领域模块组成。
+Python 审计 CLI、一个纯前端七页管理台（Tauri 桌面壳）和 75 个领域模块组成。
 
 它回答**三类合规问题**，并把这三类结论之外的东西也做成可查的能力：
 
@@ -21,13 +21,13 @@ Python 审计 CLI、一个纯前端八页管理台（Tauri 桌面壳）和 66 �
 3. **MCP** → 本机有哪些 MCP（手动指定 + 自动识别），各客户端挂了哪些，支不支持
    多 endpoint（端点库 + 每客户端多挂载 + 逐端点探活与能力验证）。
 
-在此之上还有四块**横切能力**（对应管理台的另外几页）：
+在此之上还有三块**横切能力**（对应管理台的另外几页）：
 
 4. **变更追踪** → 后台巡检快照 diff（3 个维度），变更可接受 / 忽略，忽略清单幂等；
 5. **DSH 插件** → DeepSeek Harness 各 profile 的插件清单、`enabled` / `installed` /
    `broken` 三态与 patch 层结构（只读，明文密钥绝不回显）；
-6. **通用配置** → 统一技能目录、MCP 端点库、自动发现、配置导入导出、
-   WebDAV 跨设备同步、版本信息。
+6. **通用配置** → 统一技能目录、MCP 端点库、自动发现、备份与恢复（iCloud 完整备份 +
+   脱敏导入导出）、WebDAV 跨设备同步、版本信息。
 
 每条判断独立报告，互不混为一谈：
 
@@ -54,8 +54,9 @@ Python 审计 CLI、一个纯前端八页管理台（Tauri 桌面壳）和 66 �
 - **变更追踪**：后台巡检快照 diff（3 维度），变更可接受/忽略，忽略清单幂等。
 - **DSH 插件（只读）**：各 profile 的 cordis bundle 清单与载入顺序、三态判定、
   patch 层结构统计；`cordis.patch.yml` 的明文密钥**绝不回显**。
-- **配置搬运**：本地 + iCloud 导入导出；WebDAV 跨设备同步（只搬 3 个个人配置文件，
-  冲突留档不自动合并）。
+- **配置搬运与备份**：本地 + iCloud 导入导出（脱敏，用于换机与分享）；iCloud
+  **完整备份**（含密钥、按时间戳版本化、默认只留最新 1 份，`--keep N` 可保留多份
+  供逐版本恢复）；WebDAV 跨设备同步（只搬 3 个个人配置文件，冲突留档不自动合并）。
 - **一致性 gate**：GUI 结论与 CLI 结论可脚本化交叉验证。
 
 ---
@@ -66,7 +67,7 @@ Python 审计 CLI、一个纯前端八页管理台（Tauri 桌面壳）和 66 �
 
 ```
 scan.py                  CLI 入口（多阶段主流程 + 各子命令早返回）
-├── core/                Python 领域逻辑（66 模块）
+├── core/                Python 领域逻辑（75 模块）
 │   ├── checker/fixer          Skills 检查与修复（symlink 对齐）
 │   ├── mcp_checker/mcp_fixer/mcp_probe   MCP 配置检查、修复、活体探测
 │   ├── combined_checker       每客户端综合审计（Skills + MCP）
@@ -75,7 +76,7 @@ scan.py                  CLI 入口（多阶段主流程 + 各子命令早返回
 │   ├── endpoint_library/store  端点库 CRUD 与持久化
 │   ├── skill_state/toggle/auditor/migrator   启停三态 + 迁移
 │   └── ...                     scanner/reporter/change_tracker/git_sync 等
-├── gui/dashboard.html   八页管理台**源文件**（单文件：内联 CSS + 内联 JS）
+├── gui/dashboard.html   七页管理台**源文件**（单文件：内联 CSS + 内联 JS）
 └── src-tauri/           Tauri v2 桌面壳（frontendDist=../gui/dist，cargo tauri build → .app）
 ```
 
@@ -94,11 +95,11 @@ scan.py                  CLI 入口（多阶段主流程 + 各子命令早返回
 ```
 skill-mcp-studio/
 ├── scan.py                    CLI 入口（多阶段主流程 + 各子命令早返回）
-├── core/                      Python 领域逻辑（66 模块）
-├── gui/                       八页管理台前端（源文件单文件；dist/ 为构建产物）
+├── core/                      Python 领域逻辑（75 模块）
+├── gui/                       七页管理台前端（源文件单文件；dist/ 为构建产物）
 ├── src-tauri/                 Tauri v2 桌面壳（cargo tauri build → .app）
 ├── scripts/                   构建 / 校验 / 网关辅助脚本
-├── tests/                     单元测试（unittest，共 106 个文件）
+├── tests/                     单元测试（unittest，共 136 个文件）
 ├── docs/                      产品 / 设计 / 决策 / 评审文档（分类归档）
 │   ├── product/               产品需求 · 定位 · 形态
 │   ├── design/                阶段一~五设计 · 跨平台矩阵
@@ -202,6 +203,20 @@ cleanup / commit / push / 修复。
 --skip-discovered                         配合 --export-config：省略自动发现清单
 ```
 
+**iCloud 完整备份（v0.49.0，macOS）**
+
+与上面「脱敏导出」语义相反：备份用于**完整恢复**，含明文密钥（文件权限 `0600`，
+请勿分享），版本化存于 iCloud Drive 的 `skill-mcp-studio/backups/`。
+
+```text
+--icloud-backup                           立即备份（config.yaml + data/ 下的 overlay、
+                                          discovered、Git/市场源、github_token）
+--icloud-backup-status                    只读：最新备份状态（时间 / 体积 / 是否可用）
+--list-icloud-backups                     只读：列出全部备份版本
+--restore-icloud-backup <ID|PATH>         按版本恢复（只写白名单文件，写前逐文件生成 .bak-<ts>）
+--prune-icloud-backups [--keep N]         清理旧备份（默认保留最近 1 份）
+```
+
 **endpoint profile 与能力组**
 
 ```text
@@ -277,7 +292,7 @@ cleanup / commit / push / 修复。
 --delete-skill SKILL   软删除（先备份再移入 _trash/）
 ```
 
-**DSH 插件（v0.31.4，第八页的数据出口）**
+**DSH 插件（v0.31.4，管理台「DSH 插件」页的数据出口）**
 
 ```text
 --dsh-plugins --format json               只读：扫 ~/.dsh/profiles/*，输出各 profile 的
@@ -470,8 +485,10 @@ profiles:
 
 ![Skill MCP Studio 管理台](docs/images/dashboard.png)
 
-`gui/dashboard.html` 是七页管理台（**概览 · IDE/Agent · Skills · MCP · 变更详情 · DSH 插件 · 设置**），消费
-管理快照（`--management --format json`）：
+`gui/dashboard.html` 是七页管理台（**概览 · IDE/Agent · Skills · MCP · 变更详情 ·
+DSH 插件 · 设置**）：侧边栏为**六页导航**，变更详情从概览页「最近变更 → 查看详情」
+进入（`page-changes` 页面本体保留，承载忽略清单与完整变更清单）。数据来自管理快照
+（`--management --format json`）：
 
 1. **概览**：六项配置侧 KPI（受管客户端 / 已安装 / 仅发现配置 / 未安装 / 统一技能 /
    主流已纳入）+ 快捷操作；端点连通性在下方**独立「端点状态」区**，不与配置合规混算；
@@ -482,8 +499,11 @@ profiles:
 5. **变更详情**：后台巡检快照 diff（3 维度），变更接受 / 忽略 / 取消忽略；
 6. **DSH 插件**：各 profile 的插件清单、`enabled`/`installed`/`broken` 三态、
    patch 层结构（只读；明文密钥脱敏，不提供启用/禁用入口）；
-7. **设置**：通用配置（统一技能目录、MCP 端点库增删改、自动发现、
-   配置导入导出、WebDAV 同步、版本与关于）。
+7. **设置**：按「通用 / Skill / IDE·Agent / MCP」四个子页组织 ——
+   通用（外观主题与缩放、后台巡检、备份与恢复、关于）、
+   Skill（统一技能目录与 Git 源、使用统计、市场源、技能备份、GitHub token、
+   WebDAV 同步）、IDE·Agent（共享约束、客户端配置）、
+   MCP（active profile、自动发现、端点库与凭据）。
 
 通用 / 业务分离：通用配置在「设置」页、业务动作在对应管理页。产品需求单一权威见
 [`docs/product/PRD-产品需求文档.md`](docs/product/PRD-产品需求文档.md)。写操作经
@@ -519,6 +539,7 @@ Tauri 壳在 `src-tauri/`（`cargo tauri build` 产出 `.app`），构建步骤�
 | `data/discovered_tools.yaml` | ❌ 忽略 | 手动添加 / 自动发现的客户端持久化 |
 | `data/local_overrides.yaml` | ❌ 忽略 | 本机覆盖 |
 | `~/.skills-manager/profiles.local.yaml` | ❌ 仓库外 | 个人真实端点（经 `profile_sources` 合并） |
+| `~/Library/Mobile Documents/com~apple~CloudDocs/skill-mcp-studio/backups/` | ❌ 仓库外 | iCloud 完整备份（**含明文密钥**，文件权限 `0600`） |
 
 ---
 
