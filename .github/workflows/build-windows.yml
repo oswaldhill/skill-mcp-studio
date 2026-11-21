@@ -39,7 +39,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       # Round 32（CI 抓出来的真缺陷）：beforeBuildCommand 跑的是 Python 脚本
       # scripts/build_gui.py，但本 workflow 原先没装 Python —— macOS/Linux runner

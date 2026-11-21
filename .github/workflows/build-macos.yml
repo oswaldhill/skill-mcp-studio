@@ -46,7 +46,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       # Round 32：beforeBuildCommand 跑 Python 脚本 scripts/build_gui.py，
       # 构建依赖必须显式声明（原先靠 runner 自带 python3 侥幸通过）。

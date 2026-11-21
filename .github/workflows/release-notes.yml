@@ -34,7 +34,7 @@ jobs:
 
     steps:
       - name: Checkout the tagged tree
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.workflow_run.head_branch }}
           # 需要历史与 tag 才能算出上一个版本，用于拼 Full Changelog 链接。
